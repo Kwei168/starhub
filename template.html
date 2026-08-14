@@ -64,15 +64,24 @@ button{font-family:inherit;cursor:pointer}
 /* ---------- header ---------- */
 header{
   position:sticky;top:0;z-index:50;background:var(--header-bg);
-  backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--border2);
+  backdrop-filter:saturate(160%) blur(10px);border-bottom:1px solid rgba(255,255,255,.12);
 }
 .hd{max-width:1440px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
 .logo{display:flex;align-items:center;gap:10px;min-width:0}
-.logo svg{width:30px;height:30px;fill:var(--logo);flex:none}
-.logo .t{display:flex;flex-direction:column;line-height:1.2}
-.logo .t b{font-size:16px;font-weight:700}
-.logo .t span{font-size:12px;color:var(--muted)}
+.logo svg{width:30px;height:30px;fill:var(--logo);flex:none;filter:drop-shadow(0 1px 2px rgba(2,6,23,.4))}
+.logo .t{display:flex;flex-direction:column;line-height:1.2;color:#fff}
+.logo .t b{font-size:16px;font-weight:700;text-shadow:0 1px 2px rgba(2,6,23,.35)}
+.logo .t span{font-size:12px;color:var(--logo-sub)}
 .hd .sp{flex:1}
+.hd .ov{display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.85)}
+.hd .ov .badge{
+  display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:999px;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);color:#fff;font-weight:600;
+  white-space:nowrap;
+}
+.hd .ov .badge .icon{width:12px;height:12px;color:#86efac}
+.hd .ov .sep{width:1px;height:16px;background:rgba(255,255,255,.25)}
+.hd .ov b{color:#fff;font-weight:700}
 .hd .acts{display:flex;gap:8px}
 .btn{
   display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;
@@ -82,6 +91,11 @@ header{
 .btn:hover{background:var(--hover);border-color:var(--hover-line)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
 .btn.primary:hover{background:var(--accent-line)}
+.hd .btn{
+  background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.25);color:#fff;
+  backdrop-filter:blur(4px);
+}
+.hd .btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.45)}
 
 /* ---------- stats ---------- */
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
@@ -306,6 +320,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 }
 @media (max-width:640px){
   .hd{padding:10px 14px}
+  .hd .ov .sep,.hd .ov>span:not(.badge){display:none}
   .hd .acts .btn span{display:none}
   .hd .acts .btn{padding:0 10px}
   .wrap{padding:12px 12px 48px}
@@ -332,9 +347,16 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   <div class="hd">
     <div class="logo">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-      <div class="t"><b>GitHub Star 收藏台</b><span id="sub">Kwei168</span></div>
+      <div class="t"><b>StarHub</b><span>GitHub 收藏台</span></div>
     </div>
     <div class="sp"></div>
+    <div class="ov">
+      <span class="badge" title="数据更新时间"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="hdUpd">更新于 --</span></span>
+      <span class="sep"></span>
+      <span><b id="hdTotal">0</b> 个收藏</span>
+      <span class="sep"></span>
+      <span><b id="hdCats">0</b> 个分类</span>
+    </div>
     <div class="acts">
       <button class="btn" id="btnView" title="切换列表/卡片视图" aria-label="切换视图"><svg class="icon" id="viewIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
       <button class="btn" id="btnTheme" title="切换明暗主题" aria-label="切换主题"><svg class="icon" id="themeIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
@@ -642,6 +664,12 @@ function fmtStars(n){
   return n;
 }
 
+function renderHeader(){
+  $('#hdUpd').textContent = '更新于 ' + UPDATED;
+  $('#hdTotal').textContent = DATA.length;
+  $('#hdCats').textContent = CATS.length;
+}
+
 function renderList(){
   const { faved, rest } = filterData();
   const pinnedWrap = $('#pinnedWrap'), pinned = $('#pinned'), grid = $('#grid'), empty = $('#empty');
@@ -678,7 +706,6 @@ function renderList(){
   $('#stCats').textContent = CATS.length;
   $('#stLangs').textContent = langSorted.length;
   $('#stFav').textContent = favs.size;
-  $('#sub').textContent = 'Kwei168 · '+DATA.length+' 个项目 · 更新于 '+UPDATED;
 }
 
 // ---- 每日 AI 排行榜 ----
@@ -876,6 +903,7 @@ function toast(msg){
 }
 
 // ---- init ----
+renderHeader();
 applyTheme(getTheme());
 applyView(getView());
 renderLangBar();

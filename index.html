@@ -64,15 +64,24 @@ button{font-family:inherit;cursor:pointer}
 /* ---------- header ---------- */
 header{
   position:sticky;top:0;z-index:50;background:var(--header-bg);
-  backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--border2);
+  backdrop-filter:saturate(160%) blur(10px);border-bottom:1px solid rgba(255,255,255,.12);
 }
 .hd{max-width:1440px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
 .logo{display:flex;align-items:center;gap:10px;min-width:0}
-.logo svg{width:30px;height:30px;fill:var(--logo);flex:none}
-.logo .t{display:flex;flex-direction:column;line-height:1.2}
-.logo .t b{font-size:16px;font-weight:700}
-.logo .t span{font-size:12px;color:var(--muted)}
+.logo svg{width:30px;height:30px;fill:var(--logo);flex:none;filter:drop-shadow(0 1px 2px rgba(2,6,23,.4))}
+.logo .t{display:flex;flex-direction:column;line-height:1.2;color:#fff}
+.logo .t b{font-size:16px;font-weight:700;text-shadow:0 1px 2px rgba(2,6,23,.35)}
+.logo .t span{font-size:12px;color:var(--logo-sub)}
 .hd .sp{flex:1}
+.hd .ov{display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.85)}
+.hd .ov .badge{
+  display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:999px;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);color:#fff;font-weight:600;
+  white-space:nowrap;
+}
+.hd .ov .badge .icon{width:12px;height:12px;color:#86efac}
+.hd .ov .sep{width:1px;height:16px;background:rgba(255,255,255,.25)}
+.hd .ov b{color:#fff;font-weight:700}
 .hd .acts{display:flex;gap:8px}
 .btn{
   display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;
@@ -82,6 +91,11 @@ header{
 .btn:hover{background:var(--hover);border-color:var(--hover-line)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
 .btn.primary:hover{background:var(--accent-line)}
+.hd .btn{
+  background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.25);color:#fff;
+  backdrop-filter:blur(4px);
+}
+.hd .btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.45)}
 
 /* ---------- stats ---------- */
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
@@ -306,6 +320,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 }
 @media (max-width:640px){
   .hd{padding:10px 14px}
+  .hd .ov .sep,.hd .ov>span:not(.badge){display:none}
   .hd .acts .btn span{display:none}
   .hd .acts .btn{padding:0 10px}
   .wrap{padding:12px 12px 48px}
@@ -332,9 +347,16 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   <div class="hd">
     <div class="logo">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-      <div class="t"><b>GitHub Star 收藏台</b><span id="sub">Kwei168</span></div>
+      <div class="t"><b>StarHub</b><span>GitHub 收藏台</span></div>
     </div>
     <div class="sp"></div>
+    <div class="ov">
+      <span class="badge" title="数据更新时间"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="hdUpd">更新于 --</span></span>
+      <span class="sep"></span>
+      <span><b id="hdTotal">0</b> 个收藏</span>
+      <span class="sep"></span>
+      <span><b id="hdCats">0</b> 个分类</span>
+    </div>
     <div class="acts">
       <button class="btn" id="btnView" title="切换列表/卡片视图" aria-label="切换视图"><svg class="icon" id="viewIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
       <button class="btn" id="btnTheme" title="切换明暗主题" aria-label="切换主题"><svg class="icon" id="themeIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
@@ -443,7 +465,7 @@ const DEFAULT_FAVS = ["react/react","github/spec-kit","521xueweihan/HelloGitHub"
 const STORE_KEY = 'wb_starhub_favs_v1';
 const THEME_KEY = 'wb_starhub_theme_v1';
 const VIEW_KEY = 'wb_starhub_view_v1';
-const UPDATED = '''2026-08-14 15:20''';
+const UPDATED = ''''2026-08-14 15:20'''';
 const TRENDING = {"rising":[{"name":"tensorflow","owner":"tensorflow","full_name":"tensorflow/tensorflow","html_url":"https://github.com/tensorflow/tensorflow","desc":"Google 出品的开源机器学习框架。","language":"C++","stars":197012,"created_at":"2015-11-07","delta":null,"reason":"新上榜 · 19.7万星标"},{"name":"prompts.chat","owner":"f","full_name":"f/prompts.chat","html_url":"https://github.com/f/prompts.chat","desc":"精选 ChatGPT 提示词合集，支持自托管。","language":"HTML","stars":167110,"created_at":"2022-12-05","delta":null,"reason":"新上榜 · 16.7万星标"},{"name":"stable-diffusion-webui","owner":"AUTOMATIC1111","full_name":"AUTOMATIC1111/stable-diffusion-webui","html_url":"https://github.com/AUTOMATIC1111/stable-diffusion-webui","desc":"Stable Diffusion 的网页版图形界面。","language":"Python","stars":164515,"created_at":"2022-08-22","delta":null,"reason":"新上榜 · 16.5万星标"},{"name":"transformers","owner":"huggingface","full_name":"huggingface/transformers","html_url":"https://github.com/huggingface/transformers","desc":"Hugging Face 模型框架，覆盖文本、视觉、音频多模态。","language":"Python","stars":164092,"created_at":"2018-10-29","delta":null,"reason":"新上榜 · 16.4万星标"},{"name":"LLMs-from-scratch","owner":"rasbt","full_name":"rasbt/LLMs-from-scratch","html_url":"https://github.com/rasbt/LLMs-from-scratch","desc":"在 PyTorch 中从头开始一步步实现类似 ChatGPT 的 LLM","language":"Jupyter Notebook","stars":102624,"created_at":"2023-07-23","delta":null,"reason":"新上榜 · 10.3万星标"},{"name":"pytorch","owner":"pytorch","full_name":"pytorch/pytorch","html_url":"https://github.com/pytorch/pytorch","desc":"Python 中的张量和动态神经网络，具有强大的 GPU 加速功能","language":"Python","stars":102367,"created_at":"2016-08-13","delta":null,"reason":"新上榜 · 10.2万星标"},{"name":"opencv","owner":"opencv","full_name":"opencv/opencv","html_url":"https://github.com/opencv/opencv","desc":"开源计算机视觉库","language":"C++","stars":90422,"created_at":"2012-07-19","delta":null,"reason":"新上榜 · 9.0万星标"},{"name":"ML-For-Beginners","owner":"microsoft","full_name":"microsoft/ML-For-Beginners","html_url":"https://github.com/microsoft/ML-For-Beginners","desc":"12 周、26 节课程、52 个测验，适合所有人的经典机器学习","language":"Jupyter Notebook","stars":89367,"created_at":"2021-03-03","delta":null,"reason":"新上榜 · 8.9万星标"},{"name":"cs-video-courses","owner":"Developer-Y","full_name":"Developer-Y/cs-video-courses","html_url":"https://github.com/Developer-Y/cs-video-courses","desc":"包含视频讲座的计算机科学课程列表。","language":null,"stars":83045,"created_at":"2016-10-21","delta":null,"reason":"新上榜 · 8.3万星标"},{"name":"llm-course","owner":"mlabonne","full_name":"mlabonne/llm-course","html_url":"https://github.com/mlabonne/llm-course","desc":"通过路线图和 Colab 笔记本进入大型语言模型 (LLM) 的课程。","language":null,"stars":81664,"created_at":"2023-06-17","delta":null,"reason":"新上榜 · 8.2万星标"},{"name":"netdata","owner":"netdata","full_name":"netdata/netdata","html_url":"https://github.com/netdata/netdata","desc":"即使对于精益团队来说，也是实现人工智能驱动的全栈可观察性的最快途径。","language":"Go","stars":80193,"created_at":"2013-06-17","delta":null,"reason":"新上榜 · 8.0万星标"},{"name":"d2l-zh","owner":"d2l-ai","full_name":"d2l-ai/d2l-zh","html_url":"https://github.com/d2l-ai/d2l-zh","desc":"《动手学深度学习》：面向中文读者、能运行、可讨论。中英文版被70多个国家的500多所大学用于教学。","language":"Python","stars":79694,"created_at":"2017-08-23","delta":null,"reason":"新上榜 · 8.0万星标"},{"name":"Prompt-Engineering-Guide","owner":"dair-ai","full_name":"dair-ai/Prompt-Engineering-Guide","html_url":"https://github.com/dair-ai/Prompt-Engineering-Guide","desc":"🐙 即时工程、上下文工程、RAG 和 AI 代理的指南、论文、课程、笔记本和资源。","language":"MDX","stars":77464,"created_at":"2022-12-16","delta":null,"reason":"新上榜 · 7.7万星标"},{"name":"tesseract","owner":"tesseract-ocr","full_name":"tesseract-ocr/tesseract","html_url":"https://github.com/tesseract-ocr/tesseract","desc":"Tesseract 开源 OCR 引擎（主存储库）","language":"C++","stars":75913,"created_at":"2014-08-12","delta":null,"reason":"新上榜 · 7.6万星标"},{"name":"awesome-scalability","owner":"binhnguyennus","full_name":"binhnguyennus/awesome-scalability","html_url":"https://github.com/binhnguyennus/awesome-scalability","desc":"可扩展、可靠且高性能的大型系统的模式","language":null,"stars":73268,"created_at":"2017-12-27","delta":null,"reason":"新上榜 · 7.3万星标"},{"name":"OpenBB","owner":"OpenBB-finance","full_name":"OpenBB-finance/OpenBB","html_url":"https://github.com/OpenBB-finance/OpenBB","desc":"面向分析师、量化分析师和人工智能代理的开放数据平台。","language":"Python","stars":71852,"created_at":"2020-12-20","delta":null,"reason":"新上榜 · 7.2万星标"},{"name":"annotated_deep_learning_paper_implementations","owner":"labmlai","full_name":"labmlai/annotated_deep_learning_paper_implementations","html_url":"https://github.com/labmlai/annotated_deep_learning_paper_implementations","desc":"🧑‍🏫 60 多篇带有并排注释的深度学习论文实现/教程📝；包括变压器（original、xl、switch、feedback、vit、...）、优化器（adam、adabelief、sophia、...）、gans（cyclegan、stylegan2、...）、🎮强化学习（ppo、dqn）、capsnet、distillation、...🧠","language":"Python","stars":67320,"created_at":"2020-08-25","delta":null,"reason":"新上榜 · 6.7万星标"},{"name":"scikit-learn","owner":"scikit-learn","full_name":"scikit-learn/scikit-learn","html_url":"https://github.com/scikit-learn/scikit-learn","desc":"scikit-learn：Python 中的机器学习","language":"Python","stars":66977,"created_at":"2010-08-17","delta":null,"reason":"新上榜 · 6.7万星标"},{"name":"AI-For-Beginners","owner":"microsoft","full_name":"microsoft/AI-For-Beginners","html_url":"https://github.com/microsoft/AI-For-Beginners","desc":"12 周，24 节课，全民人工智能！","language":"Jupyter Notebook","stars":64862,"created_at":"2021-03-03","delta":null,"reason":"新上榜 · 6.5万星标"},{"name":"keras","owner":"keras-team","full_name":"keras-team/keras","html_url":"https://github.com/keras-team/keras","desc":"人类深度学习","language":"Python","stars":64229,"created_at":"2015-03-28","delta":null,"reason":"新上榜 · 6.4万星标"}],"total":[{"name":"tensorflow","owner":"tensorflow","full_name":"tensorflow/tensorflow","html_url":"https://github.com/tensorflow/tensorflow","desc":"Google 出品的开源机器学习框架。","language":"C++","stars":197012,"created_at":"2015-11-07","reason":"累计 19.7万星标"},{"name":"prompts.chat","owner":"f","full_name":"f/prompts.chat","html_url":"https://github.com/f/prompts.chat","desc":"精选 ChatGPT 提示词合集，支持自托管。","language":"HTML","stars":167110,"created_at":"2022-12-05","reason":"累计 16.7万星标"},{"name":"stable-diffusion-webui","owner":"AUTOMATIC1111","full_name":"AUTOMATIC1111/stable-diffusion-webui","html_url":"https://github.com/AUTOMATIC1111/stable-diffusion-webui","desc":"Stable Diffusion 的网页版图形界面。","language":"Python","stars":164515,"created_at":"2022-08-22","reason":"累计 16.5万星标"},{"name":"transformers","owner":"huggingface","full_name":"huggingface/transformers","html_url":"https://github.com/huggingface/transformers","desc":"Hugging Face 模型框架，覆盖文本、视觉、音频多模态。","language":"Python","stars":164092,"created_at":"2018-10-29","reason":"累计 16.4万星标"},{"name":"LLMs-from-scratch","owner":"rasbt","full_name":"rasbt/LLMs-from-scratch","html_url":"https://github.com/rasbt/LLMs-from-scratch","desc":"在 PyTorch 中从头开始一步步实现类似 ChatGPT 的 LLM","language":"Jupyter Notebook","stars":102624,"created_at":"2023-07-23","reason":"累计 10.3万星标"},{"name":"pytorch","owner":"pytorch","full_name":"pytorch/pytorch","html_url":"https://github.com/pytorch/pytorch","desc":"Python 中的张量和动态神经网络，具有强大的 GPU 加速功能","language":"Python","stars":102367,"created_at":"2016-08-13","reason":"累计 10.2万星标"},{"name":"opencv","owner":"opencv","full_name":"opencv/opencv","html_url":"https://github.com/opencv/opencv","desc":"开源计算机视觉库","language":"C++","stars":90422,"created_at":"2012-07-19","reason":"累计 9.0万星标"},{"name":"ML-For-Beginners","owner":"microsoft","full_name":"microsoft/ML-For-Beginners","html_url":"https://github.com/microsoft/ML-For-Beginners","desc":"12 周、26 节课程、52 个测验，适合所有人的经典机器学习","language":"Jupyter Notebook","stars":89367,"created_at":"2021-03-03","reason":"累计 8.9万星标"},{"name":"cs-video-courses","owner":"Developer-Y","full_name":"Developer-Y/cs-video-courses","html_url":"https://github.com/Developer-Y/cs-video-courses","desc":"包含视频讲座的计算机科学课程列表。","language":null,"stars":83045,"created_at":"2016-10-21","reason":"累计 8.3万星标"},{"name":"llm-course","owner":"mlabonne","full_name":"mlabonne/llm-course","html_url":"https://github.com/mlabonne/llm-course","desc":"通过路线图和 Colab 笔记本进入大型语言模型 (LLM) 的课程。","language":null,"stars":81664,"created_at":"2023-06-17","reason":"累计 8.2万星标"},{"name":"netdata","owner":"netdata","full_name":"netdata/netdata","html_url":"https://github.com/netdata/netdata","desc":"即使对于精益团队来说，也是实现人工智能驱动的全栈可观察性的最快途径。","language":"Go","stars":80193,"created_at":"2013-06-17","reason":"累计 8.0万星标"},{"name":"d2l-zh","owner":"d2l-ai","full_name":"d2l-ai/d2l-zh","html_url":"https://github.com/d2l-ai/d2l-zh","desc":"《动手学深度学习》：面向中文读者、能运行、可讨论。中英文版被70多个国家的500多所大学用于教学。","language":"Python","stars":79694,"created_at":"2017-08-23","reason":"累计 8.0万星标"},{"name":"Prompt-Engineering-Guide","owner":"dair-ai","full_name":"dair-ai/Prompt-Engineering-Guide","html_url":"https://github.com/dair-ai/Prompt-Engineering-Guide","desc":"🐙 即时工程、上下文工程、RAG 和 AI 代理的指南、论文、课程、笔记本和资源。","language":"MDX","stars":77464,"created_at":"2022-12-16","reason":"累计 7.7万星标"},{"name":"tesseract","owner":"tesseract-ocr","full_name":"tesseract-ocr/tesseract","html_url":"https://github.com/tesseract-ocr/tesseract","desc":"Tesseract 开源 OCR 引擎（主存储库）","language":"C++","stars":75913,"created_at":"2014-08-12","reason":"累计 7.6万星标"},{"name":"awesome-scalability","owner":"binhnguyennus","full_name":"binhnguyennus/awesome-scalability","html_url":"https://github.com/binhnguyennus/awesome-scalability","desc":"可扩展、可靠且高性能的大型系统的模式","language":null,"stars":73268,"created_at":"2017-12-27","reason":"累计 7.3万星标"},{"name":"OpenBB","owner":"OpenBB-finance","full_name":"OpenBB-finance/OpenBB","html_url":"https://github.com/OpenBB-finance/OpenBB","desc":"面向分析师、量化分析师和人工智能代理的开放数据平台。","language":"Python","stars":71852,"created_at":"2020-12-20","reason":"累计 7.2万星标"},{"name":"annotated_deep_learning_paper_implementations","owner":"labmlai","full_name":"labmlai/annotated_deep_learning_paper_implementations","html_url":"https://github.com/labmlai/annotated_deep_learning_paper_implementations","desc":"🧑‍🏫 60 多篇带有并排注释的深度学习论文实现/教程📝；包括变压器（original、xl、switch、feedback、vit、...）、优化器（adam、adabelief、sophia、...）、gans（cyclegan、stylegan2、...）、🎮强化学习（ppo、dqn）、capsnet、distillation、...🧠","language":"Python","stars":67320,"created_at":"2020-08-25","reason":"累计 6.7万星标"},{"name":"scikit-learn","owner":"scikit-learn","full_name":"scikit-learn/scikit-learn","html_url":"https://github.com/scikit-learn/scikit-learn","desc":"scikit-learn：Python 中的机器学习","language":"Python","stars":66977,"created_at":"2010-08-17","reason":"累计 6.7万星标"},{"name":"AI-For-Beginners","owner":"microsoft","full_name":"microsoft/AI-For-Beginners","html_url":"https://github.com/microsoft/AI-For-Beginners","desc":"12 周，24 节课，全民人工智能！","language":"Jupyter Notebook","stars":64862,"created_at":"2021-03-03","reason":"累计 6.5万星标"},{"name":"keras","owner":"keras-team","full_name":"keras-team/keras","html_url":"https://github.com/keras-team/keras","desc":"人类深度学习","language":"Python","stars":64229,"created_at":"2015-03-28","reason":"累计 6.4万星标"}],"new":[]};
 const FEED = [{"kind":"star","actor":"liyupi","repo":"liustack/modlens","time":"15:02","url":"https://github.com/liustack/modlens"},{"kind":"star","actor":"liyupi","repo":"liyupi/dsh-kun-like-pet","time":"14:57","url":"https://github.com/liyupi/dsh-kun-like-pet"},{"kind":"star","actor":"alchaincyf","repo":"alchaincyf/deepseek-harness-orange-book","time":"12:10","url":"https://github.com/alchaincyf/deepseek-harness-orange-book"},{"kind":"pr","actor":"NanmiCoder","repo":"NanmiCoder/dsh-agent-teams","title":"","url":"https://github.com/NanmiCoder/dsh-agent-teams","time":"10:44"},{"kind":"star","actor":"freestylefly","repo":"chuspeeism/dashi-taskboard","time":"10:07","url":"https://github.com/chuspeeism/dashi-taskboard"},{"kind":"star","actor":"liyupi","repo":"AdamPlatin123/awesome-dsh-plugins","time":"09:29","url":"https://github.com/AdamPlatin123/awesome-dsh-plugins"},{"kind":"star","actor":"liyupi","repo":"ZSeven-W/openpencil","time":"00:00","url":"https://github.com/ZSeven-W/openpencil"}];
 
@@ -642,6 +664,12 @@ function fmtStars(n){
   return n;
 }
 
+function renderHeader(){
+  $('#hdUpd').textContent = '更新于 ' + UPDATED;
+  $('#hdTotal').textContent = DATA.length;
+  $('#hdCats').textContent = CATS.length;
+}
+
 function renderList(){
   const { faved, rest } = filterData();
   const pinnedWrap = $('#pinnedWrap'), pinned = $('#pinned'), grid = $('#grid'), empty = $('#empty');
@@ -678,7 +706,6 @@ function renderList(){
   $('#stCats').textContent = CATS.length;
   $('#stLangs').textContent = langSorted.length;
   $('#stFav').textContent = favs.size;
-  $('#sub').textContent = 'Kwei168 · '+DATA.length+' 个项目 · 更新于 '+UPDATED;
 }
 
 // ---- 每日 AI 排行榜 ----
@@ -876,6 +903,7 @@ function toast(msg){
 }
 
 // ---- init ----
+renderHeader();
 applyTheme(getTheme());
 applyView(getView());
 renderLangBar();
