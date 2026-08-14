@@ -102,6 +102,16 @@ header{
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
 .side{display:flex;flex-direction:column;gap:20px;min-width:0;position:sticky;top:76px;height:calc(100vh - 96px);overflow:hidden}
+
+/* ---------- side tabs ---------- */
+.side-tabs{display:flex;gap:6px;flex:none}
+.side-tab{
+  flex:1;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);
+  font-size:12px;color:var(--muted);transition:all .15s;
+}
+.side-tab.on{background:var(--text);border-color:var(--text);color:var(--on-strong)}
+.trending:not(.on),.feed:not(.on){display:none}
+.side .trending h2,.side .feed h2{display:none}
 .main{
   width:100%;min-width:0;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -499,7 +509,11 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   </div>
   </div><!-- /main -->
   <aside class="side">
-    <aside class="trending">
+    <div class="side-tabs">
+      <button class="side-tab on" data-side="trend">每日排行榜</button>
+      <button class="side-tab" data-side="feed">关注动态</button>
+    </div>
+    <aside class="trending on">
       <h2>每日 AI 排行榜</h2>
       <div class="trend-sub" id="trendUpdated"></div>
       <div class="trend-tabs" id="trendTabs">
@@ -584,7 +598,7 @@ let favs = new Set();
 try { favs = new Set(JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || DEFAULT_FAVS); }
 catch(e){ favs = new Set(DEFAULT_FAVS); }
 
-const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising' };
+const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising', sideTab:'trend' };
 
 // ---- 语言统计 ----
 const langCount = {};
@@ -839,6 +853,14 @@ function switchTrendTab(tab, scope){
   renderTrending();
 }
 
+function switchSideTab(tab){
+  state.sideTab = tab;
+  document.querySelectorAll('.side-tab').forEach(x=>x.classList.toggle('on', x.dataset.side===tab));
+  const t = $('.trending'), f = $('.feed');
+  if(t) t.classList.toggle('on', tab==='trend');
+  if(f) f.classList.toggle('on', tab==='feed');
+}
+
 function renderTrendingFull(){
   const list = $('#mTrendList');
   const items = (TRENDING && TRENDING[state.trendTab]) || [];
@@ -958,6 +980,7 @@ function bindEvents(){
     const b = e.target.closest('[data-tab]'); if(!b) return;
     switchTrendTab(b.dataset.tab);
   });
+  document.querySelectorAll('.side-tab').forEach(b => b.addEventListener('click', () => switchSideTab(b.dataset.side)));
   $('#mTrendTabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]'); if(!b) return;
     switchTrendTab(b.dataset.tab, '#mTrendTabs');
@@ -1067,6 +1090,7 @@ renderLangSel();
 renderList();
 renderTrending();
 renderFeed();
+switchSideTab(state.sideTab);
 bindEvents();
 </script>
 </body>
