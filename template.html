@@ -270,7 +270,14 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-tab[data-tab="rising"].on{background:var(--t-rising);border-color:var(--t-rising)}
 .trend-tab[data-tab="total"].on{background:var(--t-total);border-color:var(--t-total)}
 .trend-tab[data-tab="new"].on{background:var(--t-new);border-color:var(--t-new)}
-.trend-list{display:flex;flex-direction:column}
+.trend-list{
+  display:flex;flex-direction:column;max-height:640px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--track) transparent;
+}
+.trend-list::-webkit-scrollbar{width:6px}
+.trend-list::-webkit-scrollbar-track{background:transparent}
+.trend-list::-webkit-scrollbar-thumb{background:var(--track);border-radius:3px}
+.trend-list::-webkit-scrollbar-thumb:hover{background:var(--track-hover)}
 .trend-item{display:flex;align-items:center;gap:8px;padding:7px 4px;border:0;border-bottom:1px dashed var(--border2);border-radius:0;transition:background .15s}
 .trend-item:hover{background:var(--hover)}
 .trend-item .rank{flex:none;width:20px;height:20px;border-radius:5px;background:var(--hover);color:var(--muted);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
@@ -798,6 +805,7 @@ function buildTrendItem(p, i, full){
       '</div>' + '<div class="tm">' + deltaHtml + stars + '</div>';
   }
   return rank + '<div class="ti">' + name +
+    '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' +
     '<span class="meta">' + lang + stars + '</span>' +
     '</div>' + '<div class="tm">' + deltaHtml + reason + '</div>';
 }
