@@ -179,6 +179,9 @@ def main():
             if translated:
                 desc = translated
                 desc_zh[fn] = translated
+                print("[翻译] %s -> %s" % (fn, translated[:60]))
+            else:
+                print("[翻译失败-保留原文] %s" % fn)
         out.append({
             "id": fn,
             "name": r.get("name"),
