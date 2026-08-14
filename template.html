@@ -300,13 +300,20 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   padding:16px;box-shadow:var(--shadow);
 }
 .feed .feed-sub{font-size:11px;color:var(--faint);margin-bottom:10px}
-.feed-list{display:flex;flex-direction:column}
-.feed-item{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--border2);font-size:12.5px}
+.feed-list{
+  display:flex;flex-direction:column;max-height:340px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--track) transparent;
+}
+.feed-list::-webkit-scrollbar{width:6px}
+.feed-list::-webkit-scrollbar-track{background:transparent}
+.feed-list::-webkit-scrollbar-thumb{background:var(--track);border-radius:3px}
+.feed-list::-webkit-scrollbar-thumb:hover{background:var(--track-hover)}
+.feed-item{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--border2);font-size:12.5px;min-width:0}
 .feed-item:last-child{border-bottom:0}
 .feed-item .fd{flex:none;width:9px;height:9px;border-radius:50%}
-.feed-item .fa{font-weight:600;color:var(--text);flex:none}
-.feed-item .fv{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.feed-item .ft{color:var(--accent);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;min-width:0;flex:none}
+.feed-item .fa{font-weight:600;color:var(--text);flex:none;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feed-item .fv{color:var(--muted);flex:none;white-space:nowrap}
+.feed-item .ft{color:var(--accent);font-weight:500;flex:1;min-width:0;white-space:normal;word-break:break-all;line-height:1.35}
 .feed-item .ft:hover{text-decoration:underline}
 .feed-item .tm{margin-left:auto;color:var(--faint);font-size:11px;flex:none}
 
@@ -343,6 +350,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 }
 .modal .m-list .trend-item:hover{background:transparent}
 .modal .m-list .trend-item .rank{width:24px;height:24px;border-radius:6px;font-size:12px}
+.modal .m-list .trend-item .tn{white-space:normal;word-break:break-all;line-height:1.35}
 .modal .m-list .trend-item .reason{margin-top:4px}
 .modal .m-list .trend-item .tm{flex-direction:row;align-items:center;gap:8px}
 
