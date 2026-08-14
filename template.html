@@ -323,6 +323,36 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   font-size:11px;font-weight:600;color:var(--upd-color);background:var(--upd-bg);margin-left:6px;flex:none;
 }
 
+/* ---------- modal（完整榜浮层） ---------- */
+.modal{
+  position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;
+  background:rgba(2,6,23,.55);opacity:0;pointer-events:none;transition:opacity .25s;padding:20px;
+}
+.modal.open{opacity:1;pointer-events:auto}
+.modal .panel{
+  width:100%;max-width:880px;max-height:calc(100vh - 80px);display:flex;flex-direction:column;
+  background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-lift);
+  transform:translateY(16px) scale(.98);transition:transform .25s;
+}
+.modal.open .panel{transform:none}
+.modal .m-hd{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border2)}
+.modal .m-hd h3{font-size:15px;margin:0}
+.modal .m-hd .close{
+  margin-left:auto;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  border:0;border-radius:8px;background:var(--hover);color:var(--muted);font-size:16px;cursor:pointer;transition:all .15s;
+}
+.modal .m-hd .close:hover{color:var(--text);background:var(--hover-line)}
+.modal .m-tabs{display:flex;gap:8px;padding:14px 20px 0}
+.modal .m-list{overflow-y:auto;padding:10px 20px 20px;min-height:0}
+.modal .m-list .trend-item{
+  display:flex;align-items:flex-start;gap:10px;padding:10px 8px;
+  border:0;border-bottom:1px solid var(--border2);border-radius:0;
+}
+.modal .m-list .trend-item:hover{background:transparent}
+.modal .m-list .trend-item .rank{width:24px;height:24px;border-radius:6px;font-size:12px}
+.modal .m-list .trend-item .reason{margin-top:4px}
+.modal .m-list .trend-item .tm{flex-direction:row;align-items:center;gap:8px}
+
 /* ---------- toast ---------- */
 .toast{
   position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
@@ -478,6 +508,20 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   </aside>
 </div>
 
+<div class="modal" id="trendModal" role="dialog" aria-modal="true" aria-label="完整排行榜">
+  <div class="panel">
+    <div class="m-hd">
+      <h3>每日 AI 排行榜 · 完整 Top20</h3>
+      <button class="close" data-close aria-label="关闭">×</button>
+    </div>
+    <div class="m-tabs" id="mTrendTabs">
+      <button class="trend-tab on" data-tab="rising">涨星榜</button>
+      <button class="trend-tab" data-tab="total">总星标榜</button>
+      <button class="trend-tab" data-tab="new">新秀榜</button>
+    </div>
+    <div class="m-list" id="mTrendList"></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput" accept=".json" style="display:none">
 
@@ -778,6 +822,36 @@ function renderTrending(){
   });
 }
 
+function switchTrendTab(tab, scope){
+  state.trendTab = tab;
+  document.querySelectorAll((scope || '#trendTabs') + ' .trend-tab').forEach(x=>x.classList.toggle('on', x.dataset.tab===tab));
+  renderTrending();
+}
+
+function renderTrendingFull(){
+  const list = $('#mTrendList');
+  const items = (TRENDING && TRENDING[state.trendTab]) || [];
+  list.innerHTML = '';
+  if(!items.length){
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:40px 0">暂无数据</div>';
+    return;
+  }
+  items.slice(0, 20).forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'trend-item';
+    row.innerHTML = buildTrendItem(p, i, true);
+    list.appendChild(row);
+  });
+}
+
+function openTrendModal(){
+  $('#trendModal').classList.add('open');
+  document.querySelectorAll('#mTrendTabs .trend-tab').forEach(x=>x.classList.toggle('on', x.dataset.tab===state.trendTab));
+  renderTrendingFull();
+}
+
+function closeTrendModal(){ $('#trendModal').classList.remove('open'); }
+
 // ---- 今日关注动态 ----
 const FEED_COLORS = { repo:'#0969da', star:'#e3a008', follow:'#8250df', pr:'#1a7f37' };
 function renderFeed(){
@@ -871,9 +945,17 @@ function bindEvents(){
   });
   $('#trendTabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]'); if(!b) return;
-    state.trendTab = b.dataset.tab;
-    document.querySelectorAll('#trendTabs .trend-tab').forEach(x=>x.classList.toggle('on', x===b));
-    renderTrending();
+    switchTrendTab(b.dataset.tab);
+  });
+  $('#mTrendTabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-tab]'); if(!b) return;
+    switchTrendTab(b.dataset.tab, '#mTrendTabs');
+    renderTrendingFull();
+  });
+  $('#trendMore').addEventListener('click', openTrendModal);
+  document.addEventListener('click', e => {
+    if(e.target.closest('[data-close]')){ closeTrendModal(); return; }
+    if(e.target.classList.contains('modal')){ closeTrendModal(); }
   });
   document.addEventListener('keydown', e => {
     const tag = (e.target.tagName || '').toLowerCase();
@@ -881,8 +963,11 @@ function bindEvents(){
     if(e.key === '/' && !typing){
       e.preventDefault(); $('#q').focus();
     }
-    if(e.key === 'Escape' && document.activeElement === $('#q')){
-      $('#q').value=''; state.q=''; $('#btnClear').style.display='none'; renderList(); $('#q').blur();
+    if(e.key === 'Escape'){
+      if($('#trendModal').classList.contains('open')){ closeTrendModal(); return; }
+      if(document.activeElement === $('#q')){
+        $('#q').value=''; state.q=''; $('#btnClear').style.display='none'; renderList(); $('#q').blur();
+      }
     }
   });
 }
