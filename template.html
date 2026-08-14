@@ -97,9 +97,18 @@ header{
 }
 .hd .btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.45)}
 
+/* ---------- trend-more ---------- */
+.trend-more{
+  width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;
+  height:36px;border:1px dashed var(--border);border-radius:8px;background:transparent;
+  color:var(--muted);font-size:12.5px;font-weight:500;cursor:pointer;transition:all .15s;
+}
+.trend-more:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-weak)}
+
 /* ---------- stats ---------- */
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
-.layout{display:flex;flex-direction:column;gap:20px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.side{display:flex;flex-direction:column;gap:20px;min-width:0;position:sticky;top:76px}
 .main{
   width:100%;min-width:0;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -312,7 +321,8 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 
 /* ---------- responsive ---------- */
 @media (max-width:1100px){
-  .trend-list{grid-template-columns:repeat(2,1fr)}
+  .layout{grid-template-columns:1fr}
+  .side{position:static}
 }
 @media (max-width:900px){
   .grid,.pinned{grid-template-columns:repeat(2,1fr)}
@@ -373,21 +383,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 </header>
 
 <div class="wrap layout">
-  <aside class="trending">
-    <h2>每日 AI 排行榜</h2>
-    <div class="trend-sub" id="trendUpdated"></div>
-    <div class="trend-tabs" id="trendTabs">
-      <button class="trend-tab on" data-tab="rising">涨星榜</button>
-      <button class="trend-tab" data-tab="total">总星标榜</button>
-      <button class="trend-tab" data-tab="new">新秀榜</button>
-    </div>
-    <div class="trend-list" id="trendList"></div>
-  </aside>
-  <section class="feed" id="feedWrap">
-    <h2>今日关注动态</h2>
-    <div class="feed-sub" id="feedUpdated"></div>
-    <div class="feed-list" id="feedList"></div>
-  </section>
   <div class="main">
   <h2 class="main-title">我的收藏</h2>
   <div class="stats">
@@ -420,8 +415,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
         <option value="name">名称 A-Z</option>
       </select>
     </div>
-  </div>
-  <div class="toolbar" style="margin-bottom:6px">
     <div class="starsel" id="starSel">
       <button data-v="all" class="on">全部星标</button>
       <button data-v="lt1k">&lt;1k</button>
@@ -452,6 +445,24 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <button class="btn" id="btnResetAll" style="margin-top:16px;display:none">清除所有筛选</button>
   </div>
   </div><!-- /main -->
+  <aside class="side">
+    <aside class="trending">
+      <h2>每日 AI 排行榜</h2>
+      <div class="trend-sub" id="trendUpdated"></div>
+      <div class="trend-tabs" id="trendTabs">
+        <button class="trend-tab on" data-tab="rising">涨星榜</button>
+        <button class="trend-tab" data-tab="total">总星标榜</button>
+        <button class="trend-tab" data-tab="new">新秀榜</button>
+      </div>
+      <div class="trend-list" id="trendList"></div>
+      <button class="trend-more" id="trendMore">查看完整 Top20</button>
+    </aside>
+    <section class="feed" id="feedWrap">
+      <h2>今日关注动态</h2>
+      <div class="feed-sub" id="feedUpdated"></div>
+      <div class="feed-list" id="feedList"></div>
+    </section>
+  </aside>
 </div>
 
 <div class="toast" id="toast"></div>
