@@ -117,28 +117,39 @@ header{
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
 .stat{
   background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
-  padding:14px 16px;
+  padding:14px 16px;display:flex;align-items:center;gap:12px;
 }
-.stat .v{font-size:24px;font-weight:700;letter-spacing:-.5px}
+.stat .ic{
+  width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;background:var(--accent-weak);color:var(--accent);
+}
+.stat .ic svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.stat .ic.gold{background:var(--star-bg);color:var(--star)}
+.stat .v{font-size:22px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
 .stat .v small{font-size:13px;font-weight:500;color:var(--muted)}
 .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
 .langbar{
   background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
   padding:14px 16px;margin-bottom:14px;
 }
-.langbar .cap{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.langbar .cap b{font-size:13px}
-.langbar .cap span{font-size:12px;color:var(--muted)}
-.bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--border2)}
+.langbar .cap{
+  display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;padding:0;
+  cursor:pointer;color:var(--text);text-align:left;
+}
+.langbar .cap b{font-size:13px;flex:none}
+.langbar .cap span{font-size:12px;color:var(--muted);flex:1}
+.langbar .cap .arrow{width:14px;height:14px;color:var(--faint);transition:transform .2s}
+.langbar .cap[aria-expanded="false"] .arrow{transform:rotate(-90deg)}
+.bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--border2);margin-top:10px}
 .bar i{height:100%}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
 .legend .li{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .legend .dot{width:9px;height:9px;border-radius:50%}
 
 /* ---------- toolbar ---------- */
-.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.toolbar{display:flex;flex-wrap:nowrap;align-items:center;gap:10px;margin-bottom:12px}
 .search{
-  flex:1 1 280px;display:flex;align-items:center;gap:8px;height:44px;
+  flex:1 1 280px;display:flex;align-items:center;gap:8px;height:40px;
   background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0 12px;
   box-shadow:var(--shadow);
 }
@@ -149,17 +160,17 @@ header{
 .search .clear{color:var(--faint);font-size:18px;padding:0 2px;border:0;background:none;display:none}
 .sel{position:relative}
 .sel select{
-  height:44px;min-width:120px;padding:0 34px 0 12px;font-size:15px;appearance:none;
+  height:40px;min-width:120px;padding:0 34px 0 12px;font-size:14px;appearance:none;
   border:1px solid var(--border);border-radius:10px;background:var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239198a1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 12px center;
   color:var(--text);cursor:pointer;box-shadow:var(--shadow);
 }
-.starsel{display:flex;height:44px;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
+.starsel{display:flex;height:40px;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
 .starsel button{
-  height:100%;padding:0 13px;border:0;background:transparent;font-size:14px;color:var(--muted);
+  height:100%;padding:0 12px;border:0;background:transparent;font-size:13px;color:var(--muted);
   border-right:1px solid var(--border2);white-space:nowrap;
 }
 .starsel button:last-child{border-right:0}
-.starsel button.on{background:var(--accent);color:var(--on-strong)}
+.starsel button.on{background:var(--accent-weak);color:var(--accent);font-weight:600}
 
 /* ---------- category tabs ---------- */
 .cats{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 16px;margin-bottom:4px;scrollbar-width:thin;scrollbar-color:var(--track) transparent;-webkit-mask-image:linear-gradient(to right,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%)}
@@ -386,16 +397,18 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   <div class="main">
   <h2 class="main-title">我的收藏</h2>
   <div class="stats">
-    <div class="stat"><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div>
-    <div class="stat"><div class="v" id="stCats">0</div><div class="l">分类</div></div>
-    <div class="stat"><div class="v" id="stLangs">0</div><div class="l">编程语言</div></div>
-    <div class="stat"><div class="v" id="stFav">0</div><div class="l">我的收藏（置顶）</div></div>
+    <div class="stat"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><div><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div></div>
+    <div class="stat"><span class="ic"><svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span><div><div class="v" id="stCats">0</div><div class="l">分类</div></div></div>
+    <div class="stat"><span class="ic"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span><div><div class="v" id="stLangs">0</div><div class="l">编程语言</div></div></div>
+    <div class="stat"><span class="ic gold"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span><div><div class="v" id="stFav">0</div><div class="l">我的收藏（置顶）</div></div></div>
   </div>
 
   <div class="langbar">
-    <div class="cap"><b>语言分布</b><span id="lbCount"></span></div>
-    <div class="bar" id="langBar"></div>
-    <div class="legend" id="langLegend"></div>
+    <button class="cap" id="langToggle" aria-expanded="true"><b>语言分布</b><span id="lbCount"></span><svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+    <div id="langBody">
+      <div class="bar" id="langBar"></div>
+      <div class="legend" id="langLegend"></div>
+    </div>
   </div>
 
   <div class="toolbar">
@@ -843,6 +856,12 @@ function bindEvents(){
     try{ localStorage.setItem(VIEW_KEY, v); }catch(e){}
     applyView(v); renderList();
   };
+  $('#langToggle').addEventListener('click', () => {
+    const t = $('#langToggle'), body = $('#langBody');
+    const open = t.getAttribute('aria-expanded') === 'true';
+    t.setAttribute('aria-expanded', String(!open));
+    body.hidden = open;
+  });
   $('#trendTabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]'); if(!b) return;
     state.trendTab = b.dataset.tab;
