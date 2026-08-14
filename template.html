@@ -277,27 +277,28 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-tab[data-tab="rising"].on{background:var(--t-rising);border-color:var(--t-rising)}
 .trend-tab[data-tab="total"].on{background:var(--t-total);border-color:var(--t-total)}
 .trend-tab[data-tab="new"].on{background:var(--t-new);border-color:var(--t-new)}
-.trend-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.trend-item{display:flex;align-items:flex-start;gap:10px;padding:9px;border:1px solid var(--border2);border-radius:8px;transition:border-color .15s}
-.trend-item:hover{border-color:var(--hover-line)}
-.trend-item .rank{flex:none;width:22px;height:22px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.trend-list{display:flex;flex-direction:column}
+.trend-item{display:flex;align-items:center;gap:8px;padding:7px 4px;border:0;border-bottom:1px dashed var(--border2);border-radius:0;transition:background .15s}
+.trend-item:hover{background:var(--hover)}
+.trend-item .rank{flex:none;width:20px;height:20px;border-radius:5px;background:var(--hover);color:var(--muted);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
 .trend-item:nth-child(1) .rank{background:var(--gold);color:#fff}
 .trend-item:nth-child(2) .rank{background:var(--silver);color:#fff}
 .trend-item:nth-child(3) .rank{background:var(--bronze);color:#fff}
 .trend-item .ti{flex:1;min-width:0}
-.trend-item .tn{font-size:13px;font-weight:600;color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trend-item .tn{font-size:12.5px;font-weight:600;color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trend-item .tn:hover{text-decoration:underline}
+.trend-item .meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-top:1px;min-width:0}
 .trend-item .td{font-size:11px;color:var(--muted);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
-.trend-item .reason{font-size:11px;color:var(--muted);margin-top:4px;display:block;font-weight:500}
+.trend-item .reason{font-size:11px;margin-top:4px;display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trending[data-tab="rising"] .reason{color:var(--t-rising)}
 .trending[data-tab="total"] .reason{color:var(--t-total)}
 .trending[data-tab="new"] .reason{color:var(--t-new)}
-.trend-item .lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:3px}
+.trend-item .lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);flex:none}
 .trend-item .lg .c{width:9px;height:9px;border-radius:50%;flex:none}
-.trend-item .tm{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px}
+.trend-item .stars{color:var(--muted);display:inline-flex;align-items:center;gap:3px;flex:none}
+.trend-item .tm{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px;min-width:0}
 .trend-item .delta{color:var(--t-rising);font-weight:700;font-size:13px}
 .trend-item .delta.neg{color:var(--muted)}
-.trend-item .stars{color:var(--muted);display:inline-flex;align-items:center;gap:3px}
 
 /* ---------- feed（今日关注动态） ---------- */
 .feed{
@@ -305,16 +306,16 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;box-shadow:var(--shadow);
 }
-.feed .feed-sub{font-size:11px;color:var(--faint);margin-bottom:12px}
+.feed .feed-sub{font-size:11px;color:var(--faint);margin-bottom:10px}
 .feed-list{display:flex;flex-direction:column}
-.feed-item{display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--border2);font-size:13px}
+.feed-item{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--border2);font-size:12.5px}
 .feed-item:last-child{border-bottom:0}
 .feed-item .fd{flex:none;width:9px;height:9px;border-radius:50%}
-.feed-item .fa{font-weight:600;color:var(--text)}
-.feed-item .fv{color:var(--muted)}
-.feed-item .ft{color:var(--accent);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;min-width:0}
+.feed-item .fa{font-weight:600;color:var(--text);flex:none}
+.feed-item .fv{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.feed-item .ft{color:var(--accent);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;min-width:0;flex:none}
 .feed-item .ft:hover{text-decoration:underline}
-.feed-item .tm{margin-left:auto;color:var(--faint);font-size:12px;flex:none}
+.feed-item .tm{margin-left:auto;color:var(--faint);font-size:11px;flex:none}
 
 /* ---------- badge: 今日更新 ---------- */
 .badge-update{
@@ -355,7 +356,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   .starsel{flex:1;justify-content:space-between}
   .starsel button{flex:1;padding:0 8px;font-size:13px}
   .card{padding:12px 14px}
-  .trend-list{grid-template-columns:1fr}
   .row{flex-wrap:wrap;padding:9px 44px 9px 12px}
   .row .nm{max-width:100%}
   .row .dsc{flex:1 1 100%;order:3}
@@ -733,6 +733,30 @@ function renderList(){
 }
 
 // ---- 每日 AI 排行榜 ----
+function buildTrendItem(p, i, full){
+  const hasDelta = p.delta !== null && p.delta !== undefined;
+  const deltaHtml = state.trendTab === 'rising'
+    ? (hasDelta
+        ? '<span class="delta' + (p.delta < 0 ? ' neg':'') + '">' + (p.delta > 0 ? '+':'') + p.delta + '</span>'
+        : '<span class="delta" style="color:var(--faint)">新</span>')
+    : '';
+  const rank = '<span class="rank">' + (i+1) + '</span>';
+  const name = '<a class="tn" href="' + escHtml(p.html_url) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>';
+  const lang = p.language
+    ? '<span class="lg"><span class="c" style="background:' + (LANG_COLORS[p.language] || '#8b949e') + '"></span>' + escHtml(p.language) + '</span>'
+    : '';
+  const stars = '<span class="stars">★ ' + fmtStars(p.stars) + '</span>';
+  const reason = '<span class="reason">' + escHtml(p.reason || '') + '</span>';
+  if(full){
+    return rank + '<div class="ti">' + name +
+      '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' + reason +
+      '</div>' + '<div class="tm">' + deltaHtml + stars + '</div>';
+  }
+  return rank + '<div class="ti">' + name +
+    '<span class="meta">' + lang + stars + '</span>' +
+    '</div>' + '<div class="tm">' + deltaHtml + reason + '</div>';
+}
+
 function renderTrending(){
   const list = $('#trendList');
   const items = (TRENDING && TRENDING[state.trendTab]) || [];
@@ -746,27 +770,10 @@ function renderTrending(){
     list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0">'+msg+'</div>';
     return;
   }
-  items.forEach((p, i) => {
+  items.slice(0, 10).forEach((p, i) => {
     const row = document.createElement('div');
     row.className = 'trend-item';
-    const hasDelta = p.delta !== null && p.delta !== undefined;
-    const deltaHtml = state.trendTab === 'rising'
-      ? (hasDelta
-          ? '<span class="delta' + (p.delta < 0 ? ' neg':'') + '">' + (p.delta > 0 ? '+':'') + p.delta + '</span>'
-          : '<span class="delta" style="color:var(--faint)">新</span>')
-      : '';
-    row.innerHTML =
-      '<span class="rank">' + (i+1) + '</span>' +
-      '<div class="ti">' +
-        '<a class="tn" href="' + escHtml(p.html_url) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>' +
-        (p.language ? '<span class="lg"><span class="c" style="background:' + (LANG_COLORS[p.language] || '#8b949e') + '"></span>' + escHtml(p.language) + '</span>' : '') +
-        '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' +
-        '<span class="reason">' + escHtml(p.reason || '') + '</span>' +
-      '</div>' +
-      '<div class="tm">' +
-        deltaHtml +
-        '<span class="stars">★ ' + fmtStars(p.stars) + '</span>' +
-      '</div>';
+    row.innerHTML = buildTrendItem(p, i, false);
     list.appendChild(row);
   });
 }
