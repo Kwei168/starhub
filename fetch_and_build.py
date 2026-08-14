@@ -6,8 +6,10 @@ GitHub Star 收藏台 —— 自动更新脚本
 仅依赖 Python 标准库，无需安装第三方包。
 """
 import json
+import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 USER = "Kwei168"
@@ -41,6 +43,45 @@ FALLBACK_DESC = {
     "q215613905/TVBoxOS": "TVBoxOS 影视播放系统",
     "FongMi/TV": "基于 media3/ffmpeg/mpv 的开源影视播放器",
 }
+
+
+def has_cn(s):
+    return bool(re.search(r"[\u4e00-\u9fff]", s or ""))
+
+
+def translate_to_zh(text):
+    """把英文简介翻译成中文；全部端点失败返回 None（保留原文）。"""
+    if not text:
+        return None
+    # 端点 1：Google 翻译非官方接口
+    try:
+        params = urllib.parse.urlencode({"client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": text})
+        req = urllib.request.Request(
+            "https://translate.googleapis.com/translate_a/single?" + params,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        result = "".join(seg[0] for seg in data[0] if seg[0]).strip()
+        if result and has_cn(result):
+            return result
+    except Exception:  # noqa: BLE001
+        pass
+    # 端点 2：MyMemory 免费接口
+    try:
+        params = urllib.parse.urlencode({"q": text, "langpair": "en|zh-CN"})
+        req = urllib.request.Request(
+            "https://api.mymemory.translated.net/get?" + params,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        result = (data.get("responseData", {}).get("translatedText") or "").strip()
+        if result and has_cn(result) and "MYMEMORY WARNING" not in result:
+            return result
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def classify_new(fn, desc, lang, topics):
@@ -132,6 +173,12 @@ def main():
         desc = (desc_zh.get(fn) or r.get("description") or FALLBACK_DESC.get(fn, "")).strip()
         if desc:
             desc = " ".join(desc.split())
+        # 新项目英文简介自动翻译为中文，并持久化到 desc_zh 避免重复翻译
+        if desc and not has_cn(desc) and fn not in desc_zh:
+            translated = translate_to_zh(desc)
+            if translated:
+                desc = translated
+                desc_zh[fn] = translated
         out.append({
             "id": fn,
             "name": r.get("name"),
@@ -156,6 +203,7 @@ def main():
 
     open("index.html", "w", encoding="utf-8").write(html)
     json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    json.dump(desc_zh, open("descriptions_zh.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
     print("更新完成：共 %d 个项目" % len(out))
 
