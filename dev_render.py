@@ -34,8 +34,11 @@ def main():
         if not m:
             raise SystemExit("index.html 中未找到常量 %s" % name)
         raw = m.group(1)
-        if name != "UPDATED":
-            json.loads(raw)  # 校验数据完整（UPDATED 是带引号的字符串，跳过）
+        if name == "UPDATED":
+            # 源文件是单引号字符串 '2026-08-14 15:23'，剥掉外层引号（模板自带引号）
+            raw = raw.strip()[1:-1]
+        else:
+            json.loads(raw)  # 校验数据完整
         if ph not in tpl:
             raise SystemExit("template.html 中缺少占位符 %s" % ph)
         tpl = tpl.replace(ph, raw)
