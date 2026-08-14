@@ -52,7 +52,7 @@ header{
   position:sticky;top:0;z-index:50;background:var(--header-bg);
   backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--border2);
 }
-.hd{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
+.hd{max-width:1440px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
 .logo{display:flex;align-items:center;gap:10px;min-width:0}
 .logo svg{width:30px;height:30px;fill:var(--logo);flex:none}
 .logo .t{display:flex;flex-direction:column;line-height:1.2}
@@ -70,7 +70,9 @@ header{
 .btn.primary:hover{background:var(--accent-line)}
 
 /* ---------- stats ---------- */
-.wrap{max-width:1200px;margin:0 auto;padding:18px 20px 40px}
+.wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
+.layout{display:flex;gap:20px;align-items:flex-start}
+.main{flex:1;min-width:0}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
 .stat{
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -205,6 +207,35 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .empty .icon{width:40px;height:40px;margin:0 auto 12px;color:var(--faint);display:block}
 .empty b{display:block;font-size:15px;color:var(--text);margin-bottom:4px}
 
+/* ---------- trending ---------- */
+.trending{
+  width:360px;flex:none;position:sticky;top:76px;
+  max-height:calc(100vh - 96px);overflow-y:auto;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;box-shadow:var(--shadow);
+}
+.trending h2{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:15px;font-weight:700}
+.trending .trend-sub{font-size:11px;color:var(--faint);margin-bottom:12px}
+.trend-tabs{display:flex;gap:6px;margin-bottom:12px}
+.trend-tab{
+  flex:1;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);
+  font-size:12px;color:var(--muted);transition:all .15s;
+}
+.trend-tab.on{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
+.trend-list{display:flex;flex-direction:column;gap:8px}
+.trend-item{display:flex;align-items:flex-start;gap:10px;padding:9px;border:1px solid var(--border2);border-radius:8px;transition:border-color .15s}
+.trend-item:hover{border-color:var(--hover-line)}
+.trend-item .rank{flex:none;width:22px;height:22px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.trend-item:nth-child(-n+3) .rank{background:var(--accent);color:var(--on-strong)}
+.trend-item .ti{flex:1;min-width:0}
+.trend-item .tn{font-size:13px;font-weight:600;color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trend-item .tn:hover{text-decoration:underline}
+.trend-item .td{font-size:11px;color:var(--muted);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.trend-item .tm{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px}
+.trend-item .delta{color:#1a7f37;font-weight:700;font-size:13px}
+.trend-item .delta.neg{color:var(--muted)}
+.trend-item .stars{color:var(--muted);display:inline-flex;align-items:center;gap:3px}
+
 /* ---------- toast ---------- */
 .toast{
   position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
@@ -214,6 +245,10 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 /* ---------- responsive ---------- */
+@media (max-width:1100px){
+  .layout{flex-direction:column}
+  .trending{width:100%;position:static;max-height:none}
+}
 @media (max-width:900px){
   .grid,.pinned{grid-template-columns:repeat(2,1fr)}
   .stats{grid-template-columns:repeat(2,1fr)}
@@ -263,7 +298,8 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   </div>
 </header>
 
-<div class="wrap">
+<div class="wrap layout">
+  <div class="main">
   <div class="stats">
     <div class="stat"><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div>
     <div class="stat"><div class="v" id="stCats">0</div><div class="l">分类</div></div>
@@ -325,6 +361,18 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <span id="emptyHint">试试换一个关键词</span>
     <button class="btn" id="btnResetAll" style="margin-top:16px;display:none">清除所有筛选</button>
   </div>
+  </div><!-- /main -->
+
+  <aside class="trending">
+    <h2>每日 AI 排行榜</h2>
+    <div class="trend-sub" id="trendUpdated"></div>
+    <div class="trend-tabs" id="trendTabs">
+      <button class="trend-tab on" data-tab="rising">涨星榜</button>
+      <button class="trend-tab" data-tab="total">总星标榜</button>
+      <button class="trend-tab" data-tab="new">新秀榜</button>
+    </div>
+    <div class="trend-list" id="trendList"></div>
+  </aside>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -339,6 +387,7 @@ const STORE_KEY = 'wb_starhub_favs_v1';
 const THEME_KEY = 'wb_starhub_theme_v1';
 const VIEW_KEY = 'wb_starhub_view_v1';
 const UPDATED = '__UPDATED__';
+const TRENDING = __TRENDING__;
 
 const $ = s => document.querySelector(s);
 const icon = {
@@ -377,7 +426,7 @@ let favs = new Set();
 try { favs = new Set(JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || DEFAULT_FAVS); }
 catch(e){ favs = new Set(DEFAULT_FAVS); }
 
-const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc' };
+const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising' };
 
 // ---- 语言统计 ----
 const langCount = {};
@@ -572,6 +621,42 @@ function renderList(){
   $('#sub').textContent = 'Kwei168 · '+DATA.length+' 个项目 · 更新于 '+UPDATED;
 }
 
+// ---- 每日 AI 排行榜 ----
+function renderTrending(){
+  const list = $('#trendList');
+  const items = (TRENDING && TRENDING[state.trendTab]) || [];
+  $('#trendUpdated').textContent = '更新于 ' + UPDATED;
+  list.innerHTML = '';
+  if(!items.length){
+    const msg = state.trendTab === 'rising'
+      ? '首次运行正在建立基线，明天起显示每日涨星变化'
+      : '暂无数据';
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0">'+msg+'</div>';
+    return;
+  }
+  items.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'trend-item';
+    const hasDelta = p.delta !== null && p.delta !== undefined;
+    const deltaHtml = state.trendTab === 'rising'
+      ? (hasDelta
+          ? '<span class="delta' + (p.delta < 0 ? ' neg':'') + '">' + (p.delta > 0 ? '+':'') + p.delta + '</span>'
+          : '<span class="delta" style="color:var(--faint)">新</span>')
+      : '';
+    row.innerHTML =
+      '<span class="rank">' + (i+1) + '</span>' +
+      '<div class="ti">' +
+        '<a class="tn" href="' + escHtml(p.html_url) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>' +
+        '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' +
+      '</div>' +
+      '<div class="tm">' +
+        deltaHtml +
+        '<span class="stars">★ ' + fmtStars(p.stars) + '</span>' +
+      '</div>';
+    list.appendChild(row);
+  });
+}
+
 // ---- 事件绑定 ----
 function bindEvents(){
   $('#q').addEventListener('input', e => {
@@ -627,6 +712,12 @@ function bindEvents(){
     try{ localStorage.setItem(VIEW_KEY, v); }catch(e){}
     applyView(v); renderList();
   };
+  $('#trendTabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-tab]'); if(!b) return;
+    state.trendTab = b.dataset.tab;
+    document.querySelectorAll('#trendTabs .trend-tab').forEach(x=>x.classList.toggle('on', x===b));
+    renderTrending();
+  });
   document.addEventListener('keydown', e => {
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
@@ -698,6 +789,7 @@ renderLangBar();
 renderCats();
 renderLangSel();
 renderList();
+renderTrending();
 bindEvents();
 </script>
 </body>

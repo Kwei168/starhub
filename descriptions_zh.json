@@ -43,5 +43,12 @@
  "alirezarezvani/claude-skills": "345 个 Claude Code 技能与智能体插件，覆盖工程、营销、产品、合规、研究、商业、财务与日常效率。",
  "chenhg5/cc-connect": "把本地 AI 编程智能体桥接到消息平台（飞书、钉钉、Slack、Telegram、企业微信等），随时随地与开发助手对话。",
  "freestylefly/wesight": "开源桌面 AI 智能体工作台，一键配置 Claude Code、Codex、OpenClaw、Hermes Agent，支持自定义模型路由。",
- "react/react": "Web 和本机用户界面的库。"
+ "react/react": "Web 和本机用户界面的库。",
+ "Snailclimb/JavaGuide": "Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+ "fengdu78/Coursera-ML-AndrewNg-Notes": "吴恩达老师的机器学习课程个人笔记",
+ "nndl/nndl": "邱锡鹏《神经网络与深度学习》（蒲公英书）理论书 v2 与通识版",
+ "bojieli/ai-agent-book": "《深入理解 AI Agent：设计原理与工程实践》（李博杰 著）开源主仓库：全书正文、编译版 PDF 与按章配套代码",
+ "GitHubDaily/GitHubDaily": "坚持分享 GitHub 上高质量、有趣实用的开源技术教程、开发者工具、编程网站、技术资讯。A list cool, interesting projects of GitHub.",
+ "jeecgboot/JeecgBoot": "【低代码迈入v2.0时代，一句话即可生成整个系统】企业级AI低代码平台，一键生成前后端代码甚至整个系统。 AI Skills 一句话画流程、设计表单、生成报表、大屏。内置 AI应用平台涵盖：AI聊天、知识库、流程编排、MCP插件等，兼容主流大模型。引领AI低代码「Skills 生成 → 在线配置 → 代码生成 → 手工合并->AI修改」开发模式，解决 Java 项目 90% 重复工作，提高效率又不失灵活。",
+ "zhiningsun/industrial-mcp": "将工业设备变成 AI 可控工具的 MCP 服务器。支持 Modbus、OPC UA、MQTT 三种协议，内置设备仿真引擎、物理模型和完整的调试工具链。让 Claude 用自然语言监控传感器、启停电机、执行工厂巡检。"
 }

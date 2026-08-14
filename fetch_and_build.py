@@ -6,6 +6,7 @@ GitHub Star 收藏台 —— 自动更新脚本
 仅依赖 Python 标准库，无需安装第三方包。
 """
 import json
+import os
 import re
 import sys
 import time
@@ -145,6 +146,125 @@ def fetch_stars():
     return repos
 
 
+# ==================== 每日 AI 排行榜 ====================
+AI_TOPICS = ["ai", "machine-learning", "deep-learning", "llm", "gpt", "agent"]
+AI_MIN_STARS = 500       # AI 项目池最小星标
+NEW_MIN_STARS = 50       # 新秀榜最小星标
+TREND_TOP = 20           # 每榜展示数量
+TREND_MAX_STARS = 50000  # 涨星榜排除超过此星标的巨头项目（避免 tensorflow/pytorch 霸榜）
+
+
+def _api_headers(token):
+    h = {"Accept": "application/vnd.github+json", "User-Agent": "starhub-auto-update"}
+    if token:
+        h["Authorization"] = "Bearer " + token
+    return h
+
+
+def _search_repos(q, token, per_page=100, sort="stars"):
+    url = ("https://api.github.com/search/repositories?q=%s&sort=%s&order=desc&per_page=%d"
+           % (urllib.parse.quote(q), sort, per_page))
+    req = urllib.request.Request(url, headers=_api_headers(token))
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8")).get("items", [])
+
+
+def _pick(item):
+    return {
+        "name": item.get("name"),
+        "owner": (item.get("full_name") or "").split("/")[0],
+        "full_name": item.get("full_name"),
+        "html_url": item.get("html_url"),
+        "desc": " ".join((item.get("description") or "").split()),
+        "language": item.get("language"),
+        "stars": item.get("stargazers_count"),
+        "created_at": (item.get("created_at") or "")[:10],
+    }
+
+
+def fetch_ai_pool(token):
+    """多 topic 查询合并 AI 项目池（去重）。"""
+    pool = {}
+    for topic in AI_TOPICS:
+        try:
+            for item in _search_repos("topic:%s stars:>%d" % (topic, AI_MIN_STARS), token):
+                fn = item.get("full_name")
+                if fn and fn not in pool:
+                    pool[fn] = _pick(item)
+        except Exception as e:  # noqa: BLE001
+            print("[AI池 %s 失败] %s" % (topic, e), file=sys.stderr)
+        time.sleep(1)
+    return list(pool.values())
+
+
+def fetch_new_repos(token):
+    """新秀榜：最近 7 天新建的 AI 项目，按星标排序。"""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    out = []
+    try:
+        for item in _search_repos("topic:ai created:>%s stars:>%d" % (since, NEW_MIN_STARS), token, per_page=TREND_TOP):
+            out.append(_pick(item))
+    except Exception as e:  # noqa: BLE001
+        print("[新秀榜失败] %s" % e, file=sys.stderr)
+    return out
+
+
+def _desc_zh(fn, desc, desc_zh):
+    """排行榜项目简介：优先缓存中文，未命中则翻译并回写。"""
+    if not desc:
+        return ""
+    if desc_zh.get(fn):
+        return desc_zh[fn]
+    if has_cn(desc):
+        desc_zh[fn] = desc
+        return desc
+    translated = translate_to_zh(desc)
+    if translated:
+        desc_zh[fn] = translated
+        return translated
+    return desc
+
+
+def build_trending(token, desc_zh):
+    snap = {}
+    try:
+        snap = json.load(open("trending_snapshot.json", encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        pass
+
+    pool = fetch_ai_pool(token)
+
+    # 总榜：按总星标排序
+    total = sorted(pool, key=lambda x: x["stars"], reverse=True)[:TREND_TOP]
+
+    # 涨星榜：排除超巨头，只看有昨日基线的项目
+    rising = []
+    for p in pool:
+        prev = snap.get(p["full_name"])
+        if prev is not None and p["stars"] <= TREND_MAX_STARS:
+            p["delta"] = p["stars"] - prev
+            rising.append(p)
+    rising.sort(key=lambda x: x["delta"], reverse=True)
+    rising = rising[:TREND_TOP]
+
+    # 首次运行无基线：涨星榜 fallback 到总榜，delta=None（页面显示"新上榜"）
+    if not rising:
+        rising = [dict(p, delta=None) for p in total]
+
+    # 新秀榜
+    new_repos = fetch_new_repos(token)
+
+    for p in rising + total + new_repos:
+        p["desc"] = _desc_zh(p["full_name"], p["desc"], desc_zh)
+
+    # 快照覆盖为今日星标数（作为明日基线）
+    json.dump({p["full_name"]: p["stars"] for p in pool},
+              open("trending_snapshot.json", "w", encoding="utf-8"),
+              ensure_ascii=False, indent=1)
+
+    return {"rising": rising, "total": total, "new": new_repos}
+
+
 def main():
     known = {}
     try:
@@ -198,6 +318,9 @@ def main():
             "categoryLabel": cat_label[cat],
         })
 
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    trending = build_trending(token, desc_zh)
+
     template = open("template.html", encoding="utf-8").read()
     updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
     html = (template
@@ -205,6 +328,7 @@ def main():
             .replace("__CATS__", json.dumps(CATS, ensure_ascii=False, separators=(",", ":")))
             .replace("__LANGS__", json.dumps(LANG_COLORS, ensure_ascii=False, separators=(",", ":")))
             .replace("__FAVS__", json.dumps(DEFAULT_FAVS, ensure_ascii=False, separators=(",", ":")))
+            .replace("__TRENDING__", json.dumps(trending, ensure_ascii=False, separators=(",", ":")))
             .replace("__UPDATED__", updated))
 
     open("index.html", "w", encoding="utf-8").write(html)
