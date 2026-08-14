@@ -217,7 +217,8 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;box-shadow:var(--shadow);
 }
-.trending h2{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:15px;font-weight:700}
+.trending h2,.main-title{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:15px;font-weight:700}
+.main-title{margin:0 0 14px}
 .trending .trend-sub{font-size:11px;color:var(--faint);margin-bottom:12px}
 .trend-tabs{display:flex;gap:6px;margin-bottom:12px}
 .trend-tab{
@@ -324,6 +325,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <div class="trend-list" id="trendList"></div>
   </aside>
   <div class="main">
+  <h2 class="main-title">我的收藏</h2>
   <div class="stats">
     <div class="stat"><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div>
     <div class="stat"><div class="v" id="stCats">0</div><div class="l">分类</div></div>
