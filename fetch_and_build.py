@@ -283,6 +283,102 @@ def build_trending(token, desc_zh):
     return {"rising": rising, "total": total, "new": new_repos}
 
 
+def _today_cn():
+    """北京时间今天的日期字符串 YYYY-MM-DD。"""
+    return datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+
+
+def _cn_date(utc_str):
+    """UTC 时间字符串 → 北京时间日期 YYYY-MM-DD。"""
+    if not utc_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=8)))
+        return dt.strftime("%Y-%m-%d")
+    except Exception:  # noqa: BLE001
+        return utc_str[:10]
+
+
+def _cn_time(utc_str):
+    """UTC 时间字符串 → 北京时间 HH:MM。"""
+    if not utc_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=8)))
+        return dt.strftime("%H:%M")
+    except Exception:  # noqa: BLE001
+        return utc_str[11:16]
+
+
+def fetch_following(token):
+    """列出关注的账号 login 列表。"""
+    out = []
+    page = 1
+    while True:
+        url = "https://api.github.com/users/%s/following?per_page=100&page=%d" % (USER, page)
+        req = urllib.request.Request(url, headers=_api_headers(token))
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        except Exception as e:  # noqa: BLE001
+            print("[关注列表失败] %s" % e, file=sys.stderr)
+            break
+        if not data:
+            break
+        out.extend(x.get("login") for x in data if x.get("login"))
+        if len(data) < 100:
+            break
+        page += 1
+        time.sleep(0.3)
+    return out
+
+
+def fetch_following_events(token):
+    """聚合关注账号今日动态：新建仓库 / star 仓库 / 关注人 / 提交 PR。"""
+    today = _today_cn()
+    following = fetch_following(token)
+    feed = []
+    for user in following:
+        url = "https://api.github.com/users/%s/events/public?per_page=100" % user
+        req = urllib.request.Request(url, headers=_api_headers(token))
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                evs = json.loads(r.read().decode("utf-8"))
+        except Exception as e:  # noqa: BLE001
+            print("[事件拉取失败 %s] %s" % (user, e), file=sys.stderr)
+            continue
+        for e in evs:
+            if _cn_date(e.get("created_at")) != today:
+                continue
+            t = e.get("type")
+            payload = e.get("payload") or {}
+            actor = (e.get("actor") or {}).get("login", "")
+            repo = (e.get("repo") or {}).get("name", "")
+            tm = _cn_time(e.get("created_at"))
+            item = None
+            if t == "CreateEvent" and payload.get("ref_type") == "repository":
+                item = {"kind": "repo", "actor": actor, "repo": repo, "time": tm,
+                        "url": "https://github.com/" + repo}
+            elif t == "WatchEvent" and payload.get("action") == "started":
+                item = {"kind": "star", "actor": actor, "repo": repo, "time": tm,
+                        "url": "https://github.com/" + repo}
+            elif t == "FollowEvent":
+                target = (payload.get("target") or {}).get("login", "")
+                item = {"kind": "follow", "actor": actor, "target": target, "time": tm,
+                        "url": "https://github.com/" + target}
+            elif t == "PullRequestEvent" and payload.get("action") == "opened":
+                pr = payload.get("pull_request") or {}
+                item = {"kind": "pr", "actor": actor, "repo": repo,
+                        "title": (pr.get("title") or "")[:60],
+                        "url": pr.get("html_url", "https://github.com/" + repo),
+                        "time": tm}
+            if item:
+                feed.append(item)
+        time.sleep(0.3)  # 限流
+    feed.sort(key=lambda x: x.get("time", ""), reverse=True)
+    return feed
+
+
 def main():
     known = {}
     try:
@@ -332,12 +428,14 @@ def main():
             "stars": r.get("stargazers_count"),
             "topics": r.get("topics", []),
             "pushed_at": (r.get("pushed_at") or "")[:10],
+            "updated_today": _cn_date(r.get("pushed_at")) == _today_cn(),
             "category": cat,
             "categoryLabel": cat_label[cat],
         })
 
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     trending = build_trending(token, desc_zh)
+    feed = fetch_following_events(token)
 
     template = open("template.html", encoding="utf-8").read()
     updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
@@ -347,6 +445,7 @@ def main():
             .replace("__LANGS__", json.dumps(LANG_COLORS, ensure_ascii=False, separators=(",", ":")))
             .replace("__FAVS__", json.dumps(DEFAULT_FAVS, ensure_ascii=False, separators=(",", ":")))
             .replace("__TRENDING__", json.dumps(trending, ensure_ascii=False, separators=(",", ":")))
+            .replace("__FEED__", json.dumps(feed, ensure_ascii=False, separators=(",", ":")))
             .replace("__UPDATED__", updated))
 
     open("index.html", "w", encoding="utf-8").write(html)

@@ -20,6 +20,7 @@
   --faved-border:#e3b341; --faved-bg:linear-gradient(180deg,#fffdf2,#ffffff);
   --t-rising:#d4600a; --t-total:#0969da; --t-new:#1a7f37;
   --gold:#e3a008; --silver:#8b949e; --bronze:#c96f3b;
+  --upd-color:#1a7f37; --upd-bg:#dafbe1;
   --radius:12px; --shadow:0 1px 2px rgba(31,35,40,.06),0 1px 0 rgba(31,35,40,.03);
 }
 [data-theme="dark"]{
@@ -37,6 +38,7 @@
   --faved-border:#9e6a03; --faved-bg:linear-gradient(180deg,#2a2308,#161b22);
   --t-rising:#f0883e; --t-total:#4493f8; --t-new:#3fb950;
   --gold:#e3b341; --silver:#9198a1; --bronze:#f0883e;
+  --upd-color:#3fb950; --upd-bg:#12261e;
   --shadow:0 1px 2px rgba(1,4,9,.5),0 1px 0 rgba(1,4,9,.35);
 }
 *{box-sizing:border-box}
@@ -221,7 +223,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;box-shadow:var(--shadow);
 }
-.trending h2,.main-title{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:15px;font-weight:700}
+.trending h2,.main-title,.feed h2{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:15px;font-weight:700}
 .main-title{margin:0 0 14px}
 .trending .trend-sub{font-size:11px;color:var(--faint);margin-bottom:12px}
 .trend-tabs{display:flex;gap:6px;margin-bottom:12px}
@@ -254,6 +256,29 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-item .delta{color:var(--t-rising);font-weight:700;font-size:13px}
 .trend-item .delta.neg{color:var(--muted)}
 .trend-item .stars{color:var(--muted);display:inline-flex;align-items:center;gap:3px}
+
+/* ---------- feed（今日关注动态） ---------- */
+.feed{
+  width:100%;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;box-shadow:var(--shadow);
+}
+.feed .feed-sub{font-size:11px;color:var(--faint);margin-bottom:12px}
+.feed-list{display:flex;flex-direction:column}
+.feed-item{display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--border2);font-size:13px}
+.feed-item:last-child{border-bottom:0}
+.feed-item .fd{flex:none;width:9px;height:9px;border-radius:50%}
+.feed-item .fa{font-weight:600;color:var(--text)}
+.feed-item .fv{color:var(--muted)}
+.feed-item .ft{color:var(--accent);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;min-width:0}
+.feed-item .ft:hover{text-decoration:underline}
+.feed-item .tm{margin-left:auto;color:var(--faint);font-size:12px;flex:none}
+
+/* ---------- badge: 今日更新 ---------- */
+.badge-update{
+  display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;
+  font-size:11px;font-weight:600;color:var(--upd-color);background:var(--upd-bg);margin-left:6px;flex:none;
+}
 
 /* ---------- toast ---------- */
 .toast{
@@ -328,6 +353,11 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     </div>
     <div class="trend-list" id="trendList"></div>
   </aside>
+  <section class="feed" id="feedWrap">
+    <h2>今日关注动态</h2>
+    <div class="feed-sub" id="feedUpdated"></div>
+    <div class="feed-list" id="feedList"></div>
+  </section>
   <div class="main">
   <h2 class="main-title">我的收藏</h2>
   <div class="stats">
@@ -407,6 +437,7 @@ const THEME_KEY = 'wb_starhub_theme_v1';
 const VIEW_KEY = 'wb_starhub_view_v1';
 const UPDATED = '__UPDATED__';
 const TRENDING = __TRENDING__;
+const FEED = __FEED__;
 
 const $ = s => document.querySelector(s);
 const icon = {
@@ -563,6 +594,7 @@ function buildCard(d, isFav){
     '<div class="top"><div class="id">' +
       '<div class="owner">'+escHtml(d.owner)+'</div>' +
       '<a class="name" href="'+d.html_url+'" target="_blank" rel="noopener">'+hl(d.name)+'</a>' +
+      (d.updated_today ? '<span class="badge-update">今日更新</span>' : '') +
     '</div>' +
     '<a class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f" href="javascript:void 0" data-act="cattag" data-cat="'+d.category+'">' +
       '<span class="dot"></span>'+d.categoryLabel+'</a>' +
@@ -587,6 +619,7 @@ function buildRow(d, isFav){
       '<a class="name" href="'+d.html_url+'" target="_blank" rel="noopener">'+hl(d.name)+'</a></div>' +
     '<span class="dsc" title="'+escHtml(desc)+'">'+hl(desc)+'</span>' +
     '<div class="meta">' +
+      (d.updated_today ? '<span class="badge-update">今日更新</span>' : '') +
       (d.language ? '<span class="lg"><span class="c" style="background:'+(LANG_COLORS[d.language]||'#8b949e')+'"></span>'+d.language+'</span>' : '') +
       '<span class="st">'+icon.starFilled+''+fmtStars(d.stars)+'</span>' +
       '<span class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f"><span class="dot"></span>'+d.categoryLabel+'</span>' +
@@ -675,6 +708,36 @@ function renderTrending(){
         deltaHtml +
         '<span class="stars">★ ' + fmtStars(p.stars) + '</span>' +
       '</div>';
+    list.appendChild(row);
+  });
+}
+
+// ---- 今日关注动态 ----
+const FEED_COLORS = { repo:'#0969da', star:'#e3a008', follow:'#8250df', pr:'#1a7f37' };
+function renderFeed(){
+  const list = $('#feedList');
+  const items = FEED || [];
+  $('#feedUpdated').textContent = '更新于 ' + UPDATED;
+  list.innerHTML = '';
+  if(!items.length){
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">今日暂无关注动态</div>';
+    return;
+  }
+  items.forEach(f => {
+    const color = FEED_COLORS[f.kind] || '#8b949e';
+    let verb = '', target = '';
+    if(f.kind === 'repo'){ verb = '新建了仓库'; target = f.repo; }
+    else if(f.kind === 'star'){ verb = 'star 了'; target = f.repo; }
+    else if(f.kind === 'follow'){ verb = '关注了'; target = f.target; }
+    else if(f.kind === 'pr'){ verb = '提交了 PR'; target = f.title || f.repo; }
+    const row = document.createElement('div');
+    row.className = 'feed-item';
+    row.innerHTML =
+      '<span class="fd" style="background:'+color+'"></span>' +
+      '<span class="fa">'+escHtml(f.actor)+'</span>' +
+      '<span class="fv">'+verb+'</span>' +
+      '<a class="ft" href="'+escHtml(f.url||'')+'" target="_blank" rel="noopener">'+escHtml(target)+'</a>' +
+      '<span class="tm">'+escHtml(f.time)+'</span>';
     list.appendChild(row);
   });
 }
@@ -812,6 +875,7 @@ renderCats();
 renderLangSel();
 renderList();
 renderTrending();
+renderFeed();
 bindEvents();
 </script>
 </body>

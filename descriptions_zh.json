@@ -82,5 +82,21 @@
  "evan-steinhilb/md2hd": "把 Markdown 映射为可视化知识图谱的 CLI。",
  "wild-canyonhoxo3344/AI-Trading-Bot-Codepen": "AI 交易机器人示例项目。",
  "vlinx-io/VelaTerm": "专为 AI 编码打造的终端。",
- "vinitshahdeo/awesome-ai-startups-hiring": "正在招聘的 AI 初创公司精选列表。"
+ "vinitshahdeo/awesome-ai-startups-hiring": "正在招聘的 AI 初创公司精选列表。",
+ "rasbt/LLMs-from-scratch": "在 PyTorch 中从头开始一步步实现类似 ChatGPT 的 LLM",
+ "pytorch/pytorch": "Python 中的张量和动态神经网络，具有强大的 GPU 加速功能",
+ "opencv/opencv": "开源计算机视觉库",
+ "microsoft/ML-For-Beginners": "12 周、26 节课程、52 个测验，适合所有人的经典机器学习",
+ "Developer-Y/cs-video-courses": "包含视频讲座的计算机科学课程列表。",
+ "mlabonne/llm-course": "通过路线图和 Colab 笔记本进入大型语言模型 (LLM) 的课程。",
+ "netdata/netdata": "即使对于精益团队来说，也是实现人工智能驱动的全栈可观察性的最快途径。",
+ "d2l-ai/d2l-zh": "《动手学深度学习》：面向中文读者、能运行、可讨论。中英文版被70多个国家的500多所大学用于教学。",
+ "dair-ai/Prompt-Engineering-Guide": "🐙 即时工程、上下文工程、RAG 和 AI 代理的指南、论文、课程、笔记本和资源。",
+ "tesseract-ocr/tesseract": "Tesseract 开源 OCR 引擎（主存储库）",
+ "binhnguyennus/awesome-scalability": "可扩展、可靠且高性能的大型系统的模式",
+ "OpenBB-finance/OpenBB": "面向分析师、量化分析师和人工智能代理的开放数据平台。",
+ "labmlai/annotated_deep_learning_paper_implementations": "🧑‍🏫 60 多篇带有并排注释的深度学习论文实现/教程📝；包括变压器（original、xl、switch、feedback、vit、...）、优化器（adam、adabelief、sophia、...）、gans（cyclegan、stylegan2、...）、🎮强化学习（ppo、dqn）、capsnet、distillation、...🧠",
+ "scikit-learn/scikit-learn": "scikit-learn：Python 中的机器学习",
+ "microsoft/AI-For-Beginners": "12 周，24 节课，全民人工智能！",
+ "keras-team/keras": "人类深度学习"
 }
