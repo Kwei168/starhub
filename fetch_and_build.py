@@ -11,21 +11,22 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 USER = "Kwei168"
 
 CATS = [
-    {"key": "agent",     "label": "AI Agent & Skills",      "color": "#0969da"},
-    {"key": "distill",   "label": "思维蒸馏 & 认知",        "color": "#8250df"},
-    {"key": "video",     "label": "AI 视频创作",            "color": "#cf222e"},
-    {"key": "coding",    "label": "AI 编程 & 工具链",       "color": "#1a7f37"},
-    {"key": "content",   "label": "内容创作 & 排版",        "color": "#bf3989"},
-    {"key": "learning",  "label": "AI 学习 & 教程",         "color": "#9a6700"},
-    {"key": "assistant", "label": "AI 助手 & 应用",         "color": "#1b7c83"},
-    {"key": "tools",     "label": "实用工具 & 资源",        "color": "#57606a"},
-    {"key": "finance",   "label": "金融 & 交易",            "color": "#bc4c00"},
-    {"key": "business",  "label": "商业 · 一人公司与知产",  "color": "#953800"},
-    {"key": "frontend",  "label": "前端 & 设计系统",        "color": "#316dca"},
+    {"key": "agent",     "label": "AI Agent & Skills",      "color": "#0550ae", "dark": "#4493f8"},
+    {"key": "distill",   "label": "思维蒸馏 & 认知",        "color": "#8250df", "dark": "#a371f7"},
+    {"key": "video",     "label": "AI 视频创作",            "color": "#cf222e", "dark": "#f85149"},
+    {"key": "coding",    "label": "AI 编程 & 工具链",       "color": "#1a7f37", "dark": "#3fb950"},
+    {"key": "content",   "label": "内容创作 & 排版",        "color": "#d33982", "dark": "#e577b2"},
+    {"key": "learning",  "label": "AI 学习 & 教程",         "color": "#b58400", "dark": "#d4a72c"},
+    {"key": "assistant", "label": "AI 助手 & 应用",         "color": "#1b7c83", "dark": "#39c5cf"},
+    {"key": "tools",     "label": "实用工具 & 资源",        "color": "#57606a", "dark": "#8b949e"},
+    {"key": "finance",   "label": "金融 & 交易",            "color": "#c29700", "dark": "#e3b341"},
+    {"key": "business",  "label": "商业 · 一人公司与知产",  "color": "#d4600a", "dark": "#f0883e"},
+    {"key": "frontend",  "label": "前端 & 设计系统",        "color": "#0a7ea4", "dark": "#39a0c5"},
 ]
 
 LANG_COLORS = {
@@ -198,11 +199,13 @@ def main():
         })
 
     template = open("template.html", encoding="utf-8").read()
+    updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
     html = (template
             .replace("__DATA__", json.dumps(out, ensure_ascii=False, separators=(",", ":")))
             .replace("__CATS__", json.dumps(CATS, ensure_ascii=False, separators=(",", ":")))
             .replace("__LANGS__", json.dumps(LANG_COLORS, ensure_ascii=False, separators=(",", ":")))
-            .replace("__FAVS__", json.dumps(DEFAULT_FAVS, ensure_ascii=False, separators=(",", ":"))))
+            .replace("__FAVS__", json.dumps(DEFAULT_FAVS, ensure_ascii=False, separators=(",", ":")))
+            .replace("__UPDATED__", updated))
 
     open("index.html", "w", encoding="utf-8").write(html)
     json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
