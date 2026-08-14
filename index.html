@@ -793,7 +793,7 @@ function buildTrendItem(p, i, full){
         : '<span class="delta" style="color:var(--faint)">新</span>')
     : '';
   const rank = '<span class="rank">' + (i+1) + '</span>';
-  const name = '<a class="tn" href="' + escHtml(p.html_url) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>';
+  const name = '<a class="tn" href="' + escHtml(p.html_url) + '" title="' + escHtml(p.owner) + '/' + escHtml(p.name) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>';
   const lang = p.language
     ? '<span class="lg"><span class="c" style="background:' + (LANG_COLORS[p.language] || '#8b949e') + '"></span>' + escHtml(p.language) + '</span>'
     : '';
@@ -801,11 +801,11 @@ function buildTrendItem(p, i, full){
   const reason = '<span class="reason">' + escHtml(p.reason || '') + '</span>';
   if(full){
     return rank + '<div class="ti">' + name +
-      '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' + reason +
+      '<span class="td" title="' + escHtml(p.desc || '暂无简介') + '">' + escHtml(p.desc || '暂无简介') + '</span>' + reason +
       '</div>' + '<div class="tm">' + deltaHtml + stars + '</div>';
   }
   return rank + '<div class="ti">' + name +
-    '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' +
+    '<span class="td" title="' + escHtml(p.desc || '暂无简介') + '">' + escHtml(p.desc || '暂无简介') + '</span>' +
     '<span class="meta">' + lang + stars + '</span>' +
     '</div>' + '<div class="tm">' + deltaHtml + reason + '</div>';
 }
