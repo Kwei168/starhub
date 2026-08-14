@@ -18,6 +18,8 @@
   --on-strong:#ffffff;
   --toast-bg:#1f2328; --toast-text:#ffffff;
   --faved-border:#e3b341; --faved-bg:linear-gradient(180deg,#fffdf2,#ffffff);
+  --t-rising:#d4600a; --t-total:#0969da; --t-new:#1a7f37;
+  --gold:#e3a008; --silver:#8b949e; --bronze:#c96f3b;
   --radius:12px; --shadow:0 1px 2px rgba(31,35,40,.06),0 1px 0 rgba(31,35,40,.03);
 }
 [data-theme="dark"]{
@@ -33,6 +35,8 @@
   --on-strong:#1f2328;
   --toast-bg:#e6edf3; --toast-text:#0d1117;
   --faved-border:#9e6a03; --faved-bg:linear-gradient(180deg,#2a2308,#161b22);
+  --t-rising:#f0883e; --t-total:#4493f8; --t-new:#3fb950;
+  --gold:#e3b341; --silver:#9198a1; --bronze:#f0883e;
   --shadow:0 1px 2px rgba(1,4,9,.5),0 1px 0 rgba(1,4,9,.35);
 }
 *{box-sizing:border-box}
@@ -220,19 +224,29 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   flex:1;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--card);
   font-size:12px;color:var(--muted);transition:all .15s;
 }
-.trend-tab.on{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
+.trend-tab.on{color:var(--on-strong)}
+.trend-tab[data-tab="rising"].on{background:var(--t-rising);border-color:var(--t-rising)}
+.trend-tab[data-tab="total"].on{background:var(--t-total);border-color:var(--t-total)}
+.trend-tab[data-tab="new"].on{background:var(--t-new);border-color:var(--t-new)}
 .trend-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .trend-item{display:flex;align-items:flex-start;gap:10px;padding:9px;border:1px solid var(--border2);border-radius:8px;transition:border-color .15s}
 .trend-item:hover{border-color:var(--hover-line)}
 .trend-item .rank{flex:none;width:22px;height:22px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
-.trend-item:nth-child(-n+3) .rank{background:var(--accent);color:var(--on-strong)}
+.trend-item:nth-child(1) .rank{background:var(--gold);color:#fff}
+.trend-item:nth-child(2) .rank{background:var(--silver);color:#fff}
+.trend-item:nth-child(3) .rank{background:var(--bronze);color:#fff}
 .trend-item .ti{flex:1;min-width:0}
 .trend-item .tn{font-size:13px;font-weight:600;color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trend-item .tn:hover{text-decoration:underline}
 .trend-item .td{font-size:11px;color:var(--muted);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
-.trend-item .reason{font-size:11px;color:var(--accent);margin-top:4px;display:block;font-weight:500}
+.trend-item .reason{font-size:11px;color:var(--muted);margin-top:4px;display:block;font-weight:500}
+.trending[data-tab="rising"] .reason{color:var(--t-rising)}
+.trending[data-tab="total"] .reason{color:var(--t-total)}
+.trending[data-tab="new"] .reason{color:var(--t-new)}
+.trend-item .lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:3px}
+.trend-item .lg .c{width:9px;height:9px;border-radius:50%;flex:none}
 .trend-item .tm{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px}
-.trend-item .delta{color:#1a7f37;font-weight:700;font-size:13px}
+.trend-item .delta{color:var(--t-rising);font-weight:700;font-size:13px}
 .trend-item .delta.neg{color:var(--muted)}
 .trend-item .stars{color:var(--muted);display:inline-flex;align-items:center;gap:3px}
 
@@ -299,6 +313,16 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 </header>
 
 <div class="wrap layout">
+  <aside class="trending">
+    <h2>每日 AI 排行榜</h2>
+    <div class="trend-sub" id="trendUpdated"></div>
+    <div class="trend-tabs" id="trendTabs">
+      <button class="trend-tab on" data-tab="rising">涨星榜</button>
+      <button class="trend-tab" data-tab="total">总星标榜</button>
+      <button class="trend-tab" data-tab="new">新秀榜</button>
+    </div>
+    <div class="trend-list" id="trendList"></div>
+  </aside>
   <div class="main">
   <div class="stats">
     <div class="stat"><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div>
@@ -362,17 +386,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <button class="btn" id="btnResetAll" style="margin-top:16px;display:none">清除所有筛选</button>
   </div>
   </div><!-- /main -->
-
-  <aside class="trending">
-    <h2>每日 AI 排行榜</h2>
-    <div class="trend-sub" id="trendUpdated"></div>
-    <div class="trend-tabs" id="trendTabs">
-      <button class="trend-tab on" data-tab="rising">涨星榜</button>
-      <button class="trend-tab" data-tab="total">总星标榜</button>
-      <button class="trend-tab" data-tab="new">新秀榜</button>
-    </div>
-    <div class="trend-list" id="trendList"></div>
-  </aside>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -625,6 +638,7 @@ function renderList(){
 function renderTrending(){
   const list = $('#trendList');
   const items = (TRENDING && TRENDING[state.trendTab]) || [];
+  const box = $('.trending'); if(box) box.setAttribute('data-tab', state.trendTab);
   $('#trendUpdated').textContent = '更新于 ' + UPDATED;
   list.innerHTML = '';
   if(!items.length){
@@ -647,6 +661,7 @@ function renderTrending(){
       '<span class="rank">' + (i+1) + '</span>' +
       '<div class="ti">' +
         '<a class="tn" href="' + escHtml(p.html_url) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>' +
+        (p.language ? '<span class="lg"><span class="c" style="background:' + (LANG_COLORS[p.language] || '#8b949e') + '"></span>' + escHtml(p.language) + '</span>' : '') +
         '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' +
         '<span class="reason">' + escHtml(p.reason || '') + '</span>' +
       '</div>' +
