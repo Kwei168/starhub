@@ -76,18 +76,22 @@ header{
 /* ---------- stats ---------- */
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
 .layout{display:flex;flex-direction:column;gap:20px}
-.main{width:100%;min-width:0}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
-.stat{
+.main{
+  width:100%;min-width:0;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:14px 16px;box-shadow:var(--shadow);
+  padding:16px;box-shadow:var(--shadow);
+}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+.stat{
+  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
+  padding:14px 16px;
 }
 .stat .v{font-size:24px;font-weight:700;letter-spacing:-.5px}
 .stat .v small{font-size:13px;font-weight:500;color:var(--muted)}
 .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
 .langbar{
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:14px 16px;box-shadow:var(--shadow);margin-bottom:16px;
+  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
+  padding:14px 16px;margin-bottom:14px;
 }
 .langbar .cap{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .langbar .cap b{font-size:13px}
