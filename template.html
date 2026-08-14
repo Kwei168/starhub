@@ -87,6 +87,7 @@ header{
   font-size:13px;font-weight:500;transition:background .15s,border-color .15s;
 }
 .btn:hover{background:var(--hover);border-color:var(--hover-line)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
 .btn.primary:hover{background:var(--accent-line)}
 
@@ -438,6 +439,10 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
       <button class="btn" id="btnImport" title="导入恢复">
         <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <span>导入</span>
+      </button>
+<button class="btn" id="btnRefresh" title="立即刷新数据：打开 GitHub Actions 页面点击 Run workflow 重新拉取">
+        <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <span>刷新</span>
       </button>
     </div>
   </div>
@@ -958,6 +963,13 @@ function bindEvents(){
 
   $('#btnExport').onclick = exportJson;
   $('#btnImport').onclick = () => $('#fileInput').click();
+  $('#btnRefresh').onclick = () => {
+    const b = $('#btnRefresh');
+    b.disabled = true;
+    toast('已打开 GitHub Actions 页面，点击 Run workflow 即可刷新（约 1-2 分钟上线）');
+    window.open('https://github.com/Kwei168/starhub/actions/workflows/update.yml', '_blank', 'noopener');
+    setTimeout(() => { b.disabled = false; }, 3000);
+  };
   $('#fileInput').addEventListener('change', importJson);
 
   $('#btnTheme').onclick = () => {
