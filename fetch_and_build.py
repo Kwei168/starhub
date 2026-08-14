@@ -225,6 +225,13 @@ def _desc_zh(fn, desc, desc_zh):
     return desc
 
 
+def _fmt_zh(n):
+    """星标数中文格式化：>=10000 显示「万」。"""
+    if n >= 10000:
+        return "%.1f万" % (n / 10000)
+    return str(n)
+
+
 def build_trending(token, desc_zh):
     snap = {}
     try:
@@ -256,6 +263,17 @@ def build_trending(token, desc_zh):
 
     for p in rising + total + new_repos:
         p["desc"] = _desc_zh(p["full_name"], p["desc"], desc_zh)
+
+    # 排名依据（中文说明）
+    for p in rising:
+        if p.get("delta") is not None:
+            p["reason"] = ("今日涨星 +%d" % p["delta"]) if p["delta"] >= 0 else ("今日涨星 %d" % p["delta"])
+        else:
+            p["reason"] = "新上榜 · %s星标" % _fmt_zh(p["stars"])
+    for p in total:
+        p["reason"] = "累计 %s星标" % _fmt_zh(p["stars"])
+    for p in new_repos:
+        p["reason"] = "近 7 天新建 · %s星标" % _fmt_zh(p["stars"])
 
     # 快照覆盖为今日星标数（作为明日基线）
     json.dump({p["full_name"]: p["stars"] for p in pool},

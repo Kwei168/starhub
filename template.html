@@ -71,8 +71,8 @@ header{
 
 /* ---------- stats ---------- */
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
-.layout{display:flex;gap:20px;align-items:flex-start}
-.main{flex:1;min-width:0}
+.layout{display:flex;flex-direction:column;gap:20px}
+.main{width:100%;min-width:0}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
 .stat{
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -209,8 +209,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 
 /* ---------- trending ---------- */
 .trending{
-  width:360px;flex:none;position:sticky;top:76px;
-  max-height:calc(100vh - 96px);overflow-y:auto;
+  width:100%;flex:none;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;box-shadow:var(--shadow);
 }
@@ -222,7 +221,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   font-size:12px;color:var(--muted);transition:all .15s;
 }
 .trend-tab.on{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
-.trend-list{display:flex;flex-direction:column;gap:8px}
+.trend-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .trend-item{display:flex;align-items:flex-start;gap:10px;padding:9px;border:1px solid var(--border2);border-radius:8px;transition:border-color .15s}
 .trend-item:hover{border-color:var(--hover-line)}
 .trend-item .rank{flex:none;width:22px;height:22px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
@@ -231,6 +230,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-item .tn{font-size:13px;font-weight:600;color:var(--accent);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trend-item .tn:hover{text-decoration:underline}
 .trend-item .td{font-size:11px;color:var(--muted);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.trend-item .reason{font-size:11px;color:var(--accent);margin-top:4px;display:block;font-weight:500}
 .trend-item .tm{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px}
 .trend-item .delta{color:#1a7f37;font-weight:700;font-size:13px}
 .trend-item .delta.neg{color:var(--muted)}
@@ -246,8 +246,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 
 /* ---------- responsive ---------- */
 @media (max-width:1100px){
-  .layout{flex-direction:column}
-  .trending{width:100%;position:static;max-height:none}
+  .trend-list{grid-template-columns:repeat(2,1fr)}
 }
 @media (max-width:900px){
   .grid,.pinned{grid-template-columns:repeat(2,1fr)}
@@ -268,6 +267,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   .starsel{flex:1;justify-content:space-between}
   .starsel button{flex:1;padding:0 8px;font-size:13px}
   .card{padding:12px 14px}
+  .trend-list{grid-template-columns:1fr}
   .row{flex-wrap:wrap;padding:9px 44px 9px 12px}
   .row .nm{max-width:100%}
   .row .dsc{flex:1 1 100%;order:3}
@@ -648,6 +648,7 @@ function renderTrending(){
       '<div class="ti">' +
         '<a class="tn" href="' + escHtml(p.html_url) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>' +
         '<span class="td">' + escHtml(p.desc || '暂无简介') + '</span>' +
+        '<span class="reason">' + escHtml(p.reason || '') + '</span>' +
       '</div>' +
       '<div class="tm">' +
         deltaHtml +
