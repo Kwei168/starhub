@@ -94,14 +94,14 @@ header{
 .trend-more{
   width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;
   height:36px;border:1px dashed var(--border);border-radius:8px;background:transparent;
-  color:var(--muted);font-size:12.5px;font-weight:500;cursor:pointer;transition:all .15s;
+  color:var(--muted);font-size:12.5px;font-weight:500;cursor:pointer;transition:all .15s;flex:none;
 }
 .trend-more:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-weak)}
 
 /* ---------- stats ---------- */
 .wrap{max-width:1440px;margin:0 auto;padding:18px 20px 40px}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
-.side{display:flex;flex-direction:column;gap:20px;min-width:0;position:sticky;top:76px}
+.side{display:flex;flex-direction:column;gap:20px;min-width:0;position:sticky;top:76px;height:calc(100vh - 96px);overflow:hidden}
 .main{
   width:100%;min-width:0;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -254,7 +254,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 
 /* ---------- trending ---------- */
 .trending{
-  width:100%;flex:none;
+  width:100%;flex:1;min-height:0;display:flex;flex-direction:column;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;box-shadow:var(--shadow);
 }
@@ -271,7 +271,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-tab[data-tab="total"].on{background:var(--t-total);border-color:var(--t-total)}
 .trend-tab[data-tab="new"].on{background:var(--t-new);border-color:var(--t-new)}
 .trend-list{
-  display:flex;flex-direction:column;max-height:640px;overflow-y:auto;
+  display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;
   scrollbar-width:thin;scrollbar-color:var(--track) transparent;
 }
 .trend-list::-webkit-scrollbar{width:6px}
@@ -302,7 +302,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 
 /* ---------- feed（今日关注动态） ---------- */
 .feed{
-  width:100%;
+  width:100%;flex:none;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:16px;box-shadow:var(--shadow);
 }
@@ -372,7 +372,9 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 /* ---------- responsive ---------- */
 @media (max-width:1100px){
   .layout{grid-template-columns:1fr}
-  .side{position:static}
+  .side{position:static;height:auto;overflow:visible}
+  .trending{flex:none}
+  .trending .trend-list{max-height:640px}
 }
 @media (max-width:900px){
   .grid,.pinned{grid-template-columns:repeat(2,1fr)}
