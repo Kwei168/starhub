@@ -1,0 +1,6 @@
+{
+  "name": "starhub-refresh",
+  "functions": {
+    "api/refresh.js": { "maxDuration": 10 }
+  }
+}
