@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GitHub Star 收藏台 · Kwei168</title>
+<style>
+:root{
+  --bg:#f6f8fa; --card:#ffffff; --border:#d0d7de; --border2:#eaeef2;
+  --text:#1f2328; --muted:#59636e; --faint:#818b98;
+  --accent:#0969da; --accent-weak:#ddf4ff; --accent-line:#54aeff;
+  --star:#e3a008; --star-bg:#fff8c5;
+  --radius:12px; --shadow:0 1px 2px rgba(31,35,40,.06),0 1px 0 rgba(31,35,40,.03);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Roboto,sans-serif;
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+.icon{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.icon.filled{fill:currentColor;stroke:none}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:50;background:rgba(255,255,255,.86);
+  backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--border2);
+}
+.hd{max-width:1200px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
+.logo{display:flex;align-items:center;gap:10px;min-width:0}
+.logo svg{width:30px;height:30px;fill:#1f2328;flex:none}
+.logo .t{display:flex;flex-direction:column;line-height:1.2}
+.logo .t b{font-size:16px;font-weight:700}
+.logo .t span{font-size:12px;color:var(--muted)}
+.hd .sp{flex:1}
+.hd .acts{display:flex;gap:8px}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;
+  border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);
+  font-size:13px;font-weight:500;transition:background .15s,border-color .15s;
+}
+.btn:hover{background:#f3f4f6;border-color:#afb8c1}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#0860ca}
+
+/* ---------- stats ---------- */
+.wrap{max-width:1200px;margin:0 auto;padding:18px 20px 40px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.stat{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;box-shadow:var(--shadow);
+}
+.stat .v{font-size:24px;font-weight:700;letter-spacing:-.5px}
+.stat .v small{font-size:13px;font-weight:500;color:var(--muted)}
+.stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+.langbar{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;box-shadow:var(--shadow);margin-bottom:16px;
+}
+.langbar .cap{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.langbar .cap b{font-size:13px}
+.langbar .cap span{font-size:12px;color:var(--muted)}
+.bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--border2)}
+.bar i{height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+.legend .li{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.legend .dot{width:9px;height:9px;border-radius:50%}
+
+/* ---------- toolbar ---------- */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.search{
+  flex:1 1 280px;display:flex;align-items:center;gap:8px;height:44px;
+  background:#fff;border:1px solid var(--border);border-radius:10px;padding:0 12px;
+  box-shadow:var(--shadow);
+}
+.search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+.search .icon{color:var(--faint);width:20px;height:20px}
+.search input{flex:1;border:0;outline:0;font-size:16px;background:transparent;color:var(--text)}
+.search input::placeholder{color:var(--faint)}
+.search .clear{color:var(--faint);font-size:18px;padding:0 2px;border:0;background:none;display:none}
+.sel{position:relative}
+.sel select{
+  height:44px;min-width:120px;padding:0 34px 0 12px;font-size:15px;appearance:none;
+  border:1px solid var(--border);border-radius:10px;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2359636e' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>") no-repeat right 12px center;
+  color:var(--text);cursor:pointer;box-shadow:var(--shadow);
+}
+.starsel{display:flex;height:44px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
+.starsel button{
+  height:100%;padding:0 13px;border:0;background:transparent;font-size:14px;color:var(--muted);
+  border-right:1px solid var(--border2);white-space:nowrap;
+}
+.starsel button:last-child{border-right:0}
+.starsel button.on{background:var(--accent);color:#fff}
+
+/* ---------- category tabs ---------- */
+.cats{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 12px;margin-bottom:4px;scrollbar-width:none}
+.cats::-webkit-scrollbar{display:none}
+.cat{
+  display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;flex:none;
+  border:1px solid var(--border);border-radius:999px;background:#fff;font-size:13px;color:var(--muted);
+  transition:all .15s;
+}
+.cat .dot{width:8px;height:8px;border-radius:50%;background:#afb8c1}
+.cat .n{font-size:11px;color:var(--faint)}
+.cat:hover{border-color:#afb8c1}
+.cat.on{background:var(--text);border-color:var(--text);color:#fff}
+.cat.on .n{color:rgba(255,255,255,.6)}
+.cat.on .dot{background:currentColor}
+
+/* ---------- pinned ---------- */
+.sec-title{display:flex;align-items:center;gap:8px;margin:16px 0 10px;font-size:14px;font-weight:700}
+.sec-title .icon{color:var(--star)}
+.pinned{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:6px}
+
+/* ---------- grid ---------- */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{
+  position:relative;display:flex;flex-direction:column;gap:8px;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);
+  transition:border-color .15s,transform .12s;
+}
+.card:hover{border-color:var(--accent-line);transform:translateY(-1px)}
+.card .top{display:flex;align-items:flex-start;gap:8px}
+.card .id{flex:1;min-width:0}
+.card .owner{font-size:11px;color:var(--faint);font-weight:500}
+.card .name{font-size:15px;font-weight:650;color:var(--accent);word-break:break-all}
+.card .name:hover{text-decoration:underline}
+.card .desc{
+  font-size:13px;color:var(--muted);line-height:1.55;min-height:40px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.card .desc.expand{-webkit-line-clamp:unset}
+.card .meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:auto;font-size:12px;color:var(--muted)}
+.meta .lg{display:inline-flex;align-items:center;gap:5px}
+.meta .lg .c{width:10px;height:10px;border-radius:50%}
+.meta .st{display:inline-flex;align-items:center;gap:4px;font-weight:600}
+.meta .st .icon{width:14px;height:14px;color:var(--star)}
+.meta .st .icon.filled{color:var(--star)}
+.cat-tag{
+  display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;
+  font-size:11px;font-weight:500;white-space:nowrap;
+}
+.cat-tag .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.fav{
+  position:absolute;top:10px;right:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  border:0;background:transparent;border-radius:8px;color:#c6cdd5;transition:all .15s;
+}
+.fav:hover{background:#f3f4f6;color:var(--star)}
+.fav.on{color:var(--star)}
+.fav .icon{width:20px;height:20px}
+.card.faved{border-color:#e3b341;background:linear-gradient(180deg,#fffdf2,#fff)}
+.more{
+  align-self:flex-start;border:0;background:none;color:var(--accent);font-size:12px;
+  padding:0;margin-top:-2px;
+}
+
+/* ---------- empty ---------- */
+.empty{display:none;text-align:center;padding:60px 20px;color:var(--muted)}
+.empty .icon{width:40px;height:40px;margin:0 auto 12px;color:var(--faint);display:block}
+.empty b{display:block;font-size:15px;color:var(--text);margin-bottom:4px}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);
+  background:#1f2328;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;
+  pointer-events:none;transition:all .25s;z-index:100;max-width:90vw;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- responsive ---------- */
+@media (max-width:900px){
+  .grid,.pinned{grid-template-columns:repeat(2,1fr)}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:640px){
+  .hd{padding:10px 14px}
+  .hd .acts .btn span{display:none}
+  .hd .acts .btn{padding:0 10px}
+  .wrap{padding:12px 12px 48px}
+  .grid,.pinned{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr);gap:8px}
+  .stat .v{font-size:20px}
+  .toolbar{flex-wrap:wrap}
+  .search{flex:1 1 100%}
+  .sel{flex:1}
+  .sel select{width:100%}
+  .starsel{flex:1;justify-content:space-between}
+  .starsel button{flex:1;padding:0 8px;font-size:13px}
+  .card{padding:12px 14px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hd">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      <div class="t"><b>GitHub Star 收藏台</b><span id="sub">Kwei168 · 112 个项目</span></div>
+    </div>
+    <div class="sp"></div>
+    <div class="acts">
+      <button class="btn" id="btnExport" title="导出备份">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>导出</span>
+      </button>
+      <button class="btn" id="btnImport" title="导入恢复">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>导入</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat"><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div>
+    <div class="stat"><div class="v" id="stCats">0</div><div class="l">分类</div></div>
+    <div class="stat"><div class="v" id="stLangs">0</div><div class="l">编程语言</div></div>
+    <div class="stat"><div class="v" id="stFav">0</div><div class="l">我的收藏（置顶）</div></div>
+  </div>
+
+  <div class="langbar">
+    <div class="cap"><b>语言分布</b><span id="lbCount"></span></div>
+    <div class="bar" id="langBar"></div>
+    <div class="legend" id="langLegend"></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="q" type="search" placeholder="模糊搜索：项目名 / 描述 / 语言 / 分类 / 标签…" autocomplete="off">
+      <button class="clear" id="btnClear" aria-label="清空">×</button>
+    </div>
+    <div class="sel">
+      <select id="langSel"><option value="">全部语言</option></select>
+    </div>
+    <div class="sel">
+      <select id="sortSel">
+        <option value="stars-desc">⭐ 星标从高到低</option>
+        <option value="stars-asc">⭐ 星标从低到高</option>
+        <option value="recent">最近更新</option>
+        <option value="name">名称 A-Z</option>
+      </select>
+    </div>
+  </div>
+  <div class="toolbar" style="margin-bottom:6px">
+    <div class="starsel" id="starSel">
+      <button data-v="all" class="on">全部星标</button>
+      <button data-v="lt1k">&lt;1k</button>
+      <button data-v="1k10k">1k-10k</button>
+      <button data-v="10k100k">10k-100k</button>
+      <button data-v="gt100k">&gt;100k</button>
+    </div>
+  </div>
+
+  <nav class="cats" id="cats"></nav>
+
+  <div id="pinnedWrap" style="display:none">
+    <div class="sec-title">
+      <svg class="icon filled" viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9 5.8 20.3l1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+      我的收藏 · 置顶
+      <span class="n" style="color:var(--muted);font-weight:400" id="pinnedCount"></span>
+    </div>
+    <div class="pinned" id="pinned"></div>
+  </div>
+
+  <div class="sec-title" id="listTitle" style="margin-top:20px">全部项目 <span class="n" style="color:var(--muted);font-weight:400" id="listCount"></span></div>
+  <main class="grid" id="grid"></main>
+
+  <div class="empty" id="empty">
+    <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <b>没有找到匹配的项目</b>
+    <span id="emptyHint">试试换一个关键词</span>
+    <button class="btn" id="btnResetAll" style="margin-top:16px;display:none">清除所有筛选</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept=".json" style="display:none">
+
+<script>
+const DATA = __DATA__;
+const CATS = __CATS__;
+const LANG_COLORS = __LANGS__;
+const DEFAULT_FAVS = __FAVS__;
+const STORE_KEY = 'wb_starhub_favs_v1';
+
+const $ = s => document.querySelector(s);
+const icon = {
+  star: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9 5.8 20.3l1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>',
+  starFilled: '<svg class="icon filled" viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9 5.8 20.3l1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>',
+  link: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+};
+
+// ---- state ----
+let favs = new Set();
+try { favs = new Set(JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || DEFAULT_FAVS); }
+catch(e){ favs = new Set(DEFAULT_FAVS); }
+
+const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc' };
+
+// ---- 语言统计 ----
+const langCount = {};
+DATA.forEach(d => { const l = d.language || 'Other'; langCount[l] = (langCount[l]||0)+1; });
+const langSorted = Object.entries(langCount).sort((a,b)=>b[1]-a[1]);
+const topLangs = langSorted.slice(0, 8);
+const topSum = topLangs.reduce((s,x)=>s+x[1],0);
+
+function renderLangBar(){
+  const bar = $('#langBar'); bar.innerHTML='';
+  topLangs.forEach(([l,n]) => {
+    const i = document.createElement('i');
+    i.style.width = (n/topSum*100)+'%';
+    i.style.background = LANG_COLORS[l] || '#8b949e';
+    i.title = l+' '+n;
+    bar.appendChild(i);
+  });
+  const legend = $('#langLegend'); legend.innerHTML='';
+  langSorted.forEach(([l,n]) => {
+    const el = document.createElement('span'); el.className='li';
+    el.innerHTML = '<span class="dot" style="background:'+(LANG_COLORS[l]||'#8b949e')+'"></span>'+l+' · '+n;
+    legend.appendChild(el);
+  });
+  $('#lbCount').textContent = '共 '+langSorted.length+' 种语言';
+}
+
+// ---- 分类 tab ----
+function renderCats(){
+  const cats = $('#cats'); cats.innerHTML='';
+  const all = document.createElement('button');
+  all.className = 'cat' + (state.cat===''?' on':'');
+  all.innerHTML = '<span class="dot"></span>全部 <span class="n">'+DATA.length+'</span>';
+  all.onclick = () => { state.cat=''; renderCats(); renderList(); };
+  cats.appendChild(all);
+  CATS.forEach(c => {
+    const n = DATA.filter(d=>d.category===c.key).length;
+    if(!n) return;
+    const b = document.createElement('button');
+    b.className = 'cat' + (state.cat===c.key?' on':'');
+    b.innerHTML = '<span class="dot" style="background:'+c.color+'"></span>'+c.label+' <span class="n">'+n+'</span>';
+    b.onclick = () => { state.cat = state.cat===c.key?'':c.key; renderCats(); renderList(); };
+    cats.appendChild(b);
+  });
+}
+
+// ---- 语言下拉 ----
+function renderLangSel(){
+  const sel = $('#langSel');
+  const cur = state.lang;
+  sel.innerHTML = '<option value="">全部语言</option>' +
+    langSorted.map(([l,n])=>'<option value="'+l.replace(/"/g,'&quot;')+'"'+(l===cur?' selected':'')+'>'+l+' ('+n+')</option>').join('');
+}
+
+// ---- 模糊搜索 ----
+function fuzzyMatch(d, q){
+  const hay = (d.name+' '+d.owner+' '+d.full_name+' '+(d.desc||'')+' '+(d.language||'')+' '+(d.categoryLabel||'')+' '+(d.topics||[]).join(' ')).toLowerCase();
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return tokens.every(t => hay.includes(t));
+}
+
+function filterData(){
+  let list = DATA.filter(d => {
+    if(state.q && !fuzzyMatch(d, state.q)) return false;
+    if(state.cat && d.category !== state.cat) return false;
+    if(state.lang && d.language !== state.lang) return false;
+    if(state.star === 'lt1k' && d.stars >= 1000) return false;
+    if(state.star === '1k10k' && (d.stars < 1000 || d.stars >= 10000)) return false;
+    if(state.star === '10k100k' && (d.stars < 10000 || d.stars >= 100000)) return false;
+    if(state.star === 'gt100k' && d.stars < 100000) return false;
+    return true;
+  });
+  const cmp = {
+    'stars-desc': (a,b)=>b.stars-a.stars,
+    'stars-asc': (a,b)=>a.stars-b.stars,
+    'recent': (a,b)=>(b.pushed_at||'').localeCompare(a.pushed_at||''),
+    'name': (a,b)=>a.name.localeCompare(b.name),
+  }[state.sort];
+  list.sort(cmp);
+  const faved = list.filter(d=>favs.has(d.full_name));
+  const rest = list.filter(d=>!favs.has(d.full_name));
+  return { faved, rest };
+}
+
+function catColor(key){ const c = CATS.find(x=>x.key===key); return c?c.color:'#8b949e'; }
+
+function buildCard(d, isFav){
+  const div = document.createElement('article');
+  div.className = 'card' + (isFav?' faved':'');
+  const catColorVal = catColor(d.category);
+  const desc = d.desc || '暂无简介';
+  const descHtml = desc.length > 60
+    ? desc.slice(0,60)+'…<button class="more" data-act="expand">展开</button>'
+    : desc;
+  div.innerHTML =
+    '<button class="fav'+(isFav?' on':'')+'" data-act="fav" title="收藏/取消收藏">'+(isFav?icon.starFilled:icon.star)+'</button>' +
+    '<div class="top"><div class="id">' +
+      '<div class="owner">'+d.owner+'</div>' +
+      '<a class="name" href="'+d.html_url+'" target="_blank" rel="noopener">'+d.name+'</a>' +
+    '</div>' +
+    '<a class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1a" href="javascript:void 0" data-act="cattag" data-cat="'+d.category+'">' +
+      '<span class="dot"></span>'+d.categoryLabel+'</a>' +
+    '</div>' +
+    '<div class="desc" data-act="desc">'+descHtml+'</div>' +
+    '<div class="meta">' +
+      (d.language ? '<span class="lg"><span class="c" style="background:'+(LANG_COLORS[d.language]||'#8b949e')+'"></span>'+d.language+'</span>' : '') +
+      '<span class="st">'+icon.starFilled+''+fmtStars(d.stars)+'</span>' +
+      '<a class="st" style="color:var(--accent);font-weight:600" href="'+d.html_url+'" target="_blank" rel="noopener">'+icon.link+'打开</a>' +
+    '</div>';
+  return div;
+}
+
+function fmtStars(n){
+  if(n>=100000) return (n/1000).toFixed(0)+'k';
+  if(n>=1000) return (n/1000).toFixed(1).replace(/\.0$/,'')+'k';
+  return n;
+}
+
+function renderList(){
+  const { faved, rest } = filterData();
+  const pinnedWrap = $('#pinnedWrap'), pinned = $('#pinned'), grid = $('#grid'), empty = $('#empty');
+
+  // 置顶区
+  if(faved.length){
+    pinnedWrap.style.display='';
+    pinned.innerHTML='';
+    faved.forEach(d => pinned.appendChild(buildCard(d, true)));
+    $('#pinnedCount').textContent = '('+faved.length+')';
+  } else {
+    pinnedWrap.style.display='none';
+  }
+
+  // 主列表
+  grid.innerHTML='';
+  rest.forEach(d => grid.appendChild(buildCard(d, false)));
+  $('#listCount').textContent = '('+rest.length+')';
+  $('#listTitle').textContent = state.cat
+    ? (CATS.find(c=>c.key===state.cat)||{}).label || '全部项目'
+    : '全部项目';
+
+  const hasFilter = state.cat || state.lang || state.star !== 'all';
+  empty.style.display = (faved.length + rest.length === 0) ? 'block' : 'none';
+  if(faved.length + rest.length === 0){
+    $('#emptyHint').textContent = hasFilter ? '当前有分类 / 语言 / 星标筛选在生效，可能挡住了结果' : '试试换一个关键词';
+    $('#btnResetAll').style.display = hasFilter ? 'inline-flex' : 'none';
+  }
+
+  // 统计
+  $('#stTotal').innerHTML = DATA.length;
+  $('#stCats').textContent = CATS.length;
+  $('#stLangs').textContent = langSorted.length;
+  $('#stFav').textContent = favs.size;
+  $('#sub').textContent = 'Kwei168 · '+DATA.length+' 个项目';
+}
+
+// ---- 事件绑定 ----
+function bindEvents(){
+  $('#q').addEventListener('input', e => {
+    state.q = e.target.value;
+    $('#btnClear').style.display = state.q ? 'block':'none';
+    // 搜索即全局搜索：输入关键词时自动清空其它筛选，避免结果被挡住
+    if(state.q && (state.cat || state.lang || state.star !== 'all')){
+      state.cat = ''; state.lang = ''; state.star = 'all';
+      renderCats(); renderLangSel();
+      document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x.dataset.v==='all'));
+    }
+    renderList();
+  });
+  $('#btnClear').onclick = () => { $('#q').value=''; state.q=''; $('#btnClear').style.display='none'; renderList(); $('#q').focus(); };
+  $('#btnResetAll').onclick = () => {
+    state.q=''; state.cat=''; state.lang=''; state.star='all';
+    $('#q').value=''; $('#btnClear').style.display='none';
+    renderCats(); renderLangSel();
+    document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x.dataset.v==='all'));
+    renderList();
+  };
+  $('#langSel').addEventListener('change', e => { state.lang = e.target.value; renderList(); });
+  $('#sortSel').addEventListener('change', e => { state.sort = e.target.value; renderList(); });
+  $('#starSel').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    state.star = b.dataset.v;
+    document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x===b));
+    renderList();
+  });
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-act]'); if(!el) return;
+    const act = el.dataset.act;
+    const card = el.closest('.card');
+    const nameEl = card ? card.querySelector('.name') : null;
+    const fn = nameEl ? (card.querySelector('.owner').textContent + '/' + nameEl.textContent) : '';
+    if(act === 'fav') toggleFav(fn);
+    if(act === 'cattag'){ state.cat = el.dataset.cat; renderCats(); renderList(); }
+    if(act === 'expand'){ const d = card.querySelector('.desc'); d.classList.add('expand'); el.remove(); }
+  });
+
+  $('#btnExport').onclick = exportJson;
+  $('#btnImport').onclick = () => $('#fileInput').click();
+  $('#fileInput').addEventListener('change', importJson);
+}
+
+function toggleFav(fn){
+  if(!fn) return;
+  if(favs.has(fn)){ favs.delete(fn); toast('已取消收藏'); }
+  else { favs.add(fn); toast('已收藏并置顶'); }
+  saveFavs();
+  renderList();
+}
+
+function saveFavs(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify([...favs])); }catch(e){}
+}
+
+function exportJson(){
+  const payload = {
+    type: 'github-starhub-backup',
+    user: 'Kwei168',
+    exportedAt: new Date().toISOString(),
+    favorites: [...favs],
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'starhub-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('已导出备份（收藏 '+favs.size+' 项）');
+}
+
+function importJson(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const obj = JSON.parse(r.result);
+      const arr = obj.favorites || obj.favs || [];
+      if(!Array.isArray(arr)) throw 0;
+      favs = new Set(arr.filter(x => DATA.some(d=>d.full_name===x)));
+      saveFavs(); renderList();
+      toast('已恢复收藏 '+favs.size+' 项');
+    }catch(err){ toast('导入失败：文件格式不正确'); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+}
+
+let toastTimer;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2000);
+}
+
+// ---- init ----
+renderLangBar();
+renderCats();
+renderLangSel();
+renderList();
+bindEvents();
+</script>
+</body>
+</html>
