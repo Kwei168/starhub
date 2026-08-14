@@ -199,10 +199,10 @@ header{
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .card{
   position:relative;display:flex;flex-direction:column;gap:8px;background:var(--card);
-  border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);
-  transition:border-color .15s,transform .12s;
+  border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-card);
+  transition:border-color .15s,transform .15s,box-shadow .15s;
 }
-.card:hover{border-color:var(--accent-line);transform:translateY(-1px)}
+.card:hover{border-color:var(--accent-line);transform:translateY(-2px);box-shadow:var(--shadow-lift)}
 .card .top{display:flex;align-items:flex-start;gap:8px;padding-right:38px}
 .card .id{flex:1;min-width:0}
 .card .owner{font-size:11px;color:var(--faint);font-weight:500}
@@ -770,7 +770,7 @@ function renderList(){
   }
 
   // 统计
-  $('#stTotal').innerHTML = DATA.length;
+  $('#stTotal').textContent = counted ? DATA.length : '0';
   $('#stCats').textContent = CATS.length;
   $('#stLangs').textContent = langSorted.length;
   $('#stFav').textContent = favs.size;
@@ -1025,6 +1025,28 @@ function toast(msg){
 }
 
 // ---- init ----
+// 统计数字滚动动效：仅在首次进入视口时触发一次
+let counted = false;
+function countUp(el, target, dur){
+  dur = dur || 700;
+  const t0 = performance.now();
+  const step = now => {
+    const p = Math.min((now - t0) / dur, 1);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if(p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+if('IntersectionObserver' in window){
+  const io = new IntersectionObserver(entries => {
+    if(entries[0].isIntersecting && !counted){
+      counted = true;
+      countUp($('#stTotal'), DATA.length);
+      io.disconnect();
+    }
+  }, {threshold:.4});
+  io.observe($('#stTotal').parentElement.parentElement);
+}else{ counted = true; }
 renderHeader();
 applyTheme(getTheme());
 applyView(getView());
