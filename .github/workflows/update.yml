@@ -37,5 +37,7 @@ jobs:
             echo "No changes, skip commit."
           else
             git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)"
+            # 先拉取远端变更再推，避免并发提交被拒
+            git pull --rebase
             git push
           fi
