@@ -162,5 +162,10 @@
  "zhayujie/CowAgent": "开源超级AI助手和Agent Harness。计划任务，运行工具和技能，利用记忆和知识进行自我进化。多模式、多渠道。轻量级、可扩展、单行安装。 （原微信上的chatgpt）",
  "Kong/kong": "🦍 API 和 AI 网关",
  "danielmiessler/Fabric": "Fabric 是一个使用人工智能增强人类能力的开源框架。它提供了一个模块化系统，用于使用一组可在任何地方使用的众包人工智能提示来解决特定问题。",
- "agno-agi/agno": "构建、运行和管理代理平台。"
+ "agno-agi/agno": "构建、运行和管理代理平台。",
+ "walkinglabs/learn-harness-engineering": "线束工程初学者教程，从0到1",
+ "JCodesMore/ai-website-cloner-template": "使用 AI 编码代理通过一个命令克隆任何网站",
+ "screenpipe/screenpipe": "YC (S26) | 24/7 录制您的屏幕并插入您的代理。本地、私密、安全。连接到 OpenClaw、Hermes 代理和 100 多个应用程序",
+ "janhq/jan": "Jan 是 ChatGPT 的开源替代品，可在您的计算机上 100% 离线运行。",
+ "AlexsJones/llmfit": "数百个模型和提供商。一个命令即可查找您的硬件上运行的内容。"
 }
