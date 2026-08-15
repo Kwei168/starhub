@@ -140,5 +140,13 @@
  "sgl-project/sglang": "SGLang 是一个用于大型语言模型和多模态模型的高性能服务框架。",
  "HKUDS/Vibe-Trading": "“Vibe-Trading：您的个人交易代理”",
  "idavidov13/agentic-playwright": "用于代理测试的生产级 Playwright + TypeScript 支架。适用于内置的所有主要 AI 编码代理。",
- "biuworks/bilibili-digest": "把 B 站视频变成学习资源的浏览器扩展（Chrome / Edge）：字幕阅读、双语对照、AI 概览、划词解释和带时间戳的笔记"
+ "biuworks/bilibili-digest": "把 B 站视频变成学习资源的浏览器扩展（Chrome / Edge）：字幕阅读、双语对照、AI 概览、划词解释和带时间戳的笔记",
+ "DayuanJiang/next-ai-draw-io": "next.js Web 应用程序将 AI 功能与 draw.io 图表集成在一起。该应用程序允许您通过自然语言命令和人工智能辅助可视化来创建、修改和增强图表。",
+ "ClickHouse/ClickHouse": "ClickHouse® 是一个实时分析数据库管理系统",
+ "upscayl/upscayl": "🆙 Upscayl - 适用于 Linux、MacOS 和 Windows 的 #1 免费开源 AI 图像升级器。",
+ "SillyTavern/SillyTavern": "面向高级用户的 LLM 前端。",
+ "iOfficeAI/AionUi": "适用于 OpenClaw、Hermes、Claude Code、Codex、OpenCode 和 20 多个 CLI 代理的开源 24/7 Cowork 应用程序 |定制您的助手 |组队｜喜欢就Star吧！",
+ "apache/airflow": "Apache Airflow - 以编程方式编写、安排和监控工作流程的平台",
+ "qdrant/qdrant": "Qdrant - 用于下一代人工智能的高性能、大规模矢量数据库和矢量搜索引擎。也可在云中使用 https://cloud.qdrant.io/",
+ "SYSTRAN/faster-whisper": "使用 CTranslate2 加快 Whisper 转录速度"
 }
