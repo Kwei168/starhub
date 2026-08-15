@@ -603,7 +603,11 @@ function applyView(v){
 
 // ---- state ----
 let favs = new Set();
-try { favs = new Set(JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || DEFAULT_FAVS); }
+try {
+  const raw = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+  // 仅接受数组：JSON 字符串等非法类型会污染收藏集合并被写回覆盖，不可逆丢失
+  favs = new Set(Array.isArray(raw) ? raw : DEFAULT_FAVS);
+}
 catch(e){ favs = new Set(DEFAULT_FAVS); }
 
 const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising', sideTab:'trend' };
@@ -971,6 +975,9 @@ function bindEvents(){
   $('#btnImport').onclick = () => $('#fileInput').click();
   // Vercel Function 中转触发 GitHub Actions（GH_TOKEN 存于 Vercel 环境变量）
   const REFRESH_API = 'https://starhub-refresh.vercel.app/api/refresh';
+  // 弱防护密钥：与 Vercel 环境变量 REFRESH_KEY 一致。静态站点源码公开，此值可被提取，
+  // 真正防线是服务端 Origin 白名单（仅允许本站域名跨域）；此头用于拦截无头扫描器滥用
+  const REFRESH_KEY = 'sk_starhub_4dd06111cb5190b5a5b9b501b3376b0e';
   let refreshCooldown = 0;
   $('#btnRefresh').onclick = async () => {
     const b = $('#btnRefresh');
@@ -980,7 +987,7 @@ function bindEvents(){
     b.disabled = true;
     b.classList.add('loading');
     try {
-      const r = await fetch(REFRESH_API, { method: 'POST' });
+      const r = await fetch(REFRESH_API, { method: 'POST', headers: { 'X-Refresh-Key': REFRESH_KEY } });
       const j = await r.json().catch(() => ({}));
       if (r.ok) { toast('已提交刷新请求，约 1-2 分钟后上线'); refreshCooldown = now; }
       else toast('刷新失败：' + (j.error || ('HTTP ' + r.status)));

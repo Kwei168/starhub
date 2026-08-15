@@ -123,13 +123,12 @@ def classify_new(fn, desc, lang, topics):
     return "agent"
 
 
-def fetch_stars():
+def fetch_stars(token=None):
     repos = []
     page = 1
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "starhub-auto-update"}
     while True:
         url = "https://api.github.com/users/%s/starred?per_page=100&page=%d" % (USER, page)
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(url, headers=_api_headers(token))
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 data = json.loads(r.read().decode("utf-8"))
@@ -275,10 +274,14 @@ def build_trending(token, desc_zh):
     for p in new_repos:
         p["reason"] = "近 7 天新建 · %s星标" % _fmt_zh(p["stars"])
 
-    # 快照覆盖为今日星标数（作为明日基线）
-    json.dump({p["full_name"]: p["stars"] for p in pool},
-              open("trending_snapshot.json", "w", encoding="utf-8"),
-              ensure_ascii=False, indent=1)
+    # 快照覆盖为今日星标数（作为明日基线）；AI 池为空说明本次构建异常（限流/网络故障），
+    # 此时覆盖会清空全部基线且无法自愈，因此保留旧快照
+    if pool:
+        json.dump({p["full_name"]: p["stars"] for p in pool},
+                  open("trending_snapshot.json", "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=1)
+    else:
+        print("[警告] AI 池为空，跳过快照更新，保留旧基线", file=sys.stderr)
 
     return {"rising": rising, "total": total, "new": new_repos}
 
@@ -406,6 +409,13 @@ def fetch_following_events(token):
     return feed
 
 
+def _safe_json(obj):
+    # 转义 < 防止 </script> 注入：ensure_ascii=False 时 json.dumps 不转义 <、>，
+    # 数据内联进 <script> 块后浏览器会在第一个 </script> 处提前闭合标签执行任意 JS。
+    # \u003c 是合法 JSON 转义，json.loads 可还原，不破坏 dev_render.py 的提取流程。
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+
+
 def main():
     known = {}
     try:
@@ -419,7 +429,8 @@ def main():
     except Exception:  # noqa: BLE001
         pass
 
-    repos = fetch_stars()
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    repos = fetch_stars(token)
     if repos is None:
         print("拉取 star 失败，保持现有 index.html 不变")
         return
@@ -460,19 +471,18 @@ def main():
             "categoryLabel": cat_label[cat],
         })
 
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     trending = build_trending(token, desc_zh)
     feed = fetch_following_events(token)
 
     template = open("template.html", encoding="utf-8").read()
     updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
     html = (template
-            .replace("__DATA__", json.dumps(out, ensure_ascii=False, separators=(",", ":")))
-            .replace("__CATS__", json.dumps(CATS, ensure_ascii=False, separators=(",", ":")))
-            .replace("__LANGS__", json.dumps(LANG_COLORS, ensure_ascii=False, separators=(",", ":")))
-            .replace("__FAVS__", json.dumps(DEFAULT_FAVS, ensure_ascii=False, separators=(",", ":")))
-            .replace("__TRENDING__", json.dumps(trending, ensure_ascii=False, separators=(",", ":")))
-            .replace("__FEED__", json.dumps(feed, ensure_ascii=False, separators=(",", ":")))
+            .replace("__DATA__", _safe_json(out))
+            .replace("__CATS__", _safe_json(CATS))
+            .replace("__LANGS__", _safe_json(LANG_COLORS))
+            .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
+            .replace("__TRENDING__", _safe_json(trending))
+            .replace("__FEED__", _safe_json(feed))
             .replace("__UPDATED__", updated))
 
     open("index.html", "w", encoding="utf-8").write(html)
