@@ -917,7 +917,7 @@ function renderFeed(){
       '<span class="fa">'+escHtml(f.actor)+'</span>' +
       '<span class="fv">'+verb+'</span>' +
       '<a class="ft" href="'+escHtml(f.url||'')+'" target="_blank" rel="noopener">'+escHtml(target)+'</a>' +
-      '<span class="tm">'+escHtml(f.time)+'</span>';
+      '<span class="tm">'+escHtml((f.day ? f.day+' ' : '') + f.time)+'</span>';
     list.appendChild(row);
   });
 }

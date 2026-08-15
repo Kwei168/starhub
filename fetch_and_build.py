@@ -329,53 +329,64 @@ def fetch_following(token):
         if len(data) < 100:
             break
         page += 1
-        time.sleep(0.3)
+        time.sleep(1)
     return out
 
 
 def fetch_following_events(token):
-    """聚合关注账号今日动态：新建仓库 / star 仓库 / 关注人 / 提交 PR。"""
-    today = _today_cn()
+    """聚合关注账号动态（昨日 0 点至今）：新建仓库 / star 仓库 / 关注人 / 提交 PR。"""
+    now_cn = datetime.now(timezone(timedelta(hours=8)))
+    today = now_cn.strftime("%Y-%m-%d")
+    yesterday = (now_cn - timedelta(days=1)).strftime("%Y-%m-%d")
     following = fetch_following(token)
     feed = []
     for user in following:
-        url = "https://api.github.com/users/%s/events/public?per_page=100" % user
-        req = urllib.request.Request(url, headers=_api_headers(token))
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                evs = json.loads(r.read().decode("utf-8"))
-        except Exception as e:  # noqa: BLE001
-            print("[事件拉取失败 %s] %s" % (user, e), file=sys.stderr)
-            continue
-        for e in evs:
-            if _cn_date(e.get("created_at")) != today:
-                continue
-            t = e.get("type")
-            payload = e.get("payload") or {}
-            actor = (e.get("actor") or {}).get("login", "")
-            repo = (e.get("repo") or {}).get("name", "")
-            tm = _cn_time(e.get("created_at"))
-            item = None
-            if t == "CreateEvent" and payload.get("ref_type") == "repository":
-                item = {"kind": "repo", "actor": actor, "repo": repo, "time": tm,
-                        "url": "https://github.com/" + repo}
-            elif t == "WatchEvent" and payload.get("action") == "started":
-                item = {"kind": "star", "actor": actor, "repo": repo, "time": tm,
-                        "url": "https://github.com/" + repo}
-            elif t == "FollowEvent":
-                target = (payload.get("target") or {}).get("login", "")
-                item = {"kind": "follow", "actor": actor, "target": target, "time": tm,
-                        "url": "https://github.com/" + target}
-            elif t == "PullRequestEvent" and payload.get("action") == "opened":
-                pr = payload.get("pull_request") or {}
-                item = {"kind": "pr", "actor": actor, "repo": repo,
-                        "title": (pr.get("title") or "")[:60],
-                        "url": pr.get("html_url", "https://github.com/" + repo),
-                        "time": tm}
-            if item:
-                feed.append(item)
-        time.sleep(0.3)  # 限流
-    feed.sort(key=lambda x: x.get("time", ""), reverse=True)
+        url = "https://api.github.com/users/%s/events/public?per_page=100&page=%%d" % user
+        for page in (1, 2):
+            req = urllib.request.Request(url % page, headers=_api_headers(token))
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    evs = json.loads(r.read().decode("utf-8"))
+            except Exception as e:  # noqa: BLE001
+                print("[事件拉取失败 %s] %s" % (user, e), file=sys.stderr)
+                break
+            if not evs:
+                break
+            for e in evs:
+                d = _cn_date(e.get("created_at"))
+                if not d or d < yesterday:
+                    continue
+                t = e.get("type")
+                payload = e.get("payload") or {}
+                actor = (e.get("actor") or {}).get("login", "")
+                repo = (e.get("repo") or {}).get("name", "")
+                tm = _cn_time(e.get("created_at"))
+                day = "今天" if d == today else "昨天"
+                item = None
+                if t == "CreateEvent" and payload.get("ref_type") == "repository":
+                    item = {"kind": "repo", "actor": actor, "repo": repo, "time": tm, "day": day, "date": d,
+                            "url": "https://github.com/" + repo}
+                elif t == "WatchEvent" and payload.get("action") == "started":
+                    item = {"kind": "star", "actor": actor, "repo": repo, "time": tm, "day": day, "date": d,
+                            "url": "https://github.com/" + repo}
+                elif t == "FollowEvent":
+                    target = (payload.get("target") or {}).get("login", "")
+                    item = {"kind": "follow", "actor": actor, "target": target, "time": tm, "day": day, "date": d,
+                            "url": "https://github.com/" + target}
+                elif t == "PullRequestEvent" and payload.get("action") == "opened":
+                    pr = payload.get("pull_request") or {}
+                    item = {"kind": "pr", "actor": actor, "repo": repo,
+                            "title": (pr.get("title") or "")[:60],
+                            "url": pr.get("html_url", "https://github.com/" + repo),
+                            "time": tm, "day": day, "date": d}
+                if item:
+                    feed.append(item)
+            # 事件按时间倒序返回：本页最早一条早于窗口起点则无需继续翻页
+            last = evs[-1].get("created_at") or ""
+            if last and _cn_date(last) < yesterday:
+                break
+            time.sleep(1)  # 限流：GitHub 建议相邻请求间隔 ≥1s，避免二级速率限制
+    feed.sort(key=lambda x: (x.get("date", ""), x.get("time", "")), reverse=True)
     return feed
 
 
