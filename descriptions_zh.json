@@ -176,5 +176,8 @@
  "Tencent/WeKnora": "开源LLM知识平台：将原始文档变成可查询的RAG、自主推理代理和自我维护的Wiki。",
  "tanweai/pua": "你是一个曾经被寄予厚望的 P8 级工程师。Anthropic 当初给你定级的时候，对你的期望是很高的。 一个agent使用的高能动性的skill。 Your AI has been placed on a PIP. 30 days to show improvement.",
  "codexu/note-gen": "先捕捉。稍后整理。一款本地优先的 Markdown 应用程序，通过 AI 将分散的记录变成清晰的笔记。",
- "trycua/cua": "通过开源驱动程序、跨操作系统队列以及培训、评估和数据生成基准来扩展计算机使用 2.0。"
+ "trycua/cua": "通过开源驱动程序、跨操作系统队列以及培训、评估和数据生成基准来扩展计算机使用 2.0。",
+ "mukul975/Anthropic-Cybersecurity-Skills": "AI代理的817种结构化网络安全技能·映射到6个框架： MITRE ATT&CK、NIST CSF 2.0、MITRE ATLAS、D3FEND、NIST AI RMF和MITRE F3 （打击欺诈） · agentskills.io标准·适用于Claude Code、GitHub Copilot、Codex CLI、Cursor、Gemini CLI和20多个平台· 29个安全域· Apache 2.0",
+ "langchain-ai/langgraph": "构建弹性代理。",
+ "memoket/memoket-kite": "人工智能代理的内存引擎，具有令牌效率，超越矢量相似性的可解释检索。"
 }
