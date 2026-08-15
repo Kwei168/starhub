@@ -112,5 +112,19 @@
  "freestylefly/wesight": "assistant",
  "alchaincyf/huashu-skills": "content",
  "wechat-article/wxdown-service": "tools",
- "affaan-m/ECC": "agent"
+ "affaan-m/ECC": "agent",
+ "eternityspring/shuohao-skills": "video",
+ "HBAI-Ltd/Toonflow-app": "video",
+ "zhongerxin/Cowart": "agent",
+ "frappe/hrms": "agent",
+ "ourongxing/newsnow": "agent",
+ "webadderallorg/Recordly": "video",
+ "getopenscreen/openscreen": "tools",
+ "NanmiCoder/dsh-auto-mode": "learning",
+ "ddcat-ai/open-ai-canvas": "video",
+ "chatfire-AI/huobao-canvas": "assistant",
+ "basketikun/infinite-canvas": "coding",
+ "tigerowo/infinite-canvas": "agent",
+ "anymouschina/TapCanvas": "distill",
+ "hero8152/Infinite-Canvas": "agent"
 }
