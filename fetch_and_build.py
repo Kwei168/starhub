@@ -334,7 +334,7 @@ def fetch_following(token):
 
 
 def fetch_following_events(token):
-    """聚合关注账号动态（昨日 0 点至今）：新建仓库 / star 仓库 / 关注人 / 提交 PR。"""
+    """聚合关注账号动态（昨日 0 点至今）：新仓库 / star / 关注 / PR / 版本发布 / 公开仓库 / 提交更新。"""
     now_cn = datetime.now(timezone(timedelta(hours=8)))
     today = now_cn.strftime("%Y-%m-%d")
     yesterday = (now_cn - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -379,6 +379,22 @@ def fetch_following_events(token):
                             "title": (pr.get("title") or "")[:60],
                             "url": pr.get("html_url", "https://github.com/" + repo),
                             "time": tm, "day": day, "date": d}
+                elif t == "ReleaseEvent" and payload.get("action") == "published":
+                    release = payload.get("release") or {}
+                    item = {"kind": "release", "actor": actor, "repo": repo,
+                            "tag": release.get("tag_name", ""),
+                            "url": release.get("html_url", "https://github.com/" + repo + "/releases"),
+                            "time": tm, "day": day, "date": d}
+                elif t == "PublicEvent":
+                    item = {"kind": "public", "actor": actor, "repo": repo,
+                            "url": "https://github.com/" + repo,
+                            "time": tm, "day": day, "date": d}
+                elif t == "PushEvent":
+                    size = payload.get("size", 0)
+                    if size > 0:
+                        item = {"kind": "push", "actor": actor, "repo": repo, "size": size,
+                                "url": "https://github.com/" + repo + "/commits",
+                                "time": tm, "day": day, "date": d}
                 if item:
                     feed.append(item)
             # 事件按时间倒序返回：本页最早一条早于窗口起点则无需继续翻页

@@ -893,7 +893,7 @@ function openTrendModal(){
 function closeTrendModal(){ $('#trendModal').classList.remove('open'); }
 
 // ---- 今日关注动态 ----
-const FEED_COLORS = { repo:'#0969da', star:'#e3a008', follow:'#8250df', pr:'#1a7f37' };
+const FEED_COLORS = { repo:'#0969da', star:'#e3a008', follow:'#8250df', pr:'#1a7f37', release:'#bf3989', public:'#656d76', push:'#d73a49' };
 function renderFeed(){
   const list = $('#feedList');
   const items = FEED || [];
@@ -910,6 +910,9 @@ function renderFeed(){
     else if(f.kind === 'star'){ verb = 'star 了'; target = f.repo; }
     else if(f.kind === 'follow'){ verb = '关注了'; target = f.target; }
     else if(f.kind === 'pr'){ verb = '提交了 PR'; target = f.title || f.repo; }
+    else if(f.kind === 'release'){ verb = '发布了 release'; target = f.tag || f.repo; }
+    else if(f.kind === 'public'){ verb = '公开了仓库'; target = f.repo; }
+    else if(f.kind === 'push'){ verb = '推送了提交'; target = f.repo + ' (' + f.size + ' 个)'; }
     const row = document.createElement('div');
     row.className = 'feed-item';
     row.innerHTML =
