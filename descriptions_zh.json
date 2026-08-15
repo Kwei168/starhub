@@ -148,5 +148,11 @@
  "iOfficeAI/AionUi": "适用于 OpenClaw、Hermes、Claude Code、Codex、OpenCode 和 20 多个 CLI 代理的开源 24/7 Cowork 应用程序 |定制您的助手 |组队｜喜欢就Star吧！",
  "apache/airflow": "Apache Airflow - 以编程方式编写、安排和监控工作流程的平台",
  "qdrant/qdrant": "Qdrant - 用于下一代人工智能的高性能、大规模矢量数据库和矢量搜索引擎。也可在云中使用 https://cloud.qdrant.io/",
- "SYSTRAN/faster-whisper": "使用 CTranslate2 加快 Whisper 转录速度"
+ "SYSTRAN/faster-whisper": "使用 CTranslate2 加快 Whisper 转录速度",
+ "Hmbown/CodeWhale": "开源、社区驱动的代理工具",
+ "github/awesome-copilot": "社区提供的说明、代理、技能和配置可帮助您充分利用 GitHub Copilot。",
+ "continuedev/continue": "开源编码代理",
+ "datawhalechina/happy-llm": "📚 从零开始构建大模型",
+ "labring/FastGPT": "FastGPT 是一个建立在法学硕士基础上的知识平台，提供一整套开箱即用的功能，例如数据处理、RAG 检索和可视化 AI 工作流程编排，让您轻松开发和部署复杂的问答系统，无需进行大量设置或配置。",
+ "HandsOnLLM/Hands-On-Large-Language-Models": "O'Reilly 书籍的官方代码存储库 - “Hands-On Large Language Models”"
 }
