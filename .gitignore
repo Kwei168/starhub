@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
 .vercel/
+.vercel-tmp/
+.deploy-tmp/
 
 .vercel
