@@ -87,37 +87,41 @@ def translate_to_zh(text):
 
 
 def classify_new(fn, desc, lang, topics):
-    """对未知新项目做关键词规则分类（已有项目走 known_categories.json 保持稳定）。"""
+    """对未知新项目做关键词规则分类（已有项目走 known_categories.json 保持稳定）。
+    规则要点：避免泛词子串误伤（如「蒸馏」「思维」「chat」），用语义更明确的短语。"""
     text = (fn + " " + (desc or "") + " " + " ".join(topics or [])).lower()
     if any(k in text for k in ["trading", "finance", "fincept", "quant", "金融", "交易", "bloomberg"]):
         return "finance"
     if any(k in text for k in ["tvbox", "iptv", "直播", "电视", "crawler", "爬虫", "download", "下载",
-                               "translator", "翻译", "汉化", "网盘", "pan", "mpv", "ffmpeg", "userscript"]):
+                               "translator", "翻译", "汉化", "网盘", "pan", "mpv", "userscript"]):
         return "tools"
+    # 内容蒸馏类提前（如「把视频蒸馏成技能」类项目同时含视频/蒸馏字样，语义上属蒸馏）
+    if any(k in text for k in ["distill", "思维蒸馏", "知识蒸馏", "内容蒸馏", "蒸馏成", "蒸馏出", "蒸馏任何",
+                               "认知植入", "思维方式", "心智模型", "第一性", "first-principles",
+                               "方法论", "nuwa", "女娲", "cangjie", "仓颉", "文风"]):
+        return "distill"
+    # 视频创作类（画布/视频生成工具；置于 tools 之后，避免爬虫/下载器含「视频」字样误伤）
+    if any(k in text for k in ["video", "视频", "短剧", "drama", "film", "anime", "动漫",
+                               "movie", "montage", "hyperframe", "shot", "画布", "canvas"]):
+        return "video"
     if any(k in text for k in ["open-design", "baoyu-design", "awesome-design", "design.md",
-                               "design-system", "design system", "frontend", "react"]):
+                               "design-system", "design system", "frontend"]):
         return "frontend"
     if any(k in text for k in ["ppt", "powerpoint", "排版", "公众号", "wechat", "写作", "write",
-                               "typeset", "editor", "design"]):
+                               "typeset", "editor"]):
         return "content"
-    if any(k in text for k in ["video", "短剧", "drama", "film", "anime", "动漫", "movie", "montage",
-                               "hyperframe", "影视", "shot"]):
-        return "video"
     if any(k in text for k in ["book", "书籍", "教程", "guide", "指南", "from-scratch", "llms",
                                "learning", "入门", "weekly", "hellogithub", "实践", "tutorial",
-                               "dive-into", "deep"]):
+                               "dive-into"]):
         return "learning"
-    if any(k in text for k in ["distill", "蒸馏", "认知", "思维", "nuwa", "女娲", "cangjie", "仓颉",
-                               "first-principles", "第一性", "perspective", "文风", "methodology"]):
-        return "distill"
     if any(k in text for k in ["code-review", "officecli", "reasonix", "sub2api", "freellmapi",
                                "2api", "中转", "mimo", "cc-connect", "coding", "编程"]):
         return "coding"
-    if any(k in text for k in ["chat", "assistant", "助手", "chatbot", "librechat", "astrbot",
+    if any(k in text for k in ["chatbot", "chatgpt", "assistant", "助手", "librechat", "astrbot",
                                "qwenpaw", "nuwax", "opensquilla", "workspace", "desktop", "agent-os"]):
         return "assistant"
     if any(k in text for k in ["opc", "one-person", "一人公司", "创业", "startup", "growth", "增长",
-                               "fde", "business", "软著", "copyright", "专利", "patent", "合规",
+                               "business", "软著", "copyright", "专利", "patent", "合规",
                                "compliance", "legal"]):
         return "business"
     return "agent"
