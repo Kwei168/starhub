@@ -208,6 +208,69 @@ def fetch_new_repos(token):
     return out
 
 
+# ==================== README 简介兜底 ====================
+def _readme_first_sentence(text):
+    """从 README 原文提取第一句像样的简介（清洗 markdown 噪音），失败返回 None。"""
+    for ln in text.splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        # 跳过标题 / 代码块围栏 / 引用块（多为项目名或导航，无信息量）
+        if re.match(r"^#{1,6}\s", s) or s.startswith(("```", "~~~")) or s.startswith(">"):
+            continue
+        # 去掉图片、链接（保留链接文字）、行内代码、HTML 标签
+        s = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", s)
+        s = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", s)
+        s = re.sub(r"<[^>]+>", "", s)
+        s = re.sub(r"`[^`]*`", "", s)
+        # 去掉行内加粗/斜体标记（先于行首符号剥离，保证 **xxx** 成对匹配）
+        s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+        s = re.sub(r"\*([^*]+)\*", r"\1", s)
+        # 去掉行首列表符/强调符，压缩空白
+        s = re.sub(r"^[\s\-*+]+", "", s).strip()
+        s = re.sub(r"\s+", " ", s)
+        low = s.lower()
+        # 跳过徽章/导航/状态行等噪音
+        if any(k in low for k in ("img.shields.io", "badge", "build passing", "build status",
+                                  "license", "contributors", "中文", "english", "stars", "downloads")):
+            continue
+        if len(s) >= 10:
+            # 中等长度也收敛为第一句（README 首段常是多句长段）
+            if len(s) > 80:
+                for sep in (". ", "。", "！", "? "):
+                    idx = s.find(sep)
+                    if 10 < idx <= 150:
+                        return s[:idx].strip()
+            # 超长截断到 150 字符，优先在句子边界截断
+            if len(s) > 150:
+                cut = s[:150]
+                for sep in (". ", "。", "，", ", "):
+                    idx = cut.rfind(sep)
+                    if idx > 30:
+                        return cut[:idx].strip()
+                return cut.strip() + "…"
+            return s
+    return None
+
+
+def fetch_readme_summary(fn, token):
+    """无简介项目：抓 README 提取一句简介（失败/无 README 返回 None）。"""
+    url = "https://api.github.com/repos/%s/readme" % fn
+    headers = {"Accept": "application/vnd.github.raw", "User-Agent": "starhub-auto-update"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read(30000).decode("utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        return None
+    summary = _readme_first_sentence(raw)
+    if summary:
+        time.sleep(1)  # 限流：GitHub 建议相邻请求间隔 ≥1s
+    return summary
+
+
 def _desc_zh(fn, desc, desc_zh):
     """排行榜项目简介：优先缓存中文，未命中则翻译并回写。"""
     if not desc:
@@ -444,6 +507,17 @@ def main():
         cat = known.get(fn) or classify_new(fn, r.get("description"), r.get("language"), r.get("topics"))
         known[fn] = cat
         desc = (desc_zh.get(fn) or r.get("description") or FALLBACK_DESC.get(fn, "")).strip()
+        # 无简介项目：从 README 提取一句简介，结果持久化到 desc_zh 避免重复抓取
+        if not desc and fn not in desc_zh:
+            summary = fetch_readme_summary(fn, token)
+            if summary:
+                if not has_cn(summary):
+                    translated = translate_to_zh(summary)
+                    if translated:
+                        summary = translated
+                desc = summary
+                desc_zh[fn] = summary
+                print("[README简介] %s -> %s" % (fn, summary[:60]))
         if desc:
             desc = " ".join(desc.split())
         # 新项目英文简介自动翻译为中文，并持久化到 desc_zh 避免重复翻译
