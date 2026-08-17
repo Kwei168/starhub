@@ -200,5 +200,8 @@
  "AppFlowy-IO/AppFlowy": "通过 AI 将项目、wiki 和团队结合在一起。 AppFlowy 是人工智能协作工作空间，您可以在不失去对数据控制的情况下实现更多目标。领先的开源 Notion 替代方案。",
  "Gitlawb/zero": "编码代理可以回答您、您的模型、您的机器、您的规则。",
  "mnfst/awesome-free-llm-apis": "永久免费 LLM API（API 密钥）列表",
- "jundot/omlx": "LLM 推理服务器，具有适用于 Apple Silicon 的连续批处理和 SSD 缓存 - 从 macOS 菜单栏进行管理"
+ "jundot/omlx": "LLM 推理服务器，具有适用于 Apple Silicon 的连续批处理和 SSD 缓存 - 从 macOS 菜单栏进行管理",
+ "Accio-org/RealReplicaBench": "RealReplicaBench：在真实在线服务的高保真、有状态和可复制副本中对长期代理进行基准测试",
+ "liustack/modlens": "The first vision plugin for DeepSeek Harness, and the vision bridge for every text-only coding agent. Paste an image, get structured JSON evidence (OCR, layout, semantics). | 全网最强 DeepSeek Harness 外挂视觉插件，为 DeepSeek、GLM 等纯文本模型外挂视觉能力，粘贴图片即得结构化 JSON 证据（OCR、版面、语义）。",
+ "bawadou/ai-data-extractor": "用于 AI 编码助手聊天记录的免费开源提取器。支持 Claude Code、Cursor、Windsurf、Aider、Cline/Roo Code 等。"
 }
