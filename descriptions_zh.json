@@ -210,5 +210,6 @@
  "aklivity/zilla": "🦎 适用于 Apache Kafka 和 AI 的高性能、多协议网关。通过 Kafka、HTTP、SSE、MQTT、gRPC 和 MCP 将应用程序、API、代理和设备安全地连接到实时数据。",
  "santifer/career-ops": "开源 AI 职位搜索：扫描职位门户，使用结构化 A-F 评分标准将列表评估为 1.0-5.0 分，定制您的简历，跟踪应用程序 — 在您的 AI 编码 CLI 中本地运行（Claude Code、Codex、OpenCode、Antigravity...）",
  "microsoft/ai-agents-for-beginners": "开始构建 AI 代理的 18 课",
- "akitaonrails/ai-memory": "用于代理编码 CLI 的长期记忆解决方案，并促进不同代理供应商之间的切换"
+ "akitaonrails/ai-memory": "用于代理编码 CLI 的长期记忆解决方案，并促进不同代理供应商之间的切换",
+ "pgrundev/pgbot": "pgbot - 用于 AI 代理和应用程序的 Postgres 智能"
 }
