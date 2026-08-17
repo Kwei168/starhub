@@ -41,3 +41,8 @@ jobs:
             git pull --rebase
             git push
           fi
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel --prod --yes --token "$VERCEL_TOKEN"
