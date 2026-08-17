@@ -428,7 +428,8 @@ def build_trending(token, desc_zh):
     else:
         print("[警告] AI 池为空，跳过快照更新，保留旧基线", file=sys.stderr)
 
-    return {"rising": rising, "total": total, "new": new_repos}
+    return {"rising": rising, "total": total, "new": new_repos,
+            "source": "trending" if trend_rows else "snapshot"}
 
 
 def _today_cn():

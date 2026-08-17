@@ -305,6 +305,12 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-item .reason{font-size:11px;margin-top:4px;display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trending[data-tab="rising"] .reason{color:var(--t-rising)}
 .trending[data-tab="total"] .reason{color:var(--t-total)}
+/* 涨星徽标：绿色胶囊（GitHub Trending 风），下跌灰、无基线灰字 */
+.trend-item .delta{
+  display:inline-flex;align-items:center;gap:2px;background:var(--upd-bg);color:var(--upd-color);
+  border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;line-height:18px;white-space:nowrap
+}
+.trend-item .delta.neg,.trend-item .delta.new{background:var(--hover);color:var(--muted)}
 .trending[data-tab="new"] .reason{color:var(--t-new)}
 .trend-item .lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);flex:none}
 .trend-item .lg .c{width:9px;height:9px;border-radius:50%;flex:none}
@@ -817,8 +823,10 @@ function buildTrendItem(p, i, full){
   const hasDelta = p.delta !== null && p.delta !== undefined;
   const deltaHtml = state.trendTab === 'rising'
     ? (hasDelta
-        ? '<span class="delta' + (p.delta < 0 ? ' neg':'') + '">' + (p.delta > 0 ? '+':'') + p.delta + '</span>'
-        : '<span class="delta" style="color:var(--faint)">新</span>')
+        ? (p.delta > 0
+            ? '<span class="delta">▲ +' + p.delta + '</span>'
+            : '<span class="delta' + (p.delta < 0 ? ' neg':'') + '">' + p.delta + '</span>')
+        : '<span class="delta new">新</span>')
     : '';
   const rank = '<span class="rank">' + (i+1) + '</span>';
   const name = '<a class="tn" href="' + escHtml(p.html_url) + '" title="' + escHtml(p.owner) + '/' + escHtml(p.name) + '" target="_blank" rel="noopener">' + escHtml(p.owner) + '/' + escHtml(p.name) + '</a>';
@@ -842,7 +850,14 @@ function renderTrending(){
   const list = $('#trendList');
   const items = (TRENDING && TRENDING[state.trendTab]) || [];
   const box = $('.trending'); if(box) box.setAttribute('data-tab', state.trendTab);
-  $('#trendUpdated').textContent = '更新于 ' + UPDATED;
+  let sub = '更新于 ' + UPDATED;
+  if(state.trendTab === 'rising'){
+    const src = TRENDING && TRENDING.source;
+    sub += src === 'trending' ? ' · GitHub Trending 今日涨星' : (src === 'snapshot' ? ' · 快照差值' : '');
+  } else {
+    sub += ' · 收藏池统计';
+  }
+  $('#trendUpdated').textContent = sub;
   list.innerHTML = '';
   if(!items.length){
     const msg = state.trendTab === 'rising'
