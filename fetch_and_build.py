@@ -441,26 +441,26 @@ def _today_cn():
     return datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
 
 
+def _cn_dt(utc_str):
+    """UTC 时间字符串 → 北京时间 datetime（解析失败返回 None）。"""
+    if not utc_str:
+        return None
+    try:
+        return datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=8)))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _cn_date(utc_str):
     """UTC 时间字符串 → 北京时间日期 YYYY-MM-DD。"""
-    if not utc_str:
-        return ""
-    try:
-        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=8)))
-        return dt.strftime("%Y-%m-%d")
-    except Exception:  # noqa: BLE001
-        return utc_str[:10]
+    dt = _cn_dt(utc_str)
+    return dt.strftime("%Y-%m-%d") if dt else (utc_str[:10] if utc_str else "")
 
 
 def _cn_time(utc_str):
     """UTC 时间字符串 → 北京时间 HH:MM。"""
-    if not utc_str:
-        return ""
-    try:
-        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=8)))
-        return dt.strftime("%H:%M")
-    except Exception:  # noqa: BLE001
-        return utc_str[11:16]
+    dt = _cn_dt(utc_str)
+    return dt.strftime("%H:%M") if dt else (utc_str[11:16] if utc_str else "")
 
 
 def fetch_following(token):
@@ -487,10 +487,10 @@ def fetch_following(token):
 
 
 def fetch_following_events(token):
-    """聚合关注账号动态（昨日 0 点至今）：新仓库 / star / 关注 / PR / 版本发布 / 公开仓库 / 提交更新。"""
+    """聚合关注账号动态（滚动 24 小时窗口）：新仓库 / star / 关注 / PR / 版本发布 / 公开仓库 / 提交更新。"""
     now_cn = datetime.now(timezone(timedelta(hours=8)))
+    cutoff = now_cn - timedelta(hours=24)  # 滚动窗口：最近 24 小时
     today = now_cn.strftime("%Y-%m-%d")
-    yesterday = (now_cn - timedelta(days=1)).strftime("%Y-%m-%d")
     following = fetch_following(token)
     feed = []
     for user in following:
@@ -506,14 +506,15 @@ def fetch_following_events(token):
             if not evs:
                 break
             for e in evs:
-                d = _cn_date(e.get("created_at"))
-                if not d or d < yesterday:
+                dt = _cn_dt(e.get("created_at"))
+                if dt is None or dt < cutoff:
                     continue
+                d = dt.strftime("%Y-%m-%d")
                 t = e.get("type")
                 payload = e.get("payload") or {}
                 actor = (e.get("actor") or {}).get("login", "")
                 repo = (e.get("repo") or {}).get("name", "")
-                tm = _cn_time(e.get("created_at"))
+                tm = dt.strftime("%H:%M")
                 day = "今天" if d == today else "昨天"
                 item = None
                 if t == "CreateEvent" and payload.get("ref_type") == "repository":
@@ -551,8 +552,8 @@ def fetch_following_events(token):
                 if item:
                     feed.append(item)
             # 事件按时间倒序返回：本页最早一条早于窗口起点则无需继续翻页
-            last = evs[-1].get("created_at") or ""
-            if last and _cn_date(last) < yesterday:
+            last_dt = _cn_dt((evs[-1].get("created_at") or ""))
+            if last_dt is None or last_dt < cutoff:
                 break
             time.sleep(1)  # 限流：GitHub 建议相邻请求间隔 ≥1s，避免二级速率限制
     feed.sort(key=lambda x: (x.get("date", ""), x.get("time", "")), reverse=True)

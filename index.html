@@ -319,7 +319,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-item .delta{color:var(--t-rising);font-weight:700;font-size:13px}
 .trend-item .delta.neg{color:var(--muted)}
 
-/* ---------- feed（今日关注动态） ---------- */
+/* ---------- feed（近 24 小时关注动态） ---------- */
 .feed{
   width:100%;flex:1;min-height:0;display:flex;flex-direction:column;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
@@ -539,7 +539,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
       <button class="trend-more" id="trendMore">查看完整 Top20</button>
     </aside>
     <section class="feed" id="feedWrap">
-      <h2>今日关注动态</h2>
+      <h2>近 24 小时关注动态</h2>
       <div class="feed-sub" id="feedUpdated"></div>
       <div class="feed-list" id="feedList"></div>
     </section>
@@ -912,15 +912,15 @@ function openTrendModal(){
 
 function closeTrendModal(){ $('#trendModal').classList.remove('open'); }
 
-// ---- 今日关注动态 ----
+// ---- 近 24 小时关注动态 ----
 const FEED_COLORS = { repo:'#0969da', star:'#e3a008', follow:'#8250df', pr:'#1a7f37', release:'#bf3989', public:'#656d76', push:'#d73a49' };
 function renderFeed(){
   const list = $('#feedList');
   const items = FEED || [];
-  $('#feedUpdated').textContent = '更新于 ' + UPDATED;
+  $('#feedUpdated').textContent = '近 24 小时滚动窗口 · 更新于 ' + UPDATED;
   list.innerHTML = '';
   if(!items.length){
-    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">今日暂无关注动态</div>';
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">近 24 小时暂无关注动态</div>';
     return;
   }
   items.forEach(f => {

@@ -2,8 +2,10 @@ name: Update Star Hub
 
 on:
   schedule:
-    # 每天 UTC 23:35 = 北京时间 07:35
-    - cron: "35 23 * * *"
+    # 北京时间 08:00-20:00 每 30 分钟一次（UTC 0-11 点，含 19:30）
+    - cron: "*/30 0-11 * * *"
+    # 北京时间 20:00-次日 08:00 每小时一次（UTC 12-23 点）
+    - cron: "0 12-23 * * *"
   workflow_dispatch: {}
 
 permissions:
