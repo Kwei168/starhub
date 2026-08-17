@@ -294,6 +294,70 @@ def _fmt_zh(n):
     return str(n)
 
 
+# ==================== Trending 涨星榜（真实 stars today） ====================
+# 2026 年起 GitHub Trending 每页仅展示 7~20 个仓库，因此抓多语言页合并去重凑量
+TREND_LANG_PAGES = ["", "python", "typescript", "javascript", "rust", "go", "java",
+                    "c++", "c", "swift", "kotlin", "ruby", "php", "c#", "shell",
+                    "jupyter-notebook", "vue", "dart", "elixir", "haskell"]
+
+# AI 分类关键词（ 词边界匹配 full_name + 描述，命中即视为 AI 类项目）
+_AI_RE = re.compile(
+    r"\b(ai|ml|llm|llms|gpt|nlp|rag|agent|agents|agentic|llama|claude|openai|anthropic|"
+    r"gemini|copilot|diffusion|neural|transformer|chatbot|assistant|embedding|inference|"
+    r"genai|generative|vision|speech|voice|machine.?learning|deep.?learning|model|models)\b")
+
+
+def _is_ai_repo(fn, desc):
+    """Trending 项目是否属于 AI 分类（关键词过滤 name + 描述）。"""
+    return bool(_AI_RE.search((fn + " " + (desc or "")).lower()))
+
+
+def _parse_trending(html):
+    """解析 Trending 页单个语言维度的仓库卡片。"""
+    out = []
+    for b in re.findall(r'<article[^>]*class="[^"]*Box-row[^"]*"[\s\S]*?</article>', html):
+        m = re.search(r'<h2[^>]*>[\s\S]*?href="/([^"/]+/[^"/]+)"', b)
+        if not m:
+            continue
+        fn = m.group(1)
+        if fn.startswith("sponsors/"):  # 赞助商卡片，跳过
+            continue
+        s = re.search(r'([\d,]+)\s+stars?\s+today', b)
+        lang = re.search(r'itemprop="programmingLanguage"[^>]*>([^<]+)<', b)
+        d = re.search(r'<h2[\s\S]*?</h2>[\s\S]*?<p[^>]*>([\s\S]*?)</p>', b)
+        st = re.search(r'stargazers"[\s\S]{0,300}?>([\d,]+)', b)
+        desc = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', d.group(1))).strip() if d else ""
+        owner, name = fn.split("/", 1)
+        out.append({
+            "name": name, "owner": owner, "full_name": fn,
+            "html_url": "https://github.com/" + fn,
+            "desc": desc, "language": lang.group(1) if lang else None,
+            "stars": int(st.group(1).replace(",", "")) if st else 0,
+            "stars_today": int(s.group(1).replace(",", "")) if s else 0,
+        })
+    return out
+
+
+def fetch_trending_daily(token=None):
+    """抓 GitHub Trending daily（多语言页合并去重）；全部失败返回 None 触发降级。"""
+    pool = {}
+    for lp in TREND_LANG_PAGES:
+        url = "https://github.com/trending/%s?since=daily" % lp
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                               " (KHTML, like Gecko) Chrome/126.0 Safari/537.36"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                html = r.read().decode("utf-8", errors="replace")
+            for p in _parse_trending(html):
+                if p["full_name"] not in pool:
+                    pool[p["full_name"]] = p
+        except Exception as e:  # noqa: BLE001
+            print("[Trending %s 失败] %s" % (lp or "全部", e), file=sys.stderr)
+        time.sleep(0.5)
+    return list(pool.values()) if pool else None
+
+
 def build_trending(token, desc_zh):
     snap = {}
     try:
@@ -306,15 +370,25 @@ def build_trending(token, desc_zh):
     # 总榜：按总星标排序
     total = sorted(pool, key=lambda x: x["stars"], reverse=True)[:TREND_TOP]
 
-    # 涨星榜：排除超巨头，只看有昨日基线的项目
+    # 涨星榜：优先 Trending daily 真实 stars today（AI 分类过滤）
     rising = []
-    for p in pool:
-        prev = snap.get(p["full_name"])
-        if prev is not None and p["stars"] <= TREND_MAX_STARS:
-            p["delta"] = p["stars"] - prev
-            rising.append(p)
-    rising.sort(key=lambda x: x["delta"], reverse=True)
-    rising = rising[:TREND_TOP]
+    trend_rows = fetch_trending_daily(token)
+    if trend_rows:
+        rising = [p for p in trend_rows if _is_ai_repo(p["full_name"], p["desc"])]
+        rising.sort(key=lambda x: x["stars_today"], reverse=True)
+        rising = rising[:TREND_TOP]
+        for p in rising:
+            p["delta"] = p["stars_today"]  # 前端 delta 徽标直接展示 stars today
+    else:
+        # 降级：Trending 抓取失败，回退到快照差值模式（排除超巨头，只看有昨日基线的项目）
+        print("[涨星榜] Trending 抓取失败，降级为快照差值模式", file=sys.stderr)
+        for p in pool:
+            prev = snap.get(p["full_name"])
+            if prev is not None and p["stars"] <= TREND_MAX_STARS:
+                p["delta"] = p["stars"] - prev
+                rising.append(p)
+        rising.sort(key=lambda x: x["delta"], reverse=True)
+        rising = rising[:TREND_TOP]
 
     # 首次运行无基线：涨星榜 fallback 到总榜，delta=None（页面显示"新上榜"）
     if not rising:
