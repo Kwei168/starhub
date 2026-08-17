@@ -179,5 +179,8 @@
  "trycua/cua": "通过开源驱动程序、跨操作系统队列以及培训、评估和数据生成基准来扩展计算机使用 2.0。",
  "mukul975/Anthropic-Cybersecurity-Skills": "AI代理的817种结构化网络安全技能·映射到6个框架： MITRE ATT&CK、NIST CSF 2.0、MITRE ATLAS、D3FEND、NIST AI RMF和MITRE F3 （打击欺诈） · agentskills.io标准·适用于Claude Code、GitHub Copilot、Codex CLI、Cursor、Gemini CLI和20多个平台· 29个安全域· Apache 2.0",
  "langchain-ai/langgraph": "构建弹性代理。",
- "memoket/memoket-kite": "人工智能代理的内存引擎，具有令牌效率，超越矢量相似性的可解释检索。"
+ "memoket/memoket-kite": "人工智能代理的内存引擎，具有令牌效率，超越矢量相似性的可解释检索。",
+ "Hy-U1free/TapCanvas": "AI 可视化内容生产工作台",
+ "zhongerxin/Cowart": "Cowart 是一个面向 Codex 的原生无限画布 widget 插件",
+ "amruthpillai/reactive-resume": "一款独一无二的简历创建工具，可保护您的隐私。完全安全、可定制、可移植、开源且永久免费。今天就尝试一下吧！"
 }
