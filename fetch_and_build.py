@@ -325,14 +325,22 @@ def _parse_trending(html):
         s = re.search(r'([\d,]+)\s+stars?\s+today', b)
         lang = re.search(r'itemprop="programmingLanguage"[^>]*>([^<]+)<', b)
         d = re.search(r'<h2[\s\S]*?</h2>[\s\S]*?<p[^>]*>([\s\S]*?)</p>', b)
-        st = re.search(r'stargazers"[\s\S]{0,300}?>([\d,]+)', b)
+        # 总星标：stargazers 链接内最后一个 </svg> 后的数字（2026 新版页面数字前有换行空格）
+        st = None
+        si = b.find('stargazers')
+        if si != -1:
+            ei = b.find('</a>', si)
+            if ei != -1:
+                m2 = re.search(r'</svg>\s*([\d,]+)', b[si:ei])
+                if m2:
+                    st = m2.group(1)
         desc = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', d.group(1))).strip() if d else ""
         owner, name = fn.split("/", 1)
         out.append({
             "name": name, "owner": owner, "full_name": fn,
             "html_url": "https://github.com/" + fn,
             "desc": desc, "language": lang.group(1) if lang else None,
-            "stars": int(st.group(1).replace(",", "")) if st else 0,
+            "stars": int(st.replace(",", "")) if st else 0,
             "stars_today": int(s.group(1).replace(",", "")) if s else 0,
         })
     return out
