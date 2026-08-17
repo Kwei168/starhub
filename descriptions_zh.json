@@ -203,5 +203,11 @@
  "jundot/omlx": "LLM 推理服务器，具有适用于 Apple Silicon 的连续批处理和 SSD 缓存 - 从 macOS 菜单栏进行管理",
  "Accio-org/RealReplicaBench": "RealReplicaBench：在真实在线服务的高保真、有状态和可复制副本中对长期代理进行基准测试",
  "liustack/modlens": "The first vision plugin for DeepSeek Harness, and the vision bridge for every text-only coding agent. Paste an image, get structured JSON evidence (OCR, layout, semantics). | 全网最强 DeepSeek Harness 外挂视觉插件，为 DeepSeek、GLM 等纯文本模型外挂视觉能力，粘贴图片即得结构化 JSON 证据（OCR、版面、语义）。",
- "bawadou/ai-data-extractor": "用于 AI 编码助手聊天记录的免费开源提取器。支持 Claude Code、Cursor、Windsurf、Aider、Cline/Roo Code 等。"
+ "bawadou/ai-data-extractor": "用于 AI 编码助手聊天记录的免费开源提取器。支持 Claude Code、Cursor、Windsurf、Aider、Cline/Roo Code 等。",
+ "freestylefly/awesome-gpt-image-2": "Prompt as Code | GPT-Image2 工业级提示词引擎与模板库，470+ 个案例逆向工程，20+ 套工业级模板，并提炼出Skills，持续更新中",
+ "volcengine/OpenViking": "人工智能代理的自我进化上下文数据库。统一代理记忆、知识 RAG 和技能。",
+ "alirezadir/AIMLInterviews": "该存储库旨在作为机器学习/人工智能技术面试的指南。",
+ "aklivity/zilla": "🦎 适用于 Apache Kafka 和 AI 的高性能、多协议网关。通过 Kafka、HTTP、SSE、MQTT、gRPC 和 MCP 将应用程序、API、代理和设备安全地连接到实时数据。",
+ "santifer/career-ops": "开源 AI 职位搜索：扫描职位门户，使用结构化 A-F 评分标准将列表评估为 1.0-5.0 分，定制您的简历，跟踪应用程序 — 在您的 AI 编码 CLI 中本地运行（Claude Code、Codex、OpenCode、Antigravity...）",
+ "microsoft/ai-agents-for-beginners": "开始构建 AI 代理的 18 课"
 }
