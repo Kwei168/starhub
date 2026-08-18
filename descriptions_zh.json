@@ -212,5 +212,8 @@
  "microsoft/ai-agents-for-beginners": "开始构建 AI 代理的 18 课",
  "akitaonrails/ai-memory": "用于代理编码 CLI 的长期记忆解决方案，并促进不同代理供应商之间的切换",
  "pgrundev/pgbot": "pgbot - 用于 AI 代理和应用程序的 Postgres 智能",
- "slavingia/skills": "改编自 Sahil Lavingia 的《极简主义企业家》"
+ "slavingia/skills": "改编自 Sahil Lavingia 的《极简主义企业家》",
+ "multica-ai/multica": "将问题分配给 Claude Code、Codex、Cursor 以及其他 17 个编码代理（如队友）——开源且可自托管。",
+ "farion1231/cc-switch": "一款跨平台桌面一体化助手，适用于 Claude Code、Codex、OpenCode、OpenClaw、Grok Build 和 Hermes Agent。唯一官方网站：ccswitch.io",
+ "colbymchenry/codegraph": "预索引代码知识图，代码更改自动同步，适用于 Claude Code、Codex、Gemini、Cursor、OpenCode、AntiGravity、Kiro 和 Hermes Agent — 更少的令牌、更少的工具调用、100% 本地"
 }
