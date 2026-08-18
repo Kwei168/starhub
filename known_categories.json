@@ -141,5 +141,8 @@
  "liustack/modlens": "coding",
  "usestrix/strix": "agent",
  "cactus-compute/needle": "agent",
- "freestylefly/awesome-gpt-image-2": "assistant"
+ "freestylefly/awesome-gpt-image-2": "assistant",
+ "slavingia/skills": "agent",
+ "Weikezi-AI/video-catcher": "tools",
+ "Weikezi-AI/music-dance-video": "video"
 }
