@@ -8,7 +8,7 @@
 :root{
   --bg:#f6f8fa; --card:#ffffff; --border:#d0d7de; --border2:#eaeef2;
   --text:#1f2328; --muted:#59636e; --faint:#6e7781;
-  --brand:#0969da; --brand-strong:#0550ae; --brand-line:#54aeff; --brand-weak:#ddf4ff;
+  --brand:#0ea5e9; --brand-strong:#0284c7; --brand-line:#7dd3fc; --brand-weak:#e0f2fe;
   --accent:var(--brand); --accent-line:var(--brand-line); --accent-weak:var(--brand-weak);
   --star:#e3a008; --star-bg:#fff8c5;
   --header-bg:rgba(255,255,255,.86);
@@ -19,17 +19,17 @@
   --on-strong:#ffffff;
   --toast-bg:#1f2328; --toast-text:#ffffff;
   --faved-border:#e3b341; --faved-bg:linear-gradient(180deg,#fffdf2,#ffffff);
-  --t-rising:#d4600a; --t-total:#0969da; --t-new:#1a7f37;
+  --t-rising:#0ea5e9; --t-total:#2563eb; --t-new:#10b981;
   --gold:#e3a008; --silver:#8b949e; --bronze:#c96f3b;
   --upd-color:#1a7f37; --upd-bg:#dafbe1;
   --radius:12px; --shadow:0 1px 2px rgba(31,35,40,.06),0 1px 0 rgba(31,35,40,.03);
   --shadow-card:0 1px 2px rgba(31,35,40,.06),0 1px 0 rgba(31,35,40,.03);
-  --shadow-lift:0 6px 20px rgba(8,47,73,.14),0 1px 0 rgba(31,35,40,.05);
+  --shadow-lift:0 8px 24px rgba(14,165,233,.14),0 2px 6px rgba(8,47,73,.10);
 }
 [data-theme="dark"]{
   --bg:#0d1117; --card:#161b22; --border:#30363d; --border2:#21262d;
   --text:#e6edf3; --muted:#9198a1; --faint:#8b949e;
-  --brand:#4493f8; --brand-strong:#316dca; --brand-line:#1f6feb; --brand-weak:#0c2d6b;
+  --brand:#38bdf8; --brand-strong:#7dd3fc; --brand-line:#0c4a6e; --brand-weak:#0c2d3f;
   --accent:var(--brand); --accent-line:var(--brand-line); --accent-weak:var(--brand-weak);
   --star:#e3b341; --star-bg:#3b2f00;
   --header-bg:rgba(13,17,23,.86);
@@ -40,7 +40,7 @@
   --on-strong:#1f2328;
   --toast-bg:#e6edf3; --toast-text:#0d1117;
   --faved-border:#9e6a03; --faved-bg:linear-gradient(180deg,#2a2308,#161b22);
-  --t-rising:#f0883e; --t-total:#4493f8; --t-new:#3fb950;
+  --t-rising:#38bdf8; --t-total:#60a5fa; --t-new:#34d399;
   --gold:#e3b341; --silver:#9198a1; --bronze:#f0883e;
   --upd-color:#3fb950; --upd-bg:#12261e;
   --shadow:0 1px 2px rgba(1,4,9,.5),0 1px 0 rgba(1,4,9,.35);
@@ -61,9 +61,25 @@ button{font-family:inherit;cursor:pointer}
 
 /* ---------- header ---------- */
 header{
-  position:sticky;top:0;z-index:50;background:var(--header-bg);
-  backdrop-filter:saturate(160%) blur(10px);border-bottom:1px solid var(--border2);
+  position:sticky;top:0;z-index:50;
+  background:linear-gradient(120deg,#082f49,#0e7490,#0891b2);
+  backdrop-filter:saturate(160%) blur(10px);border-bottom:1px solid rgba(255,255,255,.08);
 }
+[data-theme="dark"] header{background:linear-gradient(120deg,#041e3a,#082f49,#0c4a6e)}
+/* 深色顶栏内容反白 */
+.hd .logo svg{fill:#fff}
+.hd .logo .t b{color:#fff}
+.hd .logo .t span{color:rgba(255,255,255,.65)}
+.hd .ov{color:rgba(255,255,255,.75)}
+.hd .ov b{color:#fff}
+.hd .ov .badge{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff}
+.hd .ov .badge .icon{color:#4ade80}
+.hd .ov .sep{background:rgba(255,255,255,.25)}
+.hd .acts .btn{background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.22);color:#fff}
+.hd .acts .btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.35)}
+.nav-links a{color:rgba(255,255,255,.75)}
+.nav-links a:hover{background:rgba(255,255,255,.14);color:#fff}
+.nav-links a .icon{opacity:.7}
 .hd{max-width:1440px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
 .logo{display:flex;align-items:center;gap:10px;min-width:0}
 .logo svg{width:30px;height:30px;fill:var(--logo);flex:none}
@@ -139,7 +155,14 @@ header{
 }
 .stat .ic svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .stat .ic.gold{background:var(--star-bg);color:var(--star)}
-.stat .v{font-size:22px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
+/* 统计卡色彩节奏：蓝/紫/绿/金 */
+.stat:nth-child(1) .ic{background:#e0f2fe;color:#0284c7}
+.stat:nth-child(2) .ic{background:#f3e8ff;color:#9333ea}
+.stat:nth-child(3) .ic{background:#dcfce7;color:#16a34a}
+[data-theme="dark"] .stat:nth-child(1) .ic{background:#0c2d3f;color:#38bdf8}
+[data-theme="dark"] .stat:nth-child(2) .ic{background:#2e1065;color:#c084fc}
+[data-theme="dark"] .stat:nth-child(3) .ic{background:#052e16;color:#4ade80}
+.stat .v{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.1}
 .stat .v small{font-size:13px;font-weight:500;color:var(--muted)}
 .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
 .langbar{
@@ -167,39 +190,42 @@ header{
     radial-gradient(680px 170px at 10% -45%,var(--accent-line) 0%,transparent 62%),
     linear-gradient(135deg,var(--accent-weak) 0%,var(--card) 58%);
   border:1px solid var(--accent-line);border-radius:18px;
-  box-shadow:var(--shadow),0 10px 28px rgba(9,105,218,.10);
-  padding:26px 28px 22px;
+  box-shadow:var(--shadow),0 10px 28px rgba(14,165,233,.10);
+  padding:16px 22px 14px;
 }
 .search-hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent-line) 45%,transparent 92%)}
-.sh-inner{position:relative;display:flex;flex-direction:column;gap:14px}
-.sh-head{display:flex;align-items:center;gap:14px}
+.sh-inner{position:relative;display:flex;flex-direction:row;align-items:center;gap:16px}
+.sh-head{display:flex;align-items:center;gap:12px;flex:none}
 .sh-ic{
-  width:46px;height:46px;flex:none;border-radius:13px;
+  width:36px;height:36px;flex:none;border-radius:10px;
   display:flex;align-items:center;justify-content:center;
   background:var(--accent);color:var(--on-strong);
-  box-shadow:0 4px 14px rgba(9,105,218,.35);
+  box-shadow:0 4px 12px rgba(14,165,233,.30);
 }
-.sh-ic .icon{width:22px;height:22px}
-.sh-t h2{font-size:21px;font-weight:700;color:var(--accent);margin:0;letter-spacing:.3px}
-.sh-t p{margin:3px 0 0;font-size:12.5px;color:var(--muted)}
+.sh-ic .icon{width:18px;height:18px}
+.sh-t h2{font-size:17px;font-weight:700;color:var(--accent);margin:0;letter-spacing:.3px}
+.sh-t p{margin:2px 0 0;font-size:12px;color:var(--muted)}
 .sh-t p b{color:var(--accent);font-weight:600}
-.sh-row{display:flex;align-items:center;gap:12px}
+.sh-row{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
 .sh-row .search{
-  flex:1;height:52px;border-radius:14px;padding:0 16px;
+  flex:1;height:44px;border-radius:12px;padding:0 14px;
   background:var(--card);border:1.5px solid var(--accent-line);
-  box-shadow:0 2px 10px rgba(9,105,218,.12);
+  box-shadow:0 2px 8px rgba(14,165,233,.10);
 }
 .sh-row .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-weak)}
-.sh-row .search .icon{color:var(--accent);width:21px;height:21px}
-.sh-row .search input{font-size:16px}
+.sh-row .search .icon{color:var(--accent);width:19px;height:19px}
+.sh-row .search input{font-size:15px}
 .sh-row .search input::placeholder{color:var(--muted)}
-#btnSearchAll{flex:none;height:52px;padding:0 30px;font-size:15px;font-weight:600;border-radius:14px;box-shadow:0 4px 14px rgba(9,105,218,.30)}
+#btnSearchAll{flex:none;height:44px;padding:0 24px;font-size:15px;font-weight:600;border-radius:12px;box-shadow:0 4px 12px rgba(14,165,233,.25)}
 #btnSearchAll.hidden{display:none}
-#searchHint{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+#searchHint{flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 #searchHint .n{color:var(--accent);font-weight:600}
-@media (max-width:760px){
-  .search-hero{padding:20px 16px 18px}
+@media (max-width:900px){
+  .search-hero{padding:18px 16px 16px}
+  .sh-inner{flex-direction:column;align-items:stretch;gap:12px}
+  .sh-t p{white-space:normal}
   .sh-row{flex-wrap:wrap}
+  #searchHint{flex:1 1 100%}
   #btnSearchAll{width:100%}
 }
 
@@ -257,7 +283,7 @@ header{
 .card{
   position:relative;display:flex;flex-direction:column;gap:8px;background:var(--card);
   border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-card);
-  transition:border-color .15s,transform .15s,box-shadow .15s;
+  transition:border-color .15s,transform .2s cubic-bezier(.4,0,.2,1),box-shadow .2s cubic-bezier(.4,0,.2,1);
 }
 .card:hover{border-color:var(--accent-line);transform:translateY(-2px);box-shadow:var(--shadow-lift)}
 .card .top{display:flex;align-items:flex-start;gap:8px;padding-right:38px}
@@ -368,8 +394,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .trend-item .lg .c{width:9px;height:9px;border-radius:50%;flex:none}
 .trend-item .stars{color:var(--muted);display:inline-flex;align-items:center;gap:3px;flex:none}
 .trend-item .tm{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:11px;min-width:0}
-.trend-item .delta{color:var(--t-rising);font-weight:700;font-size:13px}
-.trend-item .delta.neg{color:var(--muted)}
 
 /* ---------- feed（近 24 小时关注动态） ---------- */
 .feed{
@@ -483,9 +507,11 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   .feed{flex:none}
   .trending .trend-list{max-height:640px}
 }
-@media (max-width:900px){
+@media (max-width:1360px){
   .hd{flex-wrap:wrap;row-gap:8px}
   .nav-links{order:3;flex:1 1 100%;justify-content:flex-start;overflow-x:auto;padding:2px 0}
+}
+@media (max-width:900px){
   .grid,.pinned{grid-template-columns:repeat(2,1fr)}
   .stats{grid-template-columns:repeat(2,1fr)}
 }
@@ -530,10 +556,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <div class="sp"></div>
     <div class="ov">
       <span class="badge" title="数据更新时间"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="hdUpd">更新于 --</span></span>
-      <span class="sep"></span>
-      <span><b id="hdTotal">0</b> 个收藏</span>
-      <span class="sep"></span>
-      <span><b id="hdCats">0</b> 个分类</span>
+      <span><b id="hdTotal">0</b> 个收藏 · <b id="hdCats">0</b> 个分类</span>
     </div>
     <div class="acts">
       <button class="btn" id="btnView" title="切换列表/卡片视图" aria-label="切换视图"><svg class="icon" id="viewIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
@@ -563,7 +586,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
         </div>
         <div class="sh-t">
           <h2>全网仓库搜索</h2>
-          <p>跨语言搜索整个 GitHub，中英文仓库均可能出现 · 输入 <b>2 个字符以上</b> 即可搜全网</p>
+          <p>跨语言搜索整个 GitHub · 输入 <b>2 个字符</b> 即可搜全网</p>
         </div>
       </div>
       <div class="sh-row">
@@ -573,8 +596,8 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
           <button class="clear" id="btnClear" aria-label="清空">×</button>
         </div>
         <button class="btn primary hidden" id="btnSearchAll" title="在整个 GitHub 中搜索（跨语言）">搜全网</button>
+        <div id="searchHint"></div>
       </div>
-      <div id="searchHint"></div>
     </div>
   </section>
   <div class="main">
@@ -1169,9 +1192,8 @@ function buildTrendItem(p, i, full){
       '</div>' + '<div class="tm">' + deltaHtml + stars + '</div>';
   }
   return rank + '<div class="ti">' + name +
-    '<span class="td" title="' + escHtml(p.desc || '暂无简介') + '">' + escHtml(p.desc || '暂无简介') + '</span>' +
     '<span class="meta">' + lang + stars + '</span>' +
-    '</div>' + '<div class="tm">' + deltaHtml + reason + '</div>';
+    '</div>' + '<div class="tm">' + deltaHtml + '</div>';
 }
 
 function renderTrending(){
