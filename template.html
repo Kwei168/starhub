@@ -493,11 +493,23 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 /* ---------- responsive ---------- */
 @media (max-width:1100px){
   .layout{grid-template-columns:1fr}
-  .side{position:static;height:auto;overflow:visible}
+  .search-hero{order:-2}
+  .side{position:static;height:auto;overflow:visible;order:-1}
   .trending{flex:none}
   .feed{flex:none}
   .trending .trend-list{max-height:640px}
 }
+
+/* ---------- back to top ---------- */
+.back-top{
+  position:fixed;right:16px;bottom:16px;z-index:70;width:46px;height:46px;border:0;border-radius:50%;
+  background:var(--accent-solid);color:var(--on-strong);box-shadow:var(--shadow-lift);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  opacity:0;visibility:hidden;transform:translateY(8px);transition:opacity .25s,transform .25s,visibility .25s;
+}
+.back-top.show{opacity:1;visibility:visible;transform:translateY(0)}
+.back-top:active{transform:translateY(0) scale(.94)}
+@media (prefers-reduced-motion:reduce){.back-top{transition:none}}
 @media (max-width:1100px){
   .hd{flex-wrap:wrap;row-gap:8px}
   .nav-links{order:3;flex:1 1 100%;justify-content:flex-start;overflow-x:auto;padding:2px 0}
@@ -1543,6 +1555,18 @@ refreshFeed(); // 打开页面即拉取实时关注动态（静默失败，静�
 startFeedPolling(); // 每 30 分钟轮询（页面不可见时暂停）
 switchSideTab(state.sideTab);
 bindEvents();
+/* back to top */
+(function(){
+  var bt=document.getElementById('backTop');
+  if(!bt)return;
+  var onScroll=function(){bt.classList.toggle('show',window.scrollY>800)};
+  window.addEventListener('scroll',onScroll,{passive:true});
+  onScroll();
+  bt.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'})});
+})();
 </script>
+<button id="backTop" class="back-top" aria-label="返回顶部" title="返回顶部">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
+</button>
 </body>
 </html>
