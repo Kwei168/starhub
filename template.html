@@ -402,7 +402,8 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .feed-list::-webkit-scrollbar-thumb:hover{background:var(--track-hover)}
 .feed-item{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--border2);font-size:12.5px;min-width:0}
 .feed-item:last-child{border-bottom:0}
-.feed-item .fd{flex:none;width:9px;height:9px;border-radius:50%}
+.feed-item .fd{flex:none;width:12px;height:12px;border-radius:50%}
+.feed-item .fd svg{width:12px;height:12px;display:block}
 .feed-item .fa{font-weight:600;color:var(--text);flex:none;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .feed-item .fv{color:var(--muted);flex:none;white-space:nowrap}
 .feed-item .ft{color:var(--accent);font-weight:500;flex:1;min-width:0;white-space:normal;word-break:break-all;line-height:1.35}
@@ -1286,10 +1287,14 @@ function renderFeed(){
     else if(f.kind === 'release'){ verb = '发布了 release'; target = f.tag || f.repo; }
     else if(f.kind === 'public'){ verb = '公开了仓库'; target = f.repo; }
     else if(f.kind === 'push'){ verb = '推送了提交'; target = f.repo + ' (' + f.size + ' 个)'; }
+    /* 类型视觉：star 用金色星形，其余用类型色圆点 + 同色光晕 */
+    const fd = f.kind === 'star'
+      ? '<span class="fd" style="color:'+color+'">'+icon.star+'</span>'
+      : '<span class="fd" style="background:'+color+';box-shadow:0 0 0 4px '+color+'33"></span>';
     const row = document.createElement('div');
     row.className = 'feed-item';
     row.innerHTML =
-      '<span class="fd" style="background:'+color+'"></span>' +
+      fd +
       '<span class="fa">'+escHtml(f.actor)+'</span>' +
       '<span class="fv">'+verb+'</span>' +
       '<a class="ft" href="'+escHtml(f.url||'')+'" target="_blank" rel="noopener">'+escHtml(target)+'</a>' +
