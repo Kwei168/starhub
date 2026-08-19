@@ -19,7 +19,7 @@
   --on-strong:#ffffff;
   --toast-bg:#1f2328; --toast-text:#ffffff;
   --faved-border:#e3b341; --faved-bg:linear-gradient(180deg,#fffdf2,#ffffff);
-  --t-rising:#0ea5e9; --t-total:#2563eb; --t-new:#10b981;
+  --t-rising:#d4600a; --t-total:#2563eb; --t-new:#10b981;
   --gold:#e3a008; --silver:#8b949e; --bronze:#c96f3b;
   --upd-color:#1a7f37; --upd-bg:#dafbe1;
   --radius:12px; --shadow:0 1px 2px rgba(31,35,40,.06),0 1px 0 rgba(31,35,40,.03);
@@ -40,7 +40,7 @@
   --on-strong:#1f2328;
   --toast-bg:#e6edf3; --toast-text:#0d1117;
   --faved-border:#9e6a03; --faved-bg:linear-gradient(180deg,#2a2308,#161b22);
-  --t-rising:#38bdf8; --t-total:#60a5fa; --t-new:#34d399;
+  --t-rising:#f0883e; --t-total:#60a5fa; --t-new:#34d399;
   --gold:#e3b341; --silver:#9198a1; --bronze:#f0883e;
   --upd-color:#3fb950; --upd-bg:#12261e;
   --shadow:0 1px 2px rgba(1,4,9,.5),0 1px 0 rgba(1,4,9,.35);
@@ -70,15 +70,11 @@ header{
 .hd .logo svg{fill:#fff}
 .hd .logo .t b{color:#fff}
 .hd .logo .t span{color:rgba(255,255,255,.65)}
-.hd .ov{color:rgba(255,255,255,.75)}
-.hd .ov b{color:#fff}
-.hd .ov .badge{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff}
-.hd .ov .badge .icon{color:#4ade80}
-.hd .ov .sep{background:rgba(255,255,255,.25)}
 .hd .acts .btn{background:rgba(255,255,255,.10);border-color:rgba(255,255,255,.22);color:#fff}
 .hd .acts .btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.35)}
-.nav-links a{color:rgba(255,255,255,.75)}
-.nav-links a:hover{background:rgba(255,255,255,.14);color:#fff}
+.nav-links a{color:rgba(255,255,255,.92)}
+.nav-links a:hover{background:var(--t-rising);color:#fff}
+.nav-links a:hover .icon{opacity:1}
 .nav-links a .icon{opacity:.7}
 .hd{max-width:1440px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
 .logo{display:flex;align-items:center;gap:10px;min-width:0}
@@ -87,15 +83,6 @@ header{
 .logo .t b{font-size:16px;font-weight:700;color:var(--logo)}
 .logo .t span{font-size:12px;color:var(--logo-sub)}
 .hd .sp{flex:1}
-.hd .ov{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
-.hd .ov .badge{
-  display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:999px;
-  background:var(--accent-weak);border:1px solid var(--accent-line);color:var(--accent);font-weight:600;
-  white-space:nowrap;
-}
-.hd .ov .badge .icon{width:12px;height:12px;color:var(--upd-color)}
-.hd .ov .sep{width:1px;height:16px;background:var(--border)}
-.hd .ov b{color:var(--text);font-weight:700}
 .hd .acts{display:flex;gap:8px}
 .nav-links{display:flex;align-items:center;gap:4px;min-width:0}
 .nav-links a{
@@ -507,7 +494,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   .feed{flex:none}
   .trending .trend-list{max-height:640px}
 }
-@media (max-width:1360px){
+@media (max-width:1100px){
   .hd{flex-wrap:wrap;row-gap:8px}
   .nav-links{order:3;flex:1 1 100%;justify-content:flex-start;overflow-x:auto;padding:2px 0}
 }
@@ -517,7 +504,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 }
 @media (max-width:640px){
   .hd{padding:10px 14px}
-  .hd .ov .sep,.hd .ov>span:not(.badge){display:none}
   .hd .acts .btn span{display:none}
   .hd .acts .btn{padding:0 10px}
   .wrap{padding:12px 12px 48px}
@@ -554,10 +540,6 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
             <a href="https://ai.codefather.cn/vibe" target="_blank" rel="noopener">CodeFather AI<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
     </nav>
     <div class="sp"></div>
-    <div class="ov">
-      <span class="badge" title="数据更新时间"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="hdUpd">更新于 --</span></span>
-      <span><b id="hdTotal">0</b> 个收藏 · <b id="hdCats">0</b> 个分类</span>
-    </div>
     <div class="acts">
       <button class="btn" id="btnView" title="切换列表/卡片视图" aria-label="切换视图"><svg class="icon" id="viewIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
       <button class="btn" id="btnTheme" title="切换明暗主题" aria-label="切换主题"><svg class="icon" id="themeIcon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
@@ -946,12 +928,6 @@ function fmtStars(n){
   if(n>=100000) return (n/1000).toFixed(0)+'k';
   if(n>=1000) return (n/1000).toFixed(1).replace(/\.0$/,'')+'k';
   return n;
-}
-
-function renderHeader(){
-  $('#hdUpd').textContent = '更新于 ' + UPDATED;
-  $('#hdTotal').textContent = DATA.length;
-  $('#hdCats').textContent = CATS.length;
 }
 
 function renderList(){
@@ -1522,7 +1498,6 @@ if('IntersectionObserver' in window){
   }, {threshold:.4});
   io.observe($('#stTotal').parentElement.parentElement);
 }else{ counted = true; }
-renderHeader();
 applyTheme(getTheme());
 applyView(getView());
 renderLangBar();
