@@ -724,6 +724,9 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 </div>
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput" accept=".json" style="display:none">
+<button id="backTop" class="back-top" aria-label="返回顶部" title="返回顶部">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
+</button>
 
 <script>
 const DATA = __DATA__;
@@ -1565,8 +1568,5 @@ bindEvents();
   bt.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'})});
 })();
 </script>
-<button id="backTop" class="back-top" aria-label="返回顶部" title="返回顶部">
-  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
-</button>
 </body>
 </html>
