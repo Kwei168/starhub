@@ -216,5 +216,7 @@
  "multica-ai/multica": "将问题分配给 Claude Code、Codex、Cursor 以及其他 17 个编码代理（如队友）——开源且可自托管。",
  "farion1231/cc-switch": "一款跨平台桌面一体化助手，适用于 Claude Code、Codex、OpenCode、OpenClaw、Grok Build 和 Hermes Agent。唯一官方网站：ccswitch.io",
  "colbymchenry/codegraph": "预索引代码知识图，代码更改自动同步，适用于 Claude Code、Codex、Gemini、Cursor、OpenCode、AntiGravity、Kiro 和 Hermes Agent — 更少的令牌、更少的工具调用、100% 本地",
- "sherlock-project/sherlock": "通过社交网络上的用户名查找社交媒体帐户"
+ "sherlock-project/sherlock": "通过社交网络上的用户名查找社交媒体帐户",
+ "supabase/supabase": "Postgres 开发平台。 Supabase 为您提供专用的 Postgres 数据库来构建您的 Web、移动和 AI 应用程序。",
+ "google-gemini/gemini-cli": "一款开源 AI 代理，可将 Gemini 的强大功能直接带入您的终端。"
 }
