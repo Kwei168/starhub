@@ -219,5 +219,7 @@
  "sherlock-project/sherlock": "通过社交网络上的用户名查找社交媒体帐户",
  "supabase/supabase": "Postgres 开发平台。 Supabase 为您提供专用的 Postgres 数据库来构建您的 Web、移动和 AI 应用程序。",
  "google-gemini/gemini-cli": "一款开源 AI 代理，可将 Gemini 的强大功能直接带入您的终端。",
- "vibrantlabsai/ragas": "增强您的 LLM 申请评估🚀"
+ "vibrantlabsai/ragas": "增强您的 LLM 申请评估🚀",
+ "sam70361/emotion-ball": "Grok-style AI emotion ball - 32 expressive SVG states, ribbons, mouse gaze, dark/light themes, bilingual gallery site. | Grok bot 风格的 AI 表情小球:32 种 SVG 表情,一个 emotionId 即可接入 AI",
+ "Greninja9257/LabLLM": "一个原生 macOS 实验室，用于教授微型语言模型思考 — 构建架构、训练权重，并观看小型 LLM 从头开始​​，在 Apple Silicon 上本地使用自定义数据、分词器、检查点和 MLX 加速。"
 }
