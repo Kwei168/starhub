@@ -158,5 +158,6 @@
  "WecomTeam/wecom-cli": "agent",
  "zchentest/hotboarduapi": "agent",
  "anywhere-labs/deepseek-harness-desktop": "assistant",
- "hmjz100/LinkSwift": "tools"
+ "hmjz100/LinkSwift": "tools",
+ "fufankeji/deepseek-harness-studio": "assistant"
 }
