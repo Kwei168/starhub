@@ -155,5 +155,8 @@
  "ghoustghoust/douyin-creator-toolkit": "agent",
  "Accio-org/CommerceAgentBench": "agent",
  "harry0703/MangoDisk": "assistant",
- "WecomTeam/wecom-cli": "agent"
+ "WecomTeam/wecom-cli": "agent",
+ "zchentest/hotboarduapi": "agent",
+ "anywhere-labs/deepseek-harness-desktop": "assistant",
+ "hmjz100/LinkSwift": "tools"
 }
