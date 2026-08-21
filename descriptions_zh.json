@@ -241,5 +241,7 @@
  "ihsan-ramadhan/bansos-router": "免费的无钥匙编码模型通过一个本地端点路由到每个编码工具。没有账户，没有钥匙，没有成本。",
  "openai/codex": "在您的终端中运行的轻量级编码代理",
  "Tencent/AI-Infra-Guard": "全栈 AI 红队平台通过代理扫描、技能扫描、MCP 扫描、AI 基础设施扫描和 LLM 越狱评估来保护 AI 生态系统。",
- "PostHog/posthog": "🦔 PostHog 是构建自动驾驶产品的领先平台。我们的开发工具——人工智能可观测性、分析、会话重放、标记、实验、错误跟踪、日志等——捕获代理诊断问题、发现机会和发布修复所需的所有上下文。从 Slack、Web、桌面或 MCP 掌控一切。"
+ "PostHog/posthog": "🦔 PostHog 是构建自动驾驶产品的领先平台。我们的开发工具——人工智能可观测性、分析、会话重放、标记、实验、错误跟踪、日志等——捕获代理诊断问题、发现机会和发布修复所需的所有上下文。从 Slack、Web、桌面或 MCP 掌控一切。",
+ "Wei-Shaw/sub2api": "Sub2API 一站式开源中转服务，让 Claude、Openai 、Gemini、Grok订阅统一接入，支持拼车共享，更高效分摊成本，原生工具无缝使用。",
+ "agent-substrate/substrate": "Agent Substrate：核心系统"
 }
