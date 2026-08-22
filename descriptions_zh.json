@@ -248,5 +248,6 @@
  "stablyai/orca": "Orca 是与一组并行代理一起工作的 ADE。使用您自己的订阅运行任何编码代理。可在桌面、移动和 VPS 上使用。",
  "multica-ai/andrej-karpathy-skills": "用于改进 Claude 代码行为的单个 CLAUDE.md 文件，源自 Andrej Karpathy 对 LLM 编码陷阱的观察。",
  "anomalyco/opencode": "开源编码代理。",
- "Panniantong/Agent-Reach": "让您的人工智能代理有一双能够看到整个互联网的眼睛。阅读和搜索 Twitter、Reddit、YouTube、GitHub、Bilibili、小红书 — 一个 CLI，零 API 费用。"
+ "Panniantong/Agent-Reach": "让您的人工智能代理有一双能够看到整个互联网的眼睛。阅读和搜索 Twitter、Reddit、YouTube、GitHub、Bilibili、小红书 — 一个 CLI，零 API 费用。",
+ "tabtin-ai/TabTin": "人们和多个人工智能代理一起工作的工作空间。"
 }
