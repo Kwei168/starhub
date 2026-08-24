@@ -260,5 +260,6 @@
  "VoltAgent/awesome-agent-skills": "来自官方开发团队和社区的 1000 多种代理技能精选集合，与 Claude Code、Codex、Gemini CLI、Cursor 等兼容。",
  "apple/coreai-models": "用于设备上 AI 的模型导出配方、Python 原语和 Swift 运行时实用程序",
  "anthropics/claude-code": "Claude Code 是一种代理编码工具，位于您的终端中，了解您的代码库，并通过执行例行任务、解释复杂代码和处理 git 工作流程来帮助您更快地编码 - 所有这些都通过自然语言命令进行。",
- "SeanEllyJames/deep-research-skill": "让AI Agent 做真正会思考，有判断的深度调研，而不是会摆信息的汇总报告。一个即插即用的 skill 文件。"
+ "SeanEllyJames/deep-research-skill": "让AI Agent 做真正会思考，有判断的深度调研，而不是会摆信息的汇总报告。一个即插即用的 skill 文件。",
+ "SimoneAvogadro/android-reverse-engineering-skill": "支持Android应用程序逆向工程的Claude Code技能"
 }
