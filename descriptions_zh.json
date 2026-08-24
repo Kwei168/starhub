@@ -262,5 +262,6 @@
  "anthropics/claude-code": "Claude Code 是一种代理编码工具，位于您的终端中，了解您的代码库，并通过执行例行任务、解释复杂代码和处理 git 工作流程来帮助您更快地编码 - 所有这些都通过自然语言命令进行。",
  "SeanEllyJames/deep-research-skill": "让AI Agent 做真正会思考，有判断的深度调研，而不是会摆信息的汇总报告。一个即插即用的 skill 文件。",
  "SimoneAvogadro/android-reverse-engineering-skill": "支持Android应用程序逆向工程的Claude Code技能",
- "tinyhumansai/openhuman": "您的个人人工智能超级智能。一个能够构建本地第一人生记忆的大脑，一个精彩的客服代表队伍和工作流程协调者，以及一位深入的研究人员。"
+ "tinyhumansai/openhuman": "您的个人人工智能超级智能。一个能够构建本地第一人生记忆的大脑，一个精彩的客服代表队伍和工作流程协调者，以及一位深入的研究人员。",
+ "Akimiya-z/codex-guard": "AI/Codex生成的拉取请求的质量门：在待办事项剩余、泄露的秘密、草率的提交和红色CI到达主要之前阻止它们。"
 }
