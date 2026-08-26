@@ -268,5 +268,6 @@
  "dshplugin/dsh-plugin-hub": "DeepSeek Harness 社区内置插件市场（dsh-plugin）— 搜索插件、下载并安装 4000+ 人工精选社区插件，每日更新、完全免费。内置在 Harness「设置 → 插件中心」，无需离开应用即可浏览、搜索、安装各类 AI 插件。",
  "tt-a1i/archify": "美观、可验证的架构、工作流程、序列、数据流和生命周期图的代理技能--具有运动和清晰导出的自包含HTML。",
  "marin-community/marin": "基础模型研究和开发的开源框架。",
- "laude-institute/headlong": "具有持久代理和递归LLM的开源代理microharness。bash ， bash ， bash ；它一路向下。"
+ "laude-institute/headlong": "具有持久代理和递归LLM的开源代理microharness。bash ， bash ， bash ；它一路向下。",
+ "anthropics/claude-plugins-official": "由 Anthropic 管理的官方高品质 Claude 代码插件目录。"
 }
