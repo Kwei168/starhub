@@ -171,15 +171,15 @@ def _fallback_json():
         return None
 
 
-def _filter_24h(items):
-    """筛选最近 24 小时的条目（按北京时间）。"""
+def _filter_today(items):
+    """筛选今日日报条目：从今天 00:00 UTC（即北京时间 08:00）往前回溯 36 小时。
+    AIHOT 日报每日发布，涵盖约一天的内容，36h 窗口可覆盖跨时区更新。"""
     now = _now_bj()
-    cutoff = now - datetime.timedelta(hours=28)
+    cutoff = now - datetime.timedelta(hours=36)
     out = []
     for it in items:
         if it["pub_date"] is None:
-            out.append(it)
-            continue
+            continue  # 无法确定日期，跳过
         pd = it["pub_date"]
         if pd.tzinfo is not None:
             pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
@@ -500,8 +500,12 @@ def main():
     items = fetch_rss()
     if items:
         print("[AI晨报] RSS 拉取成功，共 %d 条" % len(items))
-        # 不再按 24h 过滤：AIHOT RSS 是策展精选合集，直接展示全部
-        print("[AI晨报] 展示全部 %d 条精选内容" % len(items))
+        items = _filter_today(items)
+        print("[AI晨报] 今日筛选后 %d 条" % len(items))
+        if not items:
+            # 今日无内容时回退展示全部（RSS 可能是前一天晚上更新的）
+            print("[AI晨报] 今日无条目，回退展示全部精选", file=sys.stderr)
+            items = fetch_rss()
     else:
         print("[AI晨报] RSS 失败，尝试本地 JSON 回退", file=sys.stderr)
         items = _fallback_json()
