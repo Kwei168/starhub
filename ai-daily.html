@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI 晨报 · 2026年8月27日 星期四</title>
+<style>
+:root {
+  --bg:#f6f7fb; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
+  --line:#e6e8ef; --accent:#2563eb;
+}
+[data-theme="dark"] {
+  --bg:#0d1117; --panel:#161b22; --ink:#e6edf3; --muted:#9198a1;
+  --line:#30363d; --accent:#3b82f6;
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background:linear-gradient(180deg,#eef2ff 0%,#f6f7fb 240px); color:var(--ink); line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+[data-theme="dark"] body { background:linear-gradient(180deg,#0d1117 0%,#0d1117 240px); }
+a { color:inherit; }
+.wrap { max-width:1180px; margin:0 auto; padding:0 20px 64px; }
+
+/* Header bar */
+.topbar {
+  display:flex; align-items:center; gap:10px; padding:12px 0; margin-bottom:8px;
+}
+.topbar .back {
+  display:inline-flex; align-items:center; gap:6px; padding:6px 14px;
+  border-radius:8px; background:var(--panel); border:1px solid var(--line);
+  font-size:13px; color:var(--ink); text-decoration:none; transition:.15s;
+}
+.topbar .back:hover { border-color:var(--accent); color:var(--accent); }
+.topbar .spacer { flex:1; }
+.topbar .theme-btn {
+  width:36px; height:36px; border-radius:8px; background:var(--panel);
+  border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-size:16px; transition:.15s;
+}
+.topbar .theme-btn:hover { border-color:var(--accent); }
+
+/* Hero */
+.hero { padding:10px 0 26px; }
+.kicker { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--accent); font-weight:700; letter-spacing:.04em; }
+.kicker .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 4px rgba(37,99,235,.15); }
+.hero h1 { font-size:clamp(28px,5vw,44px); margin:10px 0 6px; letter-spacing:-.02em; }
+.hero .date { font-size:clamp(17px,3vw,22px); font-weight:700; color:var(--ink); }
+.hero .window { color:var(--muted); font-size:14px; margin-top:4px; }
+.stats { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-top:24px; }
+.stat { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 10px; text-align:center; border-top:3px solid var(--c); }
+.stat:first-child { grid-column:span 2; }
+.stat-num { font-size:26px; font-weight:800; color:var(--c); line-height:1; }
+.stat-label { font-size:12.5px; color:var(--muted); margin-top:6px; white-space:nowrap; }
+
+/* Nav */
+.nav { position:sticky; top:0; z-index:20; background:rgba(246,247,251,.85); backdrop-filter:blur(10px);
+       border-bottom:1px solid var(--line); margin:0 -20px 28px; padding:10px 20px; display:flex; gap:8px; flex-wrap:wrap; }
+[data-theme="dark"] .nav { background:rgba(13,17,23,.85); }
+.nav-item { display:inline-flex; align-items:center; gap:7px; text-decoration:none; padding:7px 12px; border-radius:999px;
+             background:var(--panel); border:1px solid var(--line); font-size:13.5px; color:var(--ink); transition:.15s; }
+.nav-item:hover { border-color:var(--c); transform:translateY(-1px); }
+.nav-ico { font-size:14px; }
+.nav-badge { background:var(--c); color:#fff; border-radius:999px; font-size:11px; font-weight:700; padding:1px 7px; }
+
+/* Sections & cards */
+.sec { margin-bottom:40px; scroll-margin-top:64px; }
+.sec-title { display:flex; align-items:center; gap:12px; font-size:21px; margin:0 0 16px; }
+.sec-ico { width:34px; height:34px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; font-size:17px; }
+.sec-count { margin-left:auto; font-size:13px; color:var(--muted); font-weight:600; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; display:flex; flex-direction:column; gap:10px;
+         transition:.18s; border-left:4px solid var(--c); }
+.card:hover { box-shadow:0 10px 30px rgba(15,23,42,.08); transform:translateY(-2px); }
+[data-theme="dark"] .card:hover { box-shadow:0 10px 30px rgba(0,0,0,.3); }
+.card-top { display:flex; align-items:center; gap:10px; }
+.num { font-size:13px; font-weight:800; color:var(--c); background:color-mix(in srgb,var(--c) 12%,transparent); border-radius:8px; padding:2px 8px; min-width:30px; text-align:center; }
+.chip { font-size:12px; color:var(--muted); background:var(--line); border-radius:999px; padding:3px 10px; margin-left:auto; max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-title { font-size:16.5px; margin:0; font-weight:700; line-height:1.4; }
+.card-title a { text-decoration:none; }
+.card-title a:hover { color:var(--c); }
+.card-sum { font-size:14px; color:var(--muted); margin:0; flex:1; }
+.card-link { align-self:flex-start; font-size:13px; font-weight:600; color:var(--c); text-decoration:none; border:1px solid var(--c); border-radius:8px; padding:5px 12px; transition:.15s; }
+.card-link:hover { background:var(--c); color:#fff; }
+
+/* Footer */
+.foot { margin-top:30px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13.5px; display:flex; flex-wrap:wrap; gap:8px 18px; justify-content:space-between; }
+.foot a { color:var(--accent); text-decoration:none; }
+
+/* Responsive */
+@media (max-width:720px) {
+  .stats { grid-template-columns:repeat(3,1fr); }
+  .stat:first-child { grid-column:span 3; }
+  .grid { grid-template-columns:1fr; }
+  .wrap { padding:0 14px 48px; }
+  .nav { margin:0 -14px 20px; padding:8px 14px; gap:6px; }
+  .nav-item { padding:6px 10px; font-size:12.5px; }
+  .sec-title { font-size:18px; }
+  .card { padding:14px; }
+  .card-title { font-size:15px; }
+  .hero h1 { font-size:clamp(24px,6vw,36px); }
+}
+@media (max-width:400px) {
+  .stats { grid-template-columns:repeat(2,1fr); }
+  .stat:first-child { grid-column:span 2; }
+  .nav-item .nav-label { display:none; }
+}
+</style>
+<script>try{var _t=localStorage.getItem('wb_starhub_theme_v1')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=_t;}catch(e){}</script>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="index.html">← 返回 StarHub</a>
+    <div class="spacer"></div>
+    <button class="theme-btn" id="btnTheme" title="切换明暗主题" aria-label="切换主题">🌓</button>
+  </div>
+
+  <header class="hero">
+    <span class="kicker"><span class="dot"></span>AIHOT 每日精选 · AI 晨报</span>
+    <h1>AI 晨报</h1>
+    <div class="date">2026年8月27日 星期四</div>
+    <div class="window">自动生成于 2026-08-27 09:26（北京时间）</div>
+    <div class="stats">
+      <div class="stat" style="--c:var(--accent)"><div class="stat-num">15</div><div class="stat-label">今日总条数</div></div>
+      <div class="stat" style="--c:#2563eb"><div class="stat-num">6</div><div class="stat-label">AI 模型</div></div><div class="stat" style="--c:#7c3aed"><div class="stat-num">1</div><div class="stat-label">AI 产品</div></div><div class="stat" style="--c:#0891b2"><div class="stat-num">4</div><div class="stat-label">行业动态</div></div><div class="stat" style="--c:#d97706"><div class="stat-num">2</div><div class="stat-label">论文</div></div><div class="stat" style="--c:#dc2626"><div class="stat-num">2</div><div class="stat-label">技巧观点</div></div>
+    </div>
+  </header>
+
+  <nav class="nav"><a class="nav-item" href="#sec-1" style="--c:#2563eb"><span class="nav-ico">🧠</span><span class="nav-label">AI 模型</span><span class="nav-badge">6</span></a><a class="nav-item" href="#sec-2" style="--c:#7c3aed"><span class="nav-ico">🚀</span><span class="nav-label">AI 产品</span><span class="nav-badge">1</span></a><a class="nav-item" href="#sec-3" style="--c:#0891b2"><span class="nav-ico">🌐</span><span class="nav-label">行业动态</span><span class="nav-badge">4</span></a><a class="nav-item" href="#sec-4" style="--c:#d97706"><span class="nav-ico">📄</span><span class="nav-label">论文</span><span class="nav-badge">2</span></a><a class="nav-item" href="#sec-5" style="--c:#dc2626"><span class="nav-ico">💡</span><span class="nav-label">技巧观点</span><span class="nav-badge">2</span></a></nav>
+
+  <main>
+    <section id="sec-1" class="sec">
+      <h2 class="sec-title"><span class="sec-ico" style="background:#2563eb">🧠</span>AI 模型<span class="sec-count">6 条</span></h2>
+      <div class="grid">
+        <article class="card" style="--c:#2563eb">
+          <div class="card-top">
+            <span class="num">01</span>
+            <span class="chip">Google Research：Blog（网页）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtaj3732034urovudls0byfe" target="_blank" rel="noopener noreferrer">GlucoFM：面向连续血糖监测的基础模型</a></h3>
+          <p class="card-sum">Google Research 推出 GlucoFM，一款轻量级自监督 CGM 基础模型，采用双流设计分别建模缓慢血糖趋势与短期波动。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtaj3732034urovudls0byfe" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#2563eb">
+          <div class="card-top">
+            <span class="num">02</span>
+            <span class="chip">Google DeepMind：Blog（RSS）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtacq8vz0aedroj24bcix9go" target="_blank" rel="noopener noreferrer">Gemini 3.5 Transcribe 发布：面向实时语音交互的高精度语音转文本模型</a></h3>
+          <p class="card-sum">Google DeepMind 推出 Gemini 3.5 Transcribe 语音转文本模型，支持流式与非流式两种 API。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtacq8vz0aedroj24bcix9go" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#2563eb">
+          <div class="card-top">
+            <span class="num">03</span>
+            <span class="chip">X：通义千问 / Qwen (@Alibaba_Qwen</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta9ciqt07c1roj219h5liie" target="_blank" rel="noopener noreferrer">Qwen3.8-Flash 开源，Qwen4 架构预览</a></h3>
+          <p class="card-sum">通义千问发布 Qwen3.8-Flash，一款多模态 MoE 模型，作为 Qwen4 架构的早期预览并开放权重。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta9ciqt07c1roj219h5liie" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#2563eb">
+          <div class="card-top">
+            <span class="num">04</span>
+            <span class="chip">公众号：智谱（GLM）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta7bh1k04u6roj2e4pt7bob" target="_blank" rel="noopener noreferrer">GLM-5.3-Flash 开源：320B 总参数、AA 指数 57 分，定价为 Opus 4.8 的 1/40</a></h3>
+          <p class="card-sum">智谱上线并开源 GLM-5.3-Flash（320B-A18B），这是 GLM-5 系列首个原生多模态模型，AA 综合智能指数 57 分，与 Claude Op…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta7bh1k04u6roj2e4pt7bob" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#2563eb">
+          <div class="card-top">
+            <span class="num">05</span>
+            <span class="chip">Qwen：Blog Retrieval（API）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta2veap03nmrolwxllvp4ay" target="_blank" rel="noopener noreferrer">Qwen3.8-Flash-Next 开源：Qwen4 架构早期预览</a></h3>
+          <p class="card-sum">通义千问开源 Qwen3.8-Flash-Next，一款多模态 MoE 模型，也是 Qwen4 架构的早期预览。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta2veap03nmrolwxllvp4ay" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#2563eb">
+          <div class="card-top">
+            <span class="num">06</span>
+            <span class="chip">公众号：腾讯混元</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta7honk0553roj21gque0zw" target="_blank" rel="noopener noreferrer">腾讯混元将端侧翻译模型 Hy-MT2-1.8B 压缩至 440MB，已落地哔哩哔哩直播弹幕翻译</a></h3>
+          <p class="card-sum">腾讯混元将端侧翻译模型 Hy-MT2-1.8B 通过 2-bit 与 1.25-bit 量化方案压缩至 574MB 和 440MB，翻译质量几乎无损，在 FLO…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta7honk0553roj21gque0zw" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article></div>
+    </section>
+    <section id="sec-2" class="sec">
+      <h2 class="sec-title"><span class="sec-ico" style="background:#7c3aed">🚀</span>AI 产品<span class="sec-count">1 条</span></h2>
+      <div class="grid">
+        <article class="card" style="--c:#7c3aed">
+          <div class="card-top">
+            <span class="num">01</span>
+            <span class="chip">Claude：Blog（网页）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtaej1vz0czhroj2aybdbq26" target="_blank" rel="noopener noreferrer">Claude in Chrome 正式全面上线</a></h3>
+          <p class="card-sum">Anthropic 宣布 Claude in Chrome 现已面向所有付费 Claude 套餐全面开放，Claude 可在浏览器中自主执行操作，无需逐步审批。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtaej1vz0czhroj2aybdbq26" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article></div>
+    </section>
+    <section id="sec-3" class="sec">
+      <h2 class="sec-title"><span class="sec-ico" style="background:#0891b2">🌐</span>行业动态<span class="sec-count">4 条</span></h2>
+      <div class="grid">
+        <article class="card" style="--c:#0891b2">
+          <div class="card-top">
+            <span class="num">01</span>
+            <span class="chip">IT之家（RSS）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtas790607swroamcmunq53y" target="_blank" rel="noopener noreferrer">英伟达预计 2028 财年营收同比增 70%，黄仁勋称实际需求远高于此</a></h3>
+          <p class="card-sum">英伟达预计 2028 财年销售额同比增长约 70%，CEO 黄仁勋称实际市场需求远高于这一数字，增速主要受供应能力限制。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtas790607swroamcmunq53y" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#0891b2">
+          <div class="card-top">
+            <span class="num">02</span>
+            <span class="chip">TechCrunch：AI（RSS）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtar8e770746roam1wznm4mi" target="_blank" rel="noopener noreferrer">亚马逊将英伟达芯片订单增至三倍，新增200万颗GPU</a></h3>
+          <p class="card-sum">亚马逊与英伟达宣布扩大合作，将在2027和2028年为AWS数据中心新增200万颗GPU芯片，包括Blackwell Ultra、Rubin和Rubin Ult…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtar8e770746roam1wznm4mi" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#0891b2">
+          <div class="card-top">
+            <span class="num">03</span>
+            <span class="chip">IT之家（RSS）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtaq20ih062wroamdrhb54b6" target="_blank" rel="noopener noreferrer">英伟达 2027 财年半年报归母净利润 1180.1 亿美元，同比增长 161.1%</a></h3>
+          <p class="card-sum">英伟达发布 2027 财年半年报，上半年营收 1778.37 亿美元，归母净利润 1180.1 亿美元，同比增长 161.1%，GAAP 毛利率 75%。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtaq20ih062wroamdrhb54b6" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#0891b2">
+          <div class="card-top">
+            <span class="num">04</span>
+            <span class="chip">Hacker News 热门（buzzing.cc 中文翻译）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta6v56y03yiroj2ki26viqh" target="_blank" rel="noopener noreferrer">以色列资助的假美国智库试图利用AI进行宣传</a></h3>
+          <p class="card-sum">一个打着&quot;汉诺威公共政策研究所&quot;旗号的亲以色列网站，在九天内发布了124篇、超56万字的报告，旨在优化内容以引导ChatGPT等AI聊天机器人引用其亲以观点。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta6v56y03yiroj2ki26viqh" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article></div>
+    </section>
+    <section id="sec-4" class="sec">
+      <h2 class="sec-title"><span class="sec-ico" style="background:#d97706">📄</span>论文<span class="sec-count">2 条</span></h2>
+      <div class="grid">
+        <article class="card" style="--c:#d97706">
+          <div class="card-top">
+            <span class="num">01</span>
+            <span class="chip">Anthropic：Research（发表成果 · 网页）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtaddncd0aq0roj2xmay0scj" target="_blank" rel="noopener noreferrer">Anthropic 开放 Claude 真实使用数据供外部独立研究，公布试点结果</a></h3>
+          <p class="card-sum">Anthropic 今年春季启动试点，通过隐私保护工具 Anthropic Insights（原 Clio）向斯坦福大学 SALT Lab、牛津大学人类信息处理…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtaddncd0aq0roj2xmay0scj" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#d97706">
+          <div class="card-top">
+            <span class="num">02</span>
+            <span class="chip">Hacker News 热门（buzzing.cc 中文翻译）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta6v56y03ytroj25ggn7rlo" target="_blank" rel="noopener noreferrer">C2PA相机经不起现实的考验：Android端可被root攻击伪造签名</a></h3>
+          <p class="card-sum">安全研究员David Buchanan指出，C2PA相机认证在Android平台上可被攻破。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta6v56y03ytroj25ggn7rlo" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article></div>
+    </section>
+    <section id="sec-5" class="sec">
+      <h2 class="sec-title"><span class="sec-ico" style="background:#dc2626">💡</span>技巧观点<span class="sec-count">2 条</span></h2>
+      <div class="grid">
+        <article class="card" style="--c:#dc2626">
+          <div class="card-top">
+            <span class="num">01</span>
+            <span class="chip">Claude：Blog（网页）</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmtacdvh50a4aroj2zlw9jnj9" target="_blank" rel="noopener noreferrer">Warp 如何在 Claude 上构建自我改进的智能体</a></h3>
+          <p class="card-sum">Warp 在 Claude 平台上构建了基于 Agent Skills 的自我改进循环，通过基础技能与改进技能两个文件型技能，将人类反馈转化为对智能体的持续优化…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmtacdvh50a4aroj2zlw9jnj9" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article>
+        <article class="card" style="--c:#dc2626">
+          <div class="card-top">
+            <span class="num">02</span>
+            <span class="chip">公众号：卡尔的AI沃茨</span>
+          </div>
+          <h3 class="card-title"><a href="https://aihot.virxact.com/items/cmta7fyl104z5roj2ancsmx4g" target="_blank" rel="noopener noreferrer">实测飞书和豆包合体后第1个Agent：豆包工作的8个使用技巧</a></h3>
+          <p class="card-sum">豆包工作（豆包 Work）是当前企业接入Agent门槛最低的路径，但需用飞书账号登录才能解锁满血功能。…</p>
+          <a class="card-link" href="https://aihot.virxact.com/items/cmta7fyl104z5roj2ancsmx4g" target="_blank" rel="noopener noreferrer">阅读原文 ↗</a>
+        </article></div>
+    </section></main>
+
+  <footer class="foot">
+    <span>共 <strong>15</strong> 条 · 数据源：<a href="https://aihot.virxact.com" target="_blank" rel="noopener noreferrer">AIHOT</a></span>
+    <span>本期：2026年8月27日 星期四 · 内容版权归原作者</span>
+  </footer>
+</div>
+<script>
+  var btn=document.getElementById('btnTheme');
+  if(btn) btn.onclick=function(){
+    var t=document.documentElement.dataset.theme==='dark'?'light':'dark';
+    try{localStorage.setItem('wb_starhub_theme_v1',t);}catch(e){}
+    document.documentElement.dataset.theme=t;
+  };
+  var navItems=[...document.querySelectorAll('.nav-item')];
+  var secs=[...document.querySelectorAll('.sec')];
+  var obs=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        var id=e.target.id;
+        navItems.forEach(function(n){n.style.fontWeight=n.getAttribute('href')==='#'+id?'800':'400';});
+      }
+    });
+  },{rootMargin:'-40% 0px -55% 0px'});
+  secs.forEach(function(s){obs.observe(s);});
+</script>
+</body>
+</html>
