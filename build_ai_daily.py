@@ -37,15 +37,16 @@ def _now_bj():
 def _parse_rss_date(s):
     """解析 RSS pubDate（RFC 2822 格式）→ UTC datetime。"""
     s = s.strip()
-    for fmt in ("%a, %d %b %Y %H:%M:%S %Z", "%a, %d %b %Y %H:%M:%S %z"):
-        try:
-            return datetime.datetime.strptime(s, fmt)
-        except ValueError:
-            continue
+    # 先处理 GMT → +0000（Windows 下 %z 不一定识别 GMT）
+    s = s.replace(" GMT", " +0000")
     try:
-        s2 = s.replace(" GMT", " +0000")
-        return datetime.datetime.strptime(s2, "%a, %d %b %Y %H:%M:%S %z")
-    except Exception:
+        return datetime.datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %z")
+    except ValueError:
+        pass
+    # 回退：无时区信息
+    try:
+        return datetime.datetime.strptime(s, "%a, %d %b %Y %H:%M:%S")
+    except ValueError:
         return None
 
 
@@ -499,8 +500,8 @@ def main():
     items = fetch_rss()
     if items:
         print("[AI晨报] RSS 拉取成功，共 %d 条" % len(items))
-        items = _filter_24h(items)
-        print("[AI晨报] 近 24h 筛选后 %d 条" % len(items))
+        # 不再按 24h 过滤：AIHOT RSS 是策展精选合集，直接展示全部
+        print("[AI晨报] 展示全部 %d 条精选内容" % len(items))
     else:
         print("[AI晨报] RSS 失败，尝试本地 JSON 回退", file=sys.stderr)
         items = _fallback_json()
