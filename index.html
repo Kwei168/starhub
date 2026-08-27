@@ -94,6 +94,41 @@ header{
 .nav-links a:hover{background:var(--t-rising);color:#fff}
 .nav-links a:hover .icon{opacity:1}
 .nav-links a .icon{width:11px;height:11px;opacity:.7}
+/* 站内高亮入口 */
+.nav-links .nav-highlight{
+  background:linear-gradient(135deg,rgba(255,255,255,.18),rgba(255,255,255,.08));
+  border:1px solid rgba(255,255,255,.25);font-weight:600;
+}
+.nav-links .nav-highlight:hover{background:rgba(255,255,255,.28)}
+.nav-links .nav-highlight .icon{opacity:1}
+/* 下拉导航组 */
+.nav-drop{position:relative;flex:none}
+.nav-drop-btn{
+  display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 10px;
+  border-radius:999px;font-size:12px;color:rgba(255,255,255,.92);white-space:nowrap;
+  border:1px solid rgba(255,255,255,.18);background:transparent;cursor:pointer;
+  transition:all .15s;flex:none;font-family:inherit;
+}
+.nav-drop-btn:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.3)}
+.nav-drop-btn .arrow{font-size:10px;opacity:.7;transition:transform .2s}
+.nav-drop.open .nav-drop-btn .arrow{transform:rotate(180deg)}
+.nav-drop-panel{
+  position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  min-width:280px;max-width:360px;background:var(--card);border:1px solid var(--border);
+  border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:8px 0;
+  opacity:0;visibility:hidden;pointer-events:none;transition:all .18s;z-index:60;
+}
+.nav-drop.open .nav-drop-panel{opacity:1;visibility:visible;pointer-events:auto}
+.nav-drop-group{padding:4px 0}
+.nav-drop-group+.nav-drop-group{border-top:1px solid var(--border2)}
+.nav-drop-label{padding:4px 16px 2px;font-size:11px;color:var(--faint);font-weight:600;letter-spacing:.03em}
+.nav-drop-panel a{
+  display:flex;align-items:center;gap:8px;padding:6px 16px;font-size:13px;
+  color:var(--text);white-space:nowrap;transition:background .12s;
+}
+.nav-drop-panel a:hover{background:var(--hover);color:var(--accent)}
+.nav-drop-panel a .icon{width:12px;height:12px;opacity:.5;flex:none}
+.nav-drop-panel a:hover .icon{opacity:1}
 .btn{
   display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;
   border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);
@@ -513,6 +548,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 @media (max-width:1100px){
   .hd{flex-wrap:wrap;row-gap:8px}
   .nav-links{order:3;flex:1 1 100%;justify-content:flex-start;overflow-x:auto;padding:2px 0}
+  .nav-drop-panel{left:0;transform:none;min-width:260px}
 }
 @media (max-width:900px){
   .grid,.pinned{grid-template-columns:repeat(2,1fr)}
@@ -548,17 +584,31 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
       <div class="t"><b>StarHub</b><span>GitHub 收藏台</span></div>
     </div>
-    <nav class="nav-links" aria-label="外部站点链接">
-      <a href="https://xiaolinnote.com/" target="_blank" rel="noopener">小林笔记<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="https://notes.kamacoder.com/" target="_blank" rel="noopener">KamaCoder<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="https://newsnow.busiyi.world/" target="_blank" rel="noopener">NewsNow<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="https://www.runoob.com/vibe-coding/skills-agent.html" target="_blank" rel="noopener">Vibe Coding<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="https://www.codefather.cn/" target="_blank" rel="noopener">CodeFather<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+    <nav class="nav-links" aria-label="站点导航">
+      <a class="nav-highlight" href="ai-daily.html" rel="noopener">📰 AI 晨报</a>
+      <div class="nav-drop" id="navDrop">
+        <button class="nav-drop-btn" aria-expanded="false" aria-haspopup="true">更多站点 <span class="arrow">▾</span></button>
+        <div class="nav-drop-panel">
+          <div class="nav-drop-group">
+            <div class="nav-drop-label">📚 学习资源</div>
+            <a href="https://xiaolinnote.com/" target="_blank" rel="noopener">小林笔记<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+            <a href="https://notes.kamacoder.com/" target="_blank" rel="noopener">KamaCoder<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+            <a href="https://huggingface.co/learn/agents-course/unit0/introduction" target="_blank" rel="noopener">Agents Course<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+            <a href="https://www.runoob.com/vibe-coding/skills-agent.html" target="_blank" rel="noopener">Vibe Coding<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+          </div>
+          <div class="nav-drop-group">
+            <div class="nav-drop-label">📡 资讯平台</div>
+            <a href="https://newsnow.busiyi.world/" target="_blank" rel="noopener">NewsNow<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+            <a href="https://tophub.today/" target="_blank" rel="noopener">今日热榜<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+            <a href="https://www.beyondata.com/community#community-learn" target="_blank" rel="noopener">赋范空间<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+          </div>
+          <div class="nav-drop-group">
+            <div class="nav-drop-label">🤖 AI 工具</div>
+            <a href="https://www.codefather.cn/" target="_blank" rel="noopener">CodeFather<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
             <a href="https://ai.codefather.cn/vibe" target="_blank" rel="noopener">CodeFather AI<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="https://tophub.today/" target="_blank" rel="noopener">今日热榜<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-<a href="https://www.beyondata.com/community#community-learn" target="_blank" rel="noopener">赋范空间<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="https://huggingface.co/learn/agents-course/unit0/introduction" target="_blank" rel="noopener">Agents Course<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
-      <a href="ai-daily.html" rel="noopener">AI 晨报<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
+          </div>
+        </div>
+      </div>
     </nav>
     <div class="sp"></div>
     <div class="acts">
@@ -1345,6 +1395,22 @@ function startFeedPolling(){
 
 // ---- 事件绑定 ----
 function bindEvents(){
+  // 导航下拉菜单：点击切换，点击外部关闭
+  var navDrop = document.getElementById('navDrop');
+  if(navDrop){
+    var dropBtn = navDrop.querySelector('.nav-drop-btn');
+    dropBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var open = navDrop.classList.toggle('open');
+      dropBtn.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', function(e){
+      if(!navDrop.contains(e.target)){
+        navDrop.classList.remove('open');
+        dropBtn.setAttribute('aria-expanded','false');
+      }
+    });
+  }
   $('#q').addEventListener('input', e => {
     state.q = e.target.value;
     $('#btnClear').style.display = state.q ? 'block':'none';
