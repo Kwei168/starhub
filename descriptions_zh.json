@@ -269,5 +269,11 @@
  "tt-a1i/archify": "美观、可验证的架构、工作流程、序列、数据流和生命周期图的代理技能--具有运动和清晰导出的自包含HTML。",
  "marin-community/marin": "基础模型研究和开发的开源框架。",
  "laude-institute/headlong": "具有持久代理和递归LLM的开源代理microharness。bash ， bash ， bash ；它一路向下。",
- "anthropics/claude-plugins-official": "由 Anthropic 管理的官方高品质 Claude 代码插件目录。"
+ "anthropics/claude-plugins-official": "由 Anthropic 管理的官方高品质 Claude 代码插件目录。",
+ "K-Dense-AI/scientific-agent-skills": "将任何人工智能代理变成人工智能科学家。排名第一的科学代理技能库，全球有 175,000 多名科学家使用。 163 种经过验证的现成技能以及 100 多个涵盖生物学、化学、医学和药物发现的科学数据库。与 Cursor、Claude Code、Codex、Pi、Antigravity 和开放代理技能标准兼容。",
+ "JetBrains/go-modern-guidelines": "帮助 AI 编码代理编写现代 Go",
+ "anthropics/skills": "代理技能的公共存储库",
+ "damejan80/tokentab": "一个 CLI，可以读取 Claude Code、Codex 和 Gemini CLI 会话日志，并按模型、项目和日期计算出它们的成本。",
+ "singula-ai/alego": "像玩乐高积木一样构建 AI 代理。一切都是插件。",
+ "Merit-Systems/OpenInstinct": "iMessage个人助理+密码库"
 }
