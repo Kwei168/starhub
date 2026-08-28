@@ -275,5 +275,8 @@
  "anthropics/skills": "代理技能的公共存储库",
  "damejan80/tokentab": "一个 CLI，可以读取 Claude Code、Codex 和 Gemini CLI 会话日志，并按模型、项目和日期计算出它们的成本。",
  "singula-ai/alego": "像玩乐高积木一样构建 AI 代理。一切都是插件。",
- "Merit-Systems/OpenInstinct": "iMessage个人助理+密码库"
+ "Merit-Systems/OpenInstinct": "iMessage个人助理+密码库",
+ "adongwanai/adong-skills": "有技能",
+ "Sliverkiss/workbuddy2api": "🔐 OAuth 登录 — 通过 设备授权流程获取凭证，支持 token 自动刷新",
+ "caigee-cmd/cli2api": "自托管 OpenAI 兼容 API，用于 Qoder CLI 登录、workbuddy，具有 SQLite 多帐户路由和 HeroUI 控制台。"
 }

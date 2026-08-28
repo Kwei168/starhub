@@ -177,5 +177,11 @@
  "redfox-data/redfox-community": "agent",
  "anywhere-labs/dsh-desktop": "assistant",
  "VoltAgent/awesome-agent-skills": "agent",
- "vikiboss/60s": "tools"
+ "vikiboss/60s": "tools",
+ "adongwanai/adong-skills": "agent",
+ "adongwanai/AgentGuide": "learning",
+ "adongwanai/learn-workbuddy": "learning",
+ "rockswang/wild-work": "agent",
+ "Sliverkiss/workbuddy2api": "coding",
+ "caigee-cmd/cli2api": "coding"
 }
