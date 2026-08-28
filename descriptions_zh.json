@@ -280,5 +280,7 @@
  "Sliverkiss/workbuddy2api": "🔐 OAuth 登录 — 通过 设备授权流程获取凭证，支持 token 自动刷新",
  "caigee-cmd/cli2api": "自托管 OpenAI 兼容 API，用于 Qoder CLI 登录、workbuddy，具有 SQLite 多帐户路由和 HeroUI 控制台。",
  "Lucas-Xi/IntentRoute-AI": "具有OpenAI/Ollama草稿和单盒TUN数据平面的Windows开源AI辅助每应用程序路由。",
- "workweave/router": "代理系统的模型路由器。在&lt; 50毫秒内将每个提示路由到正确的模型。只需更改端点，即可降低40-70%的成本。"
+ "workweave/router": "代理系统的模型路由器。在&lt; 50毫秒内将每个提示路由到正确的模型。只需更改端点，即可降低40-70%的成本。",
+ "thedotmack/claude-mem": "每个座席跨会话的持久上下文–捕获座席在会话期间执行的所有操作，使用AI对其进行压缩，并将相关上下文注入到未来的会话中。适用于Claude Code、OpenClaw、Codex、Gemini、Hermes、Copilot、OpenCode等",
+ "ComposioHQ/awesome-claude-skills": "用于自定义Claude AI工作流程的精选Claude技能、资源和工具列表"
 }
