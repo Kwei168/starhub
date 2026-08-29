@@ -820,8 +820,10 @@ const TRENDING = __TRENDING__;
 let FEED = __FEED__;
 // 实时关注动态：Vercel 代理聚合 GitHub Events API（近 24 小时），打开页面即拉取 + 每 30 分钟轮询
 const EVENTS_API = 'https://starhub-refresh.vercel.app/api/events';
-// AI 动态流：AIHOT 公开 API v1（匿名只读、CORS 全开），浏览器直连，切到该 Tab 时懒加载 + 30 分钟轮询
+// AI 动态流：AIHOT 公开 API v1（匿名只读、CORS 全开）+ 36氪 AI 资讯流（经 /api/news 代理，
+// 官方 RSS 有反爬、RSSHub 镜像 CORS 不合法故需服务端中转）；浏览器直连，切到该 Tab 时懒加载 + 30 分钟轮询
 const AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
+const NEWS_API = 'https://starhub-refresh.vercel.app/api/news';
 const AIHOT_CATS = { 'ai-models':['AI 模型','#2563eb'], 'ai-products':['AI 产品','#7c3aed'], industry:['行业动态','#0891b2'], paper:['论文','#d97706'], tip:['技巧观点','#dc2626'] };
 let feedUpdated = UPDATED;
 let feedLive = false;
@@ -1442,6 +1444,25 @@ function renderAihot(items){
   if(more) more.style.display = '';
 }
 
+function normTitle(t){ return (t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); }
+
+// 36氪 AI 资讯流：归一化为 AIHOT 条目结构；仅保留近 36 小时条目；失败静默返回空数组
+async function fetchNewsItems(){
+  try{
+    const r = await fetch(NEWS_API);
+    if(!r.ok) return [];
+    const j = await r.json();
+    const cutoff = Date.now() - 36 * 3600 * 1000;
+    return (j.items || []).filter(it => it.title && it.link && (!it.publishedAt || new Date(it.publishedAt).getTime() >= cutoff))
+      .map(it => ({
+        title: it.title, category: 'industry',
+        source: { name: '36氪' },
+        links: { original: it.link },
+        publishedAt: it.publishedAt || '', selected: false,
+      }));
+  }catch(e){ return []; }
+}
+
 async function loadAihot(){
   if(aihotLoaded || aihotLoading) return;
   aihotLoading = true;
@@ -1449,11 +1470,20 @@ async function loadAihot(){
   $('#aihotUpdated').textContent = '加载中…';
   list.innerHTML = '';
   try{
-    const r = await fetch(AIHOT_API);
-    if(!r.ok) throw new Error(r.status);
-    const j = await r.json();
-    renderAihot(j.items || []);
-    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+    const [aiRes, newsItems] = await Promise.all([
+      fetch(AIHOT_API).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchNewsItems(),
+    ]);
+    let items = (aiRes && aiRes.items) ? aiRes.items.slice() : [];
+    if(newsItems.length){
+      // 按规范化标题去重后合并，再按时间倒序（与网页 /all 流一致的展示节奏）
+      const seen = new Set(items.map(x => normTitle(x.title)));
+      newsItems.forEach(n => { const k = normTitle(n.title); if(!seen.has(k)){ seen.add(k); items.push(n); } });
+      items.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
+    }
+    if(!items.length) throw new Error('empty');
+    renderAihot(items);
+    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池' + (newsItems.length ? ' / 36氪' : '') + ' · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     aihotLoaded = true;
   }catch(e){
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';

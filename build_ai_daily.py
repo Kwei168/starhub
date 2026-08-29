@@ -29,6 +29,12 @@ HN_QUERIES = ["AI", "LLM", "OpenAI", "GPT", "Claude", "machine learning", "Anthr
 VERGE_RSS = "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
 TECHCRUNCH_RSS = "https://techcrunch.com/category/artificial-intelligence/feed/"
 ARXIV_CATS = ["cs.AI", "cs.CL", "cs.CV", "cs.LG", "cs.NE"]
+# 36氪 AI 资讯流：官方 RSS 有人机验证反爬墙，经 RSSHub 公共镜像中转（可用性会波动，依次尝试）
+KR36_FEEDS = [
+    "https://rsshub.rssforever.com/36kr/information/AI",
+    "https://hub.slarker.me/36kr/information/AI",
+    "https://rsshub.app/36kr/information/AI",
+]
 UA = {"User-Agent": "Mozilla/5.0 (starhub-auto-update)"}
 
 # RSS 分类 → 配色
@@ -247,7 +253,8 @@ def _fallback_json():
 
 # ---------------------------- 多渠道快讯 ----------------------------
 # 移植自 WorkBuddy ai-news-daily（纯标准库），云端构建时直接抓取，
-# 不再依赖本地定时任务与 news.json。X/36氪/头条/微信因反爬不可直接抓取，不纳入。
+# 不再依赖本地定时任务与 news.json。X/头条/微信因反爬不可直接抓取，不纳入；
+# 36氪官方 RSS 同样有反爬墙，改经 RSSHub 公共镜像中转（_36kr_items）。
 
 def _fetch_url(url, timeout=20, accept=None):
     headers = dict(UA)
@@ -347,6 +354,43 @@ def _feed_items(url, source, limit=6):
     return items[:limit]
 
 
+def _36kr_items(limit=8):
+    """36氪 AI 资讯流：经 RSSHub 镜像链依次尝试，命中即止，归入「行业动态」。中文内容无需翻译。"""
+    raw = None
+    for url in KR36_FEEDS:
+        try:
+            cand = _fetch_url(url, timeout=15,
+                              accept="application/rss+xml, application/xml, text/xml")
+            if "<item>" in cand:
+                raw = cand
+                break
+        except Exception:
+            continue
+    if not raw:
+        print("[AI晨报] 36氪镜像链全部失败", file=sys.stderr)
+        return []
+    try:
+        root = ET.fromstring(raw)
+    except Exception as ex:
+        print("[AI晨报] 36氪解析异常: %s" % ex, file=sys.stderr)
+        return []
+    ch = root.find("channel")
+    if ch is None:
+        return []
+    items = []
+    for it in ch.findall("item"):
+        title = _strip_html(it.findtext("title") or "")
+        link = (it.findtext("link") or "").strip()
+        desc = _truncate(_strip_html(it.findtext("description") or ""))
+        pub = (it.findtext("pubDate") or "").strip()
+        if not title or not link:
+            continue
+        items.append({"title": title, "link": link, "category": "行业动态",
+                      "source": "36氪", "summary": desc,
+                      "pub_date": _parse_rss_date(pub)})
+    return items[:limit]
+
+
 def _arxiv_items():
     """arXiv：AI 相关分类按提交时间倒序，取前 8 条归入「论文」。"""
     q = " OR ".join("cat:" + c for c in ARXIV_CATS)
@@ -388,6 +432,7 @@ def fetch_multi_channel():
         ("The Verge", lambda: _feed_items(VERGE_RSS, "The Verge", 6)),
         ("TechCrunch", lambda: _feed_items(TECHCRUNCH_RSS, "TechCrunch", 6)),
         ("arXiv", _arxiv_items),
+        ("36氪", _36kr_items),
     ]
     for name, fn in channels:
         try:
