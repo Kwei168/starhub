@@ -286,5 +286,6 @@
  "Vincent-Xi08/IntentRoute-AI": "适用于 Windows 的开源 AI 辅助按应用程序路由，具有 OpenAI/Ollama 草稿和单盒 TUN 数据平面。",
  "hkqr/my-free-code": "适用于Claude Code和其他编码代理的开源多提供商AI网关，具有模型路由、流媒体、工具、推理、回退和本地模型支持",
  "calmrocks/ai-engineer-notebooks": "适用于人工智能工程师/前沿部署工程师(FDE)技能集的实践、免框架Colab笔记本—模型API、结构化输出、工具调用、RAG、EVALS即脊椎、代理（从头开始循环、工具设计、护栏、MCP、技能）、微调与LoRA、提示注入/安全、LLMOps和客户工艺。在免费的Groq API上运行。",
- "zarazhangrui/frontend-slides": "使用编码代理的前端技能在网络上创建精美的幻灯片"
+ "zarazhangrui/frontend-slides": "使用编码代理的前端技能在网络上创建精美的幻灯片",
+ "abhigyanpatwari/GitNexus": "GitNexus：零服务器代码智能引擎 - GitNexus 是一个完全在浏览器中运行的客户端知识图创建器。放入 git 存储库（Github、Gitlab、Azure、本地）或 ZIP 文件，并获取带有内置 Graph RAG 代理的交互式知识图。非常适合代码探索"
 }
