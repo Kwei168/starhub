@@ -472,6 +472,13 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
 .feed-ai-item .meta{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-mono)}
 .feed-more{flex:none;margin-top:8px;height:32px;border:1px dashed var(--border);border-radius:var(--radius);background:transparent;font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s}
 .feed-more:hover{color:var(--brand);border-color:var(--brand-line);background:var(--brand-weak)}
+.feed-more:disabled{opacity:.5;cursor:not-allowed}
+/* AI 动态分类筛选条：数据已全部在本地，纯前端过滤零请求 */
+.feed-filter{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;flex:none}
+.feed-filter .fchip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border:1px solid var(--border);border-radius:999px;background:transparent;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;font-family:inherit}
+.feed-filter .fchip:hover{border-color:var(--hover-line);color:var(--text)}
+.feed-filter .fchip.on{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:600}
+.feed-filter .fchip .n{opacity:.6;font-family:var(--font-mono);font-size:10px}
 .badge-update{
   display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:2px;
   background:var(--upd-bg);color:var(--upd-color);font-size:10.5px;font-weight:600;white-space:nowrap;
@@ -814,7 +821,9 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
     <section class="feed" id="aihotWrap">
       <h2>AI 动态流</h2>
       <div class="feed-sub" id="aihotUpdated"></div>
+      <div class="feed-filter" id="aihotFilter" style="display:none"></div>
       <div class="feed-list" id="aihotList"></div>
+      <button class="feed-more" id="aihotLoadMore" style="display:none">加载更多</button>
       <a class="feed-more" href="https://aihot.virxact.com/all" target="_blank" rel="noopener" style="display:none;text-decoration:none;text-align:center;line-height:30px" id="aihotMore">查看完整动态流 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
     </section>
   </aside>
@@ -1480,6 +1489,10 @@ async function refreshFeed(){
 // ---- AI 动态流（AIHOT 公开 API + /api/news 多源代理，浏览器直连，无需 Key） ----
 let aihotLoaded = false;
 let aihotLoading = false;
+let aihotMoreLoading = false;
+let aihotItems = [];      // 已加载全量条目（AIHOT + 代理多源合并去重后）
+let aihotCursor = '';     // AIHOT 游标分页（page.nextCursor），空串表示无下一页
+let aihotFilter = 'all';  // 分类筛选：'all' 或 AIHOT_CATS 键
 
 function normTitle(t){ return (t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); }
 
@@ -1502,21 +1515,41 @@ async function fetchNewsItems(){
   }catch(e){ return []; }
 }
 
-function renderAihot(items){
+// 渲染筛选条：分类计数随已加载条目实时刷新，当前选中高亮
+function renderAihotFilter(){
+  const box = $('#aihotFilter');
+  if(!box) return;
+  if(!aihotItems.length){ box.style.display = 'none'; return; }
+  box.style.display = '';
+  const cats = [['all', '全部']].concat(Object.keys(AIHOT_CATS).map(k => [k, AIHOT_CATS[k][0]]));
+  box.innerHTML = cats.map(([k, label]) => {
+    const n = k === 'all' ? aihotItems.length : aihotItems.filter(it => it.category === k).length;
+    return '<button class="fchip' + (aihotFilter === k ? ' on' : '') + '" data-cat="' + k + '">' + label + ' <span class="n">' + n + '</span></button>';
+  }).join('');
+}
+
+// 「加载更多」仅在无筛选且 AIHOT 还有下一页时显示；站外完整流入口始终保留兜底
+function updateAihotMore(){
+  const loadMore = $('#aihotLoadMore'), more = $('#aihotMore');
+  if(loadMore) loadMore.style.display = (aihotCursor && aihotFilter === 'all') ? '' : 'none';
+  if(more) more.style.display = aihotItems.length ? '' : 'none';
+}
+
+function renderAihot(){
   const list = $('#aihotList');
-  const more = $('#aihotMore');
+  renderAihotFilter();
+  const items = aihotFilter === 'all' ? aihotItems : aihotItems.filter(it => it.category === aihotFilter);
   list.innerHTML = '';
-  if(!items || !items.length){
-    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
-    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">暂无动态</div>';
+  if(!items.length){
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">' + (aihotItems.length ? '该分类暂无动态' : '暂无动态') + '</div>';
+    updateAihotMore();
     return;
   }
   items.forEach(it => {
     const cat = AIHOT_CATS[it.category] || ['动态','#8b949e'];
     const url = (it.links && (it.links.original || it.links.aihot)) || '#';
     const src = (it.source && it.source.name) || '';
-    const tm = it.publishedAt ? new Date(it.publishedAt) : null;
-    const tmStr = tm ? ((tm.getMonth()+1) + '-' + String(tm.getDate()).padStart(2,'0') + ' ' + String(tm.getHours()).padStart(2,'0') + ':' + String(tm.getMinutes()).padStart(2,'0')) : '';
+    const tmStr = fmtRelTime(it.publishedAt); // 相对时间（如「3 小时前」），复用全网搜索的函数
     const row = document.createElement('div');
     row.className = 'feed-ai-item';
     row.innerHTML =
@@ -1527,7 +1560,31 @@ function renderAihot(items){
       '</div>';
     list.appendChild(row);
   });
-  if(more) more.style.display = '';
+  updateAihotMore();
+}
+
+// 加载更多：AIHOT 游标分页（&cursor=page.nextCursor），追加条目同样按规范化标题去重；
+// window=24h 参数不变，翻页内容仍在近 24 小时窗口内；失败静默提示不影响已有列表
+async function loadAihotMore(){
+  if(aihotMoreLoading || !aihotCursor) return;
+  aihotMoreLoading = true;
+  const btn = $('#aihotLoadMore');
+  if(btn){ btn.disabled = true; btn.textContent = '加载中…'; }
+  try{
+    const r = await fetch(AIHOT_API + '&cursor=' + encodeURIComponent(aihotCursor));
+    if(!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    const page = j.page || {};
+    aihotCursor = page.hasMore ? (page.nextCursor || '') : '';
+    const seen = new Set(aihotItems.map(x => normTitle(x.title)));
+    (j.items || []).forEach(it => { const k = normTitle(it.title); if(!seen.has(k)){ seen.add(k); aihotItems.push(it); } });
+    renderAihot();
+  }catch(e){
+    toast('加载更多失败，请稍后重试');
+  }finally{
+    aihotMoreLoading = false;
+    if(btn){ btn.disabled = false; btn.textContent = '加载更多'; }
+  }
 }
 
 async function loadAihot(){
@@ -1549,7 +1606,10 @@ async function loadAihot(){
       items.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
     }
     if(!items.length) throw new Error('empty');
-    renderAihot(items);
+    aihotItems = items;
+    // 记录游标：仅当 AIHOT 返回 page.hasMore 时才可「加载更多」
+    aihotCursor = (aiRes && aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
+    renderAihot();
     const extraSrcs = [...new Set(newsItems.map(n => n.source.name))];
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池' + (extraSrcs.length ? ' / ' + extraSrcs.join(' / ') : '') + ' · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     aihotLoaded = true;
@@ -1716,6 +1776,13 @@ function bindEvents(){
     if(el.scrollHeight - el.scrollTop - el.clientHeight < 120) runSearch('more');
   });
   $('#trendMore').addEventListener('click', openTrendModal);
+  // AI 动态：分类筛选（纯前端过滤）与游标加载更多
+  $('#aihotLoadMore').addEventListener('click', loadAihotMore);
+  $('#aihotFilter').addEventListener('click', e => {
+    const b = e.target.closest('.fchip'); if(!b) return;
+    aihotFilter = b.dataset.cat;
+    renderAihot();
+  });
   document.addEventListener('click', e => {
     if(e.target.closest('[data-close]')){ closeTrendModal(); closeSearchModal(); return; }
     if(e.target.classList.contains('modal')){ closeTrendModal(); closeSearchModal(); }
