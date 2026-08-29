@@ -1425,7 +1425,7 @@ function renderAihot(items){
   }
   items.forEach(it => {
     const cat = AIHOT_CATS[it.category] || ['动态','#8b949e'];
-    const url = (it.links && (it.links.aihot || it.links.original)) || '#';
+    const url = (it.links && (it.links.original || it.links.aihot)) || '#';
     const src = (it.source && it.source.name) || '';
     const tm = it.publishedAt ? new Date(it.publishedAt) : null;
     const tmStr = tm ? ((tm.getMonth()+1) + '-' + String(tm.getDate()).padStart(2,'0') + ' ' + String(tm.getHours()).padStart(2,'0') + ':' + String(tm.getMinutes()).padStart(2,'0')) : '';
