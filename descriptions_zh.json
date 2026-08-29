@@ -284,5 +284,6 @@
  "thedotmack/claude-mem": "每个座席跨会话的持久上下文–捕获座席在会话期间执行的所有操作，使用AI对其进行压缩，并将相关上下文注入到未来的会话中。适用于Claude Code、OpenClaw、Codex、Gemini、Hermes、Copilot、OpenCode等",
  "ComposioHQ/awesome-claude-skills": "用于自定义Claude AI工作流程的精选Claude技能、资源和工具列表",
  "Vincent-Xi08/IntentRoute-AI": "适用于 Windows 的开源 AI 辅助按应用程序路由，具有 OpenAI/Ollama 草稿和单盒 TUN 数据平面。",
- "hkqr/my-free-code": "适用于Claude Code和其他编码代理的开源多提供商AI网关，具有模型路由、流媒体、工具、推理、回退和本地模型支持"
+ "hkqr/my-free-code": "适用于Claude Code和其他编码代理的开源多提供商AI网关，具有模型路由、流媒体、工具、推理、回退和本地模型支持",
+ "calmrocks/ai-engineer-notebooks": "适用于人工智能工程师/前沿部署工程师(FDE)技能集的实践、免框架Colab笔记本—模型API、结构化输出、工具调用、RAG、EVALS即脊椎、代理（从头开始循环、工具设计、护栏、MCP、技能）、微调与LoRA、提示注入/安全、LLMOps和客户工艺。在免费的Groq API上运行。"
 }
