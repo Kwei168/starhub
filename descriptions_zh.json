@@ -288,5 +288,7 @@
  "calmrocks/ai-engineer-notebooks": "适用于人工智能工程师/前沿部署工程师(FDE)技能集的实践、免框架Colab笔记本—模型API、结构化输出、工具调用、RAG、EVALS即脊椎、代理（从头开始循环、工具设计、护栏、MCP、技能）、微调与LoRA、提示注入/安全、LLMOps和客户工艺。在免费的Groq API上运行。",
  "zarazhangrui/frontend-slides": "使用编码代理的前端技能在网络上创建精美的幻灯片",
  "abhigyanpatwari/GitNexus": "GitNexus：零服务器代码智能引擎 - GitNexus 是一个完全在浏览器中运行的客户端知识图创建器。放入 git 存储库（Github、Gitlab、Azure、本地）或 ZIP 文件，并获取带有内置 Graph RAG 代理的交互式知识图。非常适合代码探索",
- "livekit/agents": "构建实时语音AI代理的框架 🤖🎙️📹"
+ "livekit/agents": "构建实时语音AI代理的框架 🤖🎙️📹",
+ "ChromeDevTools/chrome-devtools-mcp": "用于编码代理的 Chrome DevTools",
+ "meharabPigeon/remove-windows-ai": "“remove windows ai script”——病毒式删除 windows-ai 方法的 GUI 前端概念：通过切换和恢复网络从 Windows 11 中剥离 Copilot、Recall 和 AI 膨胀。适用于 Windows 的免费开放社区项目。"
 }
