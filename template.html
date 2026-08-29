@@ -1594,29 +1594,33 @@ async function loadAihot(){
   $('#aihotUpdated').textContent = '加载中…';
   list.innerHTML = '';
   try{
-    const [aiRes, newsItems] = await Promise.all([
-      fetch(AIHOT_API).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetchNewsItems(),
-    ]);
+    // ① 主源 AIHOT 先拉取、先渲染（通常 1-2s），不让新闻源拖慢首屏
+    const aiRes = await fetch(AIHOT_API).then(r => r.ok ? r.json() : null).catch(() => null);
     let items = (aiRes && aiRes.items) ? aiRes.items.slice() : [];
-    if(newsItems.length){
-      // 按规范化标题去重后合并，再按时间倒序（与网页 /all 流一致的展示节奏）
-      const seen = new Set(items.map(x => normTitle(x.title)));
-      newsItems.forEach(n => { const k = normTitle(n.title); if(!seen.has(k)){ seen.add(k); items.push(n); } });
-      items.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
-    }
     if(!items.length) throw new Error('empty');
     aihotItems = items;
-    // 记录游标：仅当 AIHOT 返回 page.hasMore 时才可「加载更多」
-    aihotCursor = (aiRes && aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
+    aihotCursor = (aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
     renderAihot();
-    const extraSrcs = [...new Set(newsItems.map(n => n.source.name))];
-    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池' + (extraSrcs.length ? ' / ' + extraSrcs.join(' / ') : '') + ' · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     aihotLoaded = true;
+    aihotLoading = false;
+
+    // ② 新闻源（36/Redis）异步追加，不阻塞首屏；超时 12s 放弃
+    const newsItems = await Promise.race([
+      fetchNewsItems(),
+      new Promise(resolve => setTimeout(() => resolve([]), 12000)),
+    ]).catch(() => []);
+    if(newsItems && newsItems.length){
+      const seen = new Set(aihotItems.map(x => normTitle(x.title)));
+      newsItems.forEach(n => { const k = normTitle(n.title); if(!seen.has(k)){ seen.add(k); aihotItems.push(n); } });
+      aihotItems.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
+      renderAihot();
+      const extraSrcs = [...new Set(newsItems.map(n => n.source.name))];
+      $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 / ' + extraSrcs.join(' / ') + ' · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+    }
   }catch(e){
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
     list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">动态流加载失败，稍后重试</div>';
-  }finally{
     aihotLoading = false;
   }
 }
