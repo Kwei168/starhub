@@ -824,7 +824,6 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
       <div class="feed-filter" id="aihotFilter" style="display:none"></div>
       <div class="feed-list" id="aihotList"></div>
       <button class="feed-more" id="aihotLoadMore" style="display:none">加载更多</button>
-      <a class="feed-more" href="https://aihot.virxact.com/all" target="_blank" rel="noopener" style="display:none;text-decoration:none;text-align:center;line-height:30px" id="aihotMore">查看完整动态流 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
     </section>
   </aside>
 </div>
@@ -1530,9 +1529,8 @@ function renderAihotFilter(){
 
 // 「加载更多」仅在无筛选且 AIHOT 还有下一页时显示；站外完整流入口始终保留兜底
 function updateAihotMore(){
-  const loadMore = $('#aihotLoadMore'), more = $('#aihotMore');
+  const loadMore = $('#aihotLoadMore');
   if(loadMore) loadMore.style.display = (aihotCursor && aihotFilter === 'all') ? '' : 'none';
-  if(more) more.style.display = aihotItems.length ? '' : 'none';
 }
 
 function renderAihot(){
