@@ -141,8 +141,8 @@ def fetch_api():
         if not title:
             continue
         links = it.get("links") or {}
-        # 与 RSS 行为保持一致：链到站内阅读页，无则用原文入口
-        link = links.get("aihot") or links.get("original") or "#"
+        # 原文优先，无原文链接时回退站内阅读页
+        link = links.get("original") or links.get("aihot") or "#"
         source = ((it.get("source") or {}).get("name") or "").strip()
         # 过滤窗口与网页收录节奏对齐用 discoveredAt（RSS pubDate 同为收录时间）
         pub = it.get("discoveredAt") or it.get("publishedAt") or ""
@@ -191,6 +191,10 @@ def fetch_rss():
         category = (item.findtext("category") or "").strip()
         source = _extract_source(item.findtext("author") or "")
         desc_raw = item.findtext("description") or ""
+        # RSS 的 <link> 是站内阅读页，原文藏在 description 的「阅读原文」锚点里，原文优先
+        m = re.search(r'<a href="([^"]+)"[^>]*>阅读原文</a>', desc_raw)
+        if m and m.group(1).strip():
+            link = m.group(1).strip()
         summary = _truncate(_strip_html(desc_raw))
         pub_date_str = (item.findtext("pubDate") or "").strip()
         pub_date = _parse_rss_date(pub_date_str)
@@ -229,7 +233,7 @@ def _fallback_json():
                 links = it.get("links") or {}
                 items.append({
                     "title": (it.get("title") or "").strip(),
-                    "link": links.get("aihot") or links.get("original") or "#",
+                    "link": links.get("original") or links.get("aihot") or "#",
                     "category": cat,
                     "source": (it.get("source") or {}).get("name", ""),
                     "summary": _truncate(it.get("summary") or ""),
