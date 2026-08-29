@@ -62,8 +62,10 @@ function parseRss(xml) {
 
 export default async function handler(req, res) {
   const origin = (req.headers['origin'] || '').toLowerCase();
-  const allowed = ALLOWED_ORIGINS.has(origin);
-  if (allowed) {
+  // 只读公开数据无敏感信息：白名单外额外放行无 Origin 请求（部分环境同源请求不携带 Origin），
+  // 仅回显 ACAO 给白名单内源（避免非白名单源拿到跨域可读响应）
+  const allowed = ALLOWED_ORIGINS.has(origin) || origin === '';
+  if (ALLOWED_ORIGINS.has(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Vary', 'Origin');
