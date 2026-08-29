@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Generate ai-daily.html from AIHOT RSS feed (https://aihot.virxact.com/feed.xml)
-+ 多渠道快讯（Hacker News / The Verge / TechCrunch / arXiv）。
+"""Generate ai-daily.html from AIHOT 公开 API v1（https://aihot.virxact.com/api/v1/items，
+匿名只读、无需 Key）+ 多渠道快讯（Hacker News / The Verge / TechCrunch / arXiv）。
+API 失败时依次回退 RSS（feed.xml）与本地 ai_daily.json。
 仅依赖 Python 标准库。由 fetch_and_build.py 调用或独立运行。
 每次构建自动拉取最新数据，筛选近 36 小时条目生成晨报。
 多渠道抓取移植自 WorkBuddy ai-news-daily，已完全云端化、脱离本地定时任务。
@@ -18,7 +19,8 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
-RSS_URL = "https://aihot.virxact.com/feed.xml"
+RSS_URL = "https://aihot.virxact.com/feed.xml"  # API 失败时的降级回退
+API_URL = "https://aihot.virxact.com/api/v1/items"  # 公开 API v1，匿名只读
 OUT = "ai-daily.html"
 FALLBACK_SRC = "ai_daily.json"  # RSS 失败时回退到本地 JSON
 
@@ -40,6 +42,15 @@ CAT_COLOR = {
 }
 # 分类排序权重（按此顺序展示）
 CAT_ORDER = ["AI 模型", "AI 产品", "行业动态", "海外热点", "论文", "技巧观点"]
+
+# API v1 分类 key → 晨报表演分类（与 RSS <category> 文本对齐）
+API_CAT = {
+    "ai-models": "AI 模型",
+    "ai-products": "AI 产品",
+    "industry": "行业动态",
+    "paper": "论文",
+    "tip": "技巧观点",
+}
 
 _ROMAN = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
           "xi", "xii"]
@@ -108,8 +119,46 @@ def _esc(s):
     return html_mod.escape(str(s), quote=True)
 
 
+def fetch_api():
+    """拉取 AIHOT 公开 API v1 精选条目（匿名只读，无需 Key）。
+    取最近 7 天精选，由 _filter_today 统一做 36h 窗口筛选（与 RSS 行为一致）。
+    返回 items 列表，失败返回 None。"""
+    url = API_URL + "?mode=selected&window=7d&limit=100"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (starhub-auto-update)",
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read(2000000).decode("utf-8", errors="replace"))
+    except Exception as e:
+        print("[AI晨报] API 拉取失败: %s" % e, file=sys.stderr)
+        return None
+
+    items = []
+    for it in data.get("items") or []:
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        links = it.get("links") or {}
+        # 与 RSS 行为保持一致：链到站内阅读页，无则用原文入口
+        link = links.get("aihot") or links.get("original") or "#"
+        source = ((it.get("source") or {}).get("name") or "").strip()
+        # 过滤窗口与网页收录节奏对齐用 discoveredAt（RSS pubDate 同为收录时间）
+        pub = it.get("discoveredAt") or it.get("publishedAt") or ""
+        items.append({
+            "title": title,
+            "link": link,
+            "category": API_CAT.get(it.get("category"), "行业动态"),
+            "source": source,
+            "summary": _truncate(it.get("summary") or ""),
+            "pub_date": _parse_iso(pub),
+        })
+    return items or None
+
+
 def fetch_rss():
-    """拉取 AIHOT RSS feed，返回 items 列表或 None。"""
+    """降级回退：拉取 AIHOT RSS feed，返回 items 列表或 None。"""
     req = urllib.request.Request(RSS_URL, headers={
         "User-Agent": "Mozilla/5.0 (starhub-auto-update)",
         "Accept": "application/rss+xml, application/xml, text/xml",
@@ -794,17 +843,20 @@ def main():
     date_human = f"{now.year}年{now.month}月{now.day}日 " + \
         ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][now.weekday()]
 
-    items = fetch_rss()
+    items = fetch_api()
+    if not items:
+        print("[AI晨报] API 失败，回退 RSS", file=sys.stderr)
+        items = fetch_rss()
     if items:
-        print("[AI晨报] RSS 拉取成功，共 %d 条" % len(items))
-        items = _filter_today(items)
-        print("[AI晨报] 今日筛选后 %d 条" % len(items))
-        if not items:
-            # 今日无内容时回退展示全部（RSS 可能是前一天晚上更新的）
+        print("[AI晨报] AIHOT 拉取成功，共 %d 条" % len(items))
+        filtered = _filter_today(items)
+        print("[AI晨报] 今日筛选后 %d 条" % len(filtered))
+        # 今日无内容时回退展示全部（数据可能是前一天晚上更新的）
+        if not filtered:
             print("[AI晨报] 今日无条目，回退展示全部精选", file=sys.stderr)
-            items = fetch_rss()
+        items = filtered or items
     else:
-        print("[AI晨报] RSS 失败，尝试本地 JSON 回退", file=sys.stderr)
+        print("[AI晨报] API/RSS 均失败，尝试本地 JSON 回退", file=sys.stderr)
         items = _fallback_json()
         if items:
             print("[AI晨报] JSON 回退成功，共 %d 条" % len(items))
