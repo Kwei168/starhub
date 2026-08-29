@@ -10,11 +10,13 @@ const ALLOWED_ORIGINS = new Set([
   'https://kwei168.github.io',
 ]);
 
-// RSSHub 公共镜像链（可用性会波动，依次尝试；路由 /36kr/information/AI 为 36氪 AI 资讯流）
+// RSSHub 公共镜像链（按可用性排序，依次尝试；部分镜像封数据中心 IP，故多备几个；
+// 路由 /36kr/information/AI 为 36氪 AI 资讯流）
 const MIRRORS = [
+  'https://rsshub.ktachibana.party/36kr/information/AI',
+  'https://rsshub.woodland.cafe/36kr/information/AI',
   'https://rsshub.rssforever.com/36kr/information/AI',
   'https://hub.slarker.me/36kr/information/AI',
-  'https://rsshub.app/36kr/information/AI',
 ];
 
 const TTL = 10 * 60 * 1000;
@@ -30,7 +32,7 @@ async function fetchFeed(url) {
       'User-Agent': 'Mozilla/5.0 (starhub-refresh)',
       'Accept': 'application/rss+xml, application/xml, text/xml',
     },
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(8000),
   });
   if (!r.ok) throw new Error('http ' + r.status);
   return r.text();

@@ -29,11 +29,13 @@ HN_QUERIES = ["AI", "LLM", "OpenAI", "GPT", "Claude", "machine learning", "Anthr
 VERGE_RSS = "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
 TECHCRUNCH_RSS = "https://techcrunch.com/category/artificial-intelligence/feed/"
 ARXIV_CATS = ["cs.AI", "cs.CL", "cs.CV", "cs.LG", "cs.NE"]
-# 36氪 AI 资讯流：官方 RSS 有人机验证反爬墙，经 RSSHub 公共镜像中转（可用性会波动，依次尝试）
+# 36氪 AI 资讯流：官方 RSS 有人机验证反爬墙，经 RSSHub 公共镜像中转。
+# 部分镜像封数据中心 IP（GitHub Actions / Vercel 出口），镜像链按可用性排序，依次尝试。
 KR36_FEEDS = [
+    "https://rsshub.ktachibana.party/36kr/information/AI",
+    "https://rsshub.woodland.cafe/36kr/information/AI",
     "https://rsshub.rssforever.com/36kr/information/AI",
     "https://hub.slarker.me/36kr/information/AI",
-    "https://rsshub.app/36kr/information/AI",
 ]
 UA = {"User-Agent": "Mozilla/5.0 (starhub-auto-update)"}
 
@@ -359,7 +361,7 @@ def _36kr_items(limit=8):
     raw = None
     for url in KR36_FEEDS:
         try:
-            cand = _fetch_url(url, timeout=15,
+            cand = _fetch_url(url, timeout=12,
                               accept="application/rss+xml, application/xml, text/xml")
             if "<item>" in cand:
                 raw = cand
