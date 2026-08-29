@@ -12,6 +12,8 @@ import json
 import os
 import re
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -349,6 +351,101 @@ def fetch_multi_channel():
 
 def _norm_title(t):
     return re.sub(r"[\W_]+", "", (t or "").lower())
+
+
+# ---------------------------- 英文内容翻译 ----------------------------
+# 与 fetch_and_build.py 同方案：Google 非官方端点 → MyMemory 降级 → 失败保留原文。
+# 晨报不做跨构建持久化缓存（每日内容不重复），仅构建内去重缓存。
+
+def _has_cn(s):
+    return bool(re.search(r"[\u4e00-\u9fff]", s or ""))
+
+
+_TRANS_CACHE = {}
+
+
+def _translate_to_zh(text):
+    """英译中；全部端点失败返回 None（调用方保留原文）。"""
+    if not text:
+        return None
+    hit = _TRANS_CACHE.get(text)
+    if hit is not None:
+        return hit or None
+    result = None
+    # 端点 1：Google 翻译非官方接口（429 限流时退避重试一次）
+    params = urllib.parse.urlencode({"client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": text})
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(
+                "https://translate.googleapis.com/translate_a/single?" + params,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            cand = "".join(seg[0] for seg in data[0] if seg[0]).strip()
+            if cand and _has_cn(cand):
+                result = cand
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:
+                time.sleep(3)
+                continue
+            break
+        except Exception:  # noqa: BLE001
+            break
+    # 端点 2：MyMemory 免费接口（长文本会被截断，仅做降级）
+    if not result:
+        try:
+            params = urllib.parse.urlencode({"q": text[:480], "langpair": "en|zh-CN"})
+            req = urllib.request.Request(
+                "https://api.mymemory.translated.net/get?" + params,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            cand = (data.get("responseData", {}).get("translatedText") or "").strip()
+            if cand and _has_cn(cand) and "MYMEMORY WARNING" not in cand:
+                result = cand
+        except Exception:  # noqa: BLE001
+            pass
+    _TRANS_CACHE[text] = result or ""
+    return result
+
+
+def _tr(text):
+    """英文文本 → 中文；已含中文或翻译失败时原样返回。相邻请求间隔 0.4s 防限流。"""
+    if not text or _has_cn(text):
+        return text
+    time.sleep(0.4)
+    translated = _translate_to_zh(text)
+    if not translated:
+        print("[AI晨报] 翻译失败-保留原文: %s" % text[:50], file=sys.stderr)
+    return translated or text
+
+
+def translate_extra_items(items):
+    """多渠道快讯英文条目标题与简介翻译成中文（含 arXiv 摘要）。
+    arXiv 标题的 [分类] 前缀保留；HN 的点数摘要为元信息不翻译。"""
+    n = 0
+    for it in items:
+        if it["source"] == "arXiv":
+            m = re.match(r"^(\[[^\]]+\]\s*)(.*)$", it["title"])
+            prefix, body = (m.group(1), m.group(2)) if m else ("", it["title"])
+            if not _has_cn(body):
+                t = _tr(body)
+                if t != body:
+                    it["title"] = prefix + t
+                    n += 1
+        elif not _has_cn(it["title"]):
+            t = _tr(it["title"])
+            if t != it["title"]:
+                it["title"] = t
+                n += 1
+        if it.get("summary") and not it["summary"].startswith("▲"):
+            s = _tr(it["summary"])
+            if s != it["summary"]:
+                it["summary"] = s
+    print("[AI晨报] 英文条目翻译完成，%d 条标题已中文化" % n)
 
 
 def _dedupe(base, extra):
@@ -716,6 +813,7 @@ def main():
     extra, extra_names = fetch_multi_channel()
     extra = _dedupe(items or [], _filter_today(extra))
     if extra:
+        translate_extra_items(extra)
         items = (items or []) + extra
         print("[AI晨报] 多渠道新增 %d 条（%s）" % (len(extra), " / ".join(extra_names)))
 
