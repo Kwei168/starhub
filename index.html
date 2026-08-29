@@ -442,6 +442,17 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .feed-item .ft:hover{text-decoration:underline}
 .feed-item .tm{margin-left:auto;color:var(--faint);font-size:11px;flex:none;white-space:nowrap}
 
+/* ---------- side: AI 动态流（AIHOT 公开 API） ---------- */
+.feed-ai-item{display:flex;align-items:flex-start;gap:8px;padding:8px 2px;border-bottom:1px solid var(--border2);font-size:12.5px;min-width:0}
+.feed-ai-item:last-child{border-bottom:0}
+.feed-ai-item .cat{flex:none;margin-top:1px;height:16px;line-height:16px;padding:0 6px;border-radius:8px;font-size:10.5px;font-weight:600}
+.feed-ai-item .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.feed-ai-item .t{color:var(--text);font-weight:500;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.feed-ai-item .t:hover{color:var(--accent)}
+.feed-ai-item .meta{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feed-more{flex:none;margin-top:8px;height:30px;border:1px solid var(--border);border-radius:8px;background:transparent;font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s}
+.feed-more:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-weak)}
+
 /* ---------- badge: 今日更新 ---------- */
 .badge-update{
   display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;
@@ -529,6 +540,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
   .side{position:static;height:auto;overflow:visible;order:-1}
   .trending{flex:none}
   .feed{flex:none}
+  .feed-list{max-height:560px}
   .trending .trend-list{max-height:640px}
 }
 
@@ -716,6 +728,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
     <div class="side-tabs">
       <button class="side-tab on" data-side="trend">每日排行榜</button>
       <button class="side-tab" data-side="feed">关注动态</button>
+      <button class="side-tab" data-side="aihot">AI 动态</button>
     </div>
     <aside class="trending on">
       <h2>每日 AI 排行榜</h2>
@@ -732,6 +745,12 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
       <h2>近 24 小时关注动态</h2>
       <div class="feed-sub" id="feedUpdated"></div>
       <div class="feed-list" id="feedList"></div>
+    </section>
+    <section class="feed" id="aihotWrap">
+      <h2>AI 动态流</h2>
+      <div class="feed-sub" id="aihotUpdated"></div>
+      <div class="feed-list" id="aihotList"></div>
+      <a class="feed-more" href="https://aihot.virxact.com/all" target="_blank" rel="noopener" style="display:none;text-decoration:none;text-align:center;line-height:30px" id="aihotMore">查看完整动态流 ↗</a>
     </section>
   </aside>
 </div>
@@ -801,6 +820,9 @@ const TRENDING = {"rising":[{"name":"archify","owner":"tt-a1i","full_name":"tt-a
 let FEED = [{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-29-1207","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-29-1207","time":"12:08","day":"今天","date":"2026-08-29"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-29-0906","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-29-0906","time":"09:07","day":"今天","date":"2026-08-29"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-29-0606","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-29-0606","time":"06:07","day":"今天","date":"2026-08-29"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-29-0305","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-29-0305","time":"03:07","day":"今天","date":"2026-08-29"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-29-0005","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-29-0005","time":"00:06","day":"今天","date":"2026-08-29"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-28-2106","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-28-2106","time":"21:07","day":"昨天","date":"2026-08-28"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-28-1806","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-28-1806","time":"18:07","day":"昨天","date":"2026-08-28"},{"kind":"star","actor":"ghoustghoust","repo":"xishandong/crawlProject","time":"18:01","day":"昨天","date":"2026-08-28","url":"https://github.com/xishandong/crawlProject"},{"kind":"release","actor":"NanmiCoder","repo":"NanmiCoder/open-image-prompts","tag":"dataset-2026-08-28-1500","url":"https://github.com/NanmiCoder/open-image-prompts/releases/tag/dataset-2026-08-28-1500","time":"15:01","day":"昨天","date":"2026-08-28"},{"kind":"star","actor":"freestylefly","repo":"KKKKhazix/sun-style-writing","time":"14:29","day":"昨天","date":"2026-08-28","url":"https://github.com/KKKKhazix/sun-style-writing"}];
 // 实时关注动态：Vercel 代理聚合 GitHub Events API（近 24 小时），打开页面即拉取 + 每 30 分钟轮询
 const EVENTS_API = 'https://starhub-refresh.vercel.app/api/events';
+// AI 动态流：AIHOT 公开 API v1（匿名只读、CORS 全开），浏览器直连，切到该 Tab 时懒加载 + 30 分钟轮询
+const AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
+const AIHOT_CATS = { 'ai-models':['AI 模型','#2563eb'], 'ai-products':['AI 产品','#7c3aed'], industry:['行业动态','#0891b2'], paper:['论文','#d97706'], tip:['技巧观点','#dc2626'] };
 let feedUpdated = UPDATED;
 let feedLive = false;
 let feedTimer = null;
@@ -1306,9 +1328,11 @@ function switchTrendTab(tab, scope){
 function switchSideTab(tab){
   state.sideTab = tab;
   document.querySelectorAll('.side-tab').forEach(x=>x.classList.toggle('on', x.dataset.side===tab));
-  const t = $('.trending'), f = $('.feed');
+  const t = $('.trending'), f = $('.feed'), a = $('#aihotWrap');
   if(t) t.classList.toggle('on', tab==='trend');
   if(f) f.classList.toggle('on', tab==='feed');
+  if(a) a.classList.toggle('on', tab==='aihot');
+  if(tab==='aihot') loadAihot();
 }
 
 function renderTrendingFull(){
@@ -1386,11 +1410,72 @@ async function refreshFeed(){
   }catch(e){ /* 静默降级：网络异常时保持静态数据 */ }
 }
 
+// ---- AI 动态流（AIHOT 公开 API，浏览器直连，无需 Key） ----
+let aihotLoaded = false;
+let aihotLoading = false;
+
+function renderAihot(items){
+  const list = $('#aihotList');
+  const more = $('#aihotMore');
+  list.innerHTML = '';
+  if(!items || !items.length){
+    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">暂无动态</div>';
+    return;
+  }
+  items.forEach(it => {
+    const cat = AIHOT_CATS[it.category] || ['动态','#8b949e'];
+    const url = (it.links && (it.links.aihot || it.links.original)) || '#';
+    const src = (it.source && it.source.name) || '';
+    const tm = it.publishedAt ? new Date(it.publishedAt) : null;
+    const tmStr = tm ? ((tm.getMonth()+1) + '-' + String(tm.getDate()).padStart(2,'0') + ' ' + String(tm.getHours()).padStart(2,'0') + ':' + String(tm.getMinutes()).padStart(2,'0')) : '';
+    const row = document.createElement('div');
+    row.className = 'feed-ai-item';
+    row.innerHTML =
+      '<span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+escHtml(cat[0])+'</span>' +
+      '<div class="body">' +
+        '<a class="t" href="'+escHtml(url)+'" target="_blank" rel="noopener" title="'+escHtml(it.title||'')+'">'+escHtml(it.title||'')+'</a>' +
+        '<span class="meta">'+escHtml(src)+(src && tmStr ? ' · ' : '')+escHtml(tmStr)+(it.selected ? ' · ★ 精选' : '')+'</span>' +
+      '</div>';
+    list.appendChild(row);
+  });
+  if(more) more.style.display = '';
+}
+
+async function loadAihot(){
+  if(aihotLoaded || aihotLoading) return;
+  aihotLoading = true;
+  const list = $('#aihotList');
+  $('#aihotUpdated').textContent = '加载中…';
+  list.innerHTML = '';
+  try{
+    const r = await fetch(AIHOT_API);
+    if(!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    renderAihot(j.items || []);
+    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+    aihotLoaded = true;
+  }catch(e){
+    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">动态流加载失败，稍后重试</div>';
+  }finally{
+    aihotLoading = false;
+  }
+}
+
 // 30 分钟轮询：页面不可见时暂停（回调内检查 document.hidden），回到页面立即拉取一次
 function startFeedPolling(){
   if(feedTimer) return;
-  feedTimer = setInterval(() => { if(!document.hidden) refreshFeed(); }, 30 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if(!document.hidden) refreshFeed(); });
+  feedTimer = setInterval(() => {
+    if(document.hidden) return;
+    refreshFeed();
+    if(aihotLoaded){ aihotLoaded = false; loadAihot(); }
+  }, 30 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden) return;
+    refreshFeed();
+    if(state.sideTab === 'aihot') loadAihot();
+  });
 }
 
 // ---- 事件绑定 ----
