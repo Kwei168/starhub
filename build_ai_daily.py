@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Generate ai-daily.html from AIHOT RSS feed (https://aihot.virxact.com/feed.xml).
+"""Generate ai-daily.html from AIHOT RSS feed (https://aihot.virxact.com/feed.xml)
++ 多渠道快讯（Hacker News / The Verge / TechCrunch / arXiv）。
 仅依赖 Python 标准库。由 fetch_and_build.py 调用或独立运行。
-每次构建自动拉取最新 RSS，筛选近 36 小时条目生成晨报。
+每次构建自动拉取最新数据，筛选近 36 小时条目生成晨报。
+多渠道抓取移植自 WorkBuddy ai-news-daily，已完全云端化、脱离本地定时任务。
 页面风格：晨报编辑部（报纸式刊头 + 今日要闻头条区 + 双栏新闻流，冷绿强调色）。
 """
 import html as html_mod
@@ -10,6 +12,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -17,16 +20,24 @@ RSS_URL = "https://aihot.virxact.com/feed.xml"
 OUT = "ai-daily.html"
 FALLBACK_SRC = "ai_daily.json"  # RSS 失败时回退到本地 JSON
 
+# 多渠道快讯配置（HN / Verge / TechCrunch / arXiv）
+HN_QUERIES = ["AI", "LLM", "OpenAI", "GPT", "Claude", "machine learning", "Anthropic"]
+VERGE_RSS = "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+TECHCRUNCH_RSS = "https://techcrunch.com/category/artificial-intelligence/feed/"
+ARXIV_CATS = ["cs.AI", "cs.CL", "cs.CV", "cs.LG", "cs.NE"]
+UA = {"User-Agent": "Mozilla/5.0 (starhub-auto-update)"}
+
 # RSS 分类 → 配色
 CAT_COLOR = {
     "AI 模型": "#2563eb",
     "AI 产品": "#7c3aed",
     "行业动态": "#0891b2",
+    "海外热点": "#0d9488",
     "论文": "#d97706",
     "技巧观点": "#dc2626",
 }
 # 分类排序权重（按此顺序展示）
-CAT_ORDER = ["AI 模型", "AI 产品", "行业动态", "论文", "技巧观点"]
+CAT_ORDER = ["AI 模型", "AI 产品", "行业动态", "海外热点", "论文", "技巧观点"]
 
 _ROMAN = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x",
           "xi", "xii"]
@@ -179,6 +190,173 @@ def _fallback_json():
         return None
 
 
+# ---------------------------- 多渠道快讯 ----------------------------
+# 移植自 WorkBuddy ai-news-daily（纯标准库），云端构建时直接抓取，
+# 不再依赖本地定时任务与 news.json。X/36氪/头条/微信因反爬不可直接抓取，不纳入。
+
+def _fetch_url(url, timeout=20, accept=None):
+    headers = dict(UA)
+    if accept:
+        headers["Accept"] = accept
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read(1000000).decode("utf-8", errors="replace")
+
+
+def _parse_iso(s):
+    """ISO 时间（HN / arXiv）→ datetime，失败返回 None。"""
+    s = (s or "").strip().replace("Z", "+00:00")
+    if not s:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(s)
+    except ValueError:
+        try:
+            return datetime.datetime.fromisoformat(s[:19])
+        except ValueError:
+            return None
+
+
+def _hn_items():
+    """Hacker News：Algolia API 按关键词检索近 48h 故事，按热度取前 10。"""
+    since = int((datetime.datetime.now(datetime.timezone.utc)
+                 - datetime.timedelta(hours=48)).timestamp())
+    out, seen = [], set()
+    for q in HN_QUERIES:
+        try:
+            url = ("https://hn.algolia.com/api/v1/search_by_date?query=%s"
+                   "&tags=story&numericFilters=created_at_i>%d&hitsPerPage=8"
+                   % (urllib.parse.quote(q), since))
+            data = json.loads(_fetch_url(url, timeout=15))
+            for h in data.get("hits", []):
+                oid = h.get("objectID")
+                if not oid or oid in seen:
+                    continue
+                seen.add(oid)
+                title = (h.get("title") or "").strip()
+                if not title:
+                    continue
+                link = h.get("url") or ("https://news.ycombinator.com/item?id=" + oid)
+                out.append({
+                    "title": title,
+                    "link": link,
+                    "category": "海外热点",
+                    "source": "Hacker News",
+                    "summary": "▲ %s points · by %s" % (h.get("points", 0), h.get("author", "?")),
+                    "pub_date": _parse_iso(h.get("created_at") or ""),
+                })
+        except Exception as ex:
+            print("[AI晨报] HN 拉取失败 (%s): %s" % (q, ex), file=sys.stderr)
+    out.sort(key=lambda x: int(re.sub(r"\D", "", x["summary"]) or 0), reverse=True)
+    return out[:10]
+
+
+def _feed_items(url, source, limit=6):
+    """RSS/Atom 订阅源（The Verge / TechCrunch）。"""
+    try:
+        raw = _fetch_url(url, timeout=20,
+                         accept="application/rss+xml, application/xml, text/xml")
+        root = ET.fromstring(raw)
+    except Exception as ex:
+        print("[AI晨报] %s 拉取失败: %s" % (source, ex), file=sys.stderr)
+        return []
+    items = []
+    ns = "{http://www.w3.org/2005/Atom}"
+    if root.tag.endswith("feed"):  # Atom（The Verge 等）
+        for e in root.findall(ns + "entry"):
+            title = _strip_html(e.findtext(ns + "title") or "")
+            link_el = e.find(ns + "link")
+            link = (link_el.get("href") if link_el is not None
+                    else (e.findtext(ns + "id") or "")).strip()
+            desc = _truncate(_strip_html(e.findtext(ns + "summary") or ""))
+            pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
+            if not title or not link:
+                continue
+            items.append({"title": title, "link": link, "category": "海外热点",
+                          "source": source, "summary": desc,
+                          "pub_date": _parse_iso(pub)})
+    else:  # RSS 2.0
+        ch = root.find("channel")
+        if ch is None:
+            return []
+        for it in ch.findall("item"):
+            title = _strip_html(it.findtext("title") or "")
+            link = (it.findtext("link") or "").strip()
+            desc = _truncate(_strip_html(it.findtext("description") or ""))
+            pub = (it.findtext("pubDate") or "").strip()
+            if not title or not link:
+                continue
+            items.append({"title": title, "link": link, "category": "海外热点",
+                          "source": source, "summary": desc,
+                          "pub_date": _parse_rss_date(pub)})
+    return items[:limit]
+
+
+def _arxiv_items():
+    """arXiv：AI 相关分类按提交时间倒序，取前 8 条归入「论文」。"""
+    q = " OR ".join("cat:" + c for c in ARXIV_CATS)
+    url = ("https://export.arxiv.org/api/query?search_query=%s"
+           "&sortBy=submittedDate&sortOrder=descending&max_results=20"
+           % urllib.parse.quote(q))
+    try:
+        root = ET.fromstring(_fetch_url(url, timeout=30))
+    except Exception as ex:
+        print("[AI晨报] arXiv 拉取失败: %s" % ex, file=sys.stderr)
+        return []
+    ns = "{http://www.w3.org/2005/Atom}"
+    items, seen = [], set()
+    for e in root.findall(ns + "entry"):
+        title = _strip_html(re.sub(r"\s+", " ", e.findtext(ns + "title") or ""))
+        id_el = e.find(ns + "id")
+        link = ((id_el.text or "").strip() if id_el is not None else "")
+        if not title or not link or link in seen:
+            continue
+        seen.add(link)
+        cat_el = e.find(ns + "category")
+        cat = cat_el.get("term", "cs.AI") if cat_el is not None else "cs.AI"
+        items.append({
+            "title": "[%s] %s" % (cat, title),
+            "link": link,
+            "category": "论文",
+            "source": "arXiv",
+            "summary": _truncate(_strip_html(e.findtext(ns + "summary") or "")),
+            "pub_date": _parse_iso(e.findtext(ns + "published") or ""),
+        })
+    return items[:8]
+
+
+def fetch_multi_channel():
+    """拉取多渠道快讯，返回 (items, names)。names 为成功信源名，单渠道失败不影响整体。"""
+    items, names = [], []
+    channels = [
+        ("Hacker News", _hn_items),
+        ("The Verge", lambda: _feed_items(VERGE_RSS, "The Verge", 6)),
+        ("TechCrunch", lambda: _feed_items(TECHCRUNCH_RSS, "TechCrunch", 6)),
+        ("arXiv", _arxiv_items),
+    ]
+    for name, fn in channels:
+        try:
+            got = fn()
+        except Exception as ex:
+            print("[AI晨报] %s 渠道异常: %s" % (name, ex), file=sys.stderr)
+            got = []
+        if got:
+            items.extend(got)
+            names.append(name)
+            print("[AI晨报] %s 拉取 %d 条" % (name, len(got)))
+    return items, names
+
+
+def _norm_title(t):
+    return re.sub(r"[\W_]+", "", (t or "").lower())
+
+
+def _dedupe(base, extra):
+    """标题去重：丢弃与 AIHOT 已有条目标题相同的快讯。"""
+    seen = {_norm_title(it["title"]) for it in base}
+    return [it for it in extra if _norm_title(it["title"]) not in seen]
+
+
 def _filter_today(items):
     """筛选今日日报条目：往前回溯 36 小时窗口。"""
     now = _now_bj()
@@ -228,8 +406,8 @@ def _item_html(it, top=False):
     )
 
 
-def build_html(grouped, date_human, window_human):
-    """生成晨报编辑部风格 HTML 页面。"""
+def build_html(grouped, date_human, window_human, sources_note=""):
+    """生成晨报编辑部风格 HTML 页面。sources_note：附加数据源标注（如多渠道快讯）。"""
     total = sum(len(its) for _, its in grouped)
 
     # ---- 今日索引（报纸式编号导航条）----
@@ -474,7 +652,7 @@ a{{color:inherit;text-decoration:none;}}
     <div class="mast-sub">VOL.{date_vol} &nbsp;·&nbsp; 今日 {total} 篇报道</div>
     <div class="mast-strip">
       <span>{window_human}</span>
-      <span>数据源 <b>AIHOT</b> · 内容版权归原作者</span>
+      <span>数据源 <b>AIHOT</b>{sources_note} · 内容版权归原作者</span>
     </div>
   </header>
 
@@ -489,7 +667,7 @@ a{{color:inherit;text-decoration:none;}}
   </main>
 
   <footer class="foot">
-    <span>共 <strong>{total}</strong> 条 · 数据源：<a href="https://aihot.virxact.com" target="_blank" rel="noopener">AIHOT</a></span>
+    <span>共 <strong>{total}</strong> 条 · 数据源：<a href="https://aihot.virxact.com" target="_blank" rel="noopener">AIHOT</a>{sources_note}</span>
     <span>{date_human} · 内容版权归原作者</span>
   </footer>
 </div>
@@ -533,18 +711,23 @@ def main():
         items = _fallback_json()
         if items:
             print("[AI晨报] JSON 回退成功，共 %d 条" % len(items))
-        else:
-            print("[AI晨报] 无可用数据源，跳过生成", file=sys.stderr)
-            return False
+
+    # 多渠道快讯（HN / Verge / TechCrunch / arXiv），云端直接抓取，脱离 WorkBuddy
+    extra, extra_names = fetch_multi_channel()
+    extra = _dedupe(items or [], _filter_today(extra))
+    if extra:
+        items = (items or []) + extra
+        print("[AI晨报] 多渠道新增 %d 条（%s）" % (len(extra), " / ".join(extra_names)))
 
     if not items:
-        print("[AI晨报] 条目为空，跳过生成", file=sys.stderr)
+        print("[AI晨报] 无可用数据源，跳过生成", file=sys.stderr)
         return False
 
     grouped = _group_by_cat(items)
+    sources_note = (" · " + " / ".join(extra_names)) if extra_names else ""
     window_human = f"自动生成于 {now.strftime('%Y-%m-%d %H:%M')}（北京时间）"
 
-    html_doc = build_html(grouped, date_human, window_human)
+    html_doc = build_html(grouped, date_human, window_human, sources_note)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html_doc)
 
