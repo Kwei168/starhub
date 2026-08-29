@@ -1446,14 +1446,15 @@ function renderAihot(items){
 
 function normTitle(t){ return (t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); }
 
-// 36氪 AI 资讯流：归一化为 AIHOT 条目结构；仅保留近 36 小时条目；失败静默返回空数组
+// 36氪 AI 资讯流：归一化为 AIHOT 条目结构；仅保留近 24 小时前 15 条（避免盖过 AIHOT 主源）；失败静默返回空数组
 async function fetchNewsItems(){
   try{
     const r = await fetch(NEWS_API);
     if(!r.ok) return [];
     const j = await r.json();
-    const cutoff = Date.now() - 36 * 3600 * 1000;
+    const cutoff = Date.now() - 24 * 3600 * 1000;
     return (j.items || []).filter(it => it.title && it.link && (!it.publishedAt || new Date(it.publishedAt).getTime() >= cutoff))
+      .slice(0, 15)
       .map(it => ({
         title: it.title, category: 'industry',
         source: { name: '36氪' },
