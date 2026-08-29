@@ -163,6 +163,8 @@ def fetch_api():
             "source": source,
             "summary": _truncate(it.get("summary") or ""),
             "pub_date": _parse_iso(pub),
+            # AIHOT 编辑评分：参与头条评选打分，其余路径缺省 0
+            "score": float(it.get("score") or 0),
         })
     return items or None
 
@@ -441,8 +443,10 @@ def _arxiv_items():
 
 
 def fetch_multi_channel():
-    """拉取多渠道快讯，返回 (items, names)。names 为成功信源名，单渠道失败不影响整体。"""
-    items, names = [], []
+    """拉取多渠道快讯，返回 (items, names, statuses)。
+    names 为成功信源名；statuses 为 (信源名, 成败) 全量清单，供页脚信源状态栏展示，
+    单渠道失败不影响整体。"""
+    items, names, statuses = [], [], []
     channels = [
         ("Hacker News", _hn_items),
         ("The Verge", lambda: _feed_items(VERGE_RSS, "The Verge", 6)),
@@ -460,8 +464,12 @@ def fetch_multi_channel():
         if got:
             items.extend(got)
             names.append(name)
+            statuses.append((name, True))
             print("[AI晨报] %s 拉取 %d 条" % (name, len(got)))
-    return items, names
+        else:
+            statuses.append((name, False))
+            print("[AI晨报] %s 未拉到内容" % name, file=sys.stderr)
+    return items, names, statuses
 
 
 def _norm_title(t):
@@ -563,10 +571,69 @@ def translate_extra_items(items):
     print("[AI晨报] 英文条目翻译完成，%d 条标题已中文化" % n)
 
 
+def _link_domain(u):
+    return (urllib.parse.urlsplit(u or "").netloc or "").lower()
+
+
+def _bj_date_key(pd):
+    """datetime → 北京时区日期串（YYYY-MM-DD），无效返回空串。"""
+    if pd is None:
+        return ""
+    if pd.tzinfo is not None:
+        pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
+    return pd.strftime("%Y-%m-%d")
+
+
 def _dedupe(base, extra):
-    """标题去重：丢弃与 AIHOT 已有条目标题相同的快讯。"""
-    seen = {_norm_title(it["title"]) for it in base}
-    return [it for it in extra if _norm_title(it["title"]) not in seen]
+    """跨源去重（三层递进）：① 规范化标题精确相同；② 标题包含关系（短标题 ≥ 8 字符且为长标题子串，
+    覆盖同一新闻中文/编译标题差异）；③ 同域名链接 + 同一天（覆盖标题全异写的同文转载）。"""
+    seen_titles = [_norm_title(it["title"]) for it in base]
+    seen_domday = {(_link_domain(it["link"]), _bj_date_key(it.get("pub_date"))) for it in base}
+    out = []
+    for it in extra:
+        t = _norm_title(it["title"])
+        dup = t in seen_titles
+        if not dup:
+            dup = any(
+                (len(t) >= 8 and len(s) >= 8 and (t in s or s in t))
+                for s in seen_titles
+            )
+        if not dup:
+            domday = (_link_domain(it["link"]), _bj_date_key(it.get("pub_date")))
+            dup = domday[0] != "" and domday[1] != "" and domday in seen_domday
+        if dup:
+            continue
+        seen_titles.append(t)
+        seen_domday.add((_link_domain(it["link"]), _bj_date_key(it.get("pub_date"))))
+        out.append(it)
+    return out
+
+
+# 头条评分分类权重：新闻类 > 观点/产品 > 论文（快讯性质更强的分类更宜当头条）
+_LEAD_CAT_W = {"行业动态": 1.2, "AI 模型": 1.15, "AI 产品": 1.0,
+               "海外热点": 1.0, "技巧观点": 0.9, "论文": 0.7}
+# 信源权重：有编辑精选机制的信源略高；权重差刻意压小，避免评分被单一信源垄断
+_LEAD_SRC_W = {"Hacker News": 1.1, "AIHOT": 1.05, "36氪": 1.05}
+
+
+def _headline_score(it):
+    """头条候选评分 = AIHOT 编辑分 ×0.6 + 跨源报道数 ×25 + 信源权重 ×10 + 分类权重 ×10。
+    跨源报道数来自去重前的标题频次统计：被多信源报道 = 更重大。"""
+    now = _now_bj()
+    pub = it.get("pub_date")
+    fresh = 0
+    if pub is not None:
+        try:
+            if pub.tzinfo is None:
+                pub = pub.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=8)))
+            fresh = max(0, 10 - (now - pub).total_seconds() / 3600.0)
+        except Exception:
+            fresh = 0
+    return (it.get("score", 0) * 0.6
+            + it.get("cov", 1) * 25
+            + _LEAD_SRC_W.get(it.get("source", ""), 1.0) * 10
+            + _LEAD_CAT_W.get(it.get("category", ""), 1.0) * 10
+            + fresh * 0.3)
 
 
 def _filter_today(items):
@@ -618,8 +685,9 @@ def _item_html(it, top=False):
     )
 
 
-def build_html(grouped, date_human, window_human, sources_note=""):
-    """生成晨报编辑部风格 HTML 页面。sources_note：附加数据源标注（如多渠道快讯）。"""
+def build_html(grouped, date_human, window_human, sources_note="", status_line=""):
+    """生成晨报编辑部风格 HTML 页面。
+    sources_note：附加数据源标注（如多渠道快讯）；status_line：页脚信源成败状态栏。"""
     total = sum(len(its) for _, its in grouped)
 
     # ---- 今日索引（报纸式编号导航条）----
@@ -654,18 +722,20 @@ def build_html(grouped, date_human, window_human, sources_note=""):
             f'</section>'
         )
 
-    # ---- 今日要闻头条区：行业动态第一条为大头条，其它类各取一条为次头条 ----
-    gdict = dict(grouped)
-    lead_main = gdict["行业动态"][0] if gdict.get("行业动态") else None
+    # ---- 今日要闻头条区：大头条按评分从全部分类中选出（跨源报道数 + 编辑分 + 信源/分类权重 + 新鲜度），
+    # 不再固定取「行业动态」第一条；次头条从大头条未覆盖的分类各取一条 ----
+    all_items = [it for _, its in grouped for it in its]
+    lead_main = max(all_items, key=_headline_score) if all_items else None
     lead_sides = []
     seen_links = set()
     if lead_main:
         seen_links.add(lead_main["link"])
-    for cat in ("AI 模型", "AI 产品", "技巧观点", "论文"):
+    for cat, _its in grouped:
         if len(lead_sides) >= 2:
             break
-        cand = gdict.get(cat) or []
-        for c in cand:
+        if lead_main and cat == lead_main["category"]:
+            continue
+        for c in _its:
             if c["link"] not in seen_links:
                 lead_sides.append(c)
                 seen_links.add(c["link"])
@@ -880,6 +950,7 @@ a{{color:inherit;text-decoration:none;}}
 
   <footer class="foot">
     <span>共 <strong>{total}</strong> 条 · 数据源：<a href="https://aihot.virxact.com" target="_blank" rel="noopener">AIHOT</a>{sources_note}</span>
+    <span>{status_line}</span>
     <span>{date_human} · 内容版权归原作者</span>
   </footer>
 </div>
@@ -927,9 +998,17 @@ def main():
         if items:
             print("[AI晨报] JSON 回退成功，共 %d 条" % len(items))
 
-    # 多渠道快讯（HN / Verge / TechCrunch / arXiv），云端直接抓取，脱离 WorkBuddy
-    extra, extra_names = fetch_multi_channel()
-    extra = _dedupe(items or [], _filter_today(extra))
+    # 多渠道快讯（HN / Verge / TechCrunch / arXiv / 36氪 / Redis），云端直接抓取，脱离 WorkBuddy
+    extra, extra_names, chan_statuses = fetch_multi_channel()
+    extra_today = _filter_today(extra)
+    # 跨源报道数：在去重前统计规范化标题频次，供头条评分使用（被多源报道 = 更重大）
+    cov = {}
+    for it in extra_today:
+        k = _norm_title(it["title"])
+        cov[k] = cov.get(k, 0) + 1
+    for it in extra_today:
+        it["cov"] = cov.get(_norm_title(it["title"]), 1)
+    extra = _dedupe(items or [], extra_today)
     if extra:
         translate_extra_items(extra)
         items = (items or []) + extra
@@ -941,9 +1020,14 @@ def main():
 
     grouped = _group_by_cat(items)
     sources_note = (" · " + " / ".join(extra_names)) if extra_names else ""
+    # 页脚信源状态栏：主源（API/RSS/JSON 回退）+ 各快讯渠道成败，一眼看出哪个源哑了
+    statuses = [("AIHOT·主源", bool(items))] + chan_statuses
+    status_line = "今日信源：" + " · ".join(
+        "%s %s" % (n, "✓" if ok else "✗") for n, ok in statuses
+    )
     window_human = f"自动生成于 {now.strftime('%Y-%m-%d %H:%M')}（北京时间）"
 
-    html_doc = build_html(grouped, date_human, window_human, sources_note)
+    html_doc = build_html(grouped, date_human, window_human, sources_note, status_line)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html_doc)
 
