@@ -29,6 +29,7 @@ HN_QUERIES = ["AI", "LLM", "OpenAI", "GPT", "Claude", "machine learning", "Anthr
 VERGE_RSS = "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
 TECHCRUNCH_RSS = "https://techcrunch.com/category/artificial-intelligence/feed/"
 ARXIV_CATS = ["cs.AI", "cs.CL", "cs.CV", "cs.LG", "cs.NE"]
+# Redis 官方博客：内容以向量检索/LLM/Agent 为主，周更 2-3 篇，标准 RSS 可直连，无 36h 窗口命中属正常
 # 36氪 AI 资讯流：官方 RSS 有人机验证反爬墙，经 RSSHub 公共镜像中转。
 # 部分镜像封数据中心 IP（GitHub Actions / Vercel 出口），镜像链按可用性排序，依次尝试。
 KR36_FEEDS = [
@@ -37,6 +38,7 @@ KR36_FEEDS = [
     "https://rsshub.rssforever.com/36kr/information/AI",
     "https://hub.slarker.me/36kr/information/AI",
 ]
+REDIS_RSS = "https://redis.io/feed/"
 UA = {"User-Agent": "Mozilla/5.0 (starhub-auto-update)"}
 
 # RSS 分类 → 配色
@@ -356,25 +358,12 @@ def _feed_items(url, source, limit=6):
     return items[:limit]
 
 
-def _36kr_items(limit=8):
-    """36氪 AI 资讯流：经 RSSHub 镜像链依次尝试，命中即止，归入「行业动态」。中文内容无需翻译。"""
-    raw = None
-    for url in KR36_FEEDS:
-        try:
-            cand = _fetch_url(url, timeout=12,
-                              accept="application/rss+xml, application/xml, text/xml")
-            if "<item>" in cand:
-                raw = cand
-                break
-        except Exception:
-            continue
-    if not raw:
-        print("[AI晨报] 36氪镜像链全部失败", file=sys.stderr)
-        return []
+def _parse_rss2(raw, source, category, limit):
+    """RSS 2.0 XML 文本 → 晨报条目结构；解析失败返回空列表。"""
     try:
         root = ET.fromstring(raw)
     except Exception as ex:
-        print("[AI晨报] 36氪解析异常: %s" % ex, file=sys.stderr)
+        print("[AI晨报] %s 解析异常: %s" % (source, ex), file=sys.stderr)
         return []
     ch = root.find("channel")
     if ch is None:
@@ -387,10 +376,35 @@ def _36kr_items(limit=8):
         pub = (it.findtext("pubDate") or "").strip()
         if not title or not link:
             continue
-        items.append({"title": title, "link": link, "category": "行业动态",
-                      "source": "36氪", "summary": desc,
+        items.append({"title": title, "link": link, "category": category,
+                      "source": source, "summary": desc,
                       "pub_date": _parse_rss_date(pub)})
     return items[:limit]
+
+
+def _rss_channel_items(url, source, category, limit, timeout=12):
+    """通用 RSS 2.0 频道：拉取 + 解析，失败返回空列表。"""
+    try:
+        raw = _fetch_url(url, timeout=timeout,
+                         accept="application/rss+xml, application/xml, text/xml")
+    except Exception as ex:
+        print("[AI晨报] %s 拉取失败: %s" % (source, ex), file=sys.stderr)
+        return []
+    return _parse_rss2(raw, source, category, limit)
+
+
+def _36kr_items(limit=8):
+    """36氪 AI 资讯流：经 RSSHub 镜像链依次尝试，命中即止，归入「行业动态」。中文内容无需翻译。"""
+    for url in KR36_FEEDS:
+        try:
+            cand = _fetch_url(url, timeout=12,
+                              accept="application/rss+xml, application/xml, text/xml")
+        except Exception:
+            continue
+        if "<item>" in cand:
+            return _parse_rss2(cand, "36氪", "行业动态", limit)
+    print("[AI晨报] 36氪镜像链全部失败", file=sys.stderr)
+    return []
 
 
 def _arxiv_items():
@@ -435,6 +449,7 @@ def fetch_multi_channel():
         ("TechCrunch", lambda: _feed_items(TECHCRUNCH_RSS, "TechCrunch", 6)),
         ("arXiv", _arxiv_items),
         ("36氪", _36kr_items),
+        ("Redis", lambda: _rss_channel_items(REDIS_RSS, "Redis", "行业动态", 3)),
     ]
     for name, fn in channels:
         try:
