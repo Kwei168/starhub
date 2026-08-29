@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Generate ai-daily.html from AIHOT 公开 API v1（https://aihot.virxact.com/api/v1/items，
-匿名只读、无需 Key）+ 多渠道快讯（Hacker News / The Verge / TechCrunch / arXiv）。
+匿名只读、无需 Key）+ 多渠道快讯（Hacker News / The Verge / TechCrunch / arXiv /
+36氪 / Redis / AtlasNote）。
 API 失败时依次回退 RSS（feed.xml）与本地 ai_daily.json。
 仅依赖 Python 标准库。由 fetch_and_build.py 调用或独立运行。
 每次构建自动拉取最新数据，筛选近 36 小时条目生成晨报。
@@ -24,7 +25,7 @@ API_URL = "https://aihot.virxact.com/api/v1/items"  # 公开 API v1，匿名只�
 OUT = "ai-daily.html"
 FALLBACK_SRC = "ai_daily.json"  # RSS 失败时回退到本地 JSON
 
-# 多渠道快讯配置（HN / Verge / TechCrunch / arXiv）
+# 多渠道快讯配置（HN / Verge / TechCrunch / arXiv / 36氪 / Redis / AtlasNote）
 HN_QUERIES = ["AI", "LLM", "OpenAI", "GPT", "Claude", "machine learning", "Anthropic"]
 VERGE_RSS = "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
 TECHCRUNCH_RSS = "https://techcrunch.com/category/artificial-intelligence/feed/"
@@ -39,6 +40,9 @@ KR36_FEEDS = [
     "https://hub.slarker.me/36kr/information/AI",
 ]
 REDIS_RSS = "https://redis.io/feed/"
+# AtlasNote（atlasnote.ai）深度文章：AI 架构/创业/研究方法论的长文分析，周更 2-4 篇。
+# 中英双语发布同一文章（/en/ 与 /zh-CN/ 两条），按 slug 归并偏好中文版（_atlasnote_items）。
+ATLASNOTE_RSS = "https://atlasnote.ai/rss.xml"
 UA = {"User-Agent": "Mozilla/5.0 (starhub-auto-update)"}
 
 # RSS 分类 → 配色
@@ -409,6 +413,26 @@ def _36kr_items(limit=8):
     return []
 
 
+def _atlasnote_items(limit=6):
+    """AtlasNote 深度文章：标准 RSS 2.0，中英双语各发一条（URL 仅 /en/ 与 /zh-CN/ 之别）。
+    按 slug 归并双语条目，同文优先保留中文版（标题/简介免翻译）；论文解读类归「论文」，
+    其余归「技巧观点」。周更 2-4 篇，36h 窗口未命中属正常。"""
+    items = _rss_channel_items(ATLASNOTE_RSS, "AtlasNote", "技巧观点", limit * 2)
+    merged = {}
+    for it in items:
+        slug = urllib.parse.urlsplit(it["link"]).path.rstrip("/").split("/")[-1]
+        prev = merged.get(slug)
+        zh = "/zh-CN/" in it["link"]
+        if prev is None or (zh and "/zh-CN/" not in prev["link"]):
+            merged[slug] = it
+    out = list(merged.values())
+    for it in out:
+        blob = it["title"] + " " + it["summary"]
+        if re.search(r"论文|preprint|Paper", blob, re.IGNORECASE):
+            it["category"] = "论文"
+    return out[:limit]
+
+
 def _arxiv_items():
     """arXiv：AI 相关分类按提交时间倒序，取前 8 条归入「论文」。"""
     q = " OR ".join("cat:" + c for c in ARXIV_CATS)
@@ -454,6 +478,7 @@ def fetch_multi_channel():
         ("arXiv", _arxiv_items),
         ("36氪", _36kr_items),
         ("Redis", lambda: _rss_channel_items(REDIS_RSS, "Redis", "行业动态", 3)),
+        ("AtlasNote", _atlasnote_items),
     ]
     for name, fn in channels:
         try:
@@ -571,24 +596,33 @@ def translate_extra_items(items):
     print("[AI晨报] 英文条目翻译完成，%d 条标题已中文化" % n)
 
 
-def _link_domain(u):
-    return (urllib.parse.urlsplit(u or "").netloc or "").lower()
-
-
-def _bj_date_key(pd):
-    """datetime → 北京时区日期串（YYYY-MM-DD），无效返回空串。"""
-    if pd is None:
+def _norm_url(u):
+    """URL 规范化：去协议、www 前缀、utm_* 追踪参数与末尾斜杠，供同文异标题判断。
+    其余 query 保留（如 YouTube /watch?v= 仅凭参数区分视频，不可整段丢弃）。"""
+    p = urllib.parse.urlsplit(u or "")
+    if not p.netloc:
         return ""
-    if pd.tzinfo is not None:
-        pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
-    return pd.strftime("%Y-%m-%d")
+    q = [(k, v) for k, v in urllib.parse.parse_qsl(p.query)
+         if not k.lower().startswith("utm_")]
+    host = re.sub(r"^www\.", "", p.netloc.lower())
+    return host + p.path.rstrip("/") + \
+        ("?" + urllib.parse.urlencode(q) if q else "")
+
+
+def _summ_key(it):
+    """摘要规范化指纹：≥30 字符才可用于互含判断（HN 点数等元信息天然被排除）。"""
+    s = _norm_title(it.get("summary") or "")
+    return s if len(s) >= 30 else ""
 
 
 def _dedupe(base, extra):
-    """跨源去重（三层递进）：① 规范化标题精确相同；② 标题包含关系（短标题 ≥ 8 字符且为长标题子串，
-    覆盖同一新闻中文/编译标题差异）；③ 同域名链接 + 同一天（覆盖标题全异写的同文转载）。"""
+    """跨源去重（四层递进）：① 规范化标题精确相同；② 标题包含关系（短标题 ≥ 8 字符且为长标题子串，
+    覆盖同一新闻中文/编译标题差异）；③ 规范化 URL 相同（覆盖同文标题被改写后的跨源收录，
+    如 AIHOT 原文链与渠道 RSS 链指向同一篇）；④ 规范化摘要互为包含（覆盖标题与 URL 全异、
+    摘要转录一致的同文转载）。不引入「同域同天」判重——同一信源当天会发布多篇不同文章。"""
     seen_titles = [_norm_title(it["title"]) for it in base]
-    seen_domday = {(_link_domain(it["link"]), _bj_date_key(it.get("pub_date"))) for it in base}
+    seen_urls = {u for u in (_norm_url(it["link"]) for it in base) if u}
+    seen_sums = [s for s in (_summ_key(it) for it in base) if s]
     out = []
     for it in extra:
         t = _norm_title(it["title"])
@@ -599,12 +633,20 @@ def _dedupe(base, extra):
                 for s in seen_titles
             )
         if not dup:
-            domday = (_link_domain(it["link"]), _bj_date_key(it.get("pub_date")))
-            dup = domday[0] != "" and domday[1] != "" and domday in seen_domday
+            nu = _norm_url(it["link"])
+            dup = bool(nu) and nu in seen_urls
+        if not dup:
+            sk = _summ_key(it)
+            dup = bool(sk) and any(sk in s or s in sk for s in seen_sums)
         if dup:
             continue
         seen_titles.append(t)
-        seen_domday.add((_link_domain(it["link"]), _bj_date_key(it.get("pub_date"))))
+        nu = _norm_url(it["link"])
+        if nu:
+            seen_urls.add(nu)
+        sk = _summ_key(it)
+        if sk:
+            seen_sums.append(sk)
         out.append(it)
     return out
 
@@ -998,7 +1040,7 @@ def main():
         if items:
             print("[AI晨报] JSON 回退成功，共 %d 条" % len(items))
 
-    # 多渠道快讯（HN / Verge / TechCrunch / arXiv / 36氪 / Redis），云端直接抓取，脱离 WorkBuddy
+    # 多渠道快讯（HN / Verge / TechCrunch / arXiv / 36氪 / Redis / AtlasNote），云端直接抓取，脱离 WorkBuddy
     extra, extra_names, chan_statuses = fetch_multi_channel()
     extra_today = _filter_today(extra)
     # 跨源报道数：在去重前统计规范化标题频次，供头条评分使用（被多源报道 = 更重大）
