@@ -2,9 +2,9 @@ name: Update Star Hub
 
 on:
   schedule:
-    # 每小时一次（UTC :10 触发，错峰避开整点）：构建兜底；30 分钟实时刷新由前端轮询 api/events 承担
+    # 每小时一次（UTC :16 触发，与 cron-job.org 整点错开 16 分钟）：构建兜底
     # （原 30 分钟档位经 8-17/8-18 观测多次被 GitHub Actions 跳过，已降级为兜底频率）
-    - cron: "10 * * * *"
+    - cron: "16 * * * *"
   workflow_dispatch: {}
 
 permissions:
