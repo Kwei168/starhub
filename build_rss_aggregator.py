@@ -50,8 +50,6 @@ RSS_SOURCES = [
     {"key": "极客公园_7", "name": "极客公园", "cat": "cn_tech", "url": "http://www.geekpark.net/rss", "color": "#00aa55"},
     {"key": "小众软件_8", "name": "小众软件", "cat": "cn_tech", "url": "https://www.appinn.com/feed/", "color": "#FFD43B"},
     {"key": "构建被动收入_9", "name": "构建被动收入", "cat": "cn_tech", "url": "https://www.bmpi.dev/index.xml", "color": "#00bc74"},
-    {"key": "异次元软件_10", "name": "异次元软件", "cat": "cn_tech", "url": "http://feed.iplaysoft.com/", "color": "#e2363e"},
-    {"key": "虎嗅_11", "name": "虎嗅", "cat": "cn_tech", "url": "https://rss.huxiu.com/", "color": "#3a85ff"},
     {"key": "小众软件appinns_12", "name": "小众软件-appinns", "cat": "cn_tech", "url": "https://feeds.appinn.com/appinns/", "color": "#3177cf"},
     {"key": "it之家_13", "name": "IT之家", "cat": "cn_tech", "url": "https://www.ithome.com/rss/", "color": "#1e88e5"},
     {"key": "透明创业_14", "name": "透明创业", "cat": "cn_tech", "url": "https://blog.t9t.io/atom.xml", "color": "#2c7fb8"},
@@ -63,7 +61,6 @@ RSS_SOURCES = [
     {"key": "decohack_20", "name": "Decohack", "cat": "cn_tech", "url": "https://www.decohack.com/feed", "color": "#00897b"},
     {"key": "潮流周刊_21", "name": "潮流周刊", "cat": "cn_tech", "url": "https://weekly.tw93.fun/rss.xml", "color": "#ff5722"},
     {"key": "amicoyuanhpc_22", "name": "Amicoyuan HPC", "cat": "cn_tech", "url": "https://my-rssh-gwb5d33jd-amicoyuan.vercel.app/hexo/fluid/xingyuanjie.top", "color": "#1565c0"},
-    {"key": "异次元软件new_23", "name": "异次元软件-new", "cat": "cn_tech", "url": "https://feed.iplaysoft.com", "color": "#ff9800"},
     {"key": "少数派matrix_24", "name": "少数派Matrix", "cat": "cn_tech", "url": "https://plink.anyfeeder.com/ssapi/matrix", "color": "#795548"},
     {"key": "扯氮集_25", "name": "扯氮集", "cat": "cn_tech", "url": "http://weiwuhui.com/feed", "color": "#6a1b9a"},
     {"key": "deepzz_26", "name": "Deepzz", "cat": "cn_tech", "url": "https://deepzz.com/feed", "color": "#d32f2f"},
@@ -105,7 +102,6 @@ RSS_SOURCES = [
     {"key": "卡瓦邦噶_13", "name": "卡瓦邦噶", "cat": "dev", "url": "https://www.kawabangga.com/feed", "color": "#3498db"},
     {"key": "风雪之隅_14", "name": "风雪之隅", "cat": "dev", "url": "http://www.laruence.com/feed", "color": "#1abc9c"},
     {"key": "离别歌_15", "name": "离别歌", "cat": "dev", "url": "https://www.leavesongs.com/feed/", "color": "#9b59b6"},
-    {"key": "有赞技术团队_16", "name": "有赞技术团队", "cat": "dev", "url": "https://tech.youzan.com/rss/", "color": "#34495e"},
     {"key": "hellogithub_17", "name": "HelloGitHub", "cat": "dev", "url": "http://hellogithub.com/rss", "color": "#16a085"},
     {"key": "张鑫旭_18", "name": "张鑫旭", "cat": "dev", "url": "https://www.zhangxinxu.com/wordpress/feed/", "color": "#f39c12"},
     {"key": "maxos_19", "name": "maxOS", "cat": "dev", "url": "https://maxoxo.me/rss/", "color": "#dc382d"},
@@ -118,7 +114,6 @@ RSS_SOURCES = [
     {"key": "infoq推荐_26", "name": "InfoQ推荐", "cat": "dev", "url": "https://plink.anyfeeder.com/infoq/recommend", "color": "#6c5ce7"},
     {"key": "二丫讲梵_27", "name": "二丫讲梵", "cat": "dev", "url": "https://wiki.eryajf.net/rss.xml", "color": "#2d3436"},
     {"key": "唐巧博客_28", "name": "唐巧博客", "cat": "dev", "url": "http://blog.devtang.com/atom.xml", "color": "#e74c3c"},
-    {"key": "奔跑中奶酪_29", "name": "奔跑中奶酪", "cat": "dev", "url": "https://www.runningcheese.com/feed", "color": "#00b894"},
     {"key": "baiyun_30", "name": "BAI YUN", "cat": "dev", "url": "https://baiyun.me/feed", "color": "#2c3e50"},
     {"key": "elmagnifico_31", "name": "elmagnifico", "cat": "dev", "url": "http://elmagnifico.tech/feed.xml", "color": "#e67e22"},
     {"key": "mactalkanyfeede_32", "name": "MacTalkanyfeeder", "cat": "dev", "url": "https://plink.anyfeeder.com/weixin/sagacity-mac", "color": "#3498db"},
@@ -140,7 +135,6 @@ RSS_SOURCES = [
     # ── 综合新闻 (144) ──
     {"key": "联合早报中港台_0", "name": "联合早报-中港台", "cat": "news", "url": "https://plink.anyfeeder.com/zaobao/realtime/china", "color": "#bb1919"},
     {"key": "联合早报国际_1", "name": "联合早报-国际", "cat": "news", "url": "https://plink.anyfeeder.com/zaobao/realtime/world", "color": "#0066b3"},
-    {"key": "知乎日报feedburner_2", "name": "知乎日报-feedburner", "cat": "news", "url": "http://feeds.feedburner.com/zhihu-daily", "color": "#1a1a1a"},
     {"key": "idaily_3", "name": "iDaily", "cat": "news", "url": "https://plink.anyfeeder.com/idaily/today", "color": "#003399"},
     {"key": "中国日报双语_4", "name": "中国日报双语", "cat": "news", "url": "https://plink.anyfeeder.com/chinadaily/dual", "color": "#cc0000"},
     {"key": "知乎日报anyfeeder_5", "name": "知乎日报anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/zhihu/daily", "color": "#d32f2f"},
@@ -168,7 +162,6 @@ RSS_SOURCES = [
     {"key": "东哥解读电商_27", "name": "东哥解读电商", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/dgjdds", "color": "#795548"},
     {"key": "半月谈_28", "name": "半月谈", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/banyuetan-weixin", "color": "#6a1b9a"},
     {"key": "阑夕_29", "name": "阑夕", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/techread", "color": "#0097a7"},
-    {"key": "人民日报_30", "name": "人民日报", "cat": "news", "url": "https://plink.anyfeeder.com/people-daily", "color": "#c62828"},
     {"key": "有书_31", "name": "有书", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/youshucc", "color": "#e65100"},
     {"key": "虎嗅网anyfeeder_32", "name": "虎嗅网anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/huxiu_com", "color": "#bb1919"},
     {"key": "医学界_33", "name": "医学界", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/yixuejiezazhi", "color": "#0066b3"},
@@ -181,7 +174,6 @@ RSS_SOURCES = [
     {"key": "猫笔刀_40", "name": "猫笔刀", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/maobidao", "color": "#0084ff"},
     {"key": "澎湃新闻_41", "name": "澎湃新闻", "cat": "news", "url": "https://plink.anyfeeder.com/thepaper", "color": "#43a047"},
     {"key": "小道消息_42", "name": "小道消息", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/WebNotes", "color": "#5c6bc0"},
-    {"key": "新浪创事记_43", "name": "新浪创事记", "cat": "news", "url": "https://plink.anyfeeder.com/sina/csj", "color": "#795548"},
     {"key": "香港凤凰周刊_44", "name": "香港凤凰周刊", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/phoenixweekly", "color": "#6a1b9a"},
     {"key": "人民日报微信_45", "name": "人民日报微信", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/rmrbwx", "color": "#0097a7"},
     {"key": "叶檀财经_46", "name": "叶檀财经", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/tancaijing", "color": "#c62828"},
@@ -283,19 +275,13 @@ RSS_SOURCES = [
     {"key": "丁香妈妈_142", "name": "丁香妈妈", "cat": "news", "url": "https://plink.anyfeeder.com/weixin/DingXiangMaMi", "color": "#c62828"},
     {"key": "界面财经_143", "name": "界面财经", "cat": "news", "url": "https://plink.anyfeeder.com/jiemian/finance", "color": "#e65100"},
 
-    # ── 播客 (12) ──
-    {"key": "张小珺商业访谈_0", "name": "张小珺商业访谈", "cat": "podcast", "url": "https://feed.xyzfm.space/dk4yh3pkpjp3", "color": "#7c3aed"},
+    # ── 播客 (6) ──
     {"key": "42章经_1", "name": "42章经", "cat": "podcast", "url": "https://feed.xyzfm.space/evgg6xle9rdc", "color": "#0891b2"},
-    {"key": "投资实战派_2", "name": "投资实战派", "cat": "podcast", "url": "https://feed.xyzfm.space/rgnq4rbx9tpv", "color": "#1e40af"},
-    {"key": "晚点聊latetalk_3", "name": "晚点聊LateTalk", "cat": "podcast", "url": "https://feeds.fireside.fm/latetalk/rss", "color": "#047857"},
     {"key": "三点下班_4", "name": "三点下班", "cat": "podcast", "url": "https://feed.xyzfm.space/tlel9j4tg3eu", "color": "#e11d48"},
-    {"key": "硅谷101_5", "name": "硅谷101", "cat": "podcast", "url": "https://feeds.fireside.fm/sv101/rss", "color": "#0369a1"},
     {"key": "卫诗婕商业漫谈_6", "name": "卫诗婕商业漫谈", "cat": "podcast", "url": "https://rsshub.bestblogs.dev/xiaoyuzhou/podcast/6627fda4b56459544087d86a", "color": "#7c3aed"},
     {"key": "得意忘形_7", "name": "得意忘形", "cat": "podcast", "url": "https://feed.xyzfm.space/klaak6nmc3ux", "color": "#0891b2"},
     {"key": "起朱楼宴宾客_8", "name": "起朱楼宴宾客", "cat": "podcast", "url": "https://rsshub.bestblogs.dev/xiaoyuzhou/podcast/65253bf350cf691d245b29aa", "color": "#1e40af"},
-    {"key": "econtalk_9", "name": "EconTalk", "cat": "podcast", "url": "https://feeds.simplecast.com/wgl4xEgL", "color": "#047857"},
     {"key": "tedradiohour_10", "name": "TED Radio Hour", "cat": "podcast", "url": "https://feeds.npr.org/510298/podcast.xml", "color": "#e11d48"},
-    {"key": "stufftoblowyour_11", "name": "Stuff To Blow Your Mind", "cat": "podcast", "url": "https://omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/6EA152C0-9E3A-45DE-8672-AE2F0056B113/D8936746-9E22-4DBA-B762-AE2F0056B126/podcast.rss", "color": "#0369a1"},
 
 ]
 
@@ -490,11 +476,24 @@ def _fetch_rss(source):
         print("[RSS聚合] %s 拉取失败: %s" % (name, ex), file=sys.stderr)
         return []
 
+    root = None
+    raw_str = None
+    # 尝试直接解析
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as ex:
-        print("[RSS聚合] %s 解析失败: %s" % (name, ex), file=sys.stderr)
-        return []
+        orig_err = ex
+        # 仅在检测到未闭合 CDATA 时尝试回退
+        raw_str = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        if "unclosed CDATA" in str(orig_err):
+            try:
+                text = raw_str.replace("<![CDATA[", "").replace("]]>", "")
+                root = ET.fromstring(text)
+            except ET.ParseError:
+                pass  # 回退也失败，使用原始错误
+        if root is None:
+            print("[RSS聚合] %s 解析失败: %s" % (name, orig_err), file=sys.stderr)
+            return []
     except Exception as ex:
         print("[RSS聚合] %s 异常: %s" % (name, ex), file=sys.stderr)
         return []
