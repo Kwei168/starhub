@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Generate rss-aggregator.html — 多路 RSS 新闻源聚合页面。
-构建时由 fetch_and_build.py 调用，Python 标准库抓取 RSS → 生成静态 HTML。
-页面风格与 StarHub 主站一致（暖纸底 + 衬线标题 + 等宽数字）。
-功能：按信源分组展示、信源筛选标签、全局搜索、响应式三端适配。
+"""Generate rss-aggregator.html — 多路 RSS 新闻源聚合阅读器。
+构建时由 fetch_and_build.py 调用，Python 标准库抓取 RSS → 翻译 → 生成静态 HTML。
+
+布局：三栏式阅读器（信源侧栏 | 文章列表 | 阅读区）
+功能：信源分类筛选、全局搜索、标题/摘要翻译、响应式三端适配、主题切换。
 """
 import html as html_mod
 import datetime
@@ -16,24 +17,75 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 OUT = "rss-aggregator.html"
+UA = {"User-Agent": "Mozilla/5.0 (starhub-rss-aggregator)"}
 
-UA = {"User-Agent": "Mozilla/5.0 (starhub-auto-update)"}
+# ── 翻译统计 ──
+_TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0}
 
-# RSS 源配置
+# ── RSS 信源配置（按分类组织） ─
 RSS_SOURCES = [
-    {"key": "hn",       "name": "Hacker News",  "url": "https://hnrss.org/frontpage",                                    "color": "#ff6600", "icon": "Y"},
-    {"key": "verge",    "name": "The Verge AI", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "color": "#e31937", "icon": "V"},
-    {"key": "tc",       "name": "TechCrunch AI","url": "https://techcrunch.com/category/artificial-intelligence/feed/",   "color": "#0a9e01", "icon": "T"},
-    {"key": "arxiv",    "name": "arXiv",        "url": "https://rss.arxiv.org/rss/cs.AI",                                 "color": "#b31b1b", "icon": "X"},
-    {"key": "kr36",     "name": "36\u6c2a",       "url": "https://rsshub.ktachibana.party/36kr/information/AI",             "color": "#0066ff", "icon": "36"},
-    {"key": "redis",    "name": "Redis Blog",   "url": "https://redis.io/feed/",                                          "color": "#dc382d", "icon": "R"},
-    {"key": "atlas",    "name": "AtlasNote",    "url": "https://atlasnote.ai/rss.xml",                                    "color": "#6366f1", "icon": "A"},
+    # ── 科技资讯 ──
+    {"key": "hn",      "name": "Hacker News",     "cat": "tech",    "url": "https://hnrss.org/frontpage",                                          "color": "#ff6600"},
+    {"key": "verge",   "name": "The Verge AI",    "cat": "tech",    "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",     "color": "#e31937"},
+    {"key": "tc",      "name": "TechCrunch AI",   "cat": "tech",    "url": "https://techcrunch.com/category/artificial-intelligence/feed/",         "color": "#0a9e01"},
+    {"key": "arxiv",   "name": "arXiv CS.AI",     "cat": "tech",    "url": "https://rss.arxiv.org/rss/cs.AI",                                       "color": "#b31b1b"},
+    {"key": "reddit",  "name": "Reddit r/tech",   "cat": "tech",    "url": "https://www.reddit.com/r/technology/.rss",                              "color": "#ff4500"},
+    {"key": "wired",   "name": "WIRED",           "cat": "tech",    "url": "https://www.wired.com/feed/rss",                                        "color": "#000000"},
+
+    # ── 中文科技 ──
+    {"key": "kr36",    "name": "36氪",            "cat": "cn_tech", "url": "https://rsshub.ktachibana.party/36kr/information/AI",                   "color": "#0066ff"},
+    {"key": "ithome",  "name": "IT之家",           "cat": "cn_tech", "url": "https://www.ithome.com/rss/",                                          "color": "#0055ff"},
+    {"key": "sspai",   "name": "少数派",           "cat": "cn_tech", "url": "https://sspai.com/feed",                                               "color": "#d7434e"},
+    {"key": "solidot", "name": "Solidot",         "cat": "cn_tech", "url": "https://www.solidot.org/index.rss",                                     "color": "#336699"},
+    {"key": "coolshell","name": "酷壳",           "cat": "cn_tech", "url": "https://coolshell.cn/feed",                                             "color": "#333333"},
+    {"key": "ruanyifeng","name": "阮一峰网络日志", "cat": "cn_tech", "url": "https://www.ruanyifeng.com/blog/atom.xml",                             "color": "#4a90d9"},
+    {"key": "geekpark","name": "极客公园",        "cat": "cn_tech", "url": "https://plink.anyfeeder.com/geekpark",                                  "color": "#00aa55"},
+    {"key": "huxiu",   "name": "虎嗅",            "cat": "cn_tech", "url": "https://plink.anyfeeder.com/huxiu",                                     "color": "#1a1a1a"},
+    {"key": "tmtpost", "name": "钛媒体",          "cat": "cn_tech", "url": "https://www.tmtpost.com/feed",                                          "color": "#0066cc"},
+    {"key": "readhub", "name": "Readhub",         "cat": "cn_tech", "url": "https://plink.anyfeeder.com/readhub/topic",                             "color": "#333333"},
+
+    # ── 开发者博客 ──
+    {"key": "redis",   "name": "Redis Blog",      "cat": "dev",     "url": "https://redis.io/feed/",                                               "color": "#dc382d"},
+    {"key": "atlas",   "name": "AtlasNote",       "cat": "dev",     "url": "https://atlasnote.ai/rss.xml",                                          "color": "#6366f1"},
+    {"key": "webdev",  "name": "web.dev",         "cat": "dev",     "url": "https://web.dev/feed.xml",                                              "color": "#4285f4"},
+    {"key": "css",     "name": "CSS-Tricks",      "cat": "dev",     "url": "https://css-tricks.com/feed/",                                          "color": "#e34f26"},
+    {"key": "overreacted","name":"Overreacted",    "cat": "dev",     "url": "https://overreacted.io/rss.xml",                                        "color": "#663399"},
+    {"key": "antfu",   "name": "Anthony Fu",      "cat": "dev",     "url": "https://antfu.me/feed.xml",                                             "color": "#336699"},
+    {"key": "diygod",  "name": "DIYGod",          "cat": "dev",     "url": "https://diygod.me/atom.xml",                                             "color": "#00adb5"},
+    {"key": "hellogithub","name":"HelloGitHub",    "cat": "dev",     "url": "http://hellogithub.com/rss",                                            "color": "#4CAF50"},
+
+    # ── 综合新闻 ──
+    {"key": "bbc",     "name": "BBC 中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/bbc/cn",                                    "color": "#bb1919"},
+    {"key": "rfi",     "name": "法广中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/rfi/cn",                                    "color": "#0066b3"},
+    {"key": "voa",     "name": "美国之音",        "cat": "news",    "url": "https://plink.anyfeeder.com/voa/chinese",                               "color": "#003366"},
+    {"key": "dw",      "name": "德国之声",        "cat": "news",    "url": "https://rss.dw.com/rdf/rss-chi-all",                                    "color": "#0055a4"},
+    {"key": "nyt",     "name": "纽约时报中文",    "cat": "news",    "url": "https://plink.anyfeeder.com/nytimes/cn",                                "color": "#1a1a1a"},
+    {"key": "reuters", "name": "路透中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/reuters/cn",                                "color": "#ff8000"},
+    {"key": "zaobao",  "name": "联合早报",        "cat": "news",    "url": "https://plink.anyfeeder.com/zaobao/realtime/china",                     "color": "#003399"},
+    {"key": "chinadaily","name":"中国日报双语",   "cat": "news",    "url": "https://plink.anyfeeder.com/chinadaily/dual",                           "color": "#cc0000"},
+
+    # ── 播客 ──
+    {"key": "sv101",   "name": "硅谷101",         "cat": "podcast", "url": "https://feeds.fireside.fm/sv101/rss",                                   "color": "#7c3aed"},
+    {"key": "latetalk","name": "晚点聊 LateTalk", "cat": "podcast", "url": "https://feeds.fireside.fm/latetalk/rss",                                "color": "#0891b2"},
+    {"key": "hbr",     "name": "HBR IdeaCast",    "cat": "podcast", "url": "https://feeds.harvardbusiness.org/harvardbusiness/ideacast",            "color": "#1d4ed8"},
+    {"key": "tedbiz",  "name": "TED Business",    "cat": "podcast", "url": "https://feeds.feedburner.com/TEDBusiness",                              "color": "#e11d48"},
 ]
 
-ITEMS_PER_SOURCE = 20
+# 分类标签
+CATEGORY_LABELS = {
+    "tech":    "科技资讯",
+    "cn_tech": "中文科技",
+    "dev":     "开发者",
+    "news":    "综合新闻",
+    "podcast": "播客",
+}
+
+ITEMS_PER_SOURCE = 12
+FETCH_TIMEOUT = 8
+TRANSLATE_TIMEOUT = 4
 
 
-# ---------------------------- 工具函数 ----------------------------
+# ──────────────────────────── 工具函数 ────────────────────────────
 
 def _now_bj():
     return datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
@@ -54,7 +106,7 @@ def _strip_html(text):
     return text.strip()
 
 
-def _truncate(s, maxlen=150):
+def _truncate(s, maxlen=200):
     if not s:
         return ""
     s = s.strip()
@@ -86,11 +138,9 @@ _RSS_MONTHS = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
                "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
 
 def _parse_rss_date(s):
-    """RFC 822 日期 → datetime，失败返回 None。"""
     s = (s or "").strip()
     if not s:
         return None
-    # "Mon, 01 Jan 2024 12:00:00 +0000"
     m = re.match(r"\w+,\s+(\d{1,2})\s+(\w+)\s+(\d{4})\s+(\d{2}:\d{2}:\d{2})\s*([+-]\d{4})?", s)
     if m:
         day, mon, year, timestr, tz = int(m.group(1)), _RSS_MONTHS.get(m.group(2), 1), int(m.group(3)), m.group(4), m.group(5) or "+0000"
@@ -106,7 +156,6 @@ def _parse_rss_date(s):
 
 
 def _fmt_rel_time(dt):
-    """datetime → 相对时间字符串（北京时间）。"""
     if dt is None:
         return ""
     bj = dt.astimezone(datetime.timezone(datetime.timedelta(hours=8))) if dt.tzinfo else dt
@@ -117,22 +166,81 @@ def _fmt_rel_time(dt):
     if seconds < 0:
         return bj_naive.strftime("%m-%d %H:%M")
     if seconds < 60:
-        return "%d\u79d2\u524d" % seconds
+        return "%d秒前" % seconds
     minutes = seconds // 60
     if minutes < 60:
-        return "%d\u5206\u949f\u524d" % minutes
+        return "%d分钟前" % minutes
     hours = minutes // 60
     if hours < 24:
-        return "%d\u5c0f\u65f6\u524d" % hours
+        return "%d小时前" % hours
     days = hours // 24
     if days < 30:
-        return "%d\u5929\u524d" % days
+        return "%d天前" % days
     return bj_naive.strftime("%Y-%m-%d")
 
 
-# ---------------------------- RSS 抓取 ----------------------------
+# ──────────────────────────── 翻译 ────────────────────────────
 
-def _fetch_url(url, timeout=15, accept=None):
+def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
+    """四端点降级翻译链：Google → MyMemory → Google dict-chrome。"""
+    if not text:
+        return ""
+    # 如果已经是中文为主，跳过
+    cn_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    if cn_chars > len(text) * 0.3:
+        _TRANS_STATS["skip"] += 1
+        return text
+
+    encoded = urllib.parse.quote(text[:500])
+
+    # 1) Google gtx
+    try:
+        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=" + encoded
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", errors="replace"))
+        if data and data[0]:
+            result = "".join(part[0] for part in data[0] if part[0])
+            if result and len(result) > len(text) * 0.3:
+                _TRANS_STATS["google"] += 1
+                return result
+    except Exception:
+        pass
+
+    # 2) MyMemory
+    try:
+        url = "https://api.mymemory.translated.net/get?q=" + encoded + "&langpair=en|zh-CN"
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", errors="replace"))
+        result = data.get("responseData", {}).get("translatedText", "")
+        if result and not result.startswith("MYMEMORY"):
+            _TRANS_STATS["mymemory"] += 1
+            return result
+    except Exception:
+        pass
+
+    # 3) Google dict-chrome
+    try:
+        url = "https://translate.googleapis.com/translate_a/single?client=dict-chrome&sl=auto&tl=zh-CN&q=" + encoded
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", errors="replace"))
+        if data and data.get("sentences"):
+            result = "".join(s.get("trans", "") for s in data["sentences"])
+            if result:
+                _TRANS_STATS["dict"] += 1
+                return result
+    except Exception:
+        pass
+
+    _TRANS_STATS["fail"] += 1
+    return text  # 翻译失败保留原文
+
+
+# ──────────────────────────── RSS 抓取 ────────────────────────────
+
+def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None):
     headers = dict(UA)
     if accept:
         headers["Accept"] = accept
@@ -142,74 +250,72 @@ def _fetch_url(url, timeout=15, accept=None):
 
 
 def _fetch_rss(source):
-    """抓取并解析单个 RSS 源，返回 items 列表。"""
     name = source["name"]
     url = source["url"]
     try:
-        raw = _fetch_url(url, timeout=15, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
+        raw = _fetch_url(url, timeout=FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
     except Exception as ex:
-        print("[RSS\u805a\u5408] %s \u62c9\u53d6\u5931\u8d25: %s" % (name, ex), file=sys.stderr)
+        print("[RSS聚合] %s 拉取失败: %s" % (name, ex), file=sys.stderr)
         return []
 
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as ex:
-        print("[RSS\u805a\u5408] %s \u89e3\u6790\u5931\u8d25: %s" % (name, ex), file=sys.stderr)
+        print("[RSS聚合] %s 解析失败: %s" % (name, ex), file=sys.stderr)
         return []
     except Exception as ex:
-        print("[RSS\u805a\u5408] %s \u5f02\u5e38: %s" % (name, ex), file=sys.stderr)
+        print("[RSS聚合] %s 异常: %s" % (name, ex), file=sys.stderr)
         return []
 
     items = []
     ns = "{http://www.w3.org/2005/Atom}"
 
     if root.tag.endswith("feed"):
-        # Atom 格式
         for e in root.findall(ns + "entry"):
             title = _strip_html(e.findtext(ns + "title") or "")
             link_el = e.find(ns + "link")
             link = (link_el.get("href") if link_el is not None else (e.findtext(ns + "id") or "")).strip()
-            desc = _truncate(_strip_html(e.findtext(ns + "summary") or e.findtext(ns + "content") or ""))
+            desc = _strip_html(e.findtext(ns + "summary") or e.findtext(ns + "content") or "")
             pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
             if not title or not link:
                 continue
             items.append({
-                "title": title, "link": link, "summary": desc,
+                "title": title, "link": link, "summary": _truncate(desc),
                 "pub_date": _parse_iso(pub), "source": name, "source_key": source["key"],
+                "cat": source["cat"],
             })
     else:
-        # RSS 2.0 格式
         ch = root.find("channel")
         if ch is None:
-            # 可能是 RSS 但无 channel 包裹
             for it in root.findall(".//item"):
-                _parse_rss_item(it, name, source["key"], items)
+                _parse_rss_item(it, name, source["key"], source["cat"], items)
         else:
             for it in ch.findall("item"):
-                _parse_rss_item(it, name, source["key"], items)
+                _parse_rss_item(it, name, source["key"], source["cat"], items)
 
     return items[:ITEMS_PER_SOURCE]
 
 
-def _parse_rss_item(it, source_name, source_key, items):
+def _parse_rss_item(it, source_name, source_key, cat, items):
     title = _strip_html(it.findtext("title") or "")
     link = (it.findtext("link") or "").strip()
-    desc = _truncate(_strip_html(it.findtext("description") or ""))
+    desc = _strip_html(it.findtext("description") or "")
     pub = (it.findtext("pubDate") or "").strip()
     if not title or not link:
         return
     items.append({
-        "title": title, "link": link, "summary": desc,
+        "title": title, "link": link, "summary": _truncate(desc),
         "pub_date": _parse_rss_date(pub), "source": source_name, "source_key": source_key,
+        "cat": cat,
     })
 
 
-# ---------------------------- HTML 生成 ----------------------------
+# ──────────────────────────── HTML 生成 ────────────────────────────
 
 def _build_css():
     return """
 :root {
-  --bg:#faf8f4; --card:#fffdf9; --card-2:#f3efe6;
+  --bg:#faf8f4; --card:#fffdf9; --card-2:#f3efe6; --card-3:#ebe6db;
   --ink:#1f1c17; --muted:#6f6860; --faint:#857e74;
   --line:#e4ddd0; --line-strong:#b9b0a2;
   --brand:#8fb3d9; --brand-strong:#b0cbe6; --brand-line:#3d5a78; --brand-weak:#22303f;
@@ -222,7 +328,7 @@ def _build_css():
   --shadow-lift:0 8px 22px rgba(0,0,0,.1),0 1px 3px rgba(0,0,0,.06);
 }
 [data-theme="dark"] {
-  --bg:#161412; --card:#1d1a17; --card-2:#262019;
+  --bg:#161412; --card:#1d1a17; --card-2:#262019; --card-3:#2f2820;
   --ink:#ece7df; --muted:#a59d90; --faint:#8a8275;
   --line:#37312a; --line-strong:#4a4339;
   --brand:#8fb3d9; --brand-strong:#b0cbe6; --brand-line:#3d5a78; --brand-weak:#22303f;
@@ -231,153 +337,216 @@ def _build_css():
   --shadow-lift:0 8px 22px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4);
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; }
 html { scroll-behavior:smooth; }
 body {
   font-family:var(--body); background:var(--bg); color:var(--ink);
   line-height:1.55; -webkit-font-smoothing:antialiased; font-size:14px;
+  display:flex; flex-direction:column; overflow:hidden;
 }
 a { color:inherit; text-decoration:none; }
-button { font-family:inherit; cursor:pointer; }
+button { font-family:inherit; cursor:pointer; border:none; background:none; }
 
-/* header */
+/* ── Header ── */
 header {
-  position:sticky; top:0; z-index:50;
-  background:rgba(250,248,244,.92);
+  position:relative; z-index:50; flex:none;
+  background:rgba(250,248,244,.95);
   backdrop-filter:saturate(120%) blur(10px);
   -webkit-backdrop-filter:saturate(120%) blur(10px);
   border-bottom:1px solid var(--line);
 }
-[data-theme="dark"] header { background:rgba(22,20,18,.92); }
+[data-theme="dark"] header { background:rgba(22,20,18,.95); }
 .hd {
-  max-width:1200px; margin:0 auto; padding:10px 20px;
-  display:flex; align-items:center; gap:16px;
+  max-width:100%; margin:0 auto; padding:8px 16px;
+  display:flex; align-items:center; gap:12px;
 }
 .hd .logo {
-  display:flex; align-items:center; gap:10px; flex:none;
-  font-family:var(--display); font-weight:900; font-size:17px;
+  display:flex; align-items:center; gap:8px; flex:none;
+  font-family:var(--display); font-weight:900; font-size:16px;
 }
 .hd .logo .t b { color:var(--ink); }
-.hd .logo .t span { font-size:11px; color:var(--muted); font-weight:400; margin-left:4px; font-family:var(--body); }
-.hd .nav-links { display:flex; align-items:center; gap:4px; flex:1; }
+.hd .logo .t span { font-size:11px; color:var(--muted); font-weight:400; margin-left:3px; font-family:var(--body); }
+.hd .nav-links { display:flex; align-items:center; gap:2px; flex:1; }
 .hd .nav-links a {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:6px 14px; border-radius:999px; font-size:13px; font-weight:500;
+  display:inline-flex; align-items:center; gap:5px;
+  padding:5px 12px; border-radius:999px; font-size:12.5px; font-weight:500;
   border:1px solid transparent; transition:all .15s;
 }
 .hd .nav-links a:hover { background:var(--card); border-color:var(--line); }
 .hd .nav-links a.active {
   background:var(--brand-weak); border-color:var(--brand-line); color:var(--brand-strong); font-weight:600;
 }
-.hd .nav-links a .icon { width:14px; height:14px; }
-.hd .acts { display:flex; align-items:center; gap:6px; flex:none; }
+.hd .nav-links a .icon { width:13px; height:13px; }
+.hd .acts { display:flex; align-items:center; gap:4px; flex:none; }
 .hd .acts .btn {
-  width:34px; height:34px; border-radius:999px; background:var(--card); border:1px solid var(--line);
+  width:30px; height:30px; border-radius:999px; background:var(--card); border:1px solid var(--line);
   display:flex; align-items:center; justify-content:center; color:var(--ink); transition:all .15s;
 }
 .hd .acts .btn:hover { border-color:var(--brand-line); color:var(--brand-strong); }
-.hd .acts .btn svg { width:15px; height:15px; }
+.hd .acts .btn svg { width:14px; height:14px; }
 
-/* main layout */
-.wrap { max-width:1200px; margin:0 auto; padding:20px 20px 64px; }
+/* ── Main Layout: 3 columns ── */
+.app {
+  display:flex; flex:1; overflow:hidden;
+}
 
-/* toolbar: source filters + search */
-.toolbar {
-  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+/* Left sidebar: source list */
+.sidebar {
+  width:240px; flex:none; border-right:1px solid var(--line);
+  background:var(--card); overflow-y:auto; display:flex; flex-direction:column;
+}
+.sidebar-header {
+  padding:12px 14px 8px; border-bottom:1px solid var(--line); flex:none;
+}
+.sidebar-header h2 {
+  font-family:var(--display); font-size:14px; font-weight:700; margin-bottom:8px;
+}
+.sidebar-search {
+  display:flex; align-items:center; gap:4px;
+  padding:5px 10px; border-radius:8px; background:var(--card-2); border:1px solid var(--line);
+}
+.sidebar-search svg { width:13px; height:13px; color:var(--faint); flex:none; }
+.sidebar-search input {
+  border:0; background:transparent; outline:none; font-size:12px; color:var(--ink);
+  font-family:var(--body); width:100%;
+}
+.sidebar-search input::placeholder { color:var(--faint); }
+
+/* Category groups */
+.cat-group { flex:none; }
+.cat-title {
+  padding:8px 14px 4px; font-size:11px; font-weight:700; color:var(--faint);
+  text-transform:uppercase; letter-spacing:.05em; cursor:pointer;
+  display:flex; align-items:center; gap:4px; user-select:none;
+}
+.cat-title .arrow { transition:transform .15s; font-size:10px; }
+.cat-title.collapsed .arrow { transform:rotate(-90deg); }
+.cat-sources { display:flex; flex-direction:column; }
+.cat-sources.hidden { display:none; }
+
+.source-item {
+  display:flex; align-items:center; gap:8px;
+  padding:7px 14px 7px 20px; font-size:13px; cursor:pointer;
+  transition:background .1s; border-left:3px solid transparent;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.source-item:hover { background:var(--card-2); }
+.source-item.active {
+  background:var(--card-3); border-left-color:var(--brand-line); font-weight:600;
+}
+.source-dot {
+  width:8px; height:8px; border-radius:50%; flex:none;
+}
+.source-name { overflow:hidden; text-overflow:ellipsis; }
+.source-count {
+  font-family:var(--mono); font-size:10px; color:var(--faint); margin-left:auto; flex:none;
+}
+
+/* Middle: article list */
+.article-list {
+  width:340px; flex:none; border-right:1px solid var(--line);
+  background:var(--bg); overflow-y:auto; display:flex; flex-direction:column;
+}
+.article-list-header {
+  padding:10px 14px; border-bottom:1px solid var(--line); flex:none;
+  display:flex; align-items:center; gap:8px;
+}
+.article-list-header h3 {
+  font-family:var(--display); font-size:14px; font-weight:700; flex:1;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.article-list-header .count {
+  font-family:var(--mono); font-size:11px; color:var(--faint);
+}
+.article-list-header .view-all {
+  font-size:11px; color:var(--brand-strong); cursor:pointer;
+}
+
+.article-item {
+  padding:10px 14px; border-bottom:1px solid var(--line);
+  cursor:pointer; transition:background .1s;
+}
+.article-item:hover { background:var(--card); }
+.article-item.active { background:var(--card-3); border-left:3px solid var(--brand-line); }
+.article-item .a-title {
+  font-size:13px; font-weight:600; line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  margin-bottom:4px;
+}
+.article-item .a-meta {
+  display:flex; align-items:center; gap:6px; font-size:11px; color:var(--faint);
+}
+.article-item .a-meta .src-tag {
+  display:inline-flex; align-items:center; gap:3px;
+  padding:1px 6px; border-radius:999px; font-size:10px; font-weight:600; color:#fff;
+}
+.article-item .a-meta .time { font-family:var(--mono); margin-left:auto; }
+
+/* Right: reading area */
+.reader {
+  flex:1; overflow-y:auto; background:var(--bg);
+  display:flex; flex-direction:column;
+}
+.reader-empty {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  color:var(--faint); font-size:14px; flex-direction:column; gap:8px;
+}
+.reader-empty svg { width:48px; height:48px; opacity:.3; }
+
+.reader-content { padding:24px 32px; max-width:720px; margin:0 auto; width:100%; }
+.reader-content .rc-title {
+  font-family:var(--display); font-size:22px; font-weight:700; line-height:1.4;
+  margin-bottom:12px;
+}
+.reader-content .rc-title a { color:var(--ink); }
+.reader-content .rc-title a:hover { color:var(--brand-strong); }
+.reader-content .rc-meta {
+  display:flex; align-items:center; gap:8px; font-size:12px; color:var(--faint);
   margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--line);
 }
-.source-filters { display:flex; align-items:center; gap:6px; flex-wrap:wrap; flex:1; }
-.source-tag {
-  display:inline-flex; align-items:center; gap:5px;
-  padding:5px 12px; border-radius:999px; font-size:12.5px; font-weight:500;
-  border:1px solid var(--line); background:var(--card); color:var(--muted);
-  transition:all .15s; cursor:pointer; user-select:none;
-}
-.source-tag:hover { border-color:var(--line-strong); color:var(--ink); }
-.source-tag.on { color:#fff; border-color:transparent; }
-.source-tag .dot { width:8px; height:8px; border-radius:50%; flex:none; }
-.source-tag .cnt { font-family:var(--mono); font-size:11px; opacity:.7; }
-.search-box {
-  display:flex; align-items:center; gap:6px;
-  padding:6px 14px; border-radius:999px; background:var(--card); border:1px solid var(--line);
-  min-width:220px; transition:border-color .15s;
-}
-.search-box:focus-within { border-color:var(--brand-line); }
-.search-box svg { width:14px; height:14px; color:var(--faint); flex:none; }
-.search-box input {
-  border:0; background:transparent; outline:none; font-size:13px; color:var(--ink);
-  font-family:var(--body); width:160px;
-}
-.search-box input::placeholder { color:var(--faint); }
-
-/* source sections */
-.source-section { margin-bottom:28px; }
-.source-header {
-  display:flex; align-items:center; gap:10px; margin-bottom:12px;
-  padding-bottom:8px; border-bottom:2px solid var(--line);
-}
-.source-icon {
-  width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center;
-  font-family:var(--mono); font-size:12px; font-weight:700; color:#fff; flex:none;
-}
-.source-name {
-  font-family:var(--display); font-size:18px; font-weight:700; letter-spacing:.02em;
-}
-.source-count { font-family:var(--mono); font-size:12px; color:var(--faint); margin-left:auto; }
-
-/* item grid */
-.item-grid {
-  display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
-}
-.item-card {
-  background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
-  padding:14px 16px; transition:border-color .15s, box-shadow .2s;
-  display:flex; flex-direction:column; gap:6px;
-}
-.item-card:hover { border-color:var(--brand-line); box-shadow:var(--shadow-lift); }
-.item-title {
-  font-size:14px; font-weight:600; line-height:1.4;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-}
-.item-title a:hover { color:var(--brand-strong); }
-.item-summary {
-  font-size:12.5px; color:var(--muted); line-height:1.5;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-}
-.item-meta {
-  display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:6px;
-  border-top:1px solid var(--line); font-size:11.5px; color:var(--faint);
-}
-.item-meta .src-badge {
+.reader-content .rc-meta .src-tag {
   display:inline-flex; align-items:center; gap:3px;
-  padding:1px 7px; border-radius:999px; font-size:10.5px; font-weight:600; color:#fff;
+  padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; color:#fff;
 }
-.item-meta .time { font-family:var(--mono); margin-left:auto; white-space:nowrap; }
+.reader-content .rc-summary {
+  font-size:15px; line-height:1.8; color:var(--ink);
+}
+.reader-content .rc-link {
+  display:inline-flex; align-items:center; gap:4px;
+  margin-top:20px; padding:8px 18px; border-radius:8px;
+  background:var(--brand-weak); color:var(--brand-strong);
+  font-size:13px; font-weight:600; transition:all .15s;
+}
+.reader-content .rc-link:hover { background:var(--brand-line); color:#fff; }
 
-/* empty state */
-.empty-state {
-  text-align:center; padding:48px 20px; color:var(--faint);
+/* ── Responsive ── */
+@media (max-width:900px) {
+  .sidebar { width:200px; }
+  .article-list { width:280px; }
 }
-.empty-state svg { width:40px; height:40px; margin-bottom:12px; opacity:.4; }
-.empty-state b { display:block; font-size:15px; color:var(--muted); margin-bottom:4px; }
-
-/* footer */
-.footer {
-  text-align:center; padding:24px 0; border-top:1px solid var(--line);
-  font-size:12px; color:var(--faint); font-family:var(--mono);
-}
-
-/* responsive */
-@media (max-width:1100px) {
-  .item-grid { grid-template-columns:repeat(2,1fr); }
-}
-@media (max-width:640px) {
-  .hd { padding:10px 14px; flex-wrap:wrap; }
-  .hd .nav-links { order:3; flex:1 1 100%; overflow-x:auto; padding:2px 0; }
-  .wrap { padding:14px 12px 48px; }
-  .item-grid { grid-template-columns:1fr; }
-  .toolbar { flex-direction:column; align-items:stretch; }
-  .search-box { min-width:auto; }
-  .search-box input { width:100%; }
+@media (max-width:700px) {
+  body { overflow:auto; }
+  .app { flex-direction:column; overflow:visible; }
+  .sidebar {
+    width:100%; max-height:200px; border-right:none; border-bottom:1px solid var(--line);
+    flex-direction:row; overflow-x:auto; overflow-y:hidden;
+  }
+  .sidebar-header { display:none; }
+  .cat-group { display:flex; flex-direction:row; flex:none; }
+  .cat-title { display:none; }
+  .cat-sources { flex-direction:row; }
+  .cat-sources.hidden { display:flex; }
+  .source-item {
+    padding:6px 10px; border-left:none; border-bottom:3px solid transparent;
+    white-space:nowrap; font-size:12px;
+  }
+  .source-item.active { border-left:none; border-bottom-color:var(--brand-line); }
+  .source-count { display:none; }
+  .article-list {
+    width:100%; max-height:300px; border-right:none; border-bottom:1px solid var(--line);
+  }
+  .reader { min-height:400px; }
+  .reader-content { padding:16px; }
 }
 """
 
@@ -387,16 +556,16 @@ def _build_header():
 <header>
   <div class="hd">
     <a class="logo" href="index.html">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg>
-      <div class="t"><b>StarHub</b><span>GitHub \u6536\u85cf\u53f0</span></div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg>
+      <div class="t"><b>StarHub</b><span>GitHub 收藏台</span></div>
     </a>
     <nav class="nav-links">
-      <a href="index.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> \u6536\u85cf\u6c60</a>
-      <a href="ai-daily.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg> AI \u6668\u62a5</a>
-      <a href="rss-aggregator.html" class="active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg> RSS \u805a\u5408</a>
+      <a href="index.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> 收藏池</a>
+      <a href="ai-daily.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg> AI 晨报</a>
+      <a href="rss-aggregator.html" class="active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg> RSS 聚合</a>
     </nav>
     <div class="acts">
-      <button class="btn" id="btnTheme" title="\u5207\u6362\u660e\u6697\u4e3b\u9898" aria-label="\u5207\u6362\u4e3b\u9898">
+      <button class="btn" id="btnTheme" title="切换明暗主题" aria-label="切换主题">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       </button>
     </div>
@@ -405,210 +574,274 @@ def _build_header():
 """
 
 
-def _build_js(sources_data):
-    """sources_data: list of {"key":..., "name":..., "color":...}"""
-    src_json = json.dumps(sources_data, ensure_ascii=False)
+def _build_js(sources_with_items):
+    """sources_with_items: list of source dicts with items embedded."""
+    data_json = json.dumps(sources_with_items, ensure_ascii=False)
+    cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
     return """
 <script>
-// Theme toggle
 (function(){
-  var key='wb_starhub_theme_v1';
-  var t=localStorage.getItem(key)||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  // ── Theme ──
+  var themeKey='wb_starhub_theme_v1';
+  var t=localStorage.getItem(themeKey)||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
   document.documentElement.dataset.theme=t;
   var btn=document.getElementById('btnTheme');
   if(btn) btn.onclick=function(){
     var nt=document.documentElement.dataset.theme==='dark'?'light':'dark';
-    try{localStorage.setItem(key,nt);}catch(e){}
+    try{localStorage.setItem(themeKey,nt);}catch(e){}
     document.documentElement.dataset.theme=nt;
   };
-})();
 
-// Source filter + search
-(function(){
-  var SOURCES = """ + src_json + """;
-  var allCards = document.querySelectorAll('.item-card');
-  var activeSources = new Set(SOURCES.map(function(s){return s.key;}));
+  // ── Data ─
+  var SOURCES = """ + data_json + """;
+  var CAT_LABELS = """ + cat_labels_json + """;
 
-  // Source tag click
-  document.querySelectorAll('.source-tag').forEach(function(tag){
-    tag.addEventListener('click', function(){
-      var key = this.dataset.key;
-      if(activeSources.has(key)){
-        if(activeSources.size <= 1) return; // keep at least one
-        activeSources.delete(key);
-        this.classList.remove('on');
-      } else {
-        activeSources.add(key);
-        this.classList.add('on');
+  // ── State ──
+  var activeSourceKey = null;
+  var activeArticleIdx = -1;
+  var searchQuery = '';
+
+  // ── DOM refs ──
+  var sidebarEl = document.getElementById('sidebar');
+  var articleListEl = document.getElementById('articleList');
+  var articleListHeaderEl = document.getElementById('articleListHeader');
+  var readerEl = document.getElementById('reader');
+  var searchInput = document.getElementById('sidebarSearch');
+
+  // ── Render sidebar ──
+  function renderSidebar() {
+    var html = '';
+    var cats = {};
+    SOURCES.forEach(function(src) {
+      if (!cats[src.cat]) cats[src.cat] = [];
+      cats[src.cat].push(src);
+    });
+    var catOrder = ['tech','cn_tech','dev','news','podcast'];
+    catOrder.forEach(function(catKey) {
+      var srcs = cats[catKey];
+      if (!srcs) return;
+      var label = CAT_LABELS[catKey] || catKey;
+      html += '<div class="cat-group">';
+      html += '<div class="cat-title" data-cat="'+catKey+'"><span class="arrow">▼</span> '+esc(label)+'</div>';
+      html += '<div class="cat-sources">';
+      srcs.forEach(function(src) {
+        var cls = 'source-item' + (src.key === activeSourceKey ? ' active' : '');
+        html += '<div class="'+cls+'" data-key="'+esc(src.key)+'">';
+        html += '<span class="source-dot" style="background:'+esc(src.color)+'"></span>';
+        html += '<span class="source-name">'+esc(src.name)+'</span>';
+        html += '<span class="source-count">'+src.items.length+'</span>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    });
+    sidebarEl.innerHTML = html;
+
+    // Category collapse
+    sidebarEl.querySelectorAll('.cat-title').forEach(function(el) {
+      el.addEventListener('click', function() {
+        this.classList.toggle('collapsed');
+        var panel = this.nextElementSibling;
+        if (panel) panel.classList.toggle('hidden');
+      });
+    });
+
+    // Source click
+    sidebarEl.querySelectorAll('.source-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        selectSource(this.dataset.key);
+      });
+    });
+  }
+
+  // ── Select source ──
+  function selectSource(key) {
+    activeSourceKey = key;
+    activeArticleIdx = -1;
+    renderSidebar();
+    renderArticleList();
+    renderReader();
+  }
+
+  // ── Render article list ──
+  function renderArticleList() {
+    var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
+    if (!src) {
+      articleListHeaderEl.innerHTML = '<h3>选择一个信源</h3>';
+      articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">点击左侧信源查看文章</div>';
+      return;
+    }
+    var items = filterItems(src.items);
+    articleListHeaderEl.innerHTML = '<h3>'+esc(src.name)+'</h3><span class="count">'+items.length+' 篇</span>';
+
+    if (items.length === 0) {
+      articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
+      return;
+    }
+
+    var html = '';
+    items.forEach(function(item, idx) {
+      var cls = 'article-item' + (idx === activeArticleIdx ? ' active' : '');
+      html += '<div class="'+cls+'" data-idx="'+idx+'">';
+      html += '<div class="a-title">'+esc(item.title_zh || item.title)+'</div>';
+      html += '<div class="a-meta">';
+      html += '<span class="src-tag" style="background:'+esc(src.color)+'">'+esc(src.name)+'</span>';
+      html += '<span class="time">'+esc(item.time_str)+'</span>';
+      html += '</div></div>';
+    });
+    articleListEl.innerHTML = html;
+
+    articleListEl.querySelectorAll('.article-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        activeArticleIdx = parseInt(this.dataset.idx);
+        renderArticleList();
+        renderReader();
+      });
+    });
+  }
+
+  // ── Render reader ──
+  function renderReader() {
+    if (!activeSourceKey || activeArticleIdx < 0) {
+      readerEl.innerHTML = '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从左侧选择一篇文章开始阅读</span></div>';
+      return;
+    }
+    var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
+    if (!src) return;
+    var items = filterItems(src.items);
+    var item = items[activeArticleIdx];
+    if (!item) return;
+
+    var html = '<div class="reader-content">';
+    html += '<h1 class="rc-title"><a href="'+esc(item.link)+'" target="_blank" rel="noopener">'+esc(item.title_zh || item.title)+'</a></h1>';
+    html += '<div class="rc-meta">';
+    html += '<span class="src-tag" style="background:'+esc(src.color)+'">'+esc(src.name)+'</span>';
+    html += '<span>'+esc(item.time_str)+'</span>';
+    if (item.title_zh && item.title_zh !== item.title) {
+      html += '<span style="font-size:11px;color:var(--faint)">（已翻译）</span>';
+    }
+    html += '</div>';
+    if (item.summary_zh || item.summary) {
+      html += '<div class="rc-summary">'+esc(item.summary_zh || item.summary)+'</div>';
+    }
+    html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
+    html += '</div>';
+    readerEl.innerHTML = html;
+  }
+
+  // ── Filter ──
+  function filterItems(items) {
+    if (!searchQuery) return items;
+    var q = searchQuery.toLowerCase();
+    return items.filter(function(it) {
+      var t = (it.title_zh || it.title).toLowerCase();
+      var s = (it.summary_zh || it.summary || '').toLowerCase();
+      return t.indexOf(q) >= 0 || s.indexOf(q) >= 0;
+    });
+  }
+
+  // ── Search ──
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      searchQuery = this.value.trim();
+      renderArticleList();
+      if (activeArticleIdx >= filterItems(SOURCES.find(function(s){return s.key===activeSourceKey;})?.items || []).length) {
+        activeArticleIdx = -1;
       }
-      applyFilters();
+      renderReader();
     });
-  });
-
-  // Search input
-  var searchInput = document.getElementById('rssSearch');
-  if(searchInput){
-    searchInput.addEventListener('input', function(){ applyFilters(); });
   }
 
-  function applyFilters(){
-    var query = (searchInput ? searchInput.value : '').toLowerCase().trim();
-    var anyVisible = false;
-    allCards.forEach(function(card){
-      var srcKey = card.dataset.source;
-      var title = (card.dataset.title || '').toLowerCase();
-      var summary = (card.dataset.summary || '').toLowerCase();
-      var srcMatch = activeSources.has(srcKey);
-      var searchMatch = !query || title.indexOf(query) >= 0 || summary.indexOf(query) >= 0;
-      var show = srcMatch && searchMatch;
-      card.style.display = show ? '' : 'none';
-      if(show) anyVisible = true;
-    });
-    // Show/hide source sections
-    document.querySelectorAll('.source-section').forEach(function(sec){
-      var hasVisible = sec.querySelector('.item-card[style=""], .item-card:not([style])');
-      // Check if any card in this section is visible
-      var cards = sec.querySelectorAll('.item-card');
-      var secVisible = false;
-      cards.forEach(function(c){ if(c.style.display !== 'none') secVisible = true; });
-      sec.style.display = secVisible ? '' : 'none';
-    });
-    // Empty state
-    var empty = document.getElementById('rssEmpty');
-    if(empty) empty.style.display = anyVisible ? 'none' : 'block';
+  // ── Helpers ──
+  function esc(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s || ''));
+    return d.innerHTML;
   }
+
+  // ── Init ──
+  renderSidebar();
+  // Auto-select first source with items
+  var firstSrc = SOURCES.find(function(s){ return s.items.length > 0; });
+  if (firstSrc) selectSource(firstSrc.key);
 })();
 </script>
 """
 
 
-def build_html(all_items_by_source, build_time):
-    """生成完整 HTML 页面。
-    all_items_by_source: {source_key: [items]}
-    """
-    # Source metadata for JS
-    sources_meta = []
-    for src in RSS_SOURCES:
-        items = all_items_by_source.get(src["key"], [])
-        sources_meta.append({"key": src["key"], "name": src["name"], "color": src["color"], "count": len(items)})
-
-    # Source filter tags
-    tags_html = ""
-    for src in RSS_SOURCES:
-        items = all_items_by_source.get(src["key"], [])
-        tags_html += (
-            '<button class="source-tag on" data-key="%s" style="--tag-color:%s">'
-            '<span class="dot" style="background:%s"></span>%s'
-            '<span class="cnt">%d</span></button>'
-            % (_esc(src["key"]), src["color"], src["color"], _esc(src["name"]), len(items))
-        )
-
-    # Source sections with items
-    sections_html = ""
-    total_items = 0
-    for src in RSS_SOURCES:
-        items = all_items_by_source.get(src["key"], [])
-        if not items:
-            continue
-        total_items += len(items)
-        items_html = ""
-        for it in items:
-            title = _esc(it["title"])
-            link = _esc(it["link"])
-            summary = _esc(it.get("summary", ""))
-            time_str = _fmt_rel_time(it.get("pub_date"))
-            items_html += (
-                '<article class="item-card" data-source="%s" data-title="%s" data-summary="%s">'
-                '<div class="item-title"><a href="%s" target="_blank" rel="noopener">%s</a></div>'
-                '%s'
-                '<div class="item-meta">'
-                '<span class="src-badge" style="background:%s">%s</span>'
-                '<span class="time">%s</span>'
-                '</div></article>'
-                % (
-                    _esc(src["key"]),
-                    title, summary,
-                    link, title,
-                    ('<div class="item-summary">%s</div>' % summary) if summary else '',
-                    src["color"], _esc(src["name"]),
-                    time_str,
-                )
-            )
-
-        sections_html += (
-            '<section class="source-section" data-source="%s">'
-            '<div class="source-header">'
-            '<span class="source-icon" style="background:%s">%s</span>'
-            '<h2 class="source-name">%s</h2>'
-            '<span class="source-count">%d \u7bc7</span>'
-            '</div>'
-            '<div class="item-grid">%s</div>'
-            '</section>'
-            % (_esc(src["key"]), src["color"], _esc(src["icon"]), _esc(src["name"]), len(items), items_html)
-        )
-
-    if not sections_html:
-        sections_html = (
-            '<div class="empty-state" id="rssEmpty">'
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>'
-            '<b>\u6682\u65e0 RSS \u5185\u5bb9</b>'
-            '<span>\u4fe1\u6e90\u62c9\u53d6\u5931\u8d25\u6216\u6682\u65e0\u66f4\u65b0\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5</span>'
-            '</div>'
-        )
-    else:
-        sections_html += '<div class="empty-state" id="rssEmpty" style="display:none"><b>\u6ca1\u6709\u5339\u914d\u7684\u5185\u5bb9</b><span>\u8bd5\u8bd5\u6362\u4e00\u4e2a\u5173\u952e\u8bcd\u6216\u4fe1\u6e90</span></div>'
-
+def build_html(sources_with_items, build_time, total_items):
+    """生成完整 HTML 页面。"""
     return (
         '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
-        '<title>RSS \u805a\u5408 \u00b7 StarHub</title>\n'
+        '<title>RSS 聚合阅读器 · StarHub</title>\n'
         '<style>' + _build_css() + '</style>\n'
         '</head>\n<body>\n'
         + _build_header() +
-        '<div class="wrap">\n'
-        '<div class="toolbar">\n'
-        '<div class="source-filters">' + tags_html + '</div>\n'
-        '<div class="search-box">'
+        '<div class="app">\n'
+        '<div class="sidebar" id="sidebar">'
+        '<div class="sidebar-header">'
+        '<h2>信源列表</h2>'
+        '<div class="sidebar-search">'
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-        '<input id="rssSearch" type="search" placeholder="\u641c\u7d22\u6807\u9898\u548c\u6458\u8981\u2026" autocomplete="off">'
+        '<input id="sidebarSearch" type="search" placeholder="搜索文章…" autocomplete="off">'
+        '</div></div></div>\n'
+        '<div class="article-list" id="articleList">'
+        '<div class="article-list-header" id="articleListHeader"><h3>选择一个信源</h3></div>'
+        '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">点击左侧信源查看文章</div>'
+        '</div>\n'
+        '<div class="reader" id="reader">'
+        '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从左侧选择一篇文章开始阅读</span></div>'
         '</div>\n'
         '</div>\n'
-        + sections_html +
-        '<div class="footer">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + ' \uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7\u00b7 StarHub RSS Aggregator</div>\n'
+        '<div style="text-align:center;padding:6px 0;font-size:11px;color:var(--faint);font-family:var(--mono);border-top:1px solid var(--line);flex:none;background:var(--bg);">'
+        '自动生成于 ' + _esc(build_time) + '（北京时间）· 共 ' + str(total_items) + ' 篇 · StarHub RSS Aggregator'
         '</div>\n'
-        + _build_js(sources_meta) +
+        + _build_js(sources_with_items) +
         '</body>\n</html>'
     )
 
 
-# ---------------------------- Main ----------------------------
+# ──────────────────────────── Main ────────────────────────────
 
 def main():
     now = _now_bj()
     build_time = now.strftime("%Y-%m-%d %H:%M")
 
-    all_items = {}
-    total = 0
+    sources_with_items = []
+    total_items = 0
     ok_count = 0
 
+    # 串行抓取 RSS（短超时，失败快速跳过）
     for src in RSS_SOURCES:
         items = _fetch_rss(src)
-        all_items[src["key"]] = items
         n = len(items)
-        total += n
         if n > 0:
             ok_count += 1
-        print("[RSS\u805a\u5408] %s: %d \u6761" % (src["name"], n))
 
-    if total == 0:
-        print("[RSS\u805a\u5408] \u6240\u6709\u6e90\u5747\u5931\u8d25\uff0c\u751f\u6210\u7a7a\u9875\u9762", file=sys.stderr)
+        # 暂不翻译（构建超时），标题和摘要直接使用原文
+        for it in items:
+            it["title_zh"] = it["title"]
+            it["summary_zh"] = it.get("summary", "")
+            it["time_str"] = _fmt_rel_time(it.get("pub_date"))
+            it.pop("pub_date", None)
 
-    html_doc = build_html(all_items, build_time)
+        src_data = {
+            "key": src["key"], "name": src["name"], "cat": src["cat"],
+            "color": src["color"], "items": items,
+        }
+        sources_with_items.append(src_data)
+        total_items += n
+        print("[RSS聚合] %s: %d 条" % (src["name"], n))
+
+    if total_items == 0:
+        print("[RSS聚合] 所有源均失败，生成空页面", file=sys.stderr)
+
+    html_doc = build_html(sources_with_items, build_time, total_items)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html_doc)
 
-    print("[RSS\u805a\u5408] \u751f\u6210\u5b8c\u6210 \u2192 %s\uff08%d \u6e90\u6210\u529f\uff0c\u5171 %d \u7bc7\uff09" % (OUT, ok_count, total))
+    print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
     return True
 
 
