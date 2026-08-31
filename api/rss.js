@@ -35,6 +35,7 @@ function extractAttr(xml, tag, attr) {
 
 function stripHtml(text) {
   return text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1') // 先提取 CDATA 内容
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
