@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: starhub-update
-  cancel-in-progress: false
+  cancel-in-progress: true  # 新触发取消旧排队，永远只跑最新一次，从根本上消除并发冲突
 
 jobs:
   update:
@@ -20,11 +20,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 完整历史，确保 reset 能正确追踪 origin/main
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Sync to latest remote
+        run: |
+          # 先同步到最新 remote 状态，再构建，确保基于最新数据
+          git fetch origin main
+          git reset --hard origin/main
 
       - name: Fetch stars & build
         run: python fetch_and_build.py
@@ -38,21 +46,17 @@ jobs:
             echo "No changes, skip commit."
           else
             git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)"
-            # --autostash: 自动暂存未提交变更再 rebase，解决并发构建冲突
-            git pull --rebase --autostash || {
-              echo "Rebase conflict, resetting to remote and re-committing..."
-              git rebase --abort 2>/dev/null; git stash drop 2>/dev/null
+            # 基于最新 remote 构建，直接 push；cancel-in-progress:true 保证无并发
+            # --force-with-lease 作为最后安全网：如果 remote 在 fetch 后被他人更新则拒绝
+            git push --force-with-lease || {
+              echo "Lease check failed, remote changed. Re-fetching and retrying..."
+              git fetch origin main
               git reset --hard origin/main
+              python fetch_and_build.py
               git add index.html ai-daily.html known_categories.json descriptions_zh.json trending_snapshot.json
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
+              git push --force-with-lease
             }
-            # push 重试 3 次，应对并发 push 窗口竞争
-            for i in 1 2 3; do
-              git push && break
-              echo "Push failed (attempt $i), retrying..."
-              git pull --rebase --autostash || git reset --hard origin/main
-              sleep 3
-            done
           fi
 
       - name: Deploy to Vercel
