@@ -40,6 +40,12 @@
   --font-display:'Noto Serif SC','Songti SC','STSong','SimSun',serif;
   --font-body:'Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
   --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  /* V2 封面卡 tokens：atlasnote 结构 × 纸感映射（暗色仅需覆盖 --cover-bg/--cover-weave/--fav-chip-bg） */
+  --cover-h:160px; --cover-h-sm:120px;
+  --cover-bg:#f1ece1; --cover-weave:#eae4d8;
+  --fav-chip-bg:rgba(255,253,249,.88);
+  --card-pad:12px 14px; --chip-pill:999px;
+  --ease-lift:cubic-bezier(.23,1,.32,1);
 }
 [data-theme="dark"]{
   --bg:#161412; --card:#1d1a17; --border:#37312a; --border2:#2b2621;
@@ -59,6 +65,7 @@
   --t-rising:#e08a4a; --t-total:#8fb3d9; --t-new:#63b78d;
   --t-rising-fg:#1d1108; --t-new-fg:#0b2318; --t-rising-text:#e08a4a;
   --gold:#d9a83f; --silver:#8a8275; --bronze:#c98a5a;
+  --cover-bg:#262019; --cover-weave:#2b2621; --fav-chip-bg:rgba(29,26,23,.85);
   --upd-color:#63b78d; --upd-bg:#17251d;
   --shadow:0 1px 2px rgba(0,0,0,.4);
   --shadow-card:0 1px 2px rgba(0,0,0,.35);
@@ -314,10 +321,10 @@ header{
 /* ---------- sections ---------- */
 .sec-title{display:flex;align-items:center;gap:8px;margin:18px 0 10px;font-size:14px;font-weight:700;letter-spacing:.02em;font-family:var(--font-display)}
 .sec-title .icon{color:var(--star)}
-.pinned{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:6px}
+.pinned{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:6px}
 
 /* ---------- cards: paper entries ---------- */
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
 .card{
   position:relative;display:flex;flex-direction:column;gap:8px;background:var(--card);
   border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px 13px;box-shadow:var(--shadow-card);
@@ -358,6 +365,75 @@ header{
 }
 .more:hover{text-decoration:underline;text-underline-offset:3px}
 mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
+
+/* ---------- V2 封面卡：三区布局（上部封面 / 中部文字 / 下部元数据） ----------
+   新卡片 class = "card cover-card"；旧 .card 规则不动，
+   冲突项用 .card.cover-card 双类提高特异性局部覆盖。 */
+.card.cover-card{
+  padding:0;gap:0;overflow:hidden;
+  content-visibility:auto;contain-intrinsic-size:auto 340px;
+  transition:border-color .18s ease,transform .2s var(--ease-lift),box-shadow .2s var(--ease-lift);
+}
+/* 上部：封面区（图片失败降级为 45° 纸纹 + 衬线首字母） */
+.cover-card .cover{
+  position:relative;display:block;height:var(--cover-h);flex:none;
+  background:var(--cover-bg);border-bottom:1px solid var(--border2);
+  border-radius:var(--radius) var(--radius) 0 0;overflow:hidden;
+}
+.cover-card .cover-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:center top;filter:saturate(.9);
+  transition:transform .2s var(--ease-lift);
+}
+.cover-card .cover-fallback{
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:repeating-linear-gradient(45deg,transparent 0 7px,var(--cover-weave) 7px 8px),var(--cover-bg);
+}
+.cover-card.no-img .cover-fallback{display:flex}
+.cover-card.no-img .cover-img{display:none}
+.cover-fallback .mono-mark{font-family:var(--font-display);font-size:44px;color:var(--faint);opacity:.45}
+.cover-card .cover-badge{position:absolute;top:8px;left:8px;box-shadow:0 1px 2px rgba(28,25,23,.18)}
+.card.cover-card .fav{
+  top:8px;right:8px;width:30px;height:30px;
+  background:var(--fav-chip-bg);border:1px solid var(--border2);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+}
+/* 中部：名称 + 简介 */
+.cover-card .body{display:flex;flex-direction:column;gap:6px;padding:var(--card-pad);line-height:1.5}
+.card.cover-card .top{padding-right:0}
+.cover-card .owner-line{display:flex;align-items:center;gap:6px;min-width:0}
+.cover-card .pin-chip{
+  display:inline-flex;align-items:center;height:16px;padding:0 6px;flex:none;
+  border-radius:2px;background:var(--star-bg);color:var(--star);
+  font-size:10px;font-weight:700;letter-spacing:.08em;font-family:var(--font-mono);
+}
+/* 下部：元数据吸底区（hairline 分隔由 .foot 承担） */
+.cover-card .foot{
+  margin-top:auto;padding:8px 14px 10px;display:flex;flex-direction:column;gap:6px;
+  border-top:1px solid var(--border2);
+}
+.card.cover-card .meta{border-top:0;padding-top:0;margin-top:0}
+.cover-card .st,.cover-card .tm{font-variant-numeric:tabular-nums}
+.cover-card .tm{margin-left:auto;font-family:var(--font-mono);font-size:11.5px;color:var(--faint);white-space:nowrap}
+.cover-card .foot-row{display:flex;align-items:center;gap:8px}
+.cover-card .open{
+  margin-left:auto;display:inline-flex;align-items:center;gap:4px;
+  color:var(--brand);font-size:12px;font-weight:600;font-family:var(--font-mono);
+}
+.cover-card .open:hover{text-decoration:underline;text-underline-offset:3px}
+.card.cover-card .cat-tag{border-radius:var(--chip-pill);height:22px;padding:0 9px}
+/* 悬停：仅精确指针设备（atlasnote 同款门控 + accent 混色描边） */
+@media (hover:hover) and (pointer:fine){
+  .card.cover-card:hover{
+    border-color:color-mix(in srgb,var(--brand) 28%,var(--border));
+    box-shadow:var(--shadow-lift);transform:translateY(-2px);
+  }
+  .card.cover-card:hover .cover-img{transform:scale(1.03)}
+}
+@supports not (color:color-mix(in srgb,red,blue)){
+  .card.cover-card:hover{border-color:var(--hover-line)}
+}
+[data-theme="dark"] .cover-card .cover-img{filter:brightness(.88) saturate(.92)}
 
 /* ---------- list view: ledger rows ---------- */
 .view-list .grid,.view-list .pinned{display:flex;flex-direction:column;gap:0}
@@ -605,6 +681,8 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
 /* ---------- responsive ---------- */
 @media (max-width:1100px){
   .layout{grid-template-columns:1fr}
+  .grid,.pinned{grid-template-columns:1fr}
+  .cover-card .cover{height:150px}
   .search-hero{order:-2}
   .side{position:static;height:auto;overflow:visible;order:-1}
   .trending{flex:none}
@@ -615,7 +693,6 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
   .sh-row{flex:1 1 100%}
 }
 @media (max-width:900px){
-  .grid,.pinned{grid-template-columns:repeat(2,1fr)}
   .stats{grid-template-columns:repeat(2,1fr)}
   .stat{border-top:1px solid var(--border2)}
   .stat:nth-child(-n+2){border-top:0}
@@ -645,7 +722,10 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
   .sel select{width:100%}
   .starsel{flex:1;justify-content:space-between}
   .starsel button{flex:none;padding:0 9px;font-size:12.5px}
-  .card{padding:12px 14px}
+  .cover-card .cover{height:var(--cover-h-sm)}
+  .cover-card .body{padding:10px 12px}
+  .cover-card .foot{padding:8px 12px 10px}
+  .cover-card .name{font-size:14px}
   .row{flex-wrap:wrap;padding:10px 40px 10px 4px}
   .row .nm{max-width:100%}
   .row .dsc{flex:1 1 100%;order:3}
@@ -1073,27 +1153,41 @@ function clampChroma(hex, lo, hi){
 
 function buildCard(d, isFav){
   const div = document.createElement('article');
-  div.className = 'card' + (isFav?' faved':'');
+  div.className = 'card cover-card' + (isFav?' faved':'');
   const catColorVal = catColor(d.category);
+  const coverSrc = d.cover_image || ('https://opengraph.githubassets.com/1/' + d.full_name);
+  const relUpd = fmtRelTime(d.pushed_at);
   const desc = d.desc || '暂无简介';
   const descHtml = desc.length > 60
     ? '<span class="desc-text">'+hl(desc)+'</span><button class="more" data-act="expand">展开</button>'
     : '<span class="desc-text">'+hl(desc)+'</span>';
   div.innerHTML =
+    '<a class="cover" href="'+d.html_url+'" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">' +
+      '<img class="cover-img" src="'+coverSrc+'" alt="" loading="lazy" decoding="async">' +
+      '<span class="cover-fallback" aria-hidden="true"><span class="mono-mark">'+escHtml((d.name||'#').charAt(0))+'</span></span>' +
+      (d.updated_today ? '<span class="badge-update cover-badge">今日更新</span>' : '') +
+    '</a>' +
     '<button class="fav'+(isFav?' on':'')+'" data-act="fav" title="收藏/取消收藏">'+(isFav?icon.starFilled:icon.star)+'</button>' +
-    '<div class="top"><div class="id">' +
-      '<div class="owner">'+escHtml(d.owner)+'</div>' +
-      '<a class="name" href="'+d.html_url+'" target="_blank" rel="noopener">'+hl(d.name)+'</a>' +
-      (d.updated_today ? '<span class="badge-update">今日更新</span>' : '') +
+    '<div class="body">' +
+      '<div class="top"><div class="id">' +
+        '<div class="owner-line"><span class="owner">'+escHtml(d.owner)+'</span>' +
+          (isFav ? '<span class="pin-chip">置顶</span>' : '') +
+        '</div>' +
+        '<a class="name" href="'+d.html_url+'" target="_blank" rel="noopener">'+hl(d.name)+'</a>' +
+      '</div></div>' +
+      '<div class="desc" data-act="desc">'+descHtml+'</div>' +
     '</div>' +
-    '<a class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f" href="javascript:void 0" data-act="cattag" data-cat="'+d.category+'">' +
-      '<span class="dot"></span>'+d.categoryLabel+'</a>' +
-    '</div>' +
-    '<div class="desc" data-act="desc">'+descHtml+'</div>' +
-    '<div class="meta">' +
-      (d.language ? '<span class="lg"><span class="c" style="background:'+(LANG_COLORS[d.language]||'#8b949e')+'"></span>'+d.language+'</span>' : '') +
-      '<span class="st">'+icon.starFilled+''+fmtStars(d.stars)+'</span>' +
-      '<a class="st" style="color:var(--accent);font-weight:600" href="'+d.html_url+'" target="_blank" rel="noopener">'+icon.link+'打开</a>' +
+    '<div class="foot">' +
+      '<div class="meta">' +
+        (d.language ? '<span class="lg"><span class="c" style="background:'+(LANG_COLORS[d.language]||'#8b949e')+'"></span>'+d.language+'</span>' : '') +
+        '<span class="st">'+icon.starFilled+fmtStars(d.stars)+'</span>' +
+        '<span class="tm">'+(relUpd ? relUpd+' 更新' : '—')+'</span>' +
+      '</div>' +
+      '<div class="foot-row">' +
+        '<a class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f" href="javascript:void 0" data-act="cattag" data-cat="'+d.category+'">' +
+          '<span class="dot"></span>'+d.categoryLabel+'</a>' +
+        '<a class="open" href="'+d.html_url+'" target="_blank" rel="noopener">'+icon.link+'打开</a>' +
+      '</div>' +
     '</div>';
   return div;
 }
@@ -1701,6 +1795,13 @@ function bindEvents(){
     document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x===b));
     renderList();
   });
+  // 封面图加载失败 → 纸纹占位层（error 事件不冒泡，必须 capture 监听）
+  document.addEventListener('error', e => {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains('cover-img')) {
+      const c = t.closest('.cover'); if (c) c.classList.add('no-img');
+    }
+  }, true);
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-act]'); if(!el) return;
     const act = el.dataset.act;

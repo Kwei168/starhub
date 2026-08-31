@@ -434,15 +434,28 @@ def _atlasnote_items(limit=6):
 
 
 def _arxiv_items():
-    """arXiv：AI 相关分类按提交时间倒序，取前 8 条归入「论文」。"""
+    """arXiv：AI 相关分类按提交时间倒序，取前 8 条归入「论文」。带 2 次重试。"""
     q = " OR ".join("cat:" + c for c in ARXIV_CATS)
     url = ("https://export.arxiv.org/api/query?search_query=%s"
            "&sortBy=submittedDate&sortOrder=descending&max_results=20"
            % urllib.parse.quote(q))
+    xml_text = None
+    for attempt in range(3):
+        try:
+            xml_text = _fetch_url(url, timeout=30)
+            break
+        except Exception as ex:
+            if attempt < 2:
+                time.sleep(3 * (attempt + 1))  # 3s, 6s
+            else:
+                print("[AI晨报] arXiv 拉取失败(重试3次): %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
+                return []
+    if not xml_text:
+        return []
     try:
-        root = ET.fromstring(_fetch_url(url, timeout=30))
+        root = ET.fromstring(xml_text)
     except Exception as ex:
-        print("[AI晨报] arXiv 拉取失败: %s" % ex, file=sys.stderr)
+        print("[AI晨报] arXiv XML 解析失败: %s" % ex, file=sys.stderr)
         return []
     ns = "{http://www.w3.org/2005/Atom}"
     items, seen = [], set()
@@ -502,7 +515,7 @@ def _norm_title(t):
 
 
 # ---------------------------- 英文内容翻译 ----------------------------
-# 与 fetch_and_build.py 同方案：Google 非官方端点 → MyMemory 降级 → 失败保留原文。
+# 三端点降级链：Google gtx → MyMemory（带重试）→ Google 备用 URL。
 # 晨报不做跨构建持久化缓存（每日内容不重复），仅构建内去重缓存。
 
 def _has_cn(s):
@@ -510,61 +523,103 @@ def _has_cn(s):
 
 
 _TRANS_CACHE = {}
+_TRANS_STATS = {"google": 0, "mymemory": 0, "google_alt": 0, "fail": 0, "skip": 0}
 
 
 def _translate_to_zh(text):
-    """英译中；全部端点失败返回 None（调用方保留原文）。"""
+    """英译中；全部端点失败返回 None（调用方保留原文）。
+    端点 1: Google gtx（429 限流时退避重试）
+    端点 2: MyMemory（带 2 次重试 + 指数退避）
+    端点 3: Google translate_a/single?client=te（备用 client ID）
+    """
     if not text:
         return None
     hit = _TRANS_CACHE.get(text)
     if hit is not None:
         return hit or None
     result = None
-    # 端点 1：Google 翻译非官方接口（429 限流时退避重试一次）
+
+    # ── 端点 1：Google gtx ──
     params = urllib.parse.urlencode({"client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": text})
     for attempt in range(2):
         try:
             req = urllib.request.Request(
                 "https://translate.googleapis.com/translate_a/single?" + params,
-                headers={"User-Agent": "Mozilla/5.0"},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
             )
             with urllib.request.urlopen(req, timeout=10) as r:
                 data = json.loads(r.read().decode("utf-8"))
             cand = "".join(seg[0] for seg in data[0] if seg[0]).strip()
             if cand and _has_cn(cand):
                 result = cand
+                _TRANS_STATS["google"] += 1
             break
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt == 0:
                 time.sleep(3)
                 continue
+            if attempt == 1:
+                print("[AI晨报] Google-gtx 端点失败: HTTP %s" % e.code, file=sys.stderr)
             break
-        except Exception:  # noqa: BLE001
+        except Exception as ex:
+            if attempt == 1:
+                print("[AI晨报] Google-gtx 端点失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
             break
-    # 端点 2：MyMemory 免费接口（长文本会被截断，仅做降级）
+
+    # ── 端点 2：MyMemory（带重试 + 指数退避）──
+    if not result:
+        for attempt in range(3):
+            try:
+                params = urllib.parse.urlencode({"q": text[:480], "langpair": "en|zh-CN"})
+                req = urllib.request.Request(
+                    "https://api.mymemory.translated.net/get?" + params,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                cand = (data.get("responseData", {}) or {}).get("translatedText", "").strip()
+                if cand and _has_cn(cand) and "MYMEMORY WARNING" not in cand:
+                    result = cand
+                    _TRANS_STATS["mymemory"] += 1
+                    break
+                # 返回了但无中文 → 可能是限流警告
+                if attempt < 2:
+                    time.sleep(2 ** attempt)  # 1s, 2s
+            except Exception as ex:
+                if attempt == 0:
+                    print("[AI晨报] MyMemory 首次失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
+                if attempt < 2:
+                    time.sleep(2 ** attempt)  # 1s, 2s
+
+    # ── 端点 3：Google 备用 client=dict-chrome ──
     if not result:
         try:
-            params = urllib.parse.urlencode({"q": text[:480], "langpair": "en|zh-CN"})
+            params = urllib.parse.urlencode({"client": "dict-chrome", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": text})
             req = urllib.request.Request(
-                "https://api.mymemory.translated.net/get?" + params,
-                headers={"User-Agent": "Mozilla/5.0"},
+                "https://translate.googleapis.com/translate_a/single?" + params,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
             )
             with urllib.request.urlopen(req, timeout=10) as r:
                 data = json.loads(r.read().decode("utf-8"))
-            cand = (data.get("responseData", {}).get("translatedText") or "").strip()
-            if cand and _has_cn(cand) and "MYMEMORY WARNING" not in cand:
+            cand = "".join(seg[0] for seg in data[0] if seg[0]).strip()
+            if cand and _has_cn(cand):
                 result = cand
-        except Exception:  # noqa: BLE001
-            pass
+                _TRANS_STATS["google_alt"] += 1
+        except Exception as ex:
+            print("[AI晨报] Google-dict-chrome 备用端点失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
+
+    if not result:
+        _TRANS_STATS["fail"] += 1
     _TRANS_CACHE[text] = result or ""
     return result
 
 
 def _tr(text):
-    """英文文本 → 中文；已含中文或翻译失败时原样返回。相邻请求间隔 0.4s 防限流。"""
+    """英文文本 → 中文；已含中文或翻译失败时原样返回。相邻请求间隔 0.5s 防限流。"""
     if not text or _has_cn(text):
+        _TRANS_STATS["skip"] += 1
         return text
-    time.sleep(0.4)
+    time.sleep(0.5)
     translated = _translate_to_zh(text)
     if not translated:
         print("[AI晨报] 翻译失败-保留原文: %s" % text[:50], file=sys.stderr)
@@ -593,7 +648,11 @@ def translate_extra_items(items):
             s = _tr(it["summary"])
             if s != it["summary"]:
                 it["summary"] = s
-    print("[AI晨报] 英文条目翻译完成，%d 条标题已中文化" % n)
+    # 翻译统计：按端点报告成败，方便在 GA 日志中定位哪个端点哑了
+    s = _TRANS_STATS
+    detail = "Google=%d MyMemory=%d Google-dict-chrome=%d 失败=%d 跳过(已含中文)=%d" % (
+        s["google"], s["mymemory"], s["google_alt"], s["fail"], s["skip"])
+    print("[AI晨报] 英文条目翻译完成，%d 条标题已中文化（%s）" % (n, detail))
 
 
 def _norm_url(u):
