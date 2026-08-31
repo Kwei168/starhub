@@ -1795,14 +1795,6 @@ function bindEvents(){
     document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x===b));
     renderList();
   });
-  // 封面图加载失败 → 纸纹占位层（error 事件不冒泡，必须 capture 监听；
-  // .no-img 挂在 .cover-card 卡片段上，与 CSS 选择器 .cover-card.no-img 对齐）
-  document.addEventListener('error', e => {
-    const t = e.target;
-    if (t && t.classList && t.classList.contains('cover-img')) {
-      const c = t.closest('.cover-card'); if (c) c.classList.add('no-img');
-    }
-  }, true);
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-act]'); if(!el) return;
     const act = el.dataset.act;
@@ -1987,6 +1979,19 @@ applyView(getView());
 renderLangBar();
 renderCats();
 renderLangSel();
+// 封面图 error 监听必须在 renderList 之前注册，否则首次渲染的图片加载错误会漏掉
+// 加 500ms 延迟确认 + 一次重试，避免 lazy/async 加载的瞬时误判
+document.addEventListener('error', e => {
+  const t = e.target;
+  if (t && t.classList && t.classList.contains('cover-img') && !t.dataset.errRetried) {
+    t.dataset.errRetried = '1';
+    setTimeout(() => { if (!t.complete || t.naturalWidth === 0) { t.src = t.src; } }, 500);
+    return;
+  }
+  if (t && t.classList && t.classList.contains('cover-img')) {
+    const c = t.closest('.cover-card'); if (c) c.classList.add('no-img');
+  }
+}, true);
 renderList();
 renderTrending();
 renderFeed();
