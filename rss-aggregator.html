@@ -563,8 +563,20 @@ header {
   if (firstSrc) selectSource(firstSrc.key);
 
   // ── Live RSS update ──
+  // Show loading indicator
+  var sidebar = document.getElementById('sidebar');
+  if(sidebar){
+    var loading = document.createElement('span');
+    loading.id = 'rssLiveTime';
+    loading.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
+    loading.textContent = '⟳ 正在获取最新内容...';
+    sidebar.appendChild(loading);
+  }
   setTimeout(function(){
-    fetch('/api/rss').then(function(r){
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function(){ controller.abort(); }, 12000); // 12s timeout
+    fetch('/api/rss', { signal: controller.signal }).then(function(r){
+      clearTimeout(timeoutId);
       if(!r.ok) throw new Error('API '+r.status);
       return r.json();
     }).then(function(data){
@@ -587,20 +599,33 @@ header {
         renderArticleList();
         renderReader();
         // Show live update time in sidebar header
-        var sidebar = document.getElementById('sidebar');
-        if(sidebar){
+        var sb = document.getElementById('sidebar');
+        if(sb){
           var old = document.getElementById('rssLiveTime');
           if(old) old.remove();
           var span = document.createElement('span');
           span.id = 'rssLiveTime';
           span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
           var now = new Date();
-          span.textContent = '✓ 已更新 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-          sidebar.appendChild(span);
+          span.textContent = '✓ 实时已更新 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+          sb.appendChild(span);
         }
         console.log('[RSS] Live updated:', updated, 'sources');
       }
-    }).catch(function(e){ console.warn('[RSS] Live update failed:', e.message); });
+    }).catch(function(e){
+      // Update loading indicator on failure
+      var sb = document.getElementById('sidebar');
+      if(sb){
+        var old = document.getElementById('rssLiveTime');
+        if(old) old.remove();
+        var span = document.createElement('span');
+        span.id = 'rssLiveTime';
+        span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
+        span.textContent = '· 显示静态数据（实时获取超时）';
+        sb.appendChild(span);
+      }
+      console.warn('[RSS] Live update failed:', e.message);
+    });
   }, 800);
 })();
 </script>

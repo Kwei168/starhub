@@ -1106,8 +1106,20 @@ def _build_js(sources_with_items):
   if (firstSrc) selectSource(firstSrc.key);
 
   // ── Live RSS update ──
+  // Show loading indicator
+  var sidebar = document.getElementById('sidebar');
+  if(sidebar){
+    var loading = document.createElement('span');
+    loading.id = 'rssLiveTime';
+    loading.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
+    loading.textContent = '\u27f3 \u6b63\u5728\u83b7\u53d6\u6700\u65b0\u5185\u5bb9...';
+    sidebar.appendChild(loading);
+  }
   setTimeout(function(){
-    fetch('/api/rss').then(function(r){
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function(){ controller.abort(); }, 12000); // 12s timeout
+    fetch('/api/rss', { signal: controller.signal }).then(function(r){
+      clearTimeout(timeoutId);
       if(!r.ok) throw new Error('API '+r.status);
       return r.json();
     }).then(function(data){
@@ -1130,20 +1142,33 @@ def _build_js(sources_with_items):
         renderArticleList();
         renderReader();
         // Show live update time in sidebar header
-        var sidebar = document.getElementById('sidebar');
-        if(sidebar){
+        var sb = document.getElementById('sidebar');
+        if(sb){
           var old = document.getElementById('rssLiveTime');
           if(old) old.remove();
           var span = document.createElement('span');
           span.id = 'rssLiveTime';
           span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
           var now = new Date();
-          span.textContent = '\u2713 \u5df2\u66f4\u65b0 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-          sidebar.appendChild(span);
+          span.textContent = '\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+          sb.appendChild(span);
         }
         console.log('[RSS] Live updated:', updated, 'sources');
       }
-    }).catch(function(e){ console.warn('[RSS] Live update failed:', e.message); });
+    }).catch(function(e){
+      // Update loading indicator on failure
+      var sb = document.getElementById('sidebar');
+      if(sb){
+        var old = document.getElementById('rssLiveTime');
+        if(old) old.remove();
+        var span = document.createElement('span');
+        span.id = 'rssLiveTime';
+        span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
+        span.textContent = '\u00b7 \u663e\u793a\u9759\u6001\u6570\u636e\uff08\u5b9e\u65f6\u83b7\u53d6\u8d85\u65f6\uff09';
+        sb.appendChild(span);
+      }
+      console.warn('[RSS] Live update failed:', e.message);
+    });
   }, 800);
 })();
 </script>
