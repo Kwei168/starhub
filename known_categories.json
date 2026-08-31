@@ -197,5 +197,8 @@
  "weekend-project-space/top-rss-list": "agent",
  "DIYgod/RSSHub": "content",
  "anthropics/claude-plugins-community": "agent",
- "hamibot/hamibot": "agent"
+ "hamibot/hamibot": "agent",
+ "unclecode/crawl4ai": "tools",
+ "p-e-w/heretic": "agent",
+ "jingyaogong/minimind": "agent"
 }
