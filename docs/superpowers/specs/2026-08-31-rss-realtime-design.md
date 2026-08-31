@@ -123,7 +123,7 @@
 **任务名称**：StarHub RSS Cache Warm
 
 **配置参数**：
-- URL: `https://starhub.kwei.cc/api/rss`
+- URL: `https://starhub-refresh.vercel.app/api/rss`
 - 执行频率：每 5 分钟
 - 请求方法：GET
 - 超时：15s

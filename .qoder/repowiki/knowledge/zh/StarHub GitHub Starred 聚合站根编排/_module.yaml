@@ -1,0 +1,17 @@
+schema_version: 1
+module_path: ""
+title: StarHub GitHub Starred 聚合站根编排
+scope:
+    - .
+    - .gitignore
+    - AGENT_HANDOVER.md
+    - README.md
+    - descriptions_zh.json
+    - fetch_and_build.py
+    - index.html
+    - known_categories.json
+    - template.html
+    - trending_snapshot.json
+source_files: []
+depends_on: []
+related_to: []

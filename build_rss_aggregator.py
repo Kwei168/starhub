@@ -119,7 +119,7 @@ CATEGORY_LABELS = {
     "podcast": "播客",
 }
 
-ITEMS_PER_SOURCE = 8
+ITEMS_PER_SOURCE = 30
 FETCH_TIMEOUT = 8
 TRANSLATE_TIMEOUT = 4
 
@@ -500,6 +500,15 @@ header {
 .article-list-header .view-all {
   font-size:11px; color:var(--brand-strong); cursor:pointer;
 }
+.article-list-header .view-toggle {
+  font-size:11px; color:var(--brand-strong); cursor:pointer;
+  padding:2px 8px; border-radius:4px; border:1px solid var(--brand-line);
+  background:var(--brand-weak); font-weight:600; white-space:nowrap;
+  transition:all .15s;
+}
+.article-list-header .view-toggle:hover {
+  background:var(--brand-line); color:#fff;
+}
 
 .article-item {
   padding:10px 14px; border-bottom:1px solid var(--line);
@@ -639,6 +648,8 @@ def _build_js(sources_with_items):
   var activeSourceKey = null;
   var activeArticleIdx = -1;
   var searchQuery = '';
+  var viewMode = 'source'; // 'source' | 'timeline'
+  var timelineItems = [];  // merged + sorted items for timeline view
 
   // ── DOM refs ──
   var sidebarEl = document.getElementById('sidebar');
@@ -701,8 +712,28 @@ def _build_js(sources_with_items):
     renderReader();
   }
 
+  // ── Build timeline (merge all sources, sort by pub_date desc) ──
+  function buildTimeline() {
+    var all = [];
+    SOURCES.forEach(function(src) {
+      src.items.forEach(function(it) {
+        all.push({ src: src, item: it });
+      });
+    });
+    all.sort(function(a, b) {
+      var da = new Date(a.item.pub_date || 0).getTime();
+      var db = new Date(b.item.pub_date || 0).getTime();
+      return db - da;
+    });
+    timelineItems = all;
+  }
+
   // ── Render article list ──
   function renderArticleList() {
+    if (viewMode === 'timeline') {
+      renderTimelineList();
+      return;
+    }
     var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
     if (!src) {
       articleListHeaderEl.innerHTML = '<h3>选择一个信源</h3>';
@@ -710,7 +741,7 @@ def _build_js(sources_with_items):
       return;
     }
     var items = filterItems(src.items);
-    articleListHeaderEl.innerHTML = '<h3>'+esc(src.name)+'</h3><span class="count">'+items.length+' 篇</span>';
+    articleListHeaderEl.innerHTML = '<h3>'+esc(src.name)+'</h3><span class="count">'+items.length+' 篇</span><span class="view-toggle" data-mode="timeline">时间线</span>';
 
     if (items.length === 0) {
       articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
@@ -736,6 +767,84 @@ def _build_js(sources_with_items):
         renderReader();
       });
     });
+    bindViewToggle();
+  }
+
+  // ── Render timeline list ──
+  function renderTimelineList() {
+    var filtered = timelineItems;
+    if (searchQuery) {
+      var q = searchQuery.toLowerCase();
+      filtered = timelineItems.filter(function(o) {
+        var t = (o.item.title_zh || o.item.title).toLowerCase();
+        var s = (o.item.summary_zh || o.item.summary || '').toLowerCase();
+        return t.indexOf(q) >= 0 || s.indexOf(q) >= 0;
+      });
+    }
+    articleListHeaderEl.innerHTML = '<h3>时间线</h3><span class="count">'+filtered.length+' 篇</span><span class="view-toggle" data-mode="source">信源</span>';
+
+    if (filtered.length === 0) {
+      articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
+      return;
+    }
+
+    var html = '';
+    filtered.forEach(function(o, idx) {
+      var cls = 'article-item' + (idx === activeArticleIdx ? ' active' : '');
+      html += '<div class="'+cls+'" data-tidx="'+idx+'">';
+      html += '<div class="a-title">'+esc(o.item.title_zh || o.item.title)+'</div>';
+      html += '<div class="a-meta">';
+      html += '<span class="src-tag" style="background:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
+      html += '<span class="time">'+esc(o.item.time_str)+'</span>';
+      html += '</div></div>';
+    });
+    articleListEl.innerHTML = html;
+
+    articleListEl.querySelectorAll('.article-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        activeArticleIdx = parseInt(this.dataset.tidx);
+        renderTimelineList();
+        renderTimelineReader();
+      });
+    });
+    bindViewToggle();
+  }
+
+  // ── Render reader for timeline ──
+  function renderTimelineReader() {
+    if (activeArticleIdx < 0 || activeArticleIdx >= timelineItems.length) {
+      readerEl.innerHTML = '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从列表选择一篇文章开始阅读</span></div>';
+      return;
+    }
+    var o = timelineItems[activeArticleIdx];
+    if (!o) return;
+    var html = '<div class="reader-content">';
+    html += '<h1 class="rc-title"><a href="'+esc(o.item.link)+'" target="_blank" rel="noopener">'+esc(o.item.title_zh || o.item.title)+'</a></h1>';
+    html += '<div class="rc-meta">';
+    html += '<span class="src-tag" style="background:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
+    html += '<span>'+esc(o.item.time_str)+'</span>';
+    html += '</div>';
+    if (o.item.summary_zh || o.item.summary) {
+      html += '<div class="rc-summary">'+esc(o.item.summary_zh || o.item.summary)+'</div>';
+    }
+    html += '<a class="rc-link" href="'+esc(o.item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
+    html += '</div>';
+    readerEl.innerHTML = html;
+  }
+
+  // ── View toggle ──
+  function bindViewToggle() {
+    var toggle = articleListHeaderEl.querySelector('.view-toggle');
+    if (toggle) {
+      toggle.addEventListener('click', function() {
+        viewMode = this.dataset.mode;
+        activeArticleIdx = -1;
+        if (viewMode === 'timeline') buildTimeline();
+        renderArticleList();
+        if (viewMode === 'timeline') renderTimelineReader();
+        else renderReader();
+      });
+    }
   }
 
   // ── Render reader ──
@@ -824,6 +933,7 @@ def _build_js(sources_with_items):
       });
       if(updated > 0){
         renderSidebar();
+        if(viewMode === 'timeline') buildTimeline();
         renderArticleList();
         renderReader();
         // Show live update time in sidebar header
@@ -903,7 +1013,10 @@ def main():
             it["title_zh"] = it["title"]
             it["summary_zh"] = it.get("summary", "")
             it["time_str"] = _fmt_rel_time(it.get("pub_date"))
-            it.pop("pub_date", None)
+            # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
+            pd = it.get("pub_date")
+            if pd and hasattr(pd, 'isoformat'):
+                it["pub_date"] = pd.isoformat()
 
         src_data = {
             "key": src["key"], "name": src["name"], "cat": src["cat"],

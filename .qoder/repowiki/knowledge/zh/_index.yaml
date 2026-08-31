@@ -1,0 +1,36 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-08-21T00:11:40Z"
+modules:
+    "":
+        dir_name: StarHub GitHub Starred 聚合站根编排
+        title: StarHub GitHub Starred 聚合站根编排
+        scope:
+            - .
+            - .gitignore
+            - AGENT_HANDOVER.md
+            - README.md
+            - descriptions_zh.json
+            - fetch_and_build.py
+            - index.html
+            - known_categories.json
+            - template.html
+            - trending_snapshot.json
+        source_files: []
+        children:
+            - vercel_functions
+        depends_on: []
+        related_to: []
+    vercel_functions:
+        dir_name: Vercel Serverless Workflow 触发器
+        title: Vercel Serverless Workflow 触发器
+        scope:
+            - api/
+            - vercel.json
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

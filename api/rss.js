@@ -17,7 +17,7 @@ const TOP_SOURCES = [
   { key: "thepaper", "name": "\u6f8e\u6e43\u65b0\u95fb", "url": "https://plink.anyfeeder.com/thepaper",                                 "color": "#d32f2f", "cat": "news" },
 ];
 
-const ITEMS_PER_SOURCE = 10;
+const ITEMS_PER_SOURCE = 30;
 const FETCH_TIMEOUT = 6000; // 单源超时 6s
 const UA = 'starhub-rss-aggregator/1.0';
 
