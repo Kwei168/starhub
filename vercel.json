@@ -1,5 +1,13 @@
 {
   "name": "starhub-refresh",
+  "headers": [
+    {
+      "source": "/api/rss",
+      "headers": [
+        { "key": "Cache-Control", "value": "s-maxage=300, stale-while-revalidate=600" }
+      ]
+    }
+  ],
   "functions": {
     "api/refresh.js": { "maxDuration": 10 },
     "api/search.js": { "maxDuration": 30 },

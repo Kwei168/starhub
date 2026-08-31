@@ -6,7 +6,7 @@
 // Top 10 源选择标准：更新频率高、内容质量好、响应速度快、国内可访问
 const TOP_SOURCES = [
   { key: "ithome",   "name": "IT\u4e4b\u5bb6",     "url": "https://www.ithome.com/rss/",                                              "color": "#0055ff", "cat": "cn_tech" },
-  { key: "huxiu",    "name": "\u864e\u55c5",         "url": "https://rss.huxiu.com/",                                                   "color": "#1a1a1a", "cat": "cn_tech" },
+  { key: "huxiu",    "name": "\u864e\u55c5",         "url": "https://rsshub.bestblogs.dev/huxiu/article",                                  "color": "#1a1a1a", "cat": "cn_tech" },
   { key: "sspai",    "name": "\u5c11\u6570\u6d3e",   "url": "https://sspai.com/feed",                                                    "color": "#d7434e", "cat": "cn_tech" },
   { key: "cnbeta",   "name": "cnBeta",              "url": "https://plink.anyfeeder.com/cnbeta",                                         "color": "#d32f2f", "cat": "cn_tech" },
   { key: "kr36",     "name": "36\u6c2a",             "url": "https://rsshub.ktachibana.party/36kr/information/AI",                       "color": "#0066ff", "cat": "cn_tech" },
