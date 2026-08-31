@@ -882,7 +882,7 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
       <button class="side-tab" data-side="feed">关注动态</button>
       <button class="side-tab" data-side="aihot">AI 动态</button>
     </div>
-    <aside class="trending on">
+    <div class="trending on">
       <h2>每日 AI 排行榜</h2>
       <div class="trend-sub" id="trendUpdated"></div>
       <div class="trend-tabs" id="trendTabs">
@@ -892,7 +892,7 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
       </div>
       <div class="trend-list" id="trendList"></div>
       <button class="trend-more" id="trendMore">查看完整 Top20</button>
-    </aside>
+    </div>
     <section class="feed" id="feedWrap">
       <h2>近 24 小时关注动态</h2>
       <div class="feed-sub" id="feedUpdated"></div>
@@ -1695,7 +1695,6 @@ async function loadAihot(){
     renderAihot();
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     aihotLoaded = true;
-    aihotLoading = false;
 
     // ② 新闻源（36/Redis）异步追加，不阻塞首屏；超时 12s 放弃
     const newsItems = await Promise.race([
@@ -1713,6 +1712,7 @@ async function loadAihot(){
   }catch(e){
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
     list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">动态流加载失败，稍后重试</div>';
+  }finally{
     aihotLoading = false;
   }
 }
@@ -1795,11 +1795,12 @@ function bindEvents(){
     document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x===b));
     renderList();
   });
-  // 封面图加载失败 → 纸纹占位层（error 事件不冒泡，必须 capture 监听）
+  // 封面图加载失败 → 纸纹占位层（error 事件不冒泡，必须 capture 监听；
+  // .no-img 挂在 .cover-card 卡片段上，与 CSS 选择器 .cover-card.no-img 对齐）
   document.addEventListener('error', e => {
     const t = e.target;
     if (t && t.classList && t.classList.contains('cover-img')) {
-      const c = t.closest('.cover'); if (c) c.classList.add('no-img');
+      const c = t.closest('.cover-card'); if (c) c.classList.add('no-img');
     }
   }, true);
   document.addEventListener('click', e => {
