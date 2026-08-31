@@ -50,7 +50,7 @@ RSS_SOURCES = [
     {"key": "极客公园_7", "name": "极客公园", "cat": "cn_tech", "url": "http://www.geekpark.net/rss", "color": "#00aa55"},
     {"key": "小众软件_8", "name": "小众软件", "cat": "cn_tech", "url": "https://www.appinn.com/feed/", "color": "#FFD43B"},
     {"key": "构建被动收入_9", "name": "构建被动收入", "cat": "cn_tech", "url": "https://www.bmpi.dev/index.xml", "color": "#00bc74"},
-    {"key": "虎嗅_11", "name": "虎嗅", "cat": "cn_tech", "url": "https://rss.huxiu.com/", "color": "#3a85ff"},
+    {"key": "虎嗅_11", "name": "虎嗅", "cat": "cn_tech", "url": "https://rsshub.bestblogs.dev/huxiu/article", "color": "#3a85ff"},
     {"key": "小众软件appinns_12", "name": "小众软件-appinns", "cat": "cn_tech", "url": "https://feeds.appinn.com/appinns/", "color": "#3177cf"},
     {"key": "it之家_13", "name": "IT之家", "cat": "cn_tech", "url": "https://www.ithome.com/rss/", "color": "#1e88e5"},
     {"key": "透明创业_14", "name": "透明创业", "cat": "cn_tech", "url": "https://blog.t9t.io/atom.xml", "color": "#2c7fb8"},
