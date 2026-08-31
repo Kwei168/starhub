@@ -658,6 +658,13 @@ def main():
     except Exception as e:
         print("[AI晨报] 生成失败: %s" % e, file=sys.stderr)
 
+    # RSS 聚合页：生成 rss-aggregator.html（独立页面）
+    try:
+        import build_rss_aggregator
+        build_rss_aggregator.main()
+    except Exception as e:
+        print("[RSS聚合] 生成失败: %s" % e, file=sys.stderr)
+
     print("更新完成：共 %d 个项目" % len(out))
 
 
