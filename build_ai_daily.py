@@ -515,7 +515,7 @@ def _norm_title(t):
 
 
 # ---------------------------- 英文内容翻译 ----------------------------
-# 三端点降级链：Google gtx → MyMemory（带重试）→ Google 备用 URL。
+# 四端点降级链：Google gtx → Bing 网页版 → MyMemory（带重试）→ Google dict-chrome。
 # 晨报不做跨构建持久化缓存（每日内容不重复），仅构建内去重缓存。
 
 def _has_cn(s):
@@ -523,14 +523,70 @@ def _has_cn(s):
 
 
 _TRANS_CACHE = {}
-_TRANS_STATS = {"google": 0, "mymemory": 0, "google_alt": 0, "fail": 0, "skip": 0}
+_TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "google_alt": 0, "fail": 0, "skip": 0}
+_BING_TOKENS = None  # 构建内缓存，token 有效期 1 小时
+
+
+def _fetch_bing_tokens():
+    """访问 bing.com/translator 提取防滥用 token（IG / IID / key / token）。"""
+    global _BING_TOKENS
+    if _BING_TOKENS:
+        return _BING_TOKENS
+    req = urllib.request.Request(
+        "https://www.bing.com/translator",
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+    )
+    r = urllib.request.urlopen(req, timeout=15)
+    html = r.read().decode("utf-8")
+    ig = re.search(r'IG:"([^"]+)"', html)
+    iid = re.search(r'data-iid="([^"]+)"', html)
+    tok = re.search(r'params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)"', html)
+    if not all([ig, iid, tok]):
+        raise RuntimeError("Bing token 提取失败")
+    _BING_TOKENS = {"IG": ig.group(1), "IID": iid.group(1), "key": tok.group(1), "token": tok.group(2)}
+    return _BING_TOKENS
+
+
+def _bing_translate(text):
+    """Bing 网页版翻译（免费，无需 API key）。token 缓存复用。"""
+    try:
+        tokens = _fetch_bing_tokens()
+    except Exception as ex:
+        print("[AI晨报] Bing token 获取失败: %s" % ex, file=sys.stderr)
+        return None
+    data = urllib.parse.urlencode({
+        "fromLang": "en", "text": text, "to": "zh-Hans",
+        "token": tokens["token"], "key": tokens["key"],
+    }).encode("utf-8")
+    url = ("https://www.bing.com/ttranslatev3?isVertical=1&" +
+           urllib.parse.urlencode({"IG": tokens["IG"], "IID": tokens["IID"]}))
+    try:
+        req = urllib.request.Request(url, data=data, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": "https://www.bing.com/translator",
+        })
+        with urllib.request.urlopen(req, timeout=10) as r:
+            result = json.loads(r.read().decode("utf-8"))
+        if isinstance(result, list) and result:
+            trans = result[0].get("translations", [{}])
+            if trans:
+                return trans[0].get("text", "") or None
+        # token 过期 → 清缓存下次重试
+        if isinstance(result, dict) and "statusCode" in result:
+            global _BING_TOKENS
+            _BING_TOKENS = None
+    except Exception as ex:
+        print("[AI晨报] Bing 翻译失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
+    return None
 
 
 def _translate_to_zh(text):
     """英译中；全部端点失败返回 None（调用方保留原文）。
     端点 1: Google gtx（429 限流时退避重试）
-    端点 2: MyMemory（带 2 次重试 + 指数退避）
-    端点 3: Google translate_a/single?client=te（备用 client ID）
+    端点 2: Bing 网页版（免费，token 缓存 1h）
+    端点 3: MyMemory（带 2 次重试 + 指数退避）
+    端点 4: Google dict-chrome（备用 client ID）
     """
     if not text:
         return None
@@ -566,7 +622,14 @@ def _translate_to_zh(text):
                 print("[AI晨报] Google-gtx 端点失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
             break
 
-    # ── 端点 2：MyMemory（带重试 + 指数退避）──
+    # ── 端点 2：Bing 网页版（免费，无需 API key）──
+    if not result:
+        cand = _bing_translate(text)
+        if cand and _has_cn(cand):
+            result = cand
+            _TRANS_STATS["bing"] += 1
+
+    # ── 端点 3：MyMemory（带重试 + 指数退避）──
     if not result:
         for attempt in range(3):
             try:
@@ -591,7 +654,7 @@ def _translate_to_zh(text):
                 if attempt < 2:
                     time.sleep(2 ** attempt)  # 1s, 2s
 
-    # ── 端点 3：Google 备用 client=dict-chrome ──
+    # ── 端点 4：Google 备用 client=dict-chrome ──
     if not result:
         try:
             params = urllib.parse.urlencode({"client": "dict-chrome", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": text})
@@ -650,8 +713,8 @@ def translate_extra_items(items):
                 it["summary"] = s
     # 翻译统计：按端点报告成败，方便在 GA 日志中定位哪个端点哑了
     s = _TRANS_STATS
-    detail = "Google=%d MyMemory=%d Google-dict-chrome=%d 失败=%d 跳过(已含中文)=%d" % (
-        s["google"], s["mymemory"], s["google_alt"], s["fail"], s["skip"])
+    detail = "Google=%d Bing=%d MyMemory=%d Google-chrome=%d 失败=%d 跳过=%d" % (
+        s["google"], s["bing"], s["mymemory"], s["google_alt"], s["fail"], s["skip"])
     print("[AI晨报] 英文条目翻译完成，%d 条标题已中文化（%s）" % (n, detail))
 
 
