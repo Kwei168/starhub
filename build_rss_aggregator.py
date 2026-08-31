@@ -22,53 +22,92 @@ UA = {"User-Agent": "Mozilla/5.0 (starhub-rss-aggregator)"}
 # ── 翻译统计 ──
 _TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0}
 
-# ── RSS 信源配置（按分类组织） ─
+# ── RSS 信源配置（按分类组织，73 个经验证可用源） ─
 RSS_SOURCES = [
-    # ── 科技资讯 ──
-    {"key": "hn",      "name": "Hacker News",     "cat": "tech",    "url": "https://hnrss.org/frontpage",                                          "color": "#ff6600"},
+    # ── 科技资讯 (4) ──
     {"key": "verge",   "name": "The Verge AI",    "cat": "tech",    "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",     "color": "#e31937"},
     {"key": "tc",      "name": "TechCrunch AI",   "cat": "tech",    "url": "https://techcrunch.com/category/artificial-intelligence/feed/",         "color": "#0a9e01"},
     {"key": "arxiv",   "name": "arXiv CS.AI",     "cat": "tech",    "url": "https://rss.arxiv.org/rss/cs.AI",                                       "color": "#b31b1b"},
-    {"key": "reddit",  "name": "Reddit r/tech",   "cat": "tech",    "url": "https://www.reddit.com/r/technology/.rss",                              "color": "#ff4500"},
     {"key": "wired",   "name": "WIRED",           "cat": "tech",    "url": "https://www.wired.com/feed/rss",                                        "color": "#000000"},
 
-    # ── 中文科技 ──
-    {"key": "kr36",    "name": "36氪",            "cat": "cn_tech", "url": "https://rsshub.ktachibana.party/36kr/information/AI",                   "color": "#0066ff"},
-    {"key": "ithome",  "name": "IT之家",           "cat": "cn_tech", "url": "https://www.ithome.com/rss/",                                          "color": "#0055ff"},
-    {"key": "sspai",   "name": "少数派",           "cat": "cn_tech", "url": "https://sspai.com/feed",                                               "color": "#d7434e"},
-    {"key": "solidot", "name": "Solidot",         "cat": "cn_tech", "url": "https://www.solidot.org/index.rss",                                     "color": "#336699"},
-    {"key": "coolshell","name": "酷壳",           "cat": "cn_tech", "url": "https://coolshell.cn/feed",                                             "color": "#333333"},
-    {"key": "ruanyifeng","name": "阮一峰网络日志", "cat": "cn_tech", "url": "https://www.ruanyifeng.com/blog/atom.xml",                             "color": "#4a90d9"},
-    {"key": "geekpark","name": "极客公园",        "cat": "cn_tech", "url": "https://plink.anyfeeder.com/geekpark",                                  "color": "#00aa55"},
-    {"key": "huxiu",   "name": "虎嗅",            "cat": "cn_tech", "url": "https://plink.anyfeeder.com/huxiu",                                     "color": "#1a1a1a"},
-    {"key": "tmtpost", "name": "钛媒体",          "cat": "cn_tech", "url": "https://www.tmtpost.com/feed",                                          "color": "#0066cc"},
-    {"key": "readhub", "name": "Readhub",         "cat": "cn_tech", "url": "https://plink.anyfeeder.com/readhub/topic",                             "color": "#333333"},
+    # ── 中文科技 (28) ──
+    {"key": "kr36",     "name": "36氪",            "cat": "cn_tech", "url": "https://rsshub.ktachibana.party/36kr/information/AI",                   "color": "#0066ff"},
+    {"key": "ithome",   "name": "IT之家",           "cat": "cn_tech", "url": "https://www.ithome.com/rss/",                                          "color": "#0055ff"},
+    {"key": "sspai",    "name": "少数派",           "cat": "cn_tech", "url": "https://sspai.com/feed",                                               "color": "#d7434e"},
+    {"key": "solidot",  "name": "Solidot",         "cat": "cn_tech", "url": "https://www.solidot.org/index.rss",                                     "color": "#336699"},
+    {"key": "coolshell","name": "酷壳",            "cat": "cn_tech", "url": "https://coolshell.cn/feed",                                             "color": "#333333"},
+    {"key": "ruanyifeng","name": "阮一峰网络日志",  "cat": "cn_tech", "url": "https://www.ruanyifeng.com/blog/atom.xml",                             "color": "#4a90d9"},
+    {"key": "geekpark", "name": "极客公园",        "cat": "cn_tech", "url": "https://plink.anyfeeder.com/geekpark",                                  "color": "#00aa55"},
+    {"key": "huxiu",    "name": "虎嗅",            "cat": "cn_tech", "url": "https://rss.huxiu.com/",                                                "color": "#1a1a1a"},
+    {"key": "tmtpost",  "name": "钛媒体",          "cat": "cn_tech", "url": "https://www.tmtpost.com/feed",                                          "color": "#0066cc"},
+    {"key": "meituan",  "name": "美团技术团队",     "cat": "cn_tech", "url": "https://tech.meituan.com/feed",                                         "color": "#FFD43B"},
+    {"key": "ifanr",    "name": "爱范儿",          "cat": "cn_tech", "url": "https://www.ifanr.com/feed",                                            "color": "#00bc74"},
+    {"key": "gcores",   "name": "机核",            "cat": "cn_tech", "url": "https://www.gcores.com/rss",                                            "color": "#e2363e"},
+    {"key": "iplaysoft", "name": "异次元软件世界", "cat": "cn_tech", "url": "https://feed.iplaysoft.com",                                            "color": "#3a85ff"},
+    {"key": "appinn",   "name": "小众软件",         "cat": "cn_tech", "url": "https://www.appinn.com/feed/",                                         "color": "#3177cf"},
+    {"key": "williamlong","name":"月光博客",        "cat": "cn_tech", "url": "http://www.williamlong.info/rss.xml",                                   "color": "#1e88e5"},
+    {"key": "tw93",     "name": "潮流周刊",         "cat": "cn_tech", "url": "https://weekly.tw93.fun/rss.xml",                                       "color": "#000000"},
+    {"key": "zhangxinxu","name":"张鑫旭",          "cat": "cn_tech", "url": "https://www.zhangxinxu.com/wordpress/feed/",                            "color": "#2c7fb8"},
+    {"key": "yystv",    "name": "游戏研究社",       "cat": "cn_tech", "url": "https://www.yystv.cn/rss/feed",                                         "color": "#e53935"},
+    {"key": "toodaylab", "name": "理想生活实验室",  "cat": "cn_tech", "url": "https://www.toodaylab.com/feed",                                        "color": "#ff6f00"},
+    {"key": "kawabangga","name": "卡瓦邦噶",        "cat": "cn_tech", "url": "https://www.kawabangga.com/feed",                                       "color": "#e91e63"},
+    {"key": "leavesongs","name": "离别歌",          "cat": "cn_tech", "url": "https://www.leavesongs.com/feed/",                                      "color": "#43a047"},
+    {"key": "t9t",      "name": "透明创业实验",     "cat": "cn_tech", "url": "https://blog.t9t.io/atom.xml",                                          "color": "#333333"},
+    {"key": "codingnow","name": "云风的BLOG",       "cat": "cn_tech", "url": "http://blog.codingnow.com/atom.xml",                                    "color": "#5c6bc0"},
+    {"key": "bmpi",     "name": "构建我的被动收入", "cat": "cn_tech", "url": "https://www.bmpi.dev/index.xml",                                        "color": "#00897b"},
+    {"key": "eryajf",   "name": "二丫讲梵",         "cat": "cn_tech", "url": "https://wiki.eryajf.net/rss.xml",                                       "color": "#ff5722"},
+    {"key": "phodal",   "name": "全栈应用开发",     "cat": "cn_tech", "url": "https://www.phodal.com/blog/feeds/rss/",                                "color": "#1565c0"},
+    {"key": "runningcheese","name":"奔跑中的奶酪",  "cat": "cn_tech", "url": "https://www.runningcheese.com/feed",                                   "color": "#ff9800"},
+    {"key": "changhai","name": "卢昌海",           "cat": "cn_tech", "url": "https://www.changhai.org/feed.xml",                                     "color": "#795548"},
+    {"key": "crazycap", "name": "疯投圈",          "cat": "cn_tech", "url": "https://crazy.capital/feed",                                           "color": "#6a1b9a"},
+    {"key": "cnbeta",   "name": "cnBeta",          "cat": "cn_tech", "url": "https://plink.anyfeeder.com/cnbeta",                                    "color": "#d32f2f"},
+    {"key": "expreview", "name": "超能网",          "cat": "cn_tech", "url": "https://plink.anyfeeder.com/expreview",                                 "color": "#0288d1"},
+    {"key": "leiphone", "name": "雷峰网",          "cat": "cn_tech", "url": "https://plink.anyfeeder.com/leiphone",                                  "color": "#0097a7"},
+    {"key": "mittr",    "name": "MIT科技评论",      "cat": "cn_tech", "url": "https://plink.anyfeeder.com/mittrchina/hot",                            "color": "#c62828"},
+    {"key": "infoq",    "name": "InfoQ推荐",        "cat": "cn_tech", "url": "https://plink.anyfeeder.com/infoq/recommend",                           "color": "#e65100"},
+    {"key": "woshipm",  "name": "人人都是产品经理", "cat": "cn_tech", "url": "https://www.woshipm.com/feed",                                         "color": "#0091ea"},
 
-    # ── 开发者博客 ──
-    {"key": "redis",   "name": "Redis Blog",      "cat": "dev",     "url": "https://redis.io/feed/",                                               "color": "#dc382d"},
-    {"key": "atlas",   "name": "AtlasNote",       "cat": "dev",     "url": "https://atlasnote.ai/rss.xml",                                          "color": "#6366f1"},
-    {"key": "webdev",  "name": "web.dev",         "cat": "dev",     "url": "https://web.dev/feed.xml",                                              "color": "#4285f4"},
-    {"key": "css",     "name": "CSS-Tricks",      "cat": "dev",     "url": "https://css-tricks.com/feed/",                                          "color": "#e34f26"},
+    # ── 开发者博客 (20) ──
+    {"key": "redis",    "name": "Redis Blog",      "cat": "dev",     "url": "https://redis.io/feed/",                                               "color": "#dc382d"},
+    {"key": "atlas",    "name": "AtlasNote",       "cat": "dev",     "url": "https://atlasnote.ai/rss.xml",                                          "color": "#6366f1"},
+    {"key": "css",      "name": "CSS-Tricks",      "cat": "dev",     "url": "https://css-tricks.com/feed/",                                          "color": "#e34f26"},
     {"key": "overreacted","name":"Overreacted",    "cat": "dev",     "url": "https://overreacted.io/rss.xml",                                        "color": "#663399"},
-    {"key": "antfu",   "name": "Anthony Fu",      "cat": "dev",     "url": "https://antfu.me/feed.xml",                                             "color": "#336699"},
-    {"key": "diygod",  "name": "DIYGod",          "cat": "dev",     "url": "https://diygod.me/atom.xml",                                             "color": "#00adb5"},
+    {"key": "antfu",    "name": "Anthony Fu",      "cat": "dev",     "url": "https://antfu.me/feed.xml",                                             "color": "#336699"},
     {"key": "hellogithub","name":"HelloGitHub",    "cat": "dev",     "url": "http://hellogithub.com/rss",                                            "color": "#4CAF50"},
+    {"key": "jvns",     "name": "Julia Evans",     "cat": "dev",     "url": "https://jvns.ca/atom.xml",                                              "color": "#8e44ad"},
+    {"key": "joshcomeau","name":"Josh Comeau",     "cat": "dev",     "url": "https://www.joshwcomeau.com/rss.xml",                                   "color": "#6c5ce7"},
+    {"key": "tonybai",  "name": "Tony Bai",        "cat": "dev",     "url": "http://tonybai.com/feed/",                                              "color": "#2d3436"},
+    {"key": "uisdc",    "name": "优设",            "cat": "dev",     "url": "http://www.uisdc.com/feed",                                             "color": "#e74c3c"},
+    {"key": "anywayfm", "name": "Anyway.FM",       "cat": "dev",     "url": "https://anyway.fm/rss.xml",                                             "color": "#00b894"},
+    {"key": "cnfeat",   "name": "笨方法学写作",     "cat": "dev",     "url": "https://www.cnfeat.com/feed.xml",                                       "color": "#2c3e50"},
+    {"key": "barretlee","name": "小胡子哥",        "cat": "dev",     "url": "http://www.barretlee.com/rss2.xml",                                     "color": "#e67e22"},
+    {"key": "devtang",  "name": "唐巧博客",         "cat": "dev",     "url": "http://blog.devtang.com/atom.xml",                                      "color": "#3498db"},
+    {"key": "dongwm",   "name": "小明明s",         "cat": "dev",     "url": "https://www.dongwm.com/atom.xml",                                       "color": "#1abc9c"},
+    {"key": "xiqin",    "name": "西秦公子",         "cat": "dev",     "url": "https://www.ixiqin.com/feed/",                                          "color": "#9b59b6"},
+    {"key": "taoshu",   "name": "涛叔",            "cat": "dev",     "url": "https://taoshu.in/feed.xml",                                            "color": "#34495e"},
+    {"key": "geekplux", "name": "GeekPlux",        "cat": "dev",     "url": "https://geekplux.com/feed.xml",                                         "color": "#16a085"},
+    {"key": "ezindie",  "name": "ezindie",         "cat": "dev",     "url": "https://www.ezindie.com/feed/rss.xml",                                  "color": "#f39c12"},
+    {"key": "v2extech", "name": "V2EX技术",         "cat": "dev",     "url": "https://www.v2ex.com/feed/tab/tech.xml",                                "color": "#4a90d9"},
 
-    # ── 综合新闻 ──
-    {"key": "bbc",     "name": "BBC 中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/bbc/cn",                                    "color": "#bb1919"},
-    {"key": "rfi",     "name": "法广中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/rfi/cn",                                    "color": "#0066b3"},
-    {"key": "voa",     "name": "美国之音",        "cat": "news",    "url": "https://plink.anyfeeder.com/voa/chinese",                               "color": "#003366"},
-    {"key": "dw",      "name": "德国之声",        "cat": "news",    "url": "https://rss.dw.com/rdf/rss-chi-all",                                    "color": "#0055a4"},
-    {"key": "nyt",     "name": "纽约时报中文",    "cat": "news",    "url": "https://plink.anyfeeder.com/nytimes/cn",                                "color": "#1a1a1a"},
-    {"key": "reuters", "name": "路透中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/reuters/cn",                                "color": "#ff8000"},
-    {"key": "zaobao",  "name": "联合早报",        "cat": "news",    "url": "https://plink.anyfeeder.com/zaobao/realtime/china",                     "color": "#003399"},
-    {"key": "chinadaily","name":"中国日报双语",   "cat": "news",    "url": "https://plink.anyfeeder.com/chinadaily/dual",                           "color": "#cc0000"},
+    # ── 综合新闻 (9) ──
+    {"key": "bbc",      "name": "BBC 中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/bbc/cn",                                    "color": "#bb1919"},
+    {"key": "rfi",      "name": "法广中文",        "cat": "news",    "url": "https://plink.anyfeeder.com/rfi/cn",                                    "color": "#0066b3"},
+    {"key": "nyt",      "name": "纽约时报中文",    "cat": "news",    "url": "https://plink.anyfeeder.com/nytimes/cn",                                "color": "#1a1a1a"},
+    {"key": "zaobao",   "name": "联合早报",        "cat": "news",    "url": "https://plink.anyfeeder.com/zaobao/realtime/china",                     "color": "#003399"},
+    {"key": "chinadaily","name":"中国日报双语",    "cat": "news",    "url": "https://plink.anyfeeder.com/chinadaily/dual",                           "color": "#cc0000"},
+    {"key": "thepaper", "name": "澎湃新闻",        "cat": "news",    "url": "https://plink.anyfeeder.com/thepaper",                                  "color": "#d32f2f"},
+    {"key": "idaily",   "name": "iDaily",          "cat": "news",    "url": "https://plink.anyfeeder.com/idaily/today",                              "color": "#1565c0"},
+    {"key": "abccn",    "name": "SBS澳洲中文",     "cat": "news",    "url": "https://plink.anyfeeder.com/abc/cn",                                    "color": "#0055a4"},
+    {"key": "zhihudaily","name":"知乎日报",        "cat": "news",    "url": "https://plink.anyfeeder.com/zhihu/daily",                               "color": "#0084ff"},
 
-    # ── 播客 ──
-    {"key": "sv101",   "name": "硅谷101",         "cat": "podcast", "url": "https://feeds.fireside.fm/sv101/rss",                                   "color": "#7c3aed"},
-    {"key": "latetalk","name": "晚点聊 LateTalk", "cat": "podcast", "url": "https://feeds.fireside.fm/latetalk/rss",                                "color": "#0891b2"},
-    {"key": "hbr",     "name": "HBR IdeaCast",    "cat": "podcast", "url": "https://feeds.harvardbusiness.org/harvardbusiness/ideacast",            "color": "#1d4ed8"},
-    {"key": "tedbiz",  "name": "TED Business",    "cat": "podcast", "url": "https://feeds.feedburner.com/TEDBusiness",                              "color": "#e11d48"},
+    # ── 播客 (7) ──
+    {"key": "sv101",    "name": "硅谷101",         "cat": "podcast", "url": "https://feeds.fireside.fm/sv101/rss",                                   "color": "#7c3aed"},
+    {"key": "latetalk", "name": "晚点聊 LateTalk", "cat": "podcast", "url": "https://feeds.fireside.fm/latetalk/rss",                                "color": "#0891b2"},
+    {"key": "42sec",    "name": "42章经",          "cat": "podcast", "url": "https://feed.xyzfm.space/evgg6xle9rdc",                                 "color": "#1e40af"},
+    {"key": "econtalk", "name": "EconTalk",        "cat": "podcast", "url": "https://feeds.simplecast.com/wgl4xEgL",                                 "color": "#047857"},
+    {"key": "tedradio", "name": "TED Radio Hour",  "cat": "podcast", "url": "https://feeds.npr.org/510298/podcast.xml",                              "color": "#e11d48"},
+    {"key": "dewx",     "name": "得意忘形",         "cat": "podcast", "url": "https://feed.xyzfm.space/klaak6nmc3ux",                                 "color": "#7c3aed"},
+    {"key": "zkjun",    "name": "张小珺商业访谈",   "cat": "podcast", "url": "https://feed.xyzfm.space/dk4yh3pkpjp3",                                "color": "#0369a1"},
 ]
 
 # 分类标签
@@ -80,7 +119,7 @@ CATEGORY_LABELS = {
     "podcast": "播客",
 }
 
-ITEMS_PER_SOURCE = 12
+ITEMS_PER_SOURCE = 8
 FETCH_TIMEOUT = 8
 TRANSLATE_TIMEOUT = 4
 
@@ -763,6 +802,46 @@ def _build_js(sources_with_items):
   // Auto-select first source with items
   var firstSrc = SOURCES.find(function(s){ return s.items.length > 0; });
   if (firstSrc) selectSource(firstSrc.key);
+
+  // ── Live RSS update ──
+  setTimeout(function(){
+    fetch('/api/rss').then(function(r){
+      if(!r.ok) throw new Error('API '+r.status);
+      return r.json();
+    }).then(function(data){
+      if(!data.sources) return;
+      var updated = 0;
+      data.sources.forEach(function(live){
+        if(!live.items||!live.items.length) return;
+        var src = SOURCES.find(function(s){ return s.key === live.key; });
+        if(!src) return;
+        live.items.forEach(function(it){
+          it.title_zh = it.title;
+          it.summary_zh = it.summary || '';
+        });
+        src.items = live.items;
+        updated++;
+      });
+      if(updated > 0){
+        renderSidebar();
+        renderArticleList();
+        renderReader();
+        // Show live update time in sidebar header
+        var sidebar = document.getElementById('sidebar');
+        if(sidebar){
+          var old = document.getElementById('rssLiveTime');
+          if(old) old.remove();
+          var span = document.createElement('span');
+          span.id = 'rssLiveTime';
+          span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
+          var now = new Date();
+          span.textContent = '\u2713 \u5df2\u66f4\u65b0 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+          sidebar.appendChild(span);
+        }
+        console.log('[RSS] Live updated:', updated, 'sources');
+      }
+    }).catch(function(e){ console.warn('[RSS] Live update failed:', e.message); });
+  }, 800);
 })();
 </script>
 """

@@ -4,6 +4,7 @@
     "api/refresh.js": { "maxDuration": 10 },
     "api/search.js": { "maxDuration": 30 },
     "api/events.js": { "maxDuration": 60 },
-    "api/news.js": { "maxDuration": 30 }
+    "api/news.js": { "maxDuration": 30 },
+    "api/rss.js": { "maxDuration": 15 }
   }
 }
