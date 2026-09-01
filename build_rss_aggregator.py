@@ -312,12 +312,8 @@ def _esc(s):
 
 def _strip_html(text):
     text = re.sub(r"<[^>]+>", "", text)
-    text = re.sub(r"&amp;", "&", text)
-    text = re.sub(r"&lt;", "<", text)
-    text = re.sub(r"&gt;", ">", text)
-    text = re.sub(r"&quot;", '"', text)
-    text = re.sub(r"&#39;", "'", text)
-    text = re.sub(r"&nbsp;", " ", text)
+    # Use html.unescape to decode all HTML entities (&rsquo; &mdash; &hellip; etc.)
+    text = html_mod.unescape(text)
     return text.strip()
 
 
@@ -845,8 +841,8 @@ def _build_js(sources_with_items):
   var timelineItems = [];  // merged + sorted items for timeline view
 
   // ── DOM refs ──
-  var sidebarEl = document.getElementById('sidebar');
-  var articleListEl = document.getElementById('articleList');
+  var sidebarEl = document.getElementById('sidebarSources');
+  var articleListEl = document.getElementById('articleListItems');
   var articleListHeaderEl = document.getElementById('articleListHeader');
   var readerEl = document.getElementById('reader');
   var searchInput = document.getElementById('sidebarSearch');
@@ -1192,10 +1188,11 @@ def build_html(sources_with_items, build_time, total_items):
         '<div class="sidebar-search">'
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
         '<input id="sidebarSearch" type="search" placeholder="搜索文章…" autocomplete="off">'
-        '</div></div></div>\n'
+        '</div></div>'
+        '<div id="sidebarSources"></div></div>\n'
         '<div class="article-list" id="articleList">'
         '<div class="article-list-header" id="articleListHeader"><h3>选择一个信源</h3></div>'
-        '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">点击左侧信源查看文章</div>'
+        '<div id="articleListItems"><div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">点击左侧信源查看文章</div></div>'
         '</div>\n'
         '<div class="reader" id="reader">'
         '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从左侧选择一篇文章开始阅读</span></div>'
