@@ -543,16 +543,16 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
 def _build_css():
     return """
 :root {
-  --bg:#faf8f4; --card:#fffdf9; --card-2:#f3efe6; --card-3:#ebe6db;
-  --ink:#1f1c17; --muted:#6f6860; --faint:#857e74;
-  --line:#e4ddd0; --line-strong:#b9b0a2;
-  --brand:#8fb3d9; --brand-strong:#b0cbe6; --brand-line:#3d5a78; --brand-weak:#22303f;
+  --bg:#faf9f7; --card:#fffdf9; --card-2:#f3efe6; --card-3:#ebe6db;
+  --ink:#1c1917; --muted:#5f594c; --faint:#857e74;
+  --line:#ddd6c9; --line-strong:#b9b0a2;
+  --brand:#2f5d8a; --brand-strong:#24496e; --brand-line:#b9cde0; --brand-weak:#e7eef4;
   --accent-solid:#9db8d4;
-  --display:"Georgia","Times New Roman","Songti SC","SimSun","STSong",serif;
-  --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  --mono:"SF Mono","Fira Code","Fira Mono","Roboto Mono","Consolas",monospace;
-  --radius:10px;
-  --shadow:0 1px 2px rgba(0,0,0,.06);
+  --display:"Noto Serif SC","Georgia","Times New Roman","Songti SC","SimSun","STSong",serif;
+  --body:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:"IBM Plex Mono","SF Mono","Fira Code","Fira Mono","Roboto Mono","Consolas",monospace;
+  --radius:4px;
+  --shadow:0 1px 2px rgba(28,25,23,.05);
   --shadow-lift:0 8px 22px rgba(0,0,0,.1),0 1px 3px rgba(0,0,0,.06);
 }
 [data-theme="dark"] {
@@ -743,7 +743,7 @@ header {
 }
 .reader-content .rc-meta .src-tag {
   display:inline-flex; align-items:center; gap:3px;
-  padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; color:#fff;
+  padding:2px 8px; border-radius:var(--radius); font-size:11px; font-weight:600;
 }
 .reader-content .rc-summary {
   font-size:15px; line-height:1.8; color:var(--ink);
@@ -946,7 +946,7 @@ def _build_js(sources_with_items):
       html += '<div class="'+cls+'" data-idx="'+idx+'">';
       html += '<div class="a-title">'+esc(item.title_zh || item.title)+'</div>';
       html += '<div class="a-meta">';
-      html += '<span class="src-tag" style="background:'+esc(src.color)+'">'+esc(src.name)+'</span>';
+      html += '<span class="src-tag" style="background:'+esc(src.color)+'1f;color:'+esc(src.color)+'">'+esc(src.name)+'</span>';
       html += '<span class="time">'+esc(item.time_str)+'</span>';
       html += '</div></div>';
     });
@@ -986,7 +986,7 @@ def _build_js(sources_with_items):
       html += '<div class="'+cls+'" data-tidx="'+idx+'">';
       html += '<div class="a-title">'+esc(o.item.title_zh || o.item.title)+'</div>';
       html += '<div class="a-meta">';
-      html += '<span class="src-tag" style="background:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
+      html += '<span class="src-tag" style="background:'+esc(o.src.color)+'1f;color:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
       html += '<span class="time">'+esc(o.item.time_str)+'</span>';
       html += '</div></div>';
     });
@@ -1013,7 +1013,7 @@ def _build_js(sources_with_items):
     var html = '<div class="reader-content">';
     html += '<h1 class="rc-title"><a href="'+esc(o.item.link)+'" target="_blank" rel="noopener">'+esc(o.item.title_zh || o.item.title)+'</a></h1>';
     html += '<div class="rc-meta">';
-    html += '<span class="src-tag" style="background:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
+    html += '<span class="src-tag" style="background:'+esc(o.src.color)+'1f;color:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
     html += '<span>'+esc(o.item.time_str)+'</span>';
     html += '</div>';
     if (o.item.summary_zh || o.item.summary) {
@@ -1054,7 +1054,7 @@ def _build_js(sources_with_items):
     var html = '<div class="reader-content">';
     html += '<h1 class="rc-title"><a href="'+esc(item.link)+'" target="_blank" rel="noopener">'+esc(item.title_zh || item.title)+'</a></h1>';
     html += '<div class="rc-meta">';
-    html += '<span class="src-tag" style="background:'+esc(src.color)+'">'+esc(src.name)+'</span>';
+    html += '<span class="src-tag" style="background:'+esc(src.color)+'1f;color:'+esc(src.color)+'">'+esc(src.name)+'</span>';
     html += '<span>'+esc(item.time_str)+'</span>';
     if (item.title_zh && item.title_zh !== item.title) {
       html += '<span style="font-size:11px;color:var(--faint)">（已翻译）</span>';
@@ -1180,6 +1180,7 @@ def build_html(sources_with_items, build_time, total_items):
         '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+        '<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">\n'
         '<title>RSS 聚合阅读器 · StarHub</title>\n'
         '<style>' + _build_css() + '</style>\n'
         '</head>\n<body>\n'
