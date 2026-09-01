@@ -1032,8 +1032,8 @@ def _build_js(sources_with_items):
     var html = '<div class="reader-content">';
     // 模式切换：摘要 | 阅读原文
     html += '<div class="rc-mode-toggle">';
-    html += '<button class="'+(readerMode==='summary'?'active':'')+'" onclick="setReaderMode(\'summary\')">摘要</button>';
-    html += '<button class="'+(readerMode==='original'?'active':'')+'" onclick="setReaderMode(\'original\')">阅读原文</button>';
+    html += '<button class="'+(readerMode==='summary'?'active':'')+'" onclick="setReaderMode(&quot;summary&quot;)">摘要</button>';
+    html += '<button class="'+(readerMode==='original'?'active':'')+'" onclick="setReaderMode(&quot;original&quot;)">阅读原文</button>';
     html += '</div>';
     // 标题
     html += '<h1 class="rc-title"><a href="'+esc(item.link)+'" target="_blank" rel="noopener">'+esc(item.title_zh || item.title)+'</a></h1>';
@@ -1062,8 +1062,8 @@ def _build_js(sources_with_items):
         }
         html += '>'+esc(summaryText)+'</div>';
         html += '<div class="rc-lang-toggle">';
-        html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(\'original\')">原文</button>';
-        html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(\'translated\')">翻译</button>';
+        html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(&quot;original&quot;)">原文</button>';
+        html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(&quot;translated&quot;)">翻译</button>';
         html += '</div>';
       }
       html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
