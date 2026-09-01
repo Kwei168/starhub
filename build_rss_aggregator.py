@@ -768,7 +768,10 @@ header {
     width:100%; max-height:200px; border-right:none; border-bottom:1px solid var(--line);
     flex-direction:row; overflow-x:auto; overflow-y:hidden;
   }
-  .sidebar-header { display:none; }
+  .sidebar-header { display:flex; flex-direction:column; padding:8px 10px 6px; }
+  .sidebar-header h2 { font-size:12px; margin-bottom:4px; }
+  .sidebar-search { padding:4px 8px; }
+  .sidebar-search input { font-size:11px; }
   .cat-group { display:flex; flex-direction:row; flex:none; }
   .cat-title { display:none; }
   .cat-sources { flex-direction:row; }
