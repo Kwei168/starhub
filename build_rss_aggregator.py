@@ -700,6 +700,41 @@ header {
 .reader-content .rc-lang-toggle button:hover:not(.active) {
   background:var(--brand-weak);
 }
+/* ── 阅读原文 iframe 模式 ── */
+.reader-content .rc-mode-toggle {
+  display:inline-flex; align-items:center; gap:0;
+  margin-bottom:16px; border-radius:var(--radius); overflow:hidden;
+  border:1px solid var(--line); font-size:12px;
+}
+.reader-content .rc-mode-toggle button {
+  padding:5px 14px; border:none; background:transparent;
+  color:var(--muted); cursor:pointer; transition:all .15s;
+  font-family:var(--body); font-size:12px; font-weight:600;
+}
+.reader-content .rc-mode-toggle button.active {
+  background:var(--brand); color:#fff;
+}
+.reader-content .rc-mode-toggle button:hover:not(.active) {
+  background:var(--brand-weak);
+}
+.reader-content .rc-iframe-wrap {
+  position:relative; margin-top:8px;
+  border:1px solid var(--line); border-radius:var(--radius);
+  background:#fff; overflow:hidden;
+}
+.reader-content .rc-iframe-bar {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:6px 10px;
+  background:var(--brand-weak); border-bottom:1px solid var(--line);
+  font-size:12px; color:var(--muted);
+}
+.reader-content .rc-iframe-bar a {
+  color:var(--brand-strong); font-weight:600; text-decoration:none;
+}
+.reader-content .rc-iframe-bar a:hover { text-decoration:underline; }
+.reader-content .rc-iframe {
+  display:block; width:100%; height:70vh; border:none; background:#fff;
+}
 
 /* ── Responsive ── */
 @media (max-width:900px) {
@@ -788,6 +823,7 @@ def _build_js(sources_with_items):
   var viewMode = 'source'; // 'source' | 'timeline'
   var timelineItems = [];  // merged + sorted items for timeline view
   var summaryLang = 'original'; // 'original' | 'translated'
+  var readerMode = 'summary'; // 'summary' | 'original'
 
   // ── DOM refs ──
   var sidebarEl = document.getElementById('sidebarSources');
@@ -956,17 +992,7 @@ def _build_js(sources_with_items):
     }
     var o = timelineItems[activeArticleIdx];
     if (!o) return;
-    var html = '<div class="reader-content">';
-    html += '<h1 class="rc-title"><a href="'+esc(o.item.link)+'" target="_blank" rel="noopener">'+esc(o.item.title_zh || o.item.title)+'</a></h1>';
-    html += '<div class="rc-meta">';
-    html += '<span class="src-tag" style="background:'+esc(o.src.color)+'1f;color:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
-    html += '<span>'+esc(o.item.time_str)+'</span>';
-    html += '</div>';
-    if (o.item.summary_zh || o.item.summary) {
-      html += '<div class="rc-summary">'+esc(o.item.summary_zh || o.item.summary)+'</div>';
-    }
-    html += '<a class="rc-link" href="'+esc(o.item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
-    html += '</div>';
+    var html = buildReaderContent(o.item, o.src, false);
     readerEl.innerHTML = html;
   }
 
@@ -997,32 +1023,60 @@ def _build_js(sources_with_items):
     var item = items[activeArticleIdx];
     if (!item) return;
 
+    var html = buildReaderContent(item, src, true);
+    readerEl.innerHTML = html;
+  }
+
+  // ── 共享：构建阅读区内容（摘要/原文双模式） ─
+  function buildReaderContent(item, src, showTransTag) {
     var html = '<div class="reader-content">';
+    // 模式切换：摘要 | 阅读原文
+    html += '<div class="rc-mode-toggle">';
+    html += '<button class="'+(readerMode==='summary'?'active':'')+'" onclick="setReaderMode(\'summary\')">摘要</button>';
+    html += '<button class="'+(readerMode==='original'?'active':'')+'" onclick="setReaderMode(\'original\')">阅读原文</button>';
+    html += '</div>';
+    // 标题
     html += '<h1 class="rc-title"><a href="'+esc(item.link)+'" target="_blank" rel="noopener">'+esc(item.title_zh || item.title)+'</a></h1>';
+    // 元信息
     html += '<div class="rc-meta">';
     html += '<span class="src-tag" style="background:'+esc(src.color)+'1f;color:'+esc(src.color)+'">'+esc(src.name)+'</span>';
     html += '<span>'+esc(item.time_str)+'</span>';
-    if (item.title_zh && item.title_zh !== item.title) {
+    if (showTransTag && item.title_zh && item.title_zh !== item.title) {
       html += '<span style="font-size:11px;color:var(--faint)">（已翻译）</span>';
     }
     html += '</div>';
-    if (item.summary_zh || item.summary) {
-      // 摘要区域：根据 summaryLang 状态显示原文或翻译提示
-      var summaryText = item.summary_zh || item.summary;
-      html += '<div class="rc-summary" id="rcSummary"';
-      if (summaryLang === 'translated') {
-        html += ' lang="en" translate="yes"';
-      }
-      html += '>'+esc(summaryText)+'</div>';
-      // 添加原文/翻译切换按钮
-      html += '<div class="rc-lang-toggle">';
-      html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(\'original\')">原文</button>';
-      html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(\'translated\')">翻译</button>';
+
+    if (readerMode === 'original') {
+      // 原文模式：iframe 内嵌 + 降级提示
+      html += '<div class="rc-iframe-wrap">';
+      html += '<div class="rc-iframe-bar"><span>原文页面（若显示空白，该网站禁止内嵌）</span><a href="'+esc(item.link)+'" target="_blank" rel="noopener">新标签页打开 ↗</a></div>';
+      html += '<iframe class="rc-iframe" src="'+esc(item.link)+'" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer"></iframe>';
       html += '</div>';
+    } else {
+      // 摘要模式：原有逻辑
+      if (item.summary_zh || item.summary) {
+        var summaryText = item.summary_zh || item.summary;
+        html += '<div class="rc-summary" id="rcSummary"';
+        if (summaryLang === 'translated') {
+          html += ' lang="en" translate="yes"';
+        }
+        html += '>'+esc(summaryText)+'</div>';
+        html += '<div class="rc-lang-toggle">';
+        html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(\'original\')">原文</button>';
+        html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(\'translated\')">翻译</button>';
+        html += '</div>';
+      }
+      html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
     }
-    html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
     html += '</div>';
-    readerEl.innerHTML = html;
+    return html;
+  }
+
+  // ── 阅读模式切换 ─
+  function setReaderMode(mode) {
+    readerMode = mode;
+    if (viewMode === 'timeline') renderTimelineReader();
+    else renderReader();
   }
 
   // ── 摘要语言切换 ─
