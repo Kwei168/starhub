@@ -613,6 +613,22 @@ header {
   font-size:13px; font-weight:600; transition:all .15s;
 }
 .reader-content .rc-link:hover { background:var(--brand-line); color:#fff; }
+.reader-content .rc-lang-toggle {
+  display:inline-flex; align-items:center; gap:0;
+  margin-top:16px; border-radius:var(--radius); overflow:hidden;
+  border:1px solid var(--line); font-size:12px;
+}
+.reader-content .rc-lang-toggle button {
+  padding:4px 12px; border:none; background:transparent;
+  color:var(--muted); cursor:pointer; transition:all .15s;
+  font-family:var(--body); font-size:12px;
+}
+.reader-content .rc-lang-toggle button.active {
+  background:var(--brand); color:#fff;
+}
+.reader-content .rc-lang-toggle button:hover:not(.active) {
+  background:var(--brand-weak);
+}
 
 /* ── Responsive ── */
 @media (max-width:900px) {
@@ -700,6 +716,7 @@ def _build_js(sources_with_items):
   var searchQuery = '';
   var viewMode = 'source'; // 'source' | 'timeline'
   var timelineItems = [];  // merged + sorted items for timeline view
+  var summaryLang = 'original'; // 'original' | 'translated'
 
   // ── DOM refs ──
   var sidebarEl = document.getElementById('sidebarSources');
@@ -919,11 +936,39 @@ def _build_js(sources_with_items):
     }
     html += '</div>';
     if (item.summary_zh || item.summary) {
-      html += '<div class="rc-summary">'+esc(item.summary_zh || item.summary)+'</div>';
+      // 摘要区域：根据 summaryLang 状态显示原文或翻译提示
+      var summaryText = item.summary_zh || item.summary;
+      html += '<div class="rc-summary" id="rcSummary"';
+      if (summaryLang === 'translated') {
+        html += ' lang="en" translate="yes"';
+      }
+      html += '>'+esc(summaryText)+'</div>';
+      // 添加原文/翻译切换按钮
+      html += '<div class="rc-lang-toggle">';
+      html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(\'original\')">原文</button>';
+      html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(\'translated\')">翻译</button>';
+      html += '</div>';
     }
     html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
     html += '</div>';
     readerEl.innerHTML = html;
+  }
+
+  // ── 摘要语言切换 ─
+  function setSummaryLang(lang) {
+    summaryLang = lang;
+    var summaryEl = document.getElementById('rcSummary');
+    if (summaryEl) {
+      if (lang === 'translated') {
+        summaryEl.setAttribute('lang', 'en');
+        summaryEl.setAttribute('translate', 'yes');
+      } else {
+        summaryEl.removeAttribute('lang');
+        summaryEl.removeAttribute('translate');
+      }
+    }
+    // 重新渲染以更新按钮状态
+    renderReader();
   }
 
   // ── Filter ──
@@ -1085,10 +1130,10 @@ def main():
         if n > 0:
             ok_count += 1
 
-        # 翻译英文标题和摘要为中文（_translate_to_zh 会自动跳过中文内容）
+        # 只翻译标题（摘要保留原文，用户可用浏览器翻译）
         for it in items:
             it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
-            it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
+            it["summary_zh"] = it.get("summary", "")  # 摘要不翻译，保留原文
             it["time_str"] = _fmt_rel_time(it.get("pub_date"))
             # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
             pd = it.get("pub_date")
