@@ -1092,9 +1092,14 @@ def _build_js(sources_with_items):
         summaryEl.removeAttribute('translate');
       }
     }
-    // 重新渲染以更新按钮状态
-    renderReader();
+    // 重新渲染以更新按钮状态（兼容时间流视图）
+    if (viewMode === 'timeline') renderTimelineReader();
+    else renderReader();
   }
+
+  // 内联 onclick 在全局作用域查找函数，必须挂到 window
+  window.setReaderMode = setReaderMode;
+  window.setSummaryLang = setSummaryLang;
 
   // ── Filter ──
   function filterItems(items) {
