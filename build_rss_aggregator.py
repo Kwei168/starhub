@@ -19,8 +19,54 @@ import xml.etree.ElementTree as ET
 OUT = "rss-aggregator.html"
 UA = {"User-Agent": "Mozilla/5.0 (starhub-rss-aggregator)"}
 
-# ── 翻译统计 ──
-_TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0}
+# ── 缓存配置 ──
+TRANS_CACHE_FILE = "translations.json"
+RSS_CACHE_FILE = "rss_cache.json"
+RSS_CACHE_TTL = 1800  # RSS 缓存有效期：30 分钟
+
+# ── 缓存数据 ──
+_trans_cache = {}  # {text_hash: translated_text}
+_rss_cache = {}    # {source_key: {"items": [...], "fetched_at": timestamp}}
+
+# ── 翻译统计 
+_TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
+
+
+def _load_caches():
+    """加载翻译和 RSS 缓存"""
+    global _trans_cache, _rss_cache
+    # 加载翻译缓存
+    if os.path.exists(TRANS_CACHE_FILE):
+        try:
+            with open(TRANS_CACHE_FILE, "r", encoding="utf-8") as f:
+                _trans_cache = json.load(f)
+            print("[缓存] 加载翻译缓存: %d 条" % len(_trans_cache))
+        except Exception as e:
+            print("[缓存] 加载翻译缓存失败: %s" % e, file=sys.stderr)
+    # 加载 RSS 缓存
+    if os.path.exists(RSS_CACHE_FILE):
+        try:
+            with open(RSS_CACHE_FILE, "r", encoding="utf-8") as f:
+                _rss_cache = json.load(f)
+            print("[缓存] 加载 RSS 缓存: %d 个源" % len(_rss_cache))
+        except Exception as e:
+            print("[缓存] 加载 RSS 缓存失败: %s" % e, file=sys.stderr)
+
+
+def _save_caches():
+    """保存翻译和 RSS 缓存"""
+    try:
+        with open(TRANS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(_trans_cache, f, ensure_ascii=False, indent=2)
+        print("[缓存] 保存翻译缓存: %d 条" % len(_trans_cache))
+    except Exception as e:
+        print("[缓存] 保存翻译缓存失败: %s" % e, file=sys.stderr)
+    try:
+        with open(RSS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(_rss_cache, f, ensure_ascii=False, indent=2)
+        print("[缓存] 保存 RSS 缓存: %d 个源" % len(_rss_cache))
+    except Exception as e:
+        print("[缓存] 保存 RSS 缓存失败: %s" % e, file=sys.stderr)
 
 # ── RSS 信源配置（按分类组织，107 个精选源，已去除公众号/失效/重复/停更源） ─
 RSS_SOURCES = [
@@ -255,7 +301,7 @@ def _fmt_rel_time(dt):
 # ──────────────────────────── 翻译 ────────────────────────────
 
 def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
-    """四端点降级翻译链：Google → MyMemory → Google dict-chrome。"""
+    """四端点降级翻译链：Google → MyMemory → Google dict-chrome（带缓存）。"""
     if not text:
         return ""
     # 如果已经是中文为主，跳过
@@ -263,6 +309,12 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     if cn_chars > len(text) * 0.3:
         _TRANS_STATS["skip"] += 1
         return text
+
+    # 查缓存
+    text_hash = str(hash(text))
+    if text_hash in _trans_cache:
+        _TRANS_STATS["cache_hit"] += 1
+        return _trans_cache[text_hash]
 
     encoded = urllib.parse.quote(text[:500])
 
@@ -276,6 +328,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
             result = "".join(part[0] for part in data[0] if part[0])
             if result and len(result) > len(text) * 0.3:
                 _TRANS_STATS["google"] += 1
+                _trans_cache[text_hash] = result  # 写入缓存
                 return result
     except Exception:
         pass
@@ -289,6 +342,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         result = data.get("responseData", {}).get("translatedText", "")
         if result and not result.startswith("MYMEMORY"):
             _TRANS_STATS["mymemory"] += 1
+            _trans_cache[text_hash] = result  # 写入缓存
             return result
     except Exception:
         pass
@@ -303,6 +357,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
             result = "".join(s.get("trans", "") for s in data["sentences"])
             if result:
                 _TRANS_STATS["dict"] += 1
+                _trans_cache[text_hash] = result  # 写入缓存
                 return result
     except Exception:
         pass
@@ -325,6 +380,16 @@ def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None):
 def _fetch_rss(source):
     name = source["name"]
     url = source["url"]
+    key = source["key"]
+
+    # 检查缓存
+    if key in _rss_cache:
+        cached = _rss_cache[key]
+        age = time.time() - cached.get("fetched_at", 0)
+        if age < RSS_CACHE_TTL:
+            print("[RSS聚合] %s 使用缓存 (%.0f秒前)" % (name, age))
+            return cached.get("items", [])
+
     try:
         raw = _fetch_url(url, timeout=FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
     except Exception as ex:
@@ -378,6 +443,12 @@ def _fetch_rss(source):
         else:
             for it in ch.findall("item"):
                 _parse_rss_item(it, name, source["key"], source["cat"], items)
+
+    # 写入缓存
+    _rss_cache[key] = {
+        "items": items[:ITEMS_PER_SOURCE],
+        "fetched_at": time.time()
+    }
 
     return items[:ITEMS_PER_SOURCE]
 
@@ -1119,6 +1190,9 @@ def main():
     now = _now_bj()
     build_time = now.strftime("%Y-%m-%d %H:%M")
 
+    # 加载缓存
+    _load_caches()
+
     sources_with_items = []
     total_items = 0
     ok_count = 0
@@ -1156,6 +1230,16 @@ def main():
         f.write(html_doc)
 
     print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
+
+    # 打印翻译统计
+    print("[翻译统计] 缓存命中: %d, Google: %d, MyMemory: %d, Dict: %d, 跳过: %d, 失败: %d" % (
+        _TRANS_STATS["cache_hit"], _TRANS_STATS["google"], _TRANS_STATS["mymemory"],
+        _TRANS_STATS["dict"], _TRANS_STATS["skip"], _TRANS_STATS["fail"]
+    ))
+
+    # 保存缓存
+    _save_caches()
+
     return True
 
 
