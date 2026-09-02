@@ -1063,6 +1063,15 @@ def _build_js(sources_with_items, build_ts_ms=0):
     relEl.textContent=(mins<60?mins+' \u5206\u949f\u524d':mins<1440?Math.round(mins/60)+' \u5c0f\u65f6\u524d':Math.round(mins/1440)+' \u5929\u524d');
   }
 
+  /* ── Relative time formatter ── */
+  function _fmtRelTime(dt) {
+    if (!dt) return '';
+    var d = new Date(dt);
+    if (isNaN(d.getTime())) return dt;
+    var mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+    return mins < 60 ? mins + ' 分钟前' : mins < 1440 ? Math.round(mins/60) + ' 小时前' : Math.round(mins/1440) + ' 天前';
+  }
+
   /* ── Live RSS update (API-First) ── */
   var liveEl = document.getElementById('liveStatus');
   if(liveEl) liveEl.textContent='\u00b7 \u52a0\u8f7d\u4e2d\u2026';
@@ -1078,8 +1087,17 @@ def _build_js(sources_with_items, build_ts_ms=0):
         if(!live.items||!live.items.length)return;
         var src=SOURCES.find(function(s){return s.key===live.key;});
         if(src){
-          live.items.forEach(function(it){it.title_zh=it.title;it.summary_zh=it.summary||'';it.time_str=it.d||'';});
-          src.items=live.items;
+          // API 返回缩写字段：t=title, u=url, s=summary, d=date
+          live.items.forEach(function(it){
+            it.title = it.t || it.title;
+            it.link = it.u || it.link;
+            it.summary = it.s || it.summary;
+            it.pub_date = it.d || it.pub_date;
+            it.title_zh = it.title;
+            it.summary_zh = it.summary || '';
+            it.time_str = _fmtRelTime(it.pub_date);
+          });
+          src.items = live.items;
         }
       });
       // 重建 ART 数组
