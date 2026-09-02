@@ -409,6 +409,10 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     """四端点降级翻译链：Google → MyMemory → Google dict-chrome（带缓存）。"""
     if not text:
         return ""
+    # 先清理 HTML 标签
+    text = _strip_html(text)
+    if not text:
+        return ""
     # 如果已经是中文为主，跳过
     cn_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
     if cn_chars > len(text) * 0.3:
