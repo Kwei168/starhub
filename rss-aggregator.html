@@ -350,7 +350,7 @@ body.reading .reader2 { transform:none; }
       return true;
     });
   }
-  function artKey(a){ return (a.u||a.t).slice(-42); }
+  function artKey(a){ return a.sk+'|'+(a.u&&a.u!=='#'?a.u:a.t); }
   function renderWall(){
     var list=visibleArts(), h='', shown=0;
     list.forEach(function(a){
