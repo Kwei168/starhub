@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { createHash } from 'crypto';
 
 const FETCH_TIMEOUT = 8000;     // 单源超时 8s
 const CONCURRENCY = 10;         // 10 路并发
@@ -14,6 +15,24 @@ const UA = 'starhub-rss-aggregator/1.0';
 // 滚动缓存：每个源保留上次成功抓取的数据
 let rollingCache = new Map();  // key → { items, lastModified }
 let fullCache = { t: 0, v: null };  // 完整响应缓存
+
+// ── 加载翻译缓存 ──
+
+function loadTransCache() {
+  try {
+    const p = join(process.cwd(), 'translations.json');
+    const cache = JSON.parse(readFileSync(p, 'utf-8'));
+    console.log(`[rss] Loaded ${Object.keys(cache).length} translation cache entries`);
+    return cache;
+  } catch (err) {
+    console.log('[rss] Translation cache not found, using empty cache');
+    return {};
+  }
+}
+
+function md5(text) {
+  return createHash('md5').update(text, 'utf-8').digest('hex');
+}
 
 // ── 加载源列表 ──
 
@@ -206,6 +225,7 @@ export default async function handler(req, res) {
   
   try {
     const sources = loadSources();
+    const transCache = loadTransCache();  // 加载翻译缓存
     console.log(`[rss] Fetching ${sources.length} sources...`);
     
     const results = await fetchAllBatched(sources);
@@ -222,6 +242,15 @@ export default async function handler(req, res) {
         } catch {
           return false;  // 日期解析失败则过滤
         }
+      }).map(item => {
+        // 应用翻译缓存
+        const titleHash = md5(item.t || '');
+        const summaryHash = md5(item.s || '');
+        return {
+          ...item,
+          t: transCache[titleHash] || item.t,  // 有翻译用翻译，无翻译用原文
+          s: transCache[summaryHash] || item.s,
+        };
       });
       return { ...source, items: filteredItems };
     });
