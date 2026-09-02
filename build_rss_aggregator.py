@@ -123,6 +123,7 @@ def _accumulate_history(sources_with_items):
                 except ValueError:
                     pass
             _rss_history[link] = {
+                "link": link,
                 "source": src["name"], "source_key": src["key"],
                 "cat": src["cat"], "color": src["color"],
                 "title": it.get("title", ""), "title_zh": it.get("title_zh", ""),
@@ -900,7 +901,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       return true;
     });
   }
-  function artKey(a){ return (a.u||a.t).slice(-42); }
+  function artKey(a){ return a.sk+'|'+(a.u&&a.u!=='#'?a.u:a.t); }
   function renderWall(){
     var list=visibleArts(), h='', shown=0;
     list.forEach(function(a){
@@ -1074,6 +1075,12 @@ def _build_js(sources_with_items, build_ts_ms=0):
         src.items=live.items;updated++;
       });
       if(updated>0){
+        ART=[];SOURCES.forEach(function(s){s.items.forEach(function(it){
+          ART.push({t:it.title_zh||it.title,s:it.summary_zh||it.summary||'',
+            src:s.name,sk:s.key,c:s.cat,sc:s.color,
+            time:it.time_str,date:it.pub_date,u:it.link||'#'});
+        });});
+        ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
         renderChips();renderWall();renderPanel();
         if(liveEl){var now=new Date();liveEl.textContent='\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
       }
