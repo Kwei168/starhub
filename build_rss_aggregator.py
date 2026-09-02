@@ -2,11 +2,12 @@
 """Generate rss-aggregator.html — 多路 RSS 新闻源聚合阅读器。
 构建时由 fetch_and_build.py 调用，Python 标准库抓取 RSS → 翻译 → 生成静态 HTML。
 
-布局：三栏式阅读器（信源侧栏 | 文章列表 | 阅读区）
+布局：卡片墙 + 抽屉阅读器（信源面板 | 卡片墙 | 阅读抽屉）
 功能：信源分类筛选、全局搜索、标题/摘要翻译、响应式三端适配、主题切换。
 """
 import html as html_mod
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -107,18 +108,18 @@ RSS_SOURCES = [
     {"key": "cnbeta_41", "name": "cnBeta", "cat": "cn_tech", "url": "https://plink.anyfeeder.com/cnbeta", "color": "#00bc74"},
     {"key": "v2ex技术_44", "name": "V2EX技术", "cat": "cn_tech", "url": "https://www.v2ex.com/feed/tab/tech.xml", "color": "#3177cf"},
 
-    # ── 开发者博客 (40) ──
+    # ── 开发者博客 (33) ──
     {"key": "阮一峰的网络日志_0", "name": "阮一峰的网络日志", "cat": "dev", "url": "https://www.ruanyifeng.com/blog/atom.xml", "color": "#dc382d"},
-    {"key": "编程随想_2", "name": "编程随想", "cat": "dev", "url": "https://feeds2.feedburner.com/programthink", "color": "#e34f26"},
-    {"key": "酷壳_3", "name": "酷壳", "cat": "dev", "url": "http://coolshell.cn/feed", "color": "#663399"},
+    
+    
     {"key": "太隐_4", "name": "太隐", "cat": "dev", "url": "https://wangyurui.com/feed.xml", "color": "#336699"},
     {"key": "云风的blog_5", "name": "云风的BLOG", "cat": "dev", "url": "http://blog.codingnow.com/atom.xml", "color": "#4CAF50"},
     {"key": "胡涂说_6", "name": "胡涂说", "cat": "dev", "url": "https://hutusi.com/feed.xml", "color": "#8e44ad"},
     {"key": "程序员的喵_7", "name": "程序员的喵", "cat": "dev", "url": "https://catcoding.me/atom.xml", "color": "#6c5ce7"},
     {"key": "oldjblog_8", "name": "oldj blog", "cat": "dev", "url": "https://oldj.net/feed", "color": "#2d3436"},
-    {"key": "晚晴幽草轩_9", "name": "晚晴幽草轩", "cat": "dev", "url": "https://www.jeffjade.com/atom.xml", "color": "#e74c3c"},
-    {"key": "ezindie_10", "name": "ezindie", "cat": "dev", "url": "https://www.ezindie.com/feed/rss.xml", "color": "#00b894"},
-    {"key": "dravenss_11", "name": "dravenss", "cat": "dev", "url": "https://draveness.me/feed.xml", "color": "#2c3e50"},
+    
+    
+    
     {"key": "randy'sblog_12", "name": "Randy\'s Blog", "cat": "dev", "url": "https://lutaonan.com/rss.xml", "color": "#e67e22"},
     {"key": "卡瓦邦噶_13", "name": "卡瓦邦噶", "cat": "dev", "url": "https://www.kawabangga.com/feed", "color": "#3498db"},
     {"key": "风雪之隅_14", "name": "风雪之隅", "cat": "dev", "url": "http://www.laruence.com/feed", "color": "#1abc9c"},
@@ -138,47 +139,36 @@ RSS_SOURCES = [
     {"key": "baiyun_30", "name": "BAI YUN", "cat": "dev", "url": "https://baiyun.me/feed", "color": "#2c3e50"},
     {"key": "elmagnifico_31", "name": "elmagnifico", "cat": "dev", "url": "http://elmagnifico.tech/feed.xml", "color": "#e67e22"},
     {"key": "tonybai_33", "name": "Tony Bai", "cat": "dev", "url": "http://tonybai.com/feed/", "color": "#1abc9c"},
-    {"key": "phoenixisland_35", "name": "Phoenix island", "cat": "dev", "url": "https://blog.phoenixlzx.com/atom.xml", "color": "#34495e"},
+    
     {"key": "全栈应用开发_36", "name": "全栈应用开发", "cat": "dev", "url": "https://www.phodal.com/blog/feeds/rss/", "color": "#16a085"},
     {"key": "tinyprojects_37", "name": "Tiny Projects", "cat": "dev", "url": "https://tinyprojects.dev/feed.xml", "color": "#f39c12"},
     {"key": "笨方法学写作_38", "name": "笨方法学写作", "cat": "dev", "url": "https://www.cnfeat.com/feed.xml", "color": "#dc382d"},
     {"key": "西秦公子_39", "name": "西秦公子", "cat": "dev", "url": "https://www.ixiqin.com/feed/", "color": "#6366f1"},
-    {"key": "小明明s_40", "name": "小明明s", "cat": "dev", "url": "https://www.dongwm.com/atom.xml", "color": "#e34f26"},
+    
     {"key": "涛叔_41", "name": "涛叔", "cat": "dev", "url": "https://taoshu.in/feed.xml", "color": "#663399"},
     {"key": "小球飞鱼_42", "name": "小球飞鱼", "cat": "dev", "url": "https://mantyke.icu/index.xml", "color": "#336699"},
     {"key": "王登科dk_43", "name": "王登科DK", "cat": "dev", "url": "https://greatdk.com/feed", "color": "#4CAF50"},
     {"key": "小胡子哥_44", "name": "小胡子哥", "cat": "dev", "url": "http://www.barretlee.com/rss2.xml", "color": "#8e44ad"},
     {"key": "dbanotes_45", "name": "DBA Notes", "cat": "dev", "url": "http://dbanotes.net/feed", "color": "#6c5ce7"},
 
-    # ── 综合新闻 (28) ──
-    {"key": "联合早报中港台_0", "name": "联合早报-中港台", "cat": "news", "url": "https://plink.anyfeeder.com/zaobao/realtime/china", "color": "#bb1919"},
-    {"key": "联合早报国际_1", "name": "联合早报-国际", "cat": "news", "url": "https://plink.anyfeeder.com/zaobao/realtime/world", "color": "#0066b3"},
-    {"key": "idaily_3", "name": "iDaily", "cat": "news", "url": "https://plink.anyfeeder.com/idaily/today", "color": "#003399"},
-    {"key": "中国日报双语_4", "name": "中国日报双语", "cat": "news", "url": "https://plink.anyfeeder.com/chinadaily/dual", "color": "#cc0000"},
-    {"key": "知乎日报anyfeeder_5", "name": "知乎日报anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/zhihu/daily", "color": "#d32f2f"},
-    {"key": "法广中文_18", "name": "法广中文", "cat": "news", "url": "https://plink.anyfeeder.com/rfi/cn", "color": "#1a1a1a"},
-    {"key": "bbc中文_20", "name": "BBC中文", "cat": "news", "url": "https://plink.anyfeeder.com/bbc/cn", "color": "#cc0000"},
-    {"key": "财富中文网_21", "name": "财富中文网", "cat": "news", "url": "https://plink.anyfeeder.com/fortunechina", "color": "#d32f2f"},
-    {"key": "华尔街日报anyfeeder_23", "name": "华尔街日报anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/wsj/cn", "color": "#0055a4"},
-    {"key": "光明日报_26", "name": "光明日报", "cat": "news", "url": "https://plink.anyfeeder.com/guangmingribao", "color": "#5c6bc0"},
-    {"key": "澎湃新闻_41", "name": "澎湃新闻", "cat": "news", "url": "https://plink.anyfeeder.com/thepaper", "color": "#43a047"},
-    {"key": "sbs澳洲中文_49", "name": "SBS澳洲中文", "cat": "news", "url": "https://plink.anyfeeder.com/abc/cn", "color": "#0066b3"},
-    {"key": "人民网_54", "name": "人民网", "cat": "news", "url": "https://plink.anyfeeder.com/people", "color": "#1565c0"},
-    {"key": "人民网英语_58", "name": "人民网英语", "cat": "news", "url": "https://plink.anyfeeder.com/people/english", "color": "#5c6bc0"},
-    {"key": "南方周末anyfeeder_61", "name": "南方周末anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/infzm/news", "color": "#0097a7"},
-    {"key": "纽约时报中文网_66", "name": "纽约时报中文网", "cat": "news", "url": "http://cn.nytimes.com/rss/news.xml", "color": "#1a1a1a"},
-    {"key": "解放军报_67", "name": "解放军报", "cat": "news", "url": "https://plink.anyfeeder.com/jiefangjunbao", "color": "#003399"},
-    {"key": "喷嚏网铂程斋_70", "name": "喷嚏网铂程斋", "cat": "news", "url": "https://plink.anyfeeder.com/dapenti/xilei", "color": "#1565c0"},
-    {"key": "观止_73", "name": "观止", "cat": "news", "url": "https://plink.anyfeeder.com/meiriyiwen", "color": "#43a047"},
-    {"key": "雪球热帖_77", "name": "雪球热帖", "cat": "news", "url": "https://xueqiu.com/hots/topic/rss", "color": "#0097a7"},
-    {"key": "bbc英语教学_80", "name": "BBC英语教学", "cat": "news", "url": "https://plink.anyfeeder.com/bbc/learningenglish", "color": "#bb1919"},
-    {"key": "求是网_92", "name": "求是网", "cat": "news", "url": "https://plink.anyfeeder.com/qstheory", "color": "#6a1b9a"},
-    {"key": "半岛网_118", "name": "半岛网", "cat": "news", "url": "https://plink.anyfeeder.com/aljazeera/news", "color": "#1565c0"},
-    {"key": "界面新闻_121", "name": "界面新闻", "cat": "news", "url": "https://plink.anyfeeder.com/jiemian/news", "color": "#43a047"},
-    {"key": "经济日报_124", "name": "经济日报", "cat": "news", "url": "https://plink.anyfeeder.com/jingjiribao", "color": "#6a1b9a"},
-    {"key": "果壳科学人_125", "name": "果壳科学人", "cat": "news", "url": "https://plink.anyfeeder.com/guokr/scientific", "color": "#0097a7"},
-    {"key": "豆瓣书评_135", "name": "豆瓣书评", "cat": "news", "url": "https://www.douban.com/feed/review/book", "color": "#0055a4"},
-    {"key": "界面财经_143", "name": "界面财经", "cat": "news", "url": "https://plink.anyfeeder.com/jiemian/finance", "color": "#e65100"},
+    # ── AI 日报 (1) ──
+    {"key": "agihunt_0", "name": "AGI Hunt", "cat": "ai", "url": "https://agihunt.info/feed.xml", "color": "#6366f1"},
+
+    # ── 综合新闻 (14) ──
+    {"key": "idaily_1", "name": "iDaily", "cat": "news", "url": "https://plink.anyfeeder.com/idaily/today", "color": "#003399"},
+    {"key": "中国日报双语_2", "name": "中国日报双语", "cat": "news", "url": "https://plink.anyfeeder.com/chinadaily/dual", "color": "#cc0000"},
+    {"key": "知乎日报anyfeeder_3", "name": "知乎日报anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/zhihu/daily", "color": "#d32f2f"},
+    {"key": "法广中文_4", "name": "法广中文", "cat": "news", "url": "https://plink.anyfeeder.com/rfi/cn", "color": "#1a1a1a"},
+    {"key": "bbc中文_5", "name": "BBC中文", "cat": "news", "url": "https://plink.anyfeeder.com/bbc/cn", "color": "#cc0000"},
+    {"key": "财富中文网_6", "name": "财富中文网", "cat": "news", "url": "https://plink.anyfeeder.com/fortunechina", "color": "#d32f2f"},
+    {"key": "澎湃新闻_7", "name": "澎湃新闻", "cat": "news", "url": "https://plink.anyfeeder.com/thepaper", "color": "#43a047"},
+    {"key": "人民网_8", "name": "人民网", "cat": "news", "url": "https://plink.anyfeeder.com/people", "color": "#1565c0"},
+    {"key": "南方周末anyfeeder_9", "name": "南方周末anyfeeder", "cat": "news", "url": "https://plink.anyfeeder.com/infzm/news", "color": "#0097a7"},
+    {"key": "纽约时报中文网_10", "name": "纽约时报中文网", "cat": "news", "url": "http://cn.nytimes.com/rss/news.xml", "color": "#1a1a1a"},
+    {"key": "喷嚏网铂程斋_11", "name": "喷嚏网铂程斋", "cat": "news", "url": "https://plink.anyfeeder.com/dapenti/xilei", "color": "#1565c0"},
+    {"key": "雪球热帖_12", "name": "雪球热帖", "cat": "news", "url": "https://xueqiu.com/hots/topic/rss", "color": "#0097a7"},
+    {"key": "bbc英语教学_13", "name": "BBC英语教学", "cat": "news", "url": "https://plink.anyfeeder.com/bbc/learningenglish", "color": "#bb1919"},
+    {"key": "求是网_14", "name": "求是网", "cat": "news", "url": "https://plink.anyfeeder.com/qstheory", "color": "#6a1b9a"},
 
     # ── 播客 (6) ──
     {"key": "42章经_1", "name": "42章经", "cat": "podcast", "url": "https://feed.xyzfm.space/evgg6xle9rdc", "color": "#0891b2"},
@@ -192,6 +182,7 @@ RSS_SOURCES = [
 
 # 分类标签
 CATEGORY_LABELS = {
+    "ai":      "AI 日报",
     "tech":    "科技资讯",
     "cn_tech": "中文科技",
     "dev":     "开发者",
@@ -316,8 +307,8 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         _TRANS_STATS["skip"] += 1
         return text
 
-    # 查缓存
-    text_hash = str(hash(text))
+    # 查缓存（使用 MD5 确保跨进程一致性）
+    text_hash = hashlib.md5(text.encode("utf-8", errors="replace")).hexdigest()
     if text_hash in _trans_cache:
         _TRANS_STATS["cache_hit"] += 1
         return _trans_cache[text_hash]
@@ -482,330 +473,181 @@ def _build_css():
   --ink:#1c1917; --muted:#5f594c; --faint:#857e74;
   --line:#ddd6c9; --line-strong:#b9b0a2;
   --brand:#2f5d8a; --brand-strong:#24496e; --brand-line:#b9cde0; --brand-weak:#e7eef4;
-  --accent-solid:#9db8d4;
   --display:"Noto Serif SC","Georgia","Times New Roman","Songti SC","SimSun","STSong",serif;
   --body:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  --mono:"IBM Plex Mono","SF Mono","Fira Code","Fira Mono","Roboto Mono","Consolas",monospace;
-  --radius:4px;
+  --mono:"IBM Plex Mono","SF Mono","Fira Code","Consolas",monospace;
+  --radius:8px;
   --shadow:0 1px 2px rgba(28,25,23,.05);
-  --shadow-lift:0 8px 22px rgba(0,0,0,.1),0 1px 3px rgba(0,0,0,.06);
+  --shadow-lift:0 10px 26px rgba(0,0,0,.10),0 2px 4px rgba(0,0,0,.06);
+  --cat-tech:#2f5d8a; --cat-cn_tech:#c2434d; --cat-dev:#7052c9; --cat-ai:#b06a10; --cat-news:#8a6d1f; --cat-podcast:#2e7d5f;
 }
 [data-theme="dark"] {
   --bg:#161412; --card:#1d1a17; --card-2:#262019; --card-3:#2f2820;
-  --ink:#ece7df; --muted:#a59d90; --faint:#9a9284;
+  --ink:#ece7df; --muted:#a59d90; --faint:#98907f;
   --line:#37312a; --line-strong:#4a4339;
   --brand:#8fb3d9; --brand-strong:#b0cbe6; --brand-line:#3d5a78; --brand-weak:#22303f;
-  --accent-solid:#9db8d4;
   --shadow:0 1px 2px rgba(0,0,0,.4);
-  --shadow-lift:0 8px 22px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4);
+  --shadow-lift:0 10px 26px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.4);
+  --cat-tech:#8fb3d9; --cat-cn_tech:#e08790; --cat-dev:#a894e8; --cat-ai:#d3a15c; --cat-news:#cbb26a; --cat-podcast:#6cba9c;
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-html,body { height:100%; }
 html { scroll-behavior:smooth; }
-body {
-  font-family:var(--body); background:var(--bg); color:var(--ink);
-  line-height:1.55; -webkit-font-smoothing:antialiased; font-size:14px;
-  display:flex; flex-direction:column; overflow:hidden;
-}
+body { font-family:var(--body); background:var(--bg); color:var(--ink); line-height:1.55; font-size:14px; -webkit-font-smoothing:antialiased; }
 a { color:inherit; text-decoration:none; }
-button { font-family:inherit; cursor:pointer; border:none; background:none; }
+button { font-family:inherit; cursor:pointer; border:none; background:none; color:inherit; }
 
 /* ── Header ── */
-header {
-  position:relative; z-index:50; flex:none;
-  background:rgba(250,248,244,.95);
-  backdrop-filter:saturate(120%) blur(10px);
-  -webkit-backdrop-filter:saturate(120%) blur(10px);
-  border-bottom:1px solid var(--line);
-}
-[data-theme="dark"] header { background:rgba(22,20,18,.95); }
-.hd {
-  max-width:100%; margin:0 auto; padding:8px 16px;
-  display:flex; align-items:center; gap:12px;
-}
-.hd .logo {
-  display:flex; align-items:center; gap:8px; flex:none;
-  font-family:var(--display); font-weight:900; font-size:16px;
-}
-.hd .logo .t b { color:var(--ink); }
-.hd .logo .t span { font-size:11px; color:var(--muted); font-weight:400; margin-left:3px; font-family:var(--body); }
+header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+[data-theme="dark"] header { background:rgba(22,20,18,.94); }
+.hd { max-width:1560px; margin:0 auto; padding:9px 20px; display:flex; align-items:center; gap:12px; }
+.hd .logo { display:flex; align-items:center; gap:8px; flex:none; font-family:var(--display); font-weight:900; font-size:16px; }
+.hd .logo .sub { font-size:11px; color:var(--muted); font-weight:400; margin-left:2px; font-family:var(--body); }
 .hd .nav-links { display:flex; align-items:center; gap:2px; flex:1; }
-.hd .nav-links a {
-  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
-  padding:5px 12px; border-radius:999px; font-size:12.5px; font-weight:500;
-  border:1px solid transparent; transition:all .15s;
-}
+.hd .nav-links a { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; padding:5px 12px; border-radius:999px; font-size:12.5px; font-weight:500; border:1px solid transparent; transition:all .15s; }
 .hd .nav-links a:hover { background:var(--card); border-color:var(--line); }
-.hd .nav-links a.active {
-  background:var(--brand-weak); border-color:var(--brand-line); color:var(--brand-strong); font-weight:600;
-}
+.hd .nav-links a.active { background:var(--brand-weak); border-color:var(--brand-line); color:var(--brand-strong); font-weight:600; }
 .hd .nav-links a .icon { width:13px; height:13px; }
-.hd .acts { display:flex; align-items:center; gap:4px; flex:none; }
-.hd .acts .btn {
-  width:30px; height:30px; border-radius:999px; background:var(--card); border:1px solid var(--line);
-  display:flex; align-items:center; justify-content:center; color:var(--ink); transition:all .15s;
-}
-.hd .acts .btn:hover { border-color:var(--brand-line); color:var(--brand-strong); }
-.hd .acts .btn svg { width:14px; height:14px; }
+.theme-btn { width:30px; height:30px; border-radius:999px; background:var(--card); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; flex:none; transition:all .15s; }
+.theme-btn:hover { border-color:var(--brand-line); }
+.theme-btn svg { width:14px; height:14px; }
 
-/* ── Main Layout: 3 columns ── */
-.app {
-  display:flex; flex:1; overflow:hidden;
-}
+/* ── Toolbar ── */
+.toolbar { max-width:1560px; margin:0 auto; padding:14px 20px 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.toolbar h1 { font-family:var(--display); font-size:19px; font-weight:900; margin-right:2px; }
+.src-btn { display:inline-flex; align-items:center; gap:6px; padding:5px 13px; border-radius:999px; font-size:12.5px; font-weight:600; border:1px solid var(--brand-line); background:var(--brand-weak); color:var(--brand-strong); transition:all .15s; }
+.src-btn:hover { background:var(--brand-line); color:#fff; }
+.src-btn svg { width:13px; height:13px; }
+.src-btn .cnt { font-family:var(--mono); font-size:10px; opacity:.8; }
+.chips { display:flex; gap:6px; flex-wrap:wrap; }
+.chip { padding:4px 12px; border-radius:999px; font-size:12px; font-weight:500; border:1px solid var(--line); background:var(--card); color:var(--muted); transition:all .15s; white-space:nowrap; }
+.chip:hover { border-color:var(--line-strong); color:var(--ink); }
+.chip.on { background:var(--brand-weak); border-color:var(--brand-line); color:var(--brand-strong); font-weight:600; }
+.chip .n { font-family:var(--mono); font-size:10px; opacity:.75; margin-left:3px; }
+.fpill { display:inline-flex; align-items:center; gap:6px; padding:4px 6px 4px 12px; border-radius:999px; font-size:12px; font-weight:600; background:var(--ink); color:var(--bg); }
+.fpill .x { width:16px; height:16px; border-radius:999px; background:rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; }
+.fpill .x:hover { background:rgba(255,255,255,.34); }
+.tool-meta { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); white-space:nowrap; }
 
-/* Left sidebar: source list */
-.sidebar {
-  width:240px; flex:none; border-right:1px solid var(--line);
-  background:var(--card); overflow-y:auto; display:flex; flex-direction:column;
-}
-.sidebar-header {
-  padding:12px 14px 8px; border-bottom:1px solid var(--line); flex:none;
-}
-.sidebar-header h2 {
-  font-family:var(--display); font-size:14px; font-weight:700; margin-bottom:8px;
-}
-.sidebar-search {
-  display:flex; align-items:center; gap:4px;
-  padding:5px 10px; border-radius:8px; background:var(--card-2); border:1px solid var(--line);
-}
-.sidebar-search svg { width:13px; height:13px; color:var(--faint); flex:none; }
-.sidebar-search input {
-  border:0; background:transparent; outline:none; font-size:12px; color:var(--ink);
-  font-family:var(--body); width:100%;
-}
-.sidebar-search input::placeholder { color:var(--faint); }
+/* ── Card wall ── */
+.wall-wrap { max-width:1560px; margin:0 auto; padding:14px 20px 60px; }
+.wall { columns:4 300px; column-gap:14px; }
+.card { break-inside:avoid; margin-bottom:14px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px 12px; cursor:pointer; position:relative; transition:box-shadow .18s, border-color .18s, transform .18s; }
+.card:hover { border-color:var(--brand-line); box-shadow:var(--shadow-lift); transform:translateY(-2px); }
+.card.open { border-color:var(--brand); box-shadow:0 0 0 1px var(--brand-line); }
+.card-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.cat-tag { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.cat-tag::before { content:""; display:inline-block; width:7px; height:7px; border-radius:2px; margin-right:5px; vertical-align:1px; background:var(--cc); }
+.card-time { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-left:auto; }
+.ext-btn { flex:none; width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--faint); border:1px solid transparent; transition:all .15s; }
+.ext-btn:hover { color:var(--brand-strong); border-color:var(--brand-line); background:var(--brand-weak); }
+.ext-btn svg { width:11px; height:11px; }
+.card-title { font-family:var(--display); font-size:15.5px; font-weight:700; line-height:1.45; margin-bottom:7px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; transition:color .15s; }
+.card:hover .card-title { color:var(--brand-strong); }
+.card-summary { font-size:12.5px; color:var(--muted); line-height:1.7; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+.card-foot { display:flex; align-items:center; gap:6px; margin-top:11px; padding-top:9px; border-top:1px solid var(--line); font-size:11px; color:var(--faint); }
+.src-dot { width:8px; height:8px; border-radius:999px; flex:none; background:var(--sc); }
+[data-theme="dark"] .src-dot { filter:brightness(1.7) saturate(.85); }
+.src-name { font-weight:600; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.foot-meta { margin-left:auto; font-family:var(--mono); font-size:10.5px; display:flex; gap:8px; align-items:center; white-space:nowrap; }
+.no-ft { font-size:10px; color:var(--faint); border:1px dashed var(--line-strong); border-radius:4px; padding:0 5px; }
+.card.visited .card-title { color:var(--faint); }
+.card.visited .card-title::after { content:"\5df2\8bfb"; font-family:var(--body); font-size:9px; font-weight:600; color:var(--faint); border:1px solid var(--line-strong); border-radius:4px; padding:0 4px; margin-left:6px; vertical-align:2px; }
+.pod-chip { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--cat-podcast); background:color-mix(in srgb, var(--cat-podcast) 10%, transparent); border-radius:4px; padding:1px 6px; font-weight:600; }
+.empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
 
-/* Category groups */
-.cat-group { flex:none; }
-.cat-title {
-  padding:8px 14px 4px; font-size:11px; font-weight:700; color:var(--faint);
-  text-transform:uppercase; letter-spacing:.05em; cursor:pointer;
-  display:flex; align-items:center; gap:4px; user-select:none;
-  position:sticky; top:0; z-index:2; background:var(--card);
-}
-.cat-title .arrow { transition:transform .15s; font-size:10px; }
-.cat-title.collapsed .arrow { transform:rotate(-90deg); }
-.cat-sources { display:flex; flex-direction:column; }
-.cat-sources.hidden { display:none; }
+/* ── Source panel (left drawer) ── */
+.src-panel { position:fixed; top:0; left:0; bottom:0; width:min(340px,90vw); z-index:80; background:var(--card); border-right:1px solid var(--line); transform:translateX(-103%); transition:transform .28s cubic-bezier(.32,.72,.28,1); display:flex; flex-direction:column; box-shadow:18px 0 50px rgba(0,0,0,.12); }
+body.src-open .src-panel { transform:none; }
+.sp-head { flex:none; padding:14px 14px 10px; border-bottom:1px solid var(--line); }
+.sp-head .row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.sp-head h2 { font-family:var(--display); font-size:15px; font-weight:900; flex:1; }
+.sp-close { width:26px; height:26px; border-radius:999px; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color:var(--muted); transition:all .15s; }
+.sp-close:hover { border-color:var(--line-strong); color:var(--ink); }
+.sp-close svg { width:12px; height:12px; }
+.sp-search { display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:var(--bg); border:1px solid var(--line); }
+.sp-search svg { width:12px; height:12px; color:var(--faint); flex:none; }
+.sp-search input { border:0; background:transparent; outline:none; font-size:12px; color:var(--ink); font-family:var(--body); width:100%; }
+.sp-search input::placeholder { color:var(--faint); }
+.sp-list { flex:1; overflow-y:auto; padding-bottom:20px; }
+.sp-all { display:flex; align-items:center; gap:8px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; color:var(--muted); border-left:3px solid transparent; transition:all .1s; }
+.sp-all:hover { background:var(--bg); color:var(--ink); }
+.sp-all.on { color:var(--brand-strong); background:var(--brand-weak); border-left-color:var(--brand); }
+.sp-all .n { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+.sp-cat { position:sticky; top:0; background:var(--card); padding:10px 16px 4px; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--cc); display:flex; align-items:center; gap:5px; cursor:pointer; user-select:none; }
+.sp-cat .arrow { font-size:9px; color:var(--faint); transition:transform .15s; }
+.sp-cat.folded .arrow { transform:rotate(-90deg); }
+.sp-cat .n { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--faint); }
+.sp-cat-body { }
+.sp-src { display:flex; align-items:center; gap:8px; padding:7px 16px; font-size:12.5px; cursor:pointer; color:var(--muted); border-left:3px solid transparent; transition:all .1s; }
+.sp-src:hover { background:var(--bg); color:var(--ink); }
+.sp-src.on { color:var(--brand-strong); background:var(--brand-weak); border-left-color:var(--brand); font-weight:600; }
+.sp-src .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sp-src .n { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--faint); flex:none; }
+.sp-src .src-dot { width:9px; height:9px; }
+.sp-none { padding:14px 16px; font-size:12px; color:var(--faint); }
 
-.source-item {
-  display:flex; align-items:center; gap:8px;
-  padding:7px 14px 7px 20px; font-size:13px; cursor:pointer;
-  transition:background .1s; border-left:3px solid transparent;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.source-item:hover { background:var(--card-2); }
-.source-item.active {
-  background:var(--card-3); border-left-color:var(--brand-line); font-weight:600;
-}
-.source-dot {
-  width:8px; height:8px; border-radius:50%; flex:none;
-}
-.source-name { overflow:hidden; text-overflow:ellipsis; }
-.source-count {
-  font-family:var(--mono); font-size:10px; color:var(--faint); margin-left:auto; flex:none;
-}
+/* ── Scrim ── */
+.scrim { position:fixed; inset:0; background:rgba(28,25,23,.45); opacity:0; pointer-events:none; transition:opacity .25s; z-index:60; }
+body.reading .scrim, body.src-open .scrim { opacity:1; pointer-events:auto; }
 
-/* Middle: article list */
-.article-list {
-  width:340px; flex:none; border-right:1px solid var(--line);
-  background:var(--bg); overflow-y:auto; display:flex; flex-direction:column;
-}
-.article-list-header {
-  padding:10px 14px; border-bottom:1px solid var(--line); flex:none;
-  display:flex; align-items:center; gap:8px;
-}
-.article-list-header h3 {
-  font-family:var(--display); font-size:14px; font-weight:700; flex:1;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-.article-list-header .count {
-  font-family:var(--mono); font-size:11px; color:var(--faint);
-}
-.article-list-header .view-all {
-  font-size:11px; color:var(--brand-strong); cursor:pointer;
-}
-.article-list-header .view-toggle {
-  font-size:11px; color:var(--brand-strong); cursor:pointer;
-  padding:2px 8px; border-radius:4px; border:1px solid var(--brand-line);
-  background:var(--brand-weak); font-weight:600; white-space:nowrap;
-  transition:all .15s;
-}
-.article-list-header .view-toggle:hover {
-  background:var(--brand-line); color:#fff;
-}
+/* ── Reader drawer (right) ── */
+.reader2 { position:fixed; top:0; right:0; bottom:0; width:min(760px,100%); z-index:70; background:var(--bg); border-left:1px solid var(--line); box-shadow:-18px 0 50px rgba(0,0,0,.16); transform:translateX(103%); transition:transform .3s cubic-bezier(.32,.72,.28,1); display:flex; flex-direction:column; }
+body.reading .reader2 { transform:none; }
+.r2-top { flex:none; display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--line); background:var(--card); position:relative; }
+.r2-progress { position:absolute; left:0; bottom:-1px; height:2px; background:var(--brand); width:0%; transition:width .1s linear; }
+.r2-back { display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--muted); padding:5px 10px 5px 6px; border-radius:999px; border:1px solid transparent; white-space:nowrap; transition:all .15s; }
+.r2-back:hover { color:var(--ink); border-color:var(--line); background:var(--bg); }
+.r2-back svg { width:14px; height:14px; }
+.r2-src { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); min-width:0; }
+.r2-src .src-dot { width:9px; height:9px; }
+.r2-src b { color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.r2-acts { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--bg); }
+.seg button { padding:4px 13px; font-size:12px; font-weight:500; color:var(--muted); white-space:nowrap; transition:all .15s; }
+.seg button.on { background:var(--brand-weak); color:var(--brand-strong); font-weight:600; }
+.seg button[disabled] { opacity:.4; cursor:not-allowed; }
+.r2-open { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--brand-strong); background:var(--brand-weak); border:1px solid var(--brand-line); padding:4px 12px; border-radius:8px; white-space:nowrap; transition:all .15s; }
+.r2-open:hover { background:var(--brand-line); color:#fff; }
+.r2-body { flex:1; overflow-y:auto; }
+.r2-inner { max-width:680px; margin:0 auto; padding:30px 34px 80px; }
+.r2-title { font-family:var(--display); font-size:23px; font-weight:900; line-height:1.42; margin-bottom:12px; }
+.r2-title a { color:var(--ink); }
+.r2-title a:hover { color:var(--brand-strong); }
+.r2-meta { display:flex; align-items:center; gap:10px; font-size:12px; color:var(--faint); padding-bottom:16px; margin-bottom:22px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.r2-meta .src-dot { width:9px; height:9px; }
+.r2-meta .cat { font-weight:700; letter-spacing:.06em; font-size:10.5px; text-transform:uppercase; color:var(--cc); }
+.r2-summary { font-size:15px; line-height:1.9; color:var(--ink); }
+.r2-summary .lead { font-size:16.5px; line-height:1.85; font-weight:500; margin-bottom:1em; }
+.r2-lang-toggle { display:inline-flex; align-items:center; gap:0; margin-top:16px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line); font-size:12px; }
+.r2-lang-toggle button { padding:4px 12px; border:none; background:transparent; color:var(--muted); cursor:pointer; transition:all .15s; font-family:var(--body); font-size:12px; }
+.r2-lang-toggle button.active { background:var(--brand); color:#fff; }
+.r2-lang-toggle button:hover:not(.active) { background:var(--brand-weak); }
+.fallback-card { border:1px dashed var(--line-strong); border-radius:10px; padding:22px; text-align:center; background:var(--card); margin-top:6px; }
+.fallback-card .fb-ico { font-size:22px; margin-bottom:8px; }
+.fallback-card p { font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.7; }
+.fb-btn { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; padding:9px 20px; border-radius:8px; background:var(--brand-weak); color:var(--brand-strong); border:1px solid var(--brand-line); transition:all .15s; }
+.fb-btn:hover { background:var(--brand-line); color:#fff; }
+.r2-foot-hint { text-align:center; font-family:var(--mono); font-size:10.5px; color:var(--faint); padding:26px 0 6px; border-top:1px solid var(--line); margin-top:34px; }
 
-.article-item {
-  padding:10px 14px; border-bottom:1px solid var(--line);
-  cursor:pointer; transition:background .1s;
-}
-.article-item:hover { background:var(--card); }
-.article-item.active { background:var(--card-3); border-left:3px solid var(--brand-line); }
-.article-item .a-title {
-  font-size:13px; font-weight:600; line-height:1.4;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-  margin-bottom:4px;
-}
-.article-item .a-meta {
-  display:flex; align-items:center; gap:6px; font-size:11px; color:var(--faint);
-}
-.article-item .a-meta .src-tag {
-  display:inline-flex; align-items:center; gap:3px;
-  padding:1px 6px; border-radius:999px; font-size:11px; font-weight:600; color:#fff;
-}
-.article-item .a-meta .time { font-family:var(--mono); margin-left:auto; }
-
-/* Right: reading area */
-.reader {
-  flex:1; overflow-y:auto; background:var(--bg);
-  display:flex; flex-direction:column;
-}
-.reader-empty {
-  flex:1; display:flex; align-items:center; justify-content:center;
-  color:var(--faint); font-size:14px; flex-direction:column; gap:8px;
-}
-.reader-empty svg { width:48px; height:48px; opacity:.3; }
-
-.reader-content { padding:24px 32px; max-width:720px; margin:0 auto; width:100%; }
-.reader-content .rc-title {
-  font-family:var(--display); font-size:22px; font-weight:700; line-height:1.4;
-  margin-bottom:12px;
-}
-.reader-content .rc-title a { color:var(--ink); }
-.reader-content .rc-title a:hover { color:var(--brand-strong); }
-.reader-content .rc-meta {
-  display:flex; align-items:center; gap:8px; font-size:12px; color:var(--faint);
-  margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--line);
-}
-.reader-content .rc-meta .src-tag {
-  display:inline-flex; align-items:center; gap:3px;
-  padding:2px 8px; border-radius:var(--radius); font-size:11px; font-weight:600;
-}
-.reader-content .rc-summary {
-  font-size:15px; line-height:1.8; color:var(--ink);
-}
-.reader-content .rc-link {
-  display:inline-flex; align-items:center; gap:4px;
-  margin-top:20px; padding:8px 18px; border-radius:8px;
-  background:var(--brand-weak); color:var(--brand-strong);
-  font-size:13px; font-weight:600; transition:all .15s;
-}
-.reader-content .rc-link:hover { background:var(--brand-line); color:#fff; }
-.reader-content .rc-lang-toggle {
-  display:inline-flex; align-items:center; gap:0;
-  margin-top:16px; border-radius:var(--radius); overflow:hidden;
-  border:1px solid var(--line); font-size:12px;
-}
-.reader-content .rc-lang-toggle button {
-  padding:4px 12px; border:none; background:transparent;
-  color:var(--muted); cursor:pointer; transition:all .15s;
-  font-family:var(--body); font-size:12px;
-}
-.reader-content .rc-lang-toggle button.active {
-  background:var(--brand); color:#fff;
-}
-.reader-content .rc-lang-toggle button:hover:not(.active) {
-  background:var(--brand-weak);
-}
-/* ── 阅读原文 iframe 模式 ── */
-.reader-content .rc-mode-toggle {
-  display:inline-flex; align-items:center; gap:0;
-  margin-bottom:16px; border-radius:var(--radius); overflow:hidden;
-  border:1px solid var(--line); font-size:12px;
-}
-.reader-content .rc-mode-toggle button {
-  padding:5px 14px; border:none; background:transparent;
-  color:var(--muted); cursor:pointer; transition:all .15s;
-  font-family:var(--body); font-size:12px; font-weight:600;
-}
-.reader-content .rc-mode-toggle button.active {
-  background:var(--brand); color:#fff;
-}
-.reader-content .rc-mode-toggle button:hover:not(.active) {
-  background:var(--brand-weak);
-}
-.reader-content .rc-iframe-wrap {
-  position:relative; margin-top:8px;
-  border:1px solid var(--line); border-radius:var(--radius);
-  background:#fff; overflow:hidden;
-}
-.reader-content .rc-iframe-bar {
-  display:flex; align-items:center; justify-content:space-between;
-  gap:8px; padding:6px 10px;
-  background:var(--brand-weak); border-bottom:1px solid var(--line);
-  font-size:12px; color:var(--muted);
-}
-.reader-content .rc-iframe-bar a {
-  color:var(--brand-strong); font-weight:600; text-decoration:none;
-}
-.reader-content .rc-iframe-bar a:hover { text-decoration:underline; }
-.reader-content .rc-iframe {
-  display:block; width:100%; height:70vh; border:none; background:#fff;
-}
-
-/* 侧栏顶部时间线伪信源项 */
-.source-item.tl-pseudo .source-dot { background:var(--brand); }
-
-/* 搜索命中高亮 */
-.article-item mark { background:#fde68a; color:inherit; border-radius:2px; padding:0 1px; }
-[data-theme="dark"] .article-item mark { background:#7a5c1e; color:#fde68a; }
-
-/* 摘要折叠与展开 */
-.reader-content .rc-summary.clamped {
-  display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden;
-}
-.reader-content .rc-expand {
-  margin-top:8px; padding:4px 12px; border-radius:var(--radius);
-  border:1px solid var(--line); background:transparent;
-  color:var(--brand-strong); font-size:12px; font-weight:600;
-}
-.reader-content .rc-expand:hover { background:var(--brand-weak); }
-
-/* iframe 加载占位 */
-.reader-content .rc-iframe-loading {
-  height:70vh; display:flex; align-items:center; justify-content:center;
-  color:var(--faint); font-size:12px; background:#fff;
-}
+/* ── Footer ── */
+.footer { text-align:center; padding:6px 0; font-size:11px; color:var(--faint); font-family:var(--mono); border-top:1px solid var(--line); background:var(--bg); }
 
 /* ── Responsive ── */
 @media (max-width:900px) {
-  .sidebar { width:200px; }
-  .article-list { width:280px; }
+  .hd .logo .sub { display:none; }
+  .toolbar { padding:12px 14px 2px; }
+  .wall-wrap { padding:12px 14px 50px; }
+  .r2-inner { padding:22px 20px 70px; }
+  .tool-meta { display:none; }
 }
 @media (max-width:700px) {
-  body { overflow:auto; }
-  .app { flex-direction:column; overflow:visible; }
-  .sidebar {
-    width:100%; max-height:200px; border-right:none; border-bottom:1px solid var(--line);
-    flex-direction:row; overflow-x:auto; overflow-y:hidden;
-  }
-  .sidebar-header { display:flex; flex-direction:column; padding:8px 10px 6px; }
-  .sidebar-header h2 { font-size:12px; margin-bottom:4px; }
-  .sidebar-search { padding:4px 8px; }
-  .sidebar-search input { font-size:11px; }
-  .cat-group { display:flex; flex-direction:row; flex:none; }
-  .cat-title { display:none; }
-  .cat-sources { flex-direction:row; }
-  .cat-sources.hidden { display:flex; }
-  .source-item {
-    padding:6px 10px; border-left:none; border-bottom:3px solid transparent;
-    white-space:nowrap; font-size:12px;
-  }
-  .source-item.active { border-left:none; border-bottom-color:var(--brand-line); }
-  .source-count { display:none; }
-  .article-list {
-    width:100%; max-height:300px; border-right:none; border-bottom:1px solid var(--line);
-  }
-  .reader { min-height:400px; }
-  .reader-content { padding:16px; }
-}
-@media (max-width:480px) {
-  .hd { gap:6px; padding:6px 8px; }
-  .hd .logo .t span { display:none; }
-  .hd .nav-links a { padding:4px 8px; font-size:12px; gap:3px; }
-  .hd .nav-links a .icon { width:11px; height:11px; }
-  .hd .acts .btn { width:26px; height:26px; }
-  .article-item .a-meta .src-tag { font-size:11px; }
+  .hd .nav-links a { padding:5px 9px; font-size:12px; }
+  .chips { overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px; }
+  .chip { white-space:nowrap; flex:none; }
+  .r2-top { padding:8px 12px; }
+  .r2-back span { display:none; }
+  .r2-src b { max-width:110px; }
+  .r2-open { padding:4px 9px; }
 }
 """
 
@@ -815,641 +657,334 @@ def _build_header():
 <header>
   <div class="hd">
     <a class="logo" href="index.html">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg>
-      <div class="t"><b>StarHub</b><span>GitHub 收藏台</span></div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg>
+      <span>StarHub<span class="sub">GitHub 收藏台</span></span>
     </a>
     <nav class="nav-links">
-      <a href="index.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> 收藏池</a>
-      <a href="ai-daily.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a7 7 0 0 1 14 0"/><path d="M4 11v4a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H4"/><path d="M18 11v4a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3"/></svg> AI 晨报</a>
-      <a href="rss-aggregator.html" class="active"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg> RSS 聚合</a>
+      <a href="index.html">收藏池</a>
+      <a href="ai-daily.html">AI 晨报</a>
+      <a href="rss-aggregator.html" class="active">RSS 聚合</a>
     </nav>
-    <div class="acts">
-      <button class="btn" id="btnTheme" title="切换明暗主题" aria-label="切换主题">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      </button>
-    </div>
+    <button class="theme-btn" id="btnTheme" title="切换主题">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
   </div>
 </header>
 """
 
 
 def _build_js(sources_with_items, build_ts_ms=0):
-    """sources_with_items: list of source dicts with items embedded."""
+    """Generate core JS for card wall + drawer reader."""
     data_json = json.dumps(sources_with_items, ensure_ascii=False)
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
     return """
 <script>
 (function(){
   var BUILD_TS = """ + str(int(build_ts_ms)) + """;
+  var SOURCES = """ + data_json + """;
+  var CAT_LABELS = """ + cat_labels_json + """;
 
-  // ── Theme ──
+  /* ── Data ── */
+  var CAT_ORDER = ['ai','tech','cn_tech','dev','news','podcast'];
+  var ART = [];
+  SOURCES.forEach(function(s){
+    s.items.forEach(function(it){
+      ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
+        src:s.name, sk:s.key, c:s.cat, sc:s.color,
+        time:it.time_str, date:it.pub_date, u:it.link||'#'});
+    });
+  });
+  ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
+
+  /* ── State ── */
+  var visited = {};
+  try { visited = JSON.parse(localStorage.getItem('rss_read_v2')||'{}'); } catch(e){}
+  var filter = {type:'all', cat:null, src:null};
+  var curArt = null, rMode = 'summary';
+
+  /* ── Theme ── */
   var themeKey='wb_starhub_theme_v1';
-  var t=localStorage.getItem(themeKey)||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+  var t=localStorage.getItem(themeKey)||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
   document.documentElement.dataset.theme=t;
   var btn=document.getElementById('btnTheme');
   if(btn) btn.onclick=function(){
     var nt=document.documentElement.dataset.theme==='dark'?'light':'dark';
     try{localStorage.setItem(themeKey,nt);}catch(e){}
     document.documentElement.dataset.theme=nt;
-    refreshColors();
   };
-  // 主题切换后重绘依赖品牌色的视图（暗色色点提亮等）
-  function refreshColors(){
-    renderSidebar();
-    renderArticleList();
-    if (viewMode === 'timeline') renderTimelineReader(); else renderReader();
+
+  /* ── Toolbar ── */
+  function renderChips(){
+    var counts={}; ART.forEach(function(a){counts[a.c]=(counts[a.c]||0)+1;});
+    var h='';
+    CAT_ORDER.forEach(function(c){
+      if(!counts[c]) return;
+      var label=CAT_LABELS[c]||c, on=filter.type==='cat'&&filter.cat===c;
+      h+='<button class="chip'+(on?' on':'')+'" data-c="'+c+'">'+label+' <span class="n">'+counts[c]+'</span></button>';
+    });
+    document.getElementById('chips').innerHTML=h;
+    document.querySelectorAll('.chip').forEach(function(el){
+      el.onclick=function(){
+        var c=this.dataset.c;
+        if(filter.type==='cat'&&filter.cat===c) filter={type:'all'};
+        else filter={type:'cat',cat:c,src:null};
+        curArt=null; renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0});
+      };
+    });
+    var pw=document.getElementById('fpillWrap');
+    if(filter.type==='src'){
+      var s=SRC_OBJ(filter.src);
+      pw.innerHTML=s?'<button class="fpill"><span class="src-dot" style="--sc:'+s.color+'"></span>'+esc(s.name)+'<span class="x" onclick="clearSrcF(event)">\u2715</span></button>':'';
+    } else pw.innerHTML='';
+    document.getElementById('srcCnt').textContent=SOURCES.length;
+    var ftN=ART.filter(function(a){return (a.s||'').length>60;}).length;
+    document.getElementById('toolMeta').textContent=ART.length+' \u7bc7 \u00b7 \u5168\u6587\u8986\u76d6 '+ftN+'/'+ART.length;
   }
+  function SRC_OBJ(k){ return SOURCES.find(function(s){return s.key===k;}); }
+  window.clearSrcF=function(e){e.stopPropagation();filter={type:'all'};curArt=null;renderChips();renderWall();renderPanel();};
 
-  // ── Data ─
-  var SOURCES = """ + data_json + """;
-  var CAT_LABELS = """ + cat_labels_json + """;
-
-  // ── State ──
-  var activeSourceKey = null;
-  var activeArticleIdx = -1;
-  var searchQuery = '';
-  var viewMode = 'source'; // 'source' | 'timeline'
-  var timelineItems = [];  // merged + sorted items for timeline view
-  var summaryLang = 'original'; // 'original' | 'translated'
-  var readerMode = 'summary'; // 'summary' | 'original'
-
-  // ── DOM refs ──
-  var sidebarEl = document.getElementById('sidebarSources');
-  var articleListEl = document.getElementById('articleListItems');
-  var articleListHeaderEl = document.getElementById('articleListHeader');
-  var readerEl = document.getElementById('reader');
-  var searchInput = document.getElementById('sidebarSearch');
-
-  // ── Render sidebar ──
-  function renderSidebar() {
-    var html = '';
-    // 置顶时间线伪信源项（默认视图入口）
-    html += '<div class="source-item tl-pseudo' + (viewMode === 'timeline' ? ' active' : '') + '" data-key="__tl__">';
-    html += '<span class="source-dot"></span>';
-    html += '<span class="source-name">⏱ 全部·最新时间线</span>';
-    html += '<span class="source-count">' + SOURCES.reduce(function(n,s){return n+s.items.length;},0) + '</span>';
-    html += '</div>';
-    var cats = {};
-    SOURCES.forEach(function(src) {
-      if (!cats[src.cat]) cats[src.cat] = [];
-      cats[src.cat].push(src);
+  /* ── Source panel ── */
+  function toggleSrcPanel(){ document.body.classList.toggle('src-open'); }
+  window.toggleSrcPanel=toggleSrcPanel;
+  function selectSrc(key){
+    if(!key){filter={type:'all'};} else {filter={type:'src',src:key};}
+    curArt=null; document.body.classList.remove('src-open');
+    renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0});
+  }
+  window.selectSrc=selectSrc;
+  function renderPanel(){
+    var q=(document.getElementById('spSearch').value||'').trim().toLowerCase();
+    var h='<div class="sp-all'+(filter.type!=='src'?' on':'')+'" onclick="selectSrc(null)">\u2630 \u5168\u90e8\u4fe1\u6e90<span class="n">'+ART.length+'</span></div>';
+    var byCat={};
+    SOURCES.forEach(function(s){
+      if(!q||s.name.toLowerCase().indexOf(q)>=0){
+        var cnt=s.items.length;
+        if(cnt>0)(byCat[s.cat]=byCat[s.cat]||[]).push(s);
+      }
     });
-    var catOrder = ['tech','cn_tech','dev','news','podcast'];
-    catOrder.forEach(function(catKey) {
-      var srcs = cats[catKey];
-      if (!srcs) return;
-      var label = CAT_LABELS[catKey] || catKey;
-      html += '<div class="cat-group">';
-      html += '<div class="cat-title" data-cat="'+catKey+'"><span class="arrow">▼</span> '+esc(label)+'</div>';
-      html += '<div class="cat-sources">';
-      srcs.forEach(function(src) {
-        var cls = 'source-item' + (src.key === activeSourceKey && viewMode === 'source' ? ' active' : '');
-        html += '<div class="'+cls+'" data-key="'+esc(src.key)+'">';
-        html += '<span class="source-dot" style="background:'+adjColor(src.color)+'"></span>';
-        html += '<span class="source-name">'+esc(src.name)+'</span>';
-        html += '<span class="source-count">'+src.items.length+'</span>';
-        html += '</div>';
+    var any=false;
+    CAT_ORDER.forEach(function(c){
+      var arr=byCat[c]; if(!arr||!arr.length) return; any=true;
+      var label=CAT_LABELS[c]||c;
+      h+='<div class="sp-cat" data-cat="'+c+'"><span class="arrow">\u25bc</span>'+label+'<span class="n">'+arr.length+'</span></div>';
+      h+='<div class="sp-cat-body" data-body="'+c+'">';
+      arr.forEach(function(s){
+        var on=filter.type==='src'&&filter.src===s.key;
+        h+='<div class="sp-src'+(on?' on':'')+'" data-k="'+s.key+'"><span class="src-dot" style="--sc:'+s.color+'"></span><span class="nm">'+esc(s.name)+'</span><span class="n">'+s.items.length+'</span></div>';
       });
-      html += '</div></div>';
+      h+='</div>';
     });
-    sidebarEl.innerHTML = html;
-
-    // Category collapse
-    sidebarEl.querySelectorAll('.cat-title').forEach(function(el) {
-      el.addEventListener('click', function() {
-        this.classList.toggle('collapsed');
-        var panel = this.nextElementSibling;
-        if (panel) panel.classList.toggle('hidden');
-      });
+    if(!any) h+='<div class="sp-none">\u6ca1\u6709\u5339\u914d\u300c'+esc(q)+'\u300d\u7684\u4fe1\u6e90</div>';
+    document.getElementById('spList').innerHTML=h;
+    document.querySelectorAll('.sp-cat').forEach(function(el){
+      el.onclick=function(){
+        this.classList.toggle('folded');
+        var body=document.querySelector('.sp-cat-body[data-body="'+this.dataset.cat+'"]');
+        if(body) body.style.display=this.classList.contains('folded')?'none':'';
+      };
     });
-
-    // Source click
-    sidebarEl.querySelectorAll('.source-item').forEach(function(el) {
-      el.addEventListener('click', function() {
-        var k = this.dataset.key;
-        if (k === '__tl__') switchMode('timeline');
-        else selectSource(k);
-      });
+    document.querySelectorAll('.sp-src').forEach(function(el){
+      el.onclick=function(){ selectSrc(this.dataset.k); };
     });
   }
 
-  // ── Select source ──
-  function selectSource(key) {
-    activeSourceKey = key;
-    viewMode = 'source';
-    // 自动选中新源的第一篇（避免阅读区空状态）
-    var src = SOURCES.find(function(s){return s.key===key});
-    activeArticleIdx = (src && src.items && src.items.length) ? 0 : -1;
-    renderSidebar();
-    renderArticleList();
-    renderReader();
-    updateHash();
+  /* ── Card wall ── */
+  function visibleArts(){
+    return ART.filter(function(a){
+      if(filter.type==='cat') return a.c===filter.cat;
+      if(filter.type==='src') return a.sk===filter.src;
+      return true;
+    });
+  }
+  function artKey(a){ return (a.u||a.t).slice(-42); }
+  function renderWall(){
+    var list=visibleArts(), h='', shown=0;
+    list.forEach(function(a){
+      if(shown>=120) return; shown++;
+      var k=artKey(a), isVis=!!visited[k];
+      var isOpen=curArt&&artKey(curArt)===k;
+      h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
+      h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
+      h+='<span class="card-time">'+esc(a.time)+'</span>';
+      h+='<span class="ext-btn" title="\u539f\u7ad9"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></span></div>';
+      h+='<h3 class="card-title">'+esc(a.t)+'</h3>';
+      if(a.s) h+='<p class="card-summary">'+esc(a.s)+'</p>';
+      h+='<div class="card-foot"><span class="src-dot" style="--sc:'+a.sc+'"></span><span class="src-name">'+esc(a.src)+'</span>';
+      h+='<span class="foot-meta"><span>'+estRead(a)+'</span></span></div>';
+      h+='</article>';
+    });
+    if(!list.length) h='<div class="empty-hint">\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0</div>';
+    document.getElementById('wall').innerHTML=h;
+    document.querySelectorAll('.card').forEach(function(el){
+      el.addEventListener('click',function(e){
+        var k=this.dataset.k;
+        var a=ART.find(function(x){return artKey(x)===k;});
+        if(!a) return;
+        if(e.target.closest('.ext-btn')){markRead(a);window.open(a.u,'_blank');return;}
+        openReader(a);
+      });
+    });
   }
 
-  // ── Switch view mode ──
-  function switchMode(m) {
-    if (viewMode === m && m !== 'source') return;
-    viewMode = m;
-    if (m === 'timeline') {
-      buildTimeline();
-      activeArticleIdx = timelineItems.length ? 0 : -1;
+  /* ── Reader ── */
+  function markRead(a){visited[artKey(a)]=1;try{localStorage.setItem('rss_read_v2',JSON.stringify(visited));}catch(e){}}
+  function openReader(a){
+    curArt=a; markRead(a); rMode=(a.s||'').length>60?'summary':'summary';
+    renderReader(); document.body.classList.add('reading');
+    document.body.classList.remove('src-open');
+    document.getElementById('r2Body').scrollTop=0; renderWall();
+  }
+  window.closeReader=function(){document.body.classList.remove('reading');curArt=null;renderWall();};
+  window.closeOverlays=function(){document.body.classList.remove('src-open');window.closeReader();};
+  function renderReader(){
+    var a=curArt; if(!a) return;
+    document.getElementById('r2Src').innerHTML='<span class="src-dot" style="--sc:'+a.sc+'"></span><b>'+esc(a.src)+'</b><span>\u00b7</span><span>'+esc(a.time)+'</span>';
+    var openEl=document.getElementById('r2Open'); openEl.href=a.u;
+    var segBtns=document.querySelectorAll('#r2Seg button');
+    segBtns.forEach(function(b){
+      b.classList.toggle('on',b.dataset.m===rMode);
+      b.onclick=function(){rMode=this.dataset.m;renderReader();};
+    });
+    var h='<h1 class="r2-title">'+esc(a.t)+'</h1>';
+    h+='<div class="r2-meta" style="--cc:var(--cat-'+a.c+')"><span class="cat">'+(CAT_LABELS[a.c]||a.c)+'</span>';
+    h+='<span class="src-dot" style="--sc:'+a.sc+'"></span><span>'+esc(a.src)+'</span>';
+    h+='<span>\u00b7</span><span>'+esc(a.time)+'</span><span>\u00b7</span><span>'+estRead(a)+'</span></div>';
+    if(a.s){
+      h+='<div class="r2-summary"><p>'+esc(a.s)+'</p></div>';
+      if(!isMostlyZh(a.s)){
+        h+='<div class="r2-lang-toggle">';
+        h+='<button class="active" id="btnOrig">\u539f\u6587</button>';
+        h+='<button id="btnTrans">\u7ffb\u8bd1</button></div>';
+      }
     } else {
-      activeArticleIdx = -1;
+      h+='<div class="fallback-card"><div class="fb-ico">🔗</div>';
+      h+='<p>\u8be5\u6587\u7ae0\u6682\u65e0\u6458\u8981<br>\u53ef\u524d\u5f80\u539f\u7ad9\u7ee7\u7eed\u9605\u8bfb</p>';
+      h+='<a class="fb-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener">\u539f\u7ad9 \u2197</a></div>';
     }
-    renderSidebar();
-    renderArticleList();
-    if (m === 'timeline') renderTimelineReader(); else renderReader();
-    updateHash();
-  }
-
-  // ── Build timeline (merge all sources, sort by pub_date desc) ──
-  function buildTimeline() {
-    var all = [];
-    SOURCES.forEach(function(src) {
-      src.items.forEach(function(it) {
-        all.push({ src: src, item: it });
+    h+='<div class="r2-foot-hint">J / K \u6216 \u2190 \u2192 \u5207\u6362\u6587\u7ae0 \u00b7 ESC \u8fd4\u56de</div>';
+    document.getElementById('r2Inner').innerHTML=h;
+    var btnT=document.getElementById('btnTrans');
+    if(btnT) btnT.onclick=function(){
+      var el=document.querySelector('.r2-summary p');
+      if(!el) return; el.textContent='\u7ffb\u8bd1\u4e2d\u2026';
+      _clientTranslate(a.s,function(tr){
+        var cur=document.querySelector('.r2-summary p');
+        if(cur) cur.textContent=tr;
       });
-    });
-    all.sort(function(a, b) {
-      var da = new Date(a.item.pub_date || 0).getTime();
-      var db = new Date(b.item.pub_date || 0).getTime();
-      return db - da;
-    });
-    // 每源分桶后轮 round-robin（每轮每源最多 2 条），避免日更大源刷屏掉多样性
-    var buckets = {}, order = [];
-    all.forEach(function(o) {
-      if (!buckets[o.src.key]) { buckets[o.src.key] = []; order.push(o.src.key); }
-      buckets[o.src.key].push(o);
-    });
-    var merged = [], pos = {};
-    order.forEach(function(k){ pos[k] = 0; });
-    while (merged.length < all.length) {
-      var took = 0;
-      for (var i = 0; i < order.length && merged.length < all.length; i++) {
-        var k = order[i], arr = buckets[k];
-        for (var j = 0; j < 2 && pos[k] < arr.length; j++) { merged.push(arr[pos[k]++]); took++; }
-      }
-      if (took === 0) break;
-    }
-    timelineItems = merged;
+    };
   }
-
-  // ── Render article list ──
-  function renderArticleList() {
-    if (viewMode === 'timeline') {
-      renderTimelineList();
-      return;
-    }
-    var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
-    if (!src) {
-      articleListHeaderEl.innerHTML = '<h3>选择一个信源</h3>';
-      articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">点击左侧信源查看文章</div>';
-      return;
-    }
-    var items = filterItems(src.items);
-    articleListHeaderEl.innerHTML = '<h3>'+esc(src.name)+'</h3><span class="count">'+items.length+' 篇</span><span class="view-toggle" data-mode="timeline">时间线</span>';
-    if (searchInput) searchInput.placeholder = '在「' + src.name + '」内搜索…';
-
-    if (items.length === 0) {
-      articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
-      return;
-    }
-
-    var html = '';
-    items.forEach(function(item, idx) {
-      var cls = 'article-item' + (idx === activeArticleIdx ? ' active' : '');
-      html += '<div class="'+cls+'" data-idx="'+idx+'">';
-      html += '<div class="a-title">'+markText(item.title_zh || item.title)+'</div>';
-      // 信源视图不重复渲染来源药丸（列表头已有信源名）
-      html += '<div class="a-meta">';
-      html += '<span class="time">'+esc(item.time_str)+'</span>';
-      html += '</div></div>';
-    });
-    articleListEl.innerHTML = html;
-
-    articleListEl.querySelectorAll('.article-item').forEach(function(el) {
-      el.addEventListener('click', function() {
-        openArticle(parseInt(this.dataset.idx));
-      });
-    });
-    bindViewToggle();
-  }
-
-  // ── Render timeline list ──
-  function renderTimelineList() {
-    var filtered = timelineItems;
-    if (searchQuery) {
-      var q = searchQuery.toLowerCase();
-      filtered = timelineItems.filter(function(o) {
-        var t = (o.item.title_zh || o.item.title).toLowerCase();
-        var s = (o.item.summary_zh || o.item.summary || '').toLowerCase();
-        return t.indexOf(q) >= 0 || s.indexOf(q) >= 0;
-      });
-    }
-    articleListHeaderEl.innerHTML = '<h3>时间线</h3><span class="count">'+filtered.length+' 篇</span><span class="view-toggle" data-mode="source">信源</span>';
-    if (searchInput) searchInput.placeholder = '搜索全部 ' + timelineItems.length + ' 篇…';
-
-    if (filtered.length === 0) {
-      articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
-      return;
-    }
-
-    var html = '';
-    filtered.forEach(function(o, idx) {
-      var cls = 'article-item' + (idx === activeArticleIdx ? ' active' : '');
-      html += '<div class="'+cls+'" data-tidx="'+idx+'">';
-      html += '<div class="a-title">'+markText(o.item.title_zh || o.item.title)+'</div>';
-      html += '<div class="a-meta">';
-      html += '<span class="src-tag" style="background:'+adjColor(o.src.color)+'1f;color:'+adjColor(o.src.color)+'">'+esc(o.src.name)+'</span>';
-      html += '<span class="time">'+esc(o.item.time_str)+'</span>';
-      html += '</div></div>';
-    });
-    articleListEl.innerHTML = html;
-
-    articleListEl.querySelectorAll('.article-item').forEach(function(el) {
-      el.addEventListener('click', function() {
-        openArticle(parseInt(this.dataset.tidx));
-      });
-    });
-    bindViewToggle();
-  }
-
-  // ── 统一打开文章：只切 active class 不重绘列表，保留滚动位置 ──
-  function openArticle(idx) {
-    activeArticleIdx = idx;
-    var attr = viewMode === 'timeline' ? 'tidx' : 'idx';
-    var prev = articleListEl.querySelector('.article-item.active');
-    if (prev) prev.classList.remove('active');
-    var el = articleListEl.querySelector('.article-item[data-' + attr + '="' + idx + '"]');
-    if (el) {
-      el.classList.add('active');
-      el.scrollIntoView({ block: 'nearest' });
-    }
-    if (viewMode === 'timeline') renderTimelineReader(); else renderReader();
-    // 移动端：阅读区在列表下方，自动滚动避免“点了没反应”
-    if (window.innerWidth <= 700) readerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    updateHash();
-  }
-
-  // ── 当前列表总长（键盘导航用） ──
-  function currentListLen() {
-    if (viewMode === 'timeline') return timelineItems.length;
-    var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
-    return src ? filterItems(src.items).length : 0;
-  }
-
-  // ── Render reader for timeline ──
-  function renderTimelineReader() {
-    if (activeArticleIdx < 0 || activeArticleIdx >= timelineItems.length) {
-      readerEl.innerHTML = '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从列表选择一篇文章开始阅读</span></div>';
-      return;
-    }
-    var o = timelineItems[activeArticleIdx];
-    if (!o) return;
-    var html = buildReaderContent(o.item, o.src, false);
-    readerEl.innerHTML = html;
-    bindIframeLoad();
-  }
-
-  // ── iframe 加载完成后移除占位（避免 Python/JS 双层引号转义陷阱，不用内联 onload） ──
-  function bindIframeLoad() {
-    var f = readerEl.querySelector('.rc-iframe');
-    if (f) f.addEventListener('load', function() {
-      var l = document.getElementById('rcIframeLoading');
-      if (l) l.remove();
-    });
-  }
-
-  // ── View toggle ──
-  function bindViewToggle() {
-    var toggle = articleListHeaderEl.querySelector('.view-toggle');
-    if (toggle) {
-      toggle.addEventListener('click', function() {
-        switchMode(this.dataset.mode);
-      });
-    }
-  }
-
-  // ── Render reader ──
-  function renderReader() {
-    if (!activeSourceKey || activeArticleIdx < 0) {
-      readerEl.innerHTML = '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从左侧选择一篇文章开始阅读</span></div>';
-      return;
-    }
-    var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
-    if (!src) return;
-    var items = filterItems(src.items);
-    var item = items[activeArticleIdx];
-    if (!item) return;
-
-    var html = buildReaderContent(item, src, true);
-    readerEl.innerHTML = html;
-    bindIframeLoad();
-  }
-
-  // ── 共享：构建阅读区内容（摘要/原文双模式） ─
-  function buildReaderContent(item, src, showTransTag) {
-    var html = '<div class="reader-content">';
-    // 模式切换：摘要 | 阅读原文
-    html += '<div class="rc-mode-toggle">';
-    html += '<button class="'+(readerMode==='summary'?'active':'')+'" onclick="setReaderMode(&quot;summary&quot;)">摘要</button>';
-    html += '<button class="'+(readerMode==='original'?'active':'')+'" onclick="setReaderMode(&quot;original&quot;)">阅读原文</button>';
-    html += '</div>';
-    // 标题
-    html += '<h1 class="rc-title"><a href="'+esc(item.link)+'" target="_blank" rel="noopener">'+esc(item.title_zh || item.title)+'</a></h1>';
-    // 元信息
-    html += '<div class="rc-meta">';
-    html += '<span class="src-tag" style="background:'+adjColor(src.color)+'1f;color:'+adjColor(src.color)+'">'+esc(src.name)+'</span>';
-    html += '<span>'+esc(item.time_str)+'</span>';
-    if (showTransTag && item.title_zh && item.title_zh !== item.title) {
-      html += '<span style="font-size:11px;color:var(--faint)">（已翻译）</span>';
-    }
-    html += '</div>';
-
-    if (readerMode === 'original') {
-      // 原文模式：iframe 内嵌 + 降级提示
-      var isHttpLink = /^http:\/\//i.test(item.link || '');
-      html += '<div class="rc-iframe-wrap">';
-      if (isHttpLink) {
-        // https 页面内嵌 http 原文必被浏览器 Mixed Content 拦截，直接降级不再白屏
-        html += '<div class="rc-iframe-bar"><span>原文为 http 协议，浏览器安全策略禁止内嵌</span><a href="'+esc(item.link)+'" target="_blank" rel="noopener">新标签页打开 ↗</a></div>';
-        html += '<div class="rc-iframe-loading" style="height:120px">'+esc(item.link)+'</div>';
-      } else {
-        html += '<div class="rc-iframe-bar"><span>原文页面（若显示空白，该网站禁止内嵌）</span><a href="'+esc(item.link)+'" target="_blank" rel="noopener">新标签页打开 ↗</a></div>';
-        html += '<div class="rc-iframe-loading" id="rcIframeLoading">正在加载原文…</div>';
-        html += '<iframe class="rc-iframe" src="'+esc(item.link)+'" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer"></iframe>';
-      }
-      html += '</div>';
-    } else {
-      // 摘要模式：长摘要折叠 + 展开
-      if (item.summary_zh || item.summary) {
-        var summaryText = item.summary_zh || item.summary;
-        var needClamp = summaryText.length > 150;
-        html += '<div class="rc-summary'+(needClamp?' clamped':'')+'" id="rcSummary"';
-        if (summaryLang === 'translated') {
-          html += ' lang="en" translate="yes"';
-        }
-        html += '>'+esc(summaryText)+'</div>';
-        if (needClamp) {
-          html += '<div><button class="rc-expand" id="rcExpand" onclick="expandSummary()">展开全文 ▾</button></div>';
-        }
-        // 中文摘要无需浏览器翻译，不显示无效的原文/翻译切换
-        if (!isMostlyZh(summaryText)) {
-          html += '<div class="rc-lang-toggle">';
-          html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(&quot;original&quot;)">原文</button>';
-          html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(&quot;translated&quot;)">翻译</button>';
-          html += '</div>';
-        }
-      }
-      html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  // ── 阅读模式切换 ─
-  function setReaderMode(mode) {
-    readerMode = mode;
-    if (viewMode === 'timeline') renderTimelineReader();
-    else renderReader();
-  }
-
-  // ── 摘要语言切换 ─
-  function setSummaryLang(lang) {
-    summaryLang = lang;
-    var summaryEl = document.getElementById('rcSummary');
-    if (summaryEl) {
-      if (lang === 'translated') {
-        summaryEl.setAttribute('lang', 'en');
-        summaryEl.setAttribute('translate', 'yes');
-      } else {
-        summaryEl.removeAttribute('lang');
-        summaryEl.removeAttribute('translate');
-      }
-    }
-    // 重新渲染以更新按钮状态（兼容时间流视图）
-    if (viewMode === 'timeline') renderTimelineReader();
-    else renderReader();
-  }
-
-  // 内联 onclick 在全局作用域查找函数，必须挂到 window
-  window.setReaderMode = setReaderMode;
-  window.setSummaryLang = setSummaryLang;
-  window.expandSummary = expandSummary;
-
-  // ── 展开被折叠的长摘要 ─
-  function expandSummary() {
-    var el = document.getElementById('rcSummary');
-    if (el) el.classList.remove('clamped');
-    var b = document.getElementById('rcExpand');
-    if (b) b.remove();
-  }
-
-  // ── Filter ──
-  function filterItems(items) {
-    if (!searchQuery) return items;
-    var q = searchQuery.toLowerCase();
-    return items.filter(function(it) {
-      var t = (it.title_zh || it.title).toLowerCase();
-      var s = (it.summary_zh || it.summary || '').toLowerCase();
-      return t.indexOf(q) >= 0 || s.indexOf(q) >= 0;
-    });
-  }
-
-  // ── Search（150ms 防抖，避免每键全量重渲染） ──
-  if (searchInput) {
-    var searchTimer = null;
-    searchInput.addEventListener('input', function() {
-      var v = this.value.trim();
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(function() {
-        searchQuery = v;
-        if (activeArticleIdx >= currentListLen()) activeArticleIdx = -1;
-        renderArticleList();
-        if (viewMode === 'timeline') renderTimelineReader(); else renderReader();
-      }, 150);
-    });
-  }
-
-  // ── 键盘导航：↑/↓ 或 j/k 切换文章 ──
-  document.addEventListener('keydown', function(e) {
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) return;
-    var d = 0;
-    if (e.key === 'ArrowDown' || e.key === 'j') d = 1;
-    else if (e.key === 'ArrowUp' || e.key === 'k') d = -1;
-    if (!d) return;
-    e.preventDefault();
-    var max = currentListLen();
-    if (!max) return;
-    var ni = activeArticleIdx < 0 ? (d > 0 ? 0 : max - 1) : Math.min(max - 1, Math.max(0, activeArticleIdx + d));
-    if (ni !== activeArticleIdx) openArticle(ni);
+  document.getElementById('r2Body').addEventListener('scroll',function(){
+    var el=this,max=el.scrollHeight-el.clientHeight;
+    document.getElementById('r2Progress').style.width=(max>0?el.scrollTop/max*100:0)+'%';
   });
 
-  // ── Helpers ──
-  function esc(s) {
-    var d = document.createElement('div');
-    d.appendChild(document.createTextNode(s || ''));
-    return d.innerHTML;
-  }
-
-  // 暗色主题下提亮过暗的信源色（否则色点/标签与背景融为一体）
-  function adjColor(hex) {
-    if (document.documentElement.dataset.theme !== 'dark') return hex;
-    var m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
-    if (!m) return hex;
-    var n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-    var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    if (lum >= 0.35) return hex;
-    r = Math.round(r + (255 - r) * 0.45); g = Math.round(g + (255 - g) * 0.45); b = Math.round(b + (255 - b) * 0.45);
-    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-  }
-
-  // 文本是否以中文为主（中文摘要无需浏览器翻译）
-  function isMostlyZh(s) {
-    if (!s) return true;
-    var c = 0, n = 0;
-    for (var i = 0; i < s.length; i++) {
-      var ch = s.charCodeAt(i);
-      if (ch >= 0x4e00 && ch <= 0x9fff) c++;
-      if (ch > 32) n++;
-    }
-    return n === 0 || c / n > 0.2;
-  }
-
-  // 搜索命中标题高亮（split 方式，避开正则转义陷阱）
-  function markText(s) {
-    s = s || '';
-    if (!searchQuery) return esc(s);
-    var q = searchQuery.toLowerCase(), low = s.toLowerCase();
-    var out = '', i = 0;
-    while (true) {
-      var j = low.indexOf(q, i);
-      if (j < 0) { out += esc(s.slice(i)); break; }
-      out += esc(s.slice(i, j)) + '<mark>' + esc(s.slice(j, j + q.length)) + '</mark>';
-      i = j + q.length;
-    }
-    return out;
-  }
-
-  // ── URL 状态：可分享/刷新恢复 ──
-  function updateHash() {
-    var h = viewMode === 'timeline'
-      ? '#view=tl&idx=' + activeArticleIdx
-      : '#view=src&s=' + encodeURIComponent(activeSourceKey || '') + '&idx=' + activeArticleIdx;
-    try { history.replaceState(null, '', h); } catch (e) {}
-  }
-  function restoreFromHash() {
-    var h = (location.hash || '').replace(/^#/, '');
-    if (!h) return false;
-    var p = {};
-    h.split('&').forEach(function(kv) {
-      var s = kv.split('=');
-      if (s[0]) p[s[0]] = decodeURIComponent(s[1] || '');
+  /* ── Client translate ── */
+  var _ctCache={},_ctPend={};
+  function _clientTranslate(text,cb){
+    if(!text||isMostlyZh(text)){cb(text);return;}
+    var k=text.substring(0,100);
+    if(_ctCache[k]){cb(_ctCache[k]);return;}
+    if(_ctPend[k]){_ctPend[k].push(cb);return;}
+    _ctPend[k]=[cb];
+    var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(text.substring(0,500));
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      var res='';if(d&&d[0])for(var i=0;i<d[0].length;i++)if(d[0][i]&&d[0][i][0])res+=d[0][i][0];
+      var tr=(res&&res.length>text.length*0.3)?res:text;
+      _ctCache[k]=tr;var p=_ctPend[k]||[];delete _ctPend[k];p.forEach(function(f){f(tr);});
+    }).catch(function(){
+      _ctCache[k]=text;var p=_ctPend[k]||[];delete _ctPend[k];p.forEach(function(f){f(text);});
     });
-    var idx = parseInt(p.idx);
-    if (p.view === 'src' && p.s) {
-      var src = SOURCES.find(function(x){ return x.key === p.s; });
-      if (!src) return false;
-      activeSourceKey = p.s;
-      viewMode = 'source';
-      renderSidebar();
-      renderArticleList();
-      if (!isNaN(idx) && idx >= 0 && idx < filterItems(src.items).length) openArticle(idx);
-      else renderReader();
-      return true;
-    }
-    if (p.view === 'tl') {
-      buildTimeline();
-      viewMode = 'timeline';
-      renderSidebar();
-      renderArticleList();
-      if (!isNaN(idx) && idx >= 0 && idx < timelineItems.length) openArticle(idx);
-      else renderTimelineReader();
-      return true;
-    }
+  }
+
+  // ── Window exports ──
+  window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; renderWall(); };
+  window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
+  window.clearSrcF = function(e){ e.stopPropagation(); filter={type:'all'}; curArt=null; renderChips(); renderWall(); renderPanel(); };
+  window.toggleSrcPanel = toggleSrcPanel;
+  window.selectSrc = selectSrc;
+
+  /* ── Keyboard nav ── */
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape'){window.closeOverlays();return;}
+    if(e.target.tagName==='INPUT') return;
+    var order=visibleArts();
+    if(!curArt){if(e.key==='j'||e.key==='ArrowRight'){if(order[0])openReader(order[0]);}return;}
+    var pos=-1;
+    for(var i=0;i<order.length;i++){if(artKey(order[i])===artKey(curArt)){pos=i;break;}}
+    if(e.key==='j'||e.key==='ArrowRight'){if(pos<order.length-1)openReader(order[pos+1]);}
+    if(e.key==='k'||e.key==='ArrowLeft'){if(pos>0)openReader(order[pos-1]);}
+  });
+
+  /* ── Helpers ── */
+  function esc(s){var d=document.createElement('div');d.appendChild(document.createTextNode(s||''));return d.innerHTML;}
+  function adjColor(hex){
+    if(document.documentElement.dataset.theme!=='dark')return hex;
+    var m=/^#?([0-9a-fA-F]{6})$/.exec(hex||'');if(!m)return hex;
+    var n=parseInt(m[1],16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+    var lum=(0.299*r+0.587*g+0.114*b)/255;
+    if(lum>=0.35)return hex;
+    r=Math.round(r+(255-r)*0.45);g=Math.round(g+(255-g)*0.45);b=Math.round(b+(255-b)*0.45);
+    return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+  }
+  function isMostlyZh(s){
+    if(!s)return true;var c=0,n=0;
+    for(var i=0;i<s.length;i++){var ch=s.charCodeAt(i);if(ch>=0x4e00&&ch<=0x9fff)c++;if(ch>32)n++;}
+    return n===0||c/n>0.2;
+  }
+
+  /* ── URL hash ── */
+  function updateHash(){
+    var p='#view='+(filter.type==='cat'?'cat&c='+filter.cat:filter.type==='src'?'src&s='+encodeURIComponent(filter.src):'all');
+    try{history.replaceState(null,'',p);}catch(e){}
+  }
+  function restoreFromHash(){
+    var h=(location.hash||'').replace(/^#/,'');if(!h)return false;
+    var p={};h.split('&').forEach(function(kv){var s=kv.split('=');if(s[0])p[s[0]]=decodeURIComponent(s[1]||'');});
+    if(p.view==='cat'&&p.c){filter={type:'cat',cat:p.c};return true;}
+    if(p.view==='src'&&p.s){filter={type:'src',src:p.s};return true;}
     return false;
   }
 
-  // ── Init ─
-  renderSidebar();
-  if (!restoreFromHash()) {
-    // 默认落在时间线并选中第一篇：打开即见最新资讯，而非最旧信源的空白页
-    buildTimeline();
-    if (timelineItems.length) {
-      viewMode = 'timeline';
-      renderSidebar();
-      renderArticleList();
-      openArticle(0);
-    } else {
-      var firstSrc = SOURCES.find(function(s){ return s.items.length > 0; });
-      if (firstSrc) selectSource(firstSrc.key);
-    }
-  }
-  // 页脚相对时间
+  /* ── Init ── */
+  var restored = restoreFromHash();
+  renderChips(); renderWall(); renderPanel();
   var relEl = document.getElementById('buildRel');
-  if (relEl && BUILD_TS) {
-    var mins = Math.max(0, Math.round((Date.now() - BUILD_TS) / 60000));
-    relEl.textContent = (mins < 60 ? mins + ' 分钟前' : mins < 1440 ? Math.round(mins / 60) + ' 小时前' : Math.round(mins / 1440) + ' 天前') + ' · ';
+  if(relEl && BUILD_TS){
+    var mins=Math.max(0,Math.round((Date.now()-BUILD_TS)/60000));
+    relEl.textContent=(mins<60?mins+' \u5206\u949f\u524d':mins<1440?Math.round(mins/60)+' \u5c0f\u65f6\u524d':Math.round(mins/1440)+' \u5929\u524d');
   }
 
-  // ── Live RSS update ──
-  // 状态指示器放信源列表头部（避免被 107 个信源淹没）
-  function setLiveStatus(text) {
-    var header = document.querySelector('.sidebar-header');
-    if (!header) return;
-    var el = document.getElementById('rssLiveTime');
-    if (!el) {
-      el = document.createElement('span');
-      el.id = 'rssLiveTime';
-      el.style.cssText = 'font-size:11px;color:var(--faint);font-family:var(--mono);display:block;padding-top:4px;';
-      header.appendChild(el);
-    }
-    el.textContent = text;
-  }
-  setLiveStatus('\u27f3 \u6b63\u5728\u83b7\u53d6\u6700\u65b0\u5185\u5bb9...');
+  /* ── Live RSS update ── */
+  var liveEl = document.getElementById('liveStatus');
   setTimeout(function(){
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function(){ controller.abort(); }, 12000); // 12s timeout
-    fetch('/api/rss', { signal: controller.signal }).then(function(r){
-      clearTimeout(timeoutId);
-      if(!r.ok) throw new Error('API '+r.status);
-      return r.json();
+    var ctrl=new AbortController();
+    var tid=setTimeout(function(){ctrl.abort();},12000);
+    fetch('/api/rss',{signal:ctrl.signal}).then(function(r){
+      clearTimeout(tid);if(!r.ok)throw new Error('API '+r.status);return r.json();
     }).then(function(data){
-      if(!data.sources) return;
-      var updated = 0;
+      if(!data.sources)return;var updated=0;
       data.sources.forEach(function(live){
-        if(!live.items||!live.items.length) return;
-        var src = SOURCES.find(function(s){ return s.key === live.key; });
-        if(!src) return;
-        live.items.forEach(function(it){
-          it.title_zh = it.title;
-          it.summary_zh = it.summary || '';
-        });
-        src.items = live.items;
-        updated++;
+        if(!live.items||!live.items.length)return;
+        var src=SOURCES.find(function(s){return s.key===live.key;});if(!src)return;
+        live.items.forEach(function(it){it.title_zh=it.title;it.summary_zh=it.summary||'';});
+        src.items=live.items;updated++;
       });
-      if(updated > 0){
-        renderSidebar();
-        if(viewMode === 'timeline') buildTimeline();
-        renderArticleList();
-        if(viewMode === 'timeline') renderTimelineReader(); else renderReader();
-        var now = new Date();
-        setLiveStatus('\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'));
-        console.log('[RSS] Live updated:', updated, 'sources');
+      if(updated>0){
+        renderChips();renderWall();renderPanel();
+        if(liveEl){var now=new Date();liveEl.textContent='\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
       }
     }).catch(function(e){
-      // github.io 静态域无 /api/rss（404），文案如实说明降级为静态构建数据
-      setLiveStatus('\u00b7 \u663e\u793a\u9759\u6001\u6784\u5efa\u6570\u636e');
-      console.warn('[RSS] Live update failed:', e.message);
+      if(liveEl)liveEl.textContent='\u00b7 \u663e\u793a\u9759\u6001\u6784\u5efa\u6570\u636e';
     });
-  }, 800);
+  },800);
 })();
 </script>
 """
 
 
 def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
-    """生成完整 HTML 页面。"""
+    """生成完整 HTML 页面 — 卡片墙 + 抽屉阅读器。"""
     return (
         '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
         '<meta charset="utf-8">\n'
@@ -1459,26 +994,29 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<style>' + _build_css() + '</style>\n'
         '</head>\n<body>\n'
         + _build_header() +
-        '<div class="app">\n'
-        '<div class="sidebar" id="sidebar">'
-        '<div class="sidebar-header">'
-        '<h2>信源列表</h2>'
-        '<div class="sidebar-search">'
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-        '<input id="sidebarSearch" type="search" placeholder="搜索文章…" autocomplete="off">'
-        '</div></div>'
-        '<div id="sidebarSources"></div></div>\n'
-        '<div class="article-list" id="articleList">'
-        '<div class="article-list-header" id="articleListHeader"><h3>选择一个信源</h3></div>'
-        '<div id="articleListItems"><div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">点击左侧信源查看文章</div></div>'
+        '<div class="toolbar">\n'
+        '<h1>时间线</h1>\n'
+        '<button class="src-btn" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h13M4 18h9"/></svg> 信源 <span class="cnt" id="srcCnt"></span></button>\n'
+        '<div class="chips" id="chips"></div>\n'
+        '<span id="fpillWrap"></span>\n'
+        '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
-        '<div class="reader" id="reader">'
-        '<div class="reader-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>从左侧选择一篇文章开始阅读</span></div>'
-        '</div>\n'
-        '</div>\n'
-        '<div style="text-align:center;padding:6px 0;font-size:11px;color:var(--faint);font-family:var(--mono);border-top:1px solid var(--line);flex:none;background:var(--bg);">'
-        '自动生成于 ' + _esc(build_time) + '（北京时间）· 共 ' + str(total_items) + ' 篇 · <span id="buildRel"></span>StarHub RSS Aggregator'
-        '</div>\n'
+        '<div class="wall-wrap"><div class="wall" id="wall"></div></div>\n'
+        '<div class="scrim" onclick="closeOverlays()"></div>\n'
+        '<aside class="src-panel" id="srcPanel">\n'
+        '<div class="sp-head"><div class="row"><h2>信源</h2>\n'
+        '<button class="sp-close" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>\n'
+        '</div><label class="sp-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>\n'
+        '<input id="spSearch" placeholder="搜索信源…" autocomplete="off"></label></div>\n'
+        '<div class="sp-list" id="spList"></div></aside>\n'
+        '<aside class="reader2" id="reader2">\n'
+        '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
+        '<span class="r2-src" id="r2Src"></span>\n'
+        '<div class="r2-acts"><div class="seg" id="r2Seg"><button data-m="summary">快览</button><button data-m="full">全文</button></div>\n'
+        '<a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
+        '<div class="r2-progress" id="r2Progress"></div></div>\n'
+        '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
+        '<div class="footer">自动生成于 ' + _esc(build_time) + '（北京时间）· 共 ' + str(total_items) + ' 篇 · <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         + _build_js(sources_with_items, build_ts_ms) +
         '</body>\n</html>'
     )
