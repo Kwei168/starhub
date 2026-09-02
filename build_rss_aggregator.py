@@ -110,7 +110,8 @@ def _accumulate_history(sources_with_items):
             if not link:
                 continue
             pd_str = it.get("pub_date", "")
-            # 跳过无日期或过期的文章
+            # 解析日期：无日期或解析失败时使用当前时间作为回退
+            pd_bj = now_bj.replace(tzinfo=None)  # 默认当前时间
             if pd_str:
                 try:
                     pd = datetime.datetime.fromisoformat(pd_str)
@@ -118,10 +119,10 @@ def _accumulate_history(sources_with_items):
                         pd_bj = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
                     else:
                         pd_bj = pd
-                    if pd_bj < cutoff:
-                        continue
                 except ValueError:
-                    pass
+                    pass  # 保持默认当前时间
+            if pd_bj < cutoff:
+                continue  # 过期文章跳过
             _rss_history[link] = {
                 "link": link,
                 "source": src["name"], "source_key": src["key"],
@@ -137,6 +138,7 @@ def _accumulate_history(sources_with_items):
     expired = []
     for link, item in _rss_history.items():
         pd_str = item.get("pub_date", "")
+        pd_bj = now_bj.replace(tzinfo=None)  # 默认当前时间
         if pd_str:
             try:
                 pd = datetime.datetime.fromisoformat(pd_str)
@@ -144,10 +146,10 @@ def _accumulate_history(sources_with_items):
                     pd_bj = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
                 else:
                     pd_bj = pd
-                if pd_bj < cutoff:
-                    expired.append(link)
             except ValueError:
-                pass
+                pass  # 保持默认当前时间
+        if pd_bj < cutoff:
+            expired.append(link)
     for link in expired:
         del _rss_history[link]
 
@@ -171,6 +173,36 @@ def _accumulate_history(sources_with_items):
     print("[历史] 合并 %d 篇新文，裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
         new_count, pruned, len(_rss_history), RSS_HISTORY_HOURS))
     return result, total
+
+
+def _save_api_snapshot(sources_with_items):
+    """生成 API 快照 JSON，供 /api/rss 直接返回，避免实时抓取丢失历史累积数据"""
+    snapshot_sources = []
+    for src in sources_with_items:
+        items = []
+        for it in src.get("items", []):
+            items.append({
+                "t": it.get("title_zh", "") or it.get("title", ""),
+                "u": it.get("link", "#"),
+                "s": it.get("summary_zh", "") or it.get("summary", ""),
+                "d": it.get("pub_date", ""),
+            })
+        snapshot_sources.append({
+            "key": src["key"], "name": src["name"],
+            "cat": src["cat"], "color": src["color"],
+            "items": items,
+        })
+    snapshot = {
+        "t": _now_bj().isoformat(),
+        "sources": snapshot_sources,
+    }
+    try:
+        with open("rss_api_snapshot.json", "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, ensure_ascii=False)
+        total_items = sum(len(s["items"]) for s in snapshot_sources)
+        print("[快照] 保存 API 快照: %d 源, %d 篇" % (len(snapshot_sources), total_items))
+    except Exception as e:
+        print("[快照] 保存失败: %s" % e, file=sys.stderr)
 
 
 # ── RSS 信源配置（按分类组织，111 个精选源，已去除公众号/失效/重复/停更源） ─
@@ -1209,6 +1241,9 @@ def main():
 
     # 累积到 72 小时历史，用累积数据替换当次抓取
     sources_with_items, total_items = _accumulate_history(sources_with_items)
+
+    # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
+    _save_api_snapshot(sources_with_items)
 
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms)
     with open(OUT, "w", encoding="utf-8") as f:
