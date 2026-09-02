@@ -312,6 +312,26 @@ RSS 聚合页面从纯静态构建升级为 API-First 实时架构：
 - **关键**：GitHub Pages 无法执行 Serverless 函数，API 调用必须使用 Vercel 完整 URL
 - **缓存差异**：Vercel CDN 缓存约 5 分钟，GitHub Pages 缓存 10 分钟（`max-age=600`）
 
+### 7.13 翻译缓存架构（2026-09-02）
+**问题**：API 层（Node.js）无法调用 Python 翻译服务，导致实时数据无翻译
+
+**解决方案**：构建时翻译 + 缓存共享
+```
+构建时（Python）：抓取 RSS → 翻译 → 保存 translations.json（MD5 hash → 中文）
+                                    ↓
+API 实时（Node.js）：抓取 RSS → 查 translations.json → 返回（有翻译用翻译，无翻译用原文）
+```
+
+**关键文件**：
+- `translations.json`：翻译缓存，14000+ 条，MD5 hash 作为 key
+- `api/rss.js`：加载翻译缓存，应用翻译到返回数据
+- `build_rss_aggregator.py`：构建时翻译标题和摘要，保存缓存
+
+**优势**：
+- 翻译只在构建时进行（利用 Python 四端点降级链）
+- API 实时性不受影响（查缓存很快）
+- 下次构建时，已翻译的内容不重复翻译（缓存命中）
+
 ---
 
 ## 八、技术栈总结
