@@ -1,6 +1,6 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-08-29
+> 最后更新：2026-09-02
 
 ## 一、项目一句话
 
@@ -98,7 +98,8 @@
 | `api/refresh.js` | `/api/refresh` | POST | X-Refresh-Key + Origin 白名单 | 10s | 触发 GitHub Actions workflow_dispatch |
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
-| `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36氪(RSSHub镜像链)+Redis博客 RSS 代理，输出干净 JSON，10min 缓存 |
+| `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合实时 API，111 源全量抓取，10 路并发，8s 超时，滚动缓存，5min 服务端缓存 |
 
 ### 配置
 
@@ -296,6 +297,20 @@ cron-job.org 的请求没有浏览器 Origin header，被 403 拒绝。
 ### 7.10 news.js 放行无 Origin 请求
 部分环境同源请求不携带 Origin header，严格白名单会导致误拦。
 **解决**：`origin === ''` 时也放行（只读公开数据无敏感信息），但仅对白名单内源回显 ACAO 头。
+
+### 7.11 RSS 聚合器 API-First 架构（2026-09-02）
+RSS 聚合页面从纯静态构建升级为 API-First 实时架构：
+- 页面加载时立即调用 `https://starhub-refresh.vercel.app/api/rss` 获取实时数据
+- 失败时回退到静态构建数据（显示"· 静态构建数据"）
+- **CORS 配置**：`api/rss.js` 添加 `Access-Control-Allow-Origin: *`，允许 GitHub Pages 跨域访问
+- **字段映射**：API 返回缩写字段（`t`=title, `u`=url, `s`=summary, `d`=date），前端需转换
+- **已读标记 CSS**：Python 字符串中 unicode 转义需双反斜杠（`\\5df2 \\8bfb`），否则被解释为八进制
+
+### 7.12 GitHub Pages 与 Vercel 双域名部署
+- 主站：`https://starhub-refresh.vercel.app`（Vercel，支持 Serverless API）
+- 镜像：`https://kwei168.github.io/starhub/`（GitHub Pages，静态托管）
+- **关键**：GitHub Pages 无法执行 Serverless 函数，API 调用必须使用 Vercel 完整 URL
+- **缓存差异**：Vercel CDN 缓存约 5 分钟，GitHub Pages 缓存 10 分钟（`max-age=600`）
 
 ---
 
