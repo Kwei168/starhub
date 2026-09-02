@@ -35,11 +35,17 @@ function extractAttr(xml, tag, attr) {
 }
 
 function stripHtml(text) {
+  if (!text) return '';
   return text
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')  // 先提取 CDATA
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')  // 移除 script
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')    // 移除 style
+    .replace(/<[^>]+>/g, '')                            // 移除所有 HTML 标签
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&#\d+;/g, '')                             // 移除数字实体
+    .replace(/&[a-z]+;/gi, '')                          // 移除命名实体
+    .replace(/\s+/g, ' ')                               // 合并空白
     .trim();
 }
 
@@ -204,9 +210,25 @@ export default async function handler(req, res) {
     
     const results = await fetchAllBatched(sources);
     
+    // 日期过滤：只保留最近 72 小时的文章
+    const cutoff = new Date(now - 72 * 60 * 60 * 1000);
+    const filtered = results.map(source => {
+      if (!source.items) return source;
+      const filteredItems = source.items.filter(item => {
+        if (!item.d) return false;  // 无日期则过滤
+        try {
+          const pubDate = new Date(item.d);
+          return pubDate >= cutoff;
+        } catch {
+          return false;  // 日期解析失败则过滤
+        }
+      });
+      return { ...source, items: filteredItems };
+    });
+    
     const response = {
       t: new Date().toISOString(),
-      sources: results,
+      sources: filtered,
     };
     
     // 更新完整响应缓存
