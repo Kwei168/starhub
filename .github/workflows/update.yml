@@ -62,6 +62,7 @@ jobs:
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # 项目链接通过环境变量生效（Vercel CLI 不支持 --project-id 命令行参数）
           VERCEL_PROJECT_ID: prj_7gK5d3EOJYTC8AmUxR2cNuHi7arB
           VERCEL_ORG_ID: team_iovvEy0us9KkCNkuMRLQrIeA
-        run: npx --yes vercel --prod --yes --token "$VERCEL_TOKEN" --project-id "$VERCEL_PROJECT_ID" --org-id "$VERCEL_ORG_ID"
+        run: npx --yes vercel --prod --yes --token "$VERCEL_TOKEN"
