@@ -29,6 +29,11 @@ RSS_CACHE_TTL = 1800  # RSS 缓存有效期：30 分钟
 _trans_cache = {}  # {text_hash: translated_text}
 _rss_cache = {}    # {source_key: {"items": [...], "fetched_at": timestamp}}
 
+# ── 72 小时内容累积 ──
+RSS_HISTORY_FILE = "rss_history.json"
+RSS_HISTORY_HOURS = 72
+_rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, summary, summary_zh, pub_date, time_str}}
+
 # ── 翻译统计 
 _TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
 
@@ -68,6 +73,104 @@ def _save_caches():
         print("[缓存] 保存 RSS 缓存: %d 个源" % len(_rss_cache))
     except Exception as e:
         print("[缓存] 保存 RSS 缓存失败: %s" % e, file=sys.stderr)
+
+def _load_history():
+    """加载 72 小时文章历史"""
+    global _rss_history
+    if os.path.exists(RSS_HISTORY_FILE):
+        try:
+            with open(RSS_HISTORY_FILE, "r", encoding="utf-8") as f:
+                _rss_history = json.load(f)
+            print("[历史] 加载文章历史: %d 篇" % len(_rss_history))
+        except Exception as e:
+            print("[历史] 加载失败: %s" % e, file=sys.stderr)
+            _rss_history = {}
+
+
+def _save_history():
+    """保存 72 小时文章历史"""
+    try:
+        with open(RSS_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(_rss_history, f, ensure_ascii=False)
+        print("[历史] 保存文章历史: %d 篇" % len(_rss_history))
+    except Exception as e:
+        print("[历史] 保存失败: %s" % e, file=sys.stderr)
+
+
+def _accumulate_history(sources_with_items):
+    """将新抓取的文章合并到 72 小时历史，裁剪过期内容，返回重组后的 sources_with_items"""
+    now_bj = _now_bj()
+    cutoff = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=RSS_HISTORY_HOURS)
+
+    # 合并新文章（按 link 去重，新数据覆盖旧数据）
+    new_count = 0
+    for src in sources_with_items:
+        for it in src.get("items", []):
+            link = it.get("link", "")
+            if not link:
+                continue
+            pd_str = it.get("pub_date", "")
+            # 跳过无日期或过期的文章
+            if pd_str:
+                try:
+                    pd = datetime.datetime.fromisoformat(pd_str)
+                    if pd.tzinfo:
+                        pd_bj = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+                    else:
+                        pd_bj = pd
+                    if pd_bj < cutoff:
+                        continue
+                except ValueError:
+                    pass
+            _rss_history[link] = {
+                "source": src["name"], "source_key": src["key"],
+                "cat": src["cat"], "color": src["color"],
+                "title": it.get("title", ""), "title_zh": it.get("title_zh", ""),
+                "summary": it.get("summary", ""), "summary_zh": it.get("summary_zh", ""),
+                "pub_date": pd_str,
+            }
+            new_count += 1
+
+    # 裁剪超过 72 小时的旧文章
+    before = len(_rss_history)
+    expired = []
+    for link, item in _rss_history.items():
+        pd_str = item.get("pub_date", "")
+        if pd_str:
+            try:
+                pd = datetime.datetime.fromisoformat(pd_str)
+                if pd.tzinfo:
+                    pd_bj = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+                else:
+                    pd_bj = pd
+                if pd_bj < cutoff:
+                    expired.append(link)
+            except ValueError:
+                pass
+    for link in expired:
+        del _rss_history[link]
+
+    # 按源重组，更新相对时间
+    src_map = {}
+    for src in sources_with_items:
+        src_map[src["key"]] = {
+            "key": src["key"], "name": src["name"],
+            "cat": src["cat"], "color": src["color"], "items": [],
+        }
+    for item in _rss_history.values():
+        sk = item["source_key"]
+        if sk in src_map:
+            entry = dict(item)
+            entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
+            src_map[sk]["items"].append(entry)
+
+    result = list(src_map.values())
+    total = sum(len(s["items"]) for s in result)
+    pruned = before - len(_rss_history)
+    print("[历史] 合并 %d 篇新文，裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
+        new_count, pruned, len(_rss_history), RSS_HISTORY_HOURS))
+    return result, total
+
 
 # ── RSS 信源配置（按分类组织，107 个精选源，已去除公众号/失效/重复/停更源） ─
 RSS_SOURCES = [
@@ -1032,6 +1135,7 @@ def main():
 
     # 加载缓存
     _load_caches()
+    _load_history()
 
     sources_with_items = []
     total_items = 0
@@ -1063,7 +1167,10 @@ def main():
         print("[RSS聚合] %s: %d 条" % (src["name"], n))
 
     if total_items == 0:
-        print("[RSS聚合] 所有源均失败，生成空页面", file=sys.stderr)
+        print("[RSS聚合] 所有源均失败，尝试使用历史数据", file=sys.stderr)
+
+    # 累积到 72 小时历史，用累积数据替换当次抓取
+    sources_with_items, total_items = _accumulate_history(sources_with_items)
 
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms)
     with open(OUT, "w", encoding="utf-8") as f:
@@ -1079,6 +1186,7 @@ def main():
 
     # 保存缓存
     _save_caches()
+    _save_history()
 
     return True
 
