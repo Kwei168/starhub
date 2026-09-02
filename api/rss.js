@@ -246,10 +246,12 @@ export default async function handler(req, res) {
         // 应用翻译缓存
         const titleHash = md5(item.t || '');
         const summaryHash = md5(item.s || '');
+        const translatedTitle = transCache[titleHash] || item.t;
+        const translatedSummary = transCache[summaryHash] || item.s;
         return {
           ...item,
-          t: transCache[titleHash] || item.t,  // 有翻译用翻译，无翻译用原文
-          s: transCache[summaryHash] || item.s,
+          t: stripHtml(translatedTitle),  // 清理 HTML
+          s: stripHtml(translatedSummary),  // 清理 HTML
         };
       });
       return { ...source, items: filteredItems };
