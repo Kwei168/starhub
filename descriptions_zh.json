@@ -328,5 +328,10 @@
  "debpalash/VoiceStudio": "VoiceStudio 是 ElevenLabs 的开源、完全本地化替代方案 — 提供 646 种语言的语音克隆、语音设计、视频配音、听写、转录和有声读物创建。",
  "career-ops-hq/career-ops": "开源 AI 职位搜索：扫描职位门户，将列表评估为具有全局 1-5 分的结构化 A-H 报告，定制您的简历，跟踪应用程序 - 在您的 AI 编码 CLI 中本地运行（Claude Code、Codex、OpenCode、Antigravity...）",
  "Imbad0202/academic-research-skills": "克劳德·代码的学术研究技巧：研究→写作→审阅→修改→定稿",
- "ara-mkr/Wonder-Pill": "克劳德的一项技能，将头脑风暴变成了颠倒假设的交互式思维导图——没有答案，没有排名，只有挑衅。"
+ "ara-mkr/Wonder-Pill": "克劳德的一项技能，将头脑风暴变成了颠倒假设的交互式思维导图——没有答案，没有排名，只有挑衅。",
+ "pacifio/atlas": "代理商的源头控制。使用多个编码代理，跟踪它们的更改并在一处查询它们",
+ "earendil-works/pi": "AI代理工具包：统一LLM API、代理循环、TUI、编码代理CLI",
+ "arcboxlabs/arcbox": "在真实且隔离的机器（自己的内核、文件系统和网络）上运行 AI 代理，启动时间小于 100 毫秒。本地优先、OCI 兼容、纯 Rust。",
+ "datawhalechina/hello-agents": "📚 《从零开始构建智能体》——从零开始的智能体原理与实践教程",
+ "blader/humanizer": "代理技能可消除文本中人工智能生成的书写痕迹"
 }
