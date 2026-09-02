@@ -1182,10 +1182,10 @@ def main():
         if n > 0:
             ok_count += 1
 
-        # 只翻译标题（摘要保留原文，用户可用浏览器翻译）
+        # 翻译标题和摘要
         for it in items:
             it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
-            it["summary_zh"] = it.get("summary", "")  # 摘要不翻译，保留原文
+            it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
             it["time_str"] = _fmt_rel_time(it.get("pub_date"))
             # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
             pd = it.get("pub_date")
