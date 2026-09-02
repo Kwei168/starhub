@@ -221,7 +221,7 @@ def _strip_html(text):
     return text.strip()
 
 
-def _truncate(s, maxlen=200):
+def _truncate(s, maxlen=500):
     if not s:
         return ""
     s = s.strip()
@@ -273,6 +273,12 @@ def _parse_rss_date(s):
 def _fmt_rel_time(dt):
     if dt is None:
         return ""
+    # 缓存命中时 pub_date 已是 ISO 字符串（主流程会将其序列化），先反序列化
+    if isinstance(dt, str):
+        try:
+            dt = datetime.datetime.fromisoformat(dt)
+        except ValueError:
+            return ""
     # Convert to Beijing time, handling both aware and naive datetimes
     if dt.tzinfo:
         bj = dt.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
@@ -486,7 +492,7 @@ def _build_css():
 }
 [data-theme="dark"] {
   --bg:#161412; --card:#1d1a17; --card-2:#262019; --card-3:#2f2820;
-  --ink:#ece7df; --muted:#a59d90; --faint:#8a8275;
+  --ink:#ece7df; --muted:#a59d90; --faint:#9a9284;
   --line:#37312a; --line-strong:#4a4339;
   --brand:#8fb3d9; --brand-strong:#b0cbe6; --brand-line:#3d5a78; --brand-weak:#22303f;
   --accent-solid:#9db8d4;
@@ -525,7 +531,7 @@ header {
 .hd .logo .t span { font-size:11px; color:var(--muted); font-weight:400; margin-left:3px; font-family:var(--body); }
 .hd .nav-links { display:flex; align-items:center; gap:2px; flex:1; }
 .hd .nav-links a {
-  display:inline-flex; align-items:center; gap:5px;
+  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
   padding:5px 12px; border-radius:999px; font-size:12.5px; font-weight:500;
   border:1px solid transparent; transition:all .15s;
 }
@@ -575,6 +581,7 @@ header {
   padding:8px 14px 4px; font-size:11px; font-weight:700; color:var(--faint);
   text-transform:uppercase; letter-spacing:.05em; cursor:pointer;
   display:flex; align-items:center; gap:4px; user-select:none;
+  position:sticky; top:0; z-index:2; background:var(--card);
 }
 .cat-title .arrow { transition:transform .15s; font-size:10px; }
 .cat-title.collapsed .arrow { transform:rotate(-90deg); }
@@ -644,7 +651,7 @@ header {
 }
 .article-item .a-meta .src-tag {
   display:inline-flex; align-items:center; gap:3px;
-  padding:1px 6px; border-radius:999px; font-size:10px; font-weight:600; color:#fff;
+  padding:1px 6px; border-radius:999px; font-size:11px; font-weight:600; color:#fff;
 }
 .article-item .a-meta .time { font-family:var(--mono); margin-left:auto; }
 
@@ -736,6 +743,30 @@ header {
   display:block; width:100%; height:70vh; border:none; background:#fff;
 }
 
+/* 侧栏顶部时间线伪信源项 */
+.source-item.tl-pseudo .source-dot { background:var(--brand); }
+
+/* 搜索命中高亮 */
+.article-item mark { background:#fde68a; color:inherit; border-radius:2px; padding:0 1px; }
+[data-theme="dark"] .article-item mark { background:#7a5c1e; color:#fde68a; }
+
+/* 摘要折叠与展开 */
+.reader-content .rc-summary.clamped {
+  display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden;
+}
+.reader-content .rc-expand {
+  margin-top:8px; padding:4px 12px; border-radius:var(--radius);
+  border:1px solid var(--line); background:transparent;
+  color:var(--brand-strong); font-size:12px; font-weight:600;
+}
+.reader-content .rc-expand:hover { background:var(--brand-weak); }
+
+/* iframe 加载占位 */
+.reader-content .rc-iframe-loading {
+  height:70vh; display:flex; align-items:center; justify-content:center;
+  color:var(--faint); font-size:12px; background:#fff;
+}
+
 /* ── Responsive ── */
 @media (max-width:900px) {
   .sidebar { width:200px; }
@@ -768,6 +799,14 @@ header {
   .reader { min-height:400px; }
   .reader-content { padding:16px; }
 }
+@media (max-width:480px) {
+  .hd { gap:6px; padding:6px 8px; }
+  .hd .logo .t span { display:none; }
+  .hd .nav-links a { padding:4px 8px; font-size:12px; gap:3px; }
+  .hd .nav-links a .icon { width:11px; height:11px; }
+  .hd .acts .btn { width:26px; height:26px; }
+  .article-item .a-meta .src-tag { font-size:11px; }
+}
 """
 
 
@@ -794,13 +833,15 @@ def _build_header():
 """
 
 
-def _build_js(sources_with_items):
+def _build_js(sources_with_items, build_ts_ms=0):
     """sources_with_items: list of source dicts with items embedded."""
     data_json = json.dumps(sources_with_items, ensure_ascii=False)
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
     return """
 <script>
 (function(){
+  var BUILD_TS = """ + str(int(build_ts_ms)) + """;
+
   // ── Theme ──
   var themeKey='wb_starhub_theme_v1';
   var t=localStorage.getItem(themeKey)||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
@@ -810,7 +851,14 @@ def _build_js(sources_with_items):
     var nt=document.documentElement.dataset.theme==='dark'?'light':'dark';
     try{localStorage.setItem(themeKey,nt);}catch(e){}
     document.documentElement.dataset.theme=nt;
+    refreshColors();
   };
+  // 主题切换后重绘依赖品牌色的视图（暗色色点提亮等）
+  function refreshColors(){
+    renderSidebar();
+    renderArticleList();
+    if (viewMode === 'timeline') renderTimelineReader(); else renderReader();
+  }
 
   // ── Data ─
   var SOURCES = """ + data_json + """;
@@ -835,6 +883,12 @@ def _build_js(sources_with_items):
   // ── Render sidebar ──
   function renderSidebar() {
     var html = '';
+    // 置顶时间线伪信源项（默认视图入口）
+    html += '<div class="source-item tl-pseudo' + (viewMode === 'timeline' ? ' active' : '') + '" data-key="__tl__">';
+    html += '<span class="source-dot"></span>';
+    html += '<span class="source-name">⏱ 全部·最新时间线</span>';
+    html += '<span class="source-count">' + SOURCES.reduce(function(n,s){return n+s.items.length;},0) + '</span>';
+    html += '</div>';
     var cats = {};
     SOURCES.forEach(function(src) {
       if (!cats[src.cat]) cats[src.cat] = [];
@@ -849,9 +903,9 @@ def _build_js(sources_with_items):
       html += '<div class="cat-title" data-cat="'+catKey+'"><span class="arrow">▼</span> '+esc(label)+'</div>';
       html += '<div class="cat-sources">';
       srcs.forEach(function(src) {
-        var cls = 'source-item' + (src.key === activeSourceKey ? ' active' : '');
+        var cls = 'source-item' + (src.key === activeSourceKey && viewMode === 'source' ? ' active' : '');
         html += '<div class="'+cls+'" data-key="'+esc(src.key)+'">';
-        html += '<span class="source-dot" style="background:'+esc(src.color)+'"></span>';
+        html += '<span class="source-dot" style="background:'+adjColor(src.color)+'"></span>';
         html += '<span class="source-name">'+esc(src.name)+'</span>';
         html += '<span class="source-count">'+src.items.length+'</span>';
         html += '</div>';
@@ -872,7 +926,9 @@ def _build_js(sources_with_items):
     // Source click
     sidebarEl.querySelectorAll('.source-item').forEach(function(el) {
       el.addEventListener('click', function() {
-        selectSource(this.dataset.key);
+        var k = this.dataset.key;
+        if (k === '__tl__') switchMode('timeline');
+        else selectSource(k);
       });
     });
   }
@@ -880,10 +936,30 @@ def _build_js(sources_with_items):
   // ── Select source ──
   function selectSource(key) {
     activeSourceKey = key;
-    activeArticleIdx = -1;
+    viewMode = 'source';
+    // 自动选中新源的第一篇（避免阅读区空状态）
+    var src = SOURCES.find(function(s){return s.key===key});
+    activeArticleIdx = (src && src.items && src.items.length) ? 0 : -1;
     renderSidebar();
     renderArticleList();
     renderReader();
+    updateHash();
+  }
+
+  // ── Switch view mode ──
+  function switchMode(m) {
+    if (viewMode === m && m !== 'source') return;
+    viewMode = m;
+    if (m === 'timeline') {
+      buildTimeline();
+      activeArticleIdx = timelineItems.length ? 0 : -1;
+    } else {
+      activeArticleIdx = -1;
+    }
+    renderSidebar();
+    renderArticleList();
+    if (m === 'timeline') renderTimelineReader(); else renderReader();
+    updateHash();
   }
 
   // ── Build timeline (merge all sources, sort by pub_date desc) ──
@@ -899,7 +975,23 @@ def _build_js(sources_with_items):
       var db = new Date(b.item.pub_date || 0).getTime();
       return db - da;
     });
-    timelineItems = all;
+    // 每源分桶后轮 round-robin（每轮每源最多 2 条），避免日更大源刷屏掉多样性
+    var buckets = {}, order = [];
+    all.forEach(function(o) {
+      if (!buckets[o.src.key]) { buckets[o.src.key] = []; order.push(o.src.key); }
+      buckets[o.src.key].push(o);
+    });
+    var merged = [], pos = {};
+    order.forEach(function(k){ pos[k] = 0; });
+    while (merged.length < all.length) {
+      var took = 0;
+      for (var i = 0; i < order.length && merged.length < all.length; i++) {
+        var k = order[i], arr = buckets[k];
+        for (var j = 0; j < 2 && pos[k] < arr.length; j++) { merged.push(arr[pos[k]++]); took++; }
+      }
+      if (took === 0) break;
+    }
+    timelineItems = merged;
   }
 
   // ── Render article list ──
@@ -916,6 +1008,7 @@ def _build_js(sources_with_items):
     }
     var items = filterItems(src.items);
     articleListHeaderEl.innerHTML = '<h3>'+esc(src.name)+'</h3><span class="count">'+items.length+' 篇</span><span class="view-toggle" data-mode="timeline">时间线</span>';
+    if (searchInput) searchInput.placeholder = '在「' + src.name + '」内搜索…';
 
     if (items.length === 0) {
       articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
@@ -926,9 +1019,9 @@ def _build_js(sources_with_items):
     items.forEach(function(item, idx) {
       var cls = 'article-item' + (idx === activeArticleIdx ? ' active' : '');
       html += '<div class="'+cls+'" data-idx="'+idx+'">';
-      html += '<div class="a-title">'+esc(item.title_zh || item.title)+'</div>';
+      html += '<div class="a-title">'+markText(item.title_zh || item.title)+'</div>';
+      // 信源视图不重复渲染来源药丸（列表头已有信源名）
       html += '<div class="a-meta">';
-      html += '<span class="src-tag" style="background:'+esc(src.color)+'1f;color:'+esc(src.color)+'">'+esc(src.name)+'</span>';
       html += '<span class="time">'+esc(item.time_str)+'</span>';
       html += '</div></div>';
     });
@@ -936,9 +1029,7 @@ def _build_js(sources_with_items):
 
     articleListEl.querySelectorAll('.article-item').forEach(function(el) {
       el.addEventListener('click', function() {
-        activeArticleIdx = parseInt(this.dataset.idx);
-        renderArticleList();
-        renderReader();
+        openArticle(parseInt(this.dataset.idx));
       });
     });
     bindViewToggle();
@@ -956,6 +1047,7 @@ def _build_js(sources_with_items):
       });
     }
     articleListHeaderEl.innerHTML = '<h3>时间线</h3><span class="count">'+filtered.length+' 篇</span><span class="view-toggle" data-mode="source">信源</span>';
+    if (searchInput) searchInput.placeholder = '搜索全部 ' + timelineItems.length + ' 篇…';
 
     if (filtered.length === 0) {
       articleListEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);font-size:13px">暂无匹配文章</div>';
@@ -966,9 +1058,9 @@ def _build_js(sources_with_items):
     filtered.forEach(function(o, idx) {
       var cls = 'article-item' + (idx === activeArticleIdx ? ' active' : '');
       html += '<div class="'+cls+'" data-tidx="'+idx+'">';
-      html += '<div class="a-title">'+esc(o.item.title_zh || o.item.title)+'</div>';
+      html += '<div class="a-title">'+markText(o.item.title_zh || o.item.title)+'</div>';
       html += '<div class="a-meta">';
-      html += '<span class="src-tag" style="background:'+esc(o.src.color)+'1f;color:'+esc(o.src.color)+'">'+esc(o.src.name)+'</span>';
+      html += '<span class="src-tag" style="background:'+adjColor(o.src.color)+'1f;color:'+adjColor(o.src.color)+'">'+esc(o.src.name)+'</span>';
       html += '<span class="time">'+esc(o.item.time_str)+'</span>';
       html += '</div></div>';
     });
@@ -976,12 +1068,34 @@ def _build_js(sources_with_items):
 
     articleListEl.querySelectorAll('.article-item').forEach(function(el) {
       el.addEventListener('click', function() {
-        activeArticleIdx = parseInt(this.dataset.tidx);
-        renderTimelineList();
-        renderTimelineReader();
+        openArticle(parseInt(this.dataset.tidx));
       });
     });
     bindViewToggle();
+  }
+
+  // ── 统一打开文章：只切 active class 不重绘列表，保留滚动位置 ──
+  function openArticle(idx) {
+    activeArticleIdx = idx;
+    var attr = viewMode === 'timeline' ? 'tidx' : 'idx';
+    var prev = articleListEl.querySelector('.article-item.active');
+    if (prev) prev.classList.remove('active');
+    var el = articleListEl.querySelector('.article-item[data-' + attr + '="' + idx + '"]');
+    if (el) {
+      el.classList.add('active');
+      el.scrollIntoView({ block: 'nearest' });
+    }
+    if (viewMode === 'timeline') renderTimelineReader(); else renderReader();
+    // 移动端：阅读区在列表下方，自动滚动避免“点了没反应”
+    if (window.innerWidth <= 700) readerEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    updateHash();
+  }
+
+  // ── 当前列表总长（键盘导航用） ──
+  function currentListLen() {
+    if (viewMode === 'timeline') return timelineItems.length;
+    var src = SOURCES.find(function(s){ return s.key === activeSourceKey; });
+    return src ? filterItems(src.items).length : 0;
   }
 
   // ── Render reader for timeline ──
@@ -994,6 +1108,16 @@ def _build_js(sources_with_items):
     if (!o) return;
     var html = buildReaderContent(o.item, o.src, false);
     readerEl.innerHTML = html;
+    bindIframeLoad();
+  }
+
+  // ── iframe 加载完成后移除占位（避免 Python/JS 双层引号转义陷阱，不用内联 onload） ──
+  function bindIframeLoad() {
+    var f = readerEl.querySelector('.rc-iframe');
+    if (f) f.addEventListener('load', function() {
+      var l = document.getElementById('rcIframeLoading');
+      if (l) l.remove();
+    });
   }
 
   // ── View toggle ──
@@ -1001,12 +1125,7 @@ def _build_js(sources_with_items):
     var toggle = articleListHeaderEl.querySelector('.view-toggle');
     if (toggle) {
       toggle.addEventListener('click', function() {
-        viewMode = this.dataset.mode;
-        activeArticleIdx = -1;
-        if (viewMode === 'timeline') buildTimeline();
-        renderArticleList();
-        if (viewMode === 'timeline') renderTimelineReader();
-        else renderReader();
+        switchMode(this.dataset.mode);
       });
     }
   }
@@ -1025,6 +1144,7 @@ def _build_js(sources_with_items):
 
     var html = buildReaderContent(item, src, true);
     readerEl.innerHTML = html;
+    bindIframeLoad();
   }
 
   // ── 共享：构建阅读区内容（摘要/原文双模式） ─
@@ -1039,7 +1159,7 @@ def _build_js(sources_with_items):
     html += '<h1 class="rc-title"><a href="'+esc(item.link)+'" target="_blank" rel="noopener">'+esc(item.title_zh || item.title)+'</a></h1>';
     // 元信息
     html += '<div class="rc-meta">';
-    html += '<span class="src-tag" style="background:'+esc(src.color)+'1f;color:'+esc(src.color)+'">'+esc(src.name)+'</span>';
+    html += '<span class="src-tag" style="background:'+adjColor(src.color)+'1f;color:'+adjColor(src.color)+'">'+esc(src.name)+'</span>';
     html += '<span>'+esc(item.time_str)+'</span>';
     if (showTransTag && item.title_zh && item.title_zh !== item.title) {
       html += '<span style="font-size:11px;color:var(--faint)">（已翻译）</span>';
@@ -1048,23 +1168,38 @@ def _build_js(sources_with_items):
 
     if (readerMode === 'original') {
       // 原文模式：iframe 内嵌 + 降级提示
+      var isHttpLink = /^http:\/\//i.test(item.link || '');
       html += '<div class="rc-iframe-wrap">';
-      html += '<div class="rc-iframe-bar"><span>原文页面（若显示空白，该网站禁止内嵌）</span><a href="'+esc(item.link)+'" target="_blank" rel="noopener">新标签页打开 ↗</a></div>';
-      html += '<iframe class="rc-iframe" src="'+esc(item.link)+'" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer"></iframe>';
+      if (isHttpLink) {
+        // https 页面内嵌 http 原文必被浏览器 Mixed Content 拦截，直接降级不再白屏
+        html += '<div class="rc-iframe-bar"><span>原文为 http 协议，浏览器安全策略禁止内嵌</span><a href="'+esc(item.link)+'" target="_blank" rel="noopener">新标签页打开 ↗</a></div>';
+        html += '<div class="rc-iframe-loading" style="height:120px">'+esc(item.link)+'</div>';
+      } else {
+        html += '<div class="rc-iframe-bar"><span>原文页面（若显示空白，该网站禁止内嵌）</span><a href="'+esc(item.link)+'" target="_blank" rel="noopener">新标签页打开 ↗</a></div>';
+        html += '<div class="rc-iframe-loading" id="rcIframeLoading">正在加载原文…</div>';
+        html += '<iframe class="rc-iframe" src="'+esc(item.link)+'" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer"></iframe>';
+      }
       html += '</div>';
     } else {
-      // 摘要模式：原有逻辑
+      // 摘要模式：长摘要折叠 + 展开
       if (item.summary_zh || item.summary) {
         var summaryText = item.summary_zh || item.summary;
-        html += '<div class="rc-summary" id="rcSummary"';
+        var needClamp = summaryText.length > 150;
+        html += '<div class="rc-summary'+(needClamp?' clamped':'')+'" id="rcSummary"';
         if (summaryLang === 'translated') {
           html += ' lang="en" translate="yes"';
         }
         html += '>'+esc(summaryText)+'</div>';
-        html += '<div class="rc-lang-toggle">';
-        html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(&quot;original&quot;)">原文</button>';
-        html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(&quot;translated&quot;)">翻译</button>';
-        html += '</div>';
+        if (needClamp) {
+          html += '<div><button class="rc-expand" id="rcExpand" onclick="expandSummary()">展开全文 ▾</button></div>';
+        }
+        // 中文摘要无需浏览器翻译，不显示无效的原文/翻译切换
+        if (!isMostlyZh(summaryText)) {
+          html += '<div class="rc-lang-toggle">';
+          html += '<button class="'+(summaryLang==='original'?'active':'')+'" onclick="setSummaryLang(&quot;original&quot;)">原文</button>';
+          html += '<button class="'+(summaryLang==='translated'?'active':'')+'" onclick="setSummaryLang(&quot;translated&quot;)">翻译</button>';
+          html += '</div>';
+        }
       }
       html += '<a class="rc-link" href="'+esc(item.link)+'" target="_blank" rel="noopener">阅读原文 →</a>';
     }
@@ -1100,6 +1235,15 @@ def _build_js(sources_with_items):
   // 内联 onclick 在全局作用域查找函数，必须挂到 window
   window.setReaderMode = setReaderMode;
   window.setSummaryLang = setSummaryLang;
+  window.expandSummary = expandSummary;
+
+  // ── 展开被折叠的长摘要 ─
+  function expandSummary() {
+    var el = document.getElementById('rcSummary');
+    if (el) el.classList.remove('clamped');
+    var b = document.getElementById('rcExpand');
+    if (b) b.remove();
+  }
 
   // ── Filter ──
   function filterItems(items) {
@@ -1112,17 +1256,34 @@ def _build_js(sources_with_items):
     });
   }
 
-  // ── Search ──
+  // ── Search（150ms 防抖，避免每键全量重渲染） ──
   if (searchInput) {
+    var searchTimer = null;
     searchInput.addEventListener('input', function() {
-      searchQuery = this.value.trim();
-      renderArticleList();
-      if (activeArticleIdx >= filterItems(SOURCES.find(function(s){return s.key===activeSourceKey;})?.items || []).length) {
-        activeArticleIdx = -1;
-      }
-      renderReader();
+      var v = this.value.trim();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function() {
+        searchQuery = v;
+        if (activeArticleIdx >= currentListLen()) activeArticleIdx = -1;
+        renderArticleList();
+        if (viewMode === 'timeline') renderTimelineReader(); else renderReader();
+      }, 150);
     });
   }
+
+  // ── 键盘导航：↑/↓ 或 j/k 切换文章 ──
+  document.addEventListener('keydown', function(e) {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName || '')) return;
+    var d = 0;
+    if (e.key === 'ArrowDown' || e.key === 'j') d = 1;
+    else if (e.key === 'ArrowUp' || e.key === 'k') d = -1;
+    if (!d) return;
+    e.preventDefault();
+    var max = currentListLen();
+    if (!max) return;
+    var ni = activeArticleIdx < 0 ? (d > 0 ? 0 : max - 1) : Math.min(max - 1, Math.max(0, activeArticleIdx + d));
+    if (ni !== activeArticleIdx) openArticle(ni);
+  });
 
   // ── Helpers ──
   function esc(s) {
@@ -1131,22 +1292,121 @@ def _build_js(sources_with_items):
     return d.innerHTML;
   }
 
-  // ── Init ──
+  // 暗色主题下提亮过暗的信源色（否则色点/标签与背景融为一体）
+  function adjColor(hex) {
+    if (document.documentElement.dataset.theme !== 'dark') return hex;
+    var m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
+    if (!m) return hex;
+    var n = parseInt(m[1], 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    if (lum >= 0.35) return hex;
+    r = Math.round(r + (255 - r) * 0.45); g = Math.round(g + (255 - g) * 0.45); b = Math.round(b + (255 - b) * 0.45);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
+  // 文本是否以中文为主（中文摘要无需浏览器翻译）
+  function isMostlyZh(s) {
+    if (!s) return true;
+    var c = 0, n = 0;
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charCodeAt(i);
+      if (ch >= 0x4e00 && ch <= 0x9fff) c++;
+      if (ch > 32) n++;
+    }
+    return n === 0 || c / n > 0.2;
+  }
+
+  // 搜索命中标题高亮（split 方式，避开正则转义陷阱）
+  function markText(s) {
+    s = s || '';
+    if (!searchQuery) return esc(s);
+    var q = searchQuery.toLowerCase(), low = s.toLowerCase();
+    var out = '', i = 0;
+    while (true) {
+      var j = low.indexOf(q, i);
+      if (j < 0) { out += esc(s.slice(i)); break; }
+      out += esc(s.slice(i, j)) + '<mark>' + esc(s.slice(j, j + q.length)) + '</mark>';
+      i = j + q.length;
+    }
+    return out;
+  }
+
+  // ── URL 状态：可分享/刷新恢复 ──
+  function updateHash() {
+    var h = viewMode === 'timeline'
+      ? '#view=tl&idx=' + activeArticleIdx
+      : '#view=src&s=' + encodeURIComponent(activeSourceKey || '') + '&idx=' + activeArticleIdx;
+    try { history.replaceState(null, '', h); } catch (e) {}
+  }
+  function restoreFromHash() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h) return false;
+    var p = {};
+    h.split('&').forEach(function(kv) {
+      var s = kv.split('=');
+      if (s[0]) p[s[0]] = decodeURIComponent(s[1] || '');
+    });
+    var idx = parseInt(p.idx);
+    if (p.view === 'src' && p.s) {
+      var src = SOURCES.find(function(x){ return x.key === p.s; });
+      if (!src) return false;
+      activeSourceKey = p.s;
+      viewMode = 'source';
+      renderSidebar();
+      renderArticleList();
+      if (!isNaN(idx) && idx >= 0 && idx < filterItems(src.items).length) openArticle(idx);
+      else renderReader();
+      return true;
+    }
+    if (p.view === 'tl') {
+      buildTimeline();
+      viewMode = 'timeline';
+      renderSidebar();
+      renderArticleList();
+      if (!isNaN(idx) && idx >= 0 && idx < timelineItems.length) openArticle(idx);
+      else renderTimelineReader();
+      return true;
+    }
+    return false;
+  }
+
+  // ── Init ─
   renderSidebar();
-  // Auto-select first source with items
-  var firstSrc = SOURCES.find(function(s){ return s.items.length > 0; });
-  if (firstSrc) selectSource(firstSrc.key);
+  if (!restoreFromHash()) {
+    // 默认落在时间线并选中第一篇：打开即见最新资讯，而非最旧信源的空白页
+    buildTimeline();
+    if (timelineItems.length) {
+      viewMode = 'timeline';
+      renderSidebar();
+      renderArticleList();
+      openArticle(0);
+    } else {
+      var firstSrc = SOURCES.find(function(s){ return s.items.length > 0; });
+      if (firstSrc) selectSource(firstSrc.key);
+    }
+  }
+  // 页脚相对时间
+  var relEl = document.getElementById('buildRel');
+  if (relEl && BUILD_TS) {
+    var mins = Math.max(0, Math.round((Date.now() - BUILD_TS) / 60000));
+    relEl.textContent = (mins < 60 ? mins + ' 分钟前' : mins < 1440 ? Math.round(mins / 60) + ' 小时前' : Math.round(mins / 1440) + ' 天前') + ' · ';
+  }
 
   // ── Live RSS update ──
-  // Show loading indicator
-  var sidebar = document.getElementById('sidebar');
-  if(sidebar){
-    var loading = document.createElement('span');
-    loading.id = 'rssLiveTime';
-    loading.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
-    loading.textContent = '\u27f3 \u6b63\u5728\u83b7\u53d6\u6700\u65b0\u5185\u5bb9...';
-    sidebar.appendChild(loading);
+  // 状态指示器放信源列表头部（避免被 107 个信源淹没）
+  function setLiveStatus(text) {
+    var header = document.querySelector('.sidebar-header');
+    if (!header) return;
+    var el = document.getElementById('rssLiveTime');
+    if (!el) {
+      el = document.createElement('span');
+      el.id = 'rssLiveTime';
+      el.style.cssText = 'font-size:11px;color:var(--faint);font-family:var(--mono);display:block;padding-top:4px;';
+      header.appendChild(el);
+    }
+    el.textContent = text;
   }
+  setLiveStatus('\u27f3 \u6b63\u5728\u83b7\u53d6\u6700\u65b0\u5185\u5bb9...');
   setTimeout(function(){
     var controller = new AbortController();
     var timeoutId = setTimeout(function(){ controller.abort(); }, 12000); // 12s timeout
@@ -1172,33 +1432,14 @@ def _build_js(sources_with_items):
         renderSidebar();
         if(viewMode === 'timeline') buildTimeline();
         renderArticleList();
-        renderReader();
-        // Show live update time in sidebar header
-        var sb = document.getElementById('sidebar');
-        if(sb){
-          var old = document.getElementById('rssLiveTime');
-          if(old) old.remove();
-          var span = document.createElement('span');
-          span.id = 'rssLiveTime';
-          span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
-          var now = new Date();
-          span.textContent = '\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-          sb.appendChild(span);
-        }
+        if(viewMode === 'timeline') renderTimelineReader(); else renderReader();
+        var now = new Date();
+        setLiveStatus('\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'));
         console.log('[RSS] Live updated:', updated, 'sources');
       }
     }).catch(function(e){
-      // Update loading indicator on failure
-      var sb = document.getElementById('sidebar');
-      if(sb){
-        var old = document.getElementById('rssLiveTime');
-        if(old) old.remove();
-        var span = document.createElement('span');
-        span.id = 'rssLiveTime';
-        span.style.cssText = 'font-size:10px;color:var(--faint);font-family:var(--mono);display:block;padding:4px 12px;';
-        span.textContent = '\u00b7 \u663e\u793a\u9759\u6001\u6570\u636e\uff08\u5b9e\u65f6\u83b7\u53d6\u8d85\u65f6\uff09';
-        sb.appendChild(span);
-      }
+      // github.io 静态域无 /api/rss（404），文案如实说明降级为静态构建数据
+      setLiveStatus('\u00b7 \u663e\u793a\u9759\u6001\u6784\u5efa\u6570\u636e');
       console.warn('[RSS] Live update failed:', e.message);
     });
   }, 800);
@@ -1207,7 +1448,7 @@ def _build_js(sources_with_items):
 """
 
 
-def build_html(sources_with_items, build_time, total_items):
+def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
     """生成完整 HTML 页面。"""
     return (
         '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
@@ -1236,9 +1477,9 @@ def build_html(sources_with_items, build_time, total_items):
         '</div>\n'
         '</div>\n'
         '<div style="text-align:center;padding:6px 0;font-size:11px;color:var(--faint);font-family:var(--mono);border-top:1px solid var(--line);flex:none;background:var(--bg);">'
-        '自动生成于 ' + _esc(build_time) + '（北京时间）· 共 ' + str(total_items) + ' 篇 · StarHub RSS Aggregator'
+        '自动生成于 ' + _esc(build_time) + '（北京时间）· 共 ' + str(total_items) + ' 篇 · <span id="buildRel"></span>StarHub RSS Aggregator'
         '</div>\n'
-        + _build_js(sources_with_items) +
+        + _build_js(sources_with_items, build_ts_ms) +
         '</body>\n</html>'
     )
 
@@ -1248,6 +1489,8 @@ def build_html(sources_with_items, build_time, total_items):
 def main():
     now = _now_bj()
     build_time = now.strftime("%Y-%m-%d %H:%M")
+    # 构建时间 UTC 毫秒时间戳（供页脚相对时间）
+    build_ts_ms = now.timestamp() * 1000
 
     # 加载缓存
     _load_caches()
@@ -1284,7 +1527,7 @@ def main():
     if total_items == 0:
         print("[RSS聚合] 所有源均失败，生成空页面", file=sys.stderr)
 
-    html_doc = build_html(sources_with_items, build_time, total_items)
+    html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html_doc)
 
