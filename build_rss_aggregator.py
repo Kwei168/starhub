@@ -189,7 +189,7 @@ RSS_SOURCES = [
     {"key": "wired_10", "name": "WIRED", "cat": "tech", "url": "https://www.wired.com/feed/rss", "color": "#4f46e5"},
     {"key": "atlasnote_11", "name": "AtlasNote", "cat": "tech", "url": "https://atlasnote.ai/rss.xml", "color": "#ca8a04"},
     {"key": "redisblog_12", "name": "Redis Blog", "cat": "tech", "url": "https://redis.io/feed/", "color": "#0891b2"},
-    {"key": "arxiv_cs_14", "name": "arXiv CS", "cat": "tech", "url": "https://rss.arxiv.org/rss/cs", "color": "#b31b1b"},
+    {"key": "arxiv_cs_14", "name": "arXiv CS", "cat": "tech", "url": "https://export.arxiv.org/rss/cs", "color": "#b31b1b"},
 
     # ── 中文科技 (23) ──
     {"key": "美团技术团队_0", "name": "美团技术团队", "cat": "cn_tech", "url": "https://tech.meituan.com/feed", "color": "#0055ff"},
@@ -659,7 +659,7 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .foot-meta { margin-left:auto; font-family:var(--mono); font-size:10.5px; display:flex; gap:8px; align-items:center; white-space:nowrap; }
 .no-ft { font-size:10px; color:var(--faint); border:1px dashed var(--line-strong); border-radius:4px; padding:0 5px; }
 .card.visited .card-title { color:var(--faint); }
-.card.visited .card-title::after { content:"\5df2\8bfb"; font-family:var(--body); font-size:9px; font-weight:600; color:var(--faint); border:1px solid var(--line-strong); border-radius:4px; padding:0 4px; margin-left:6px; vertical-align:2px; }
+.card.visited .card-title::after { content:"\5df2 \8bfb"; font-family:var(--body); font-size:9px; font-weight:600; color:var(--faint); border:1px solid var(--line-strong); border-radius:4px; padding:0 4px; margin-left:6px; vertical-align:2px; }
 .pod-chip { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--cat-podcast); background:color-mix(in srgb, var(--cat-podcast) 10%, transparent); border-radius:4px; padding:1px 6px; font-weight:600; }
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
 
@@ -1063,35 +1063,40 @@ def _build_js(sources_with_items, build_ts_ms=0):
     relEl.textContent=(mins<60?mins+' \u5206\u949f\u524d':mins<1440?Math.round(mins/60)+' \u5c0f\u65f6\u524d':Math.round(mins/1440)+' \u5929\u524d');
   }
 
-  /* ── Live RSS update ── */
+  /* ── Live RSS update (API-First) ── */
   var liveEl = document.getElementById('liveStatus');
-  setTimeout(function(){
+  if(liveEl) liveEl.textContent='\u00b7 \u52a0\u8f7d\u4e2d\u2026';
+  (function(){
     var ctrl=new AbortController();
-    var tid=setTimeout(function(){ctrl.abort();},12000);
+    var tid=setTimeout(function(){ctrl.abort();},30000);
     fetch('/api/rss',{signal:ctrl.signal}).then(function(r){
       clearTimeout(tid);if(!r.ok)throw new Error('API '+r.status);return r.json();
     }).then(function(data){
-      if(!data.sources)return;var updated=0;
+      if(!data.sources)return;
+      // 用实时数据替换静态构建数据
       data.sources.forEach(function(live){
         if(!live.items||!live.items.length)return;
-        var src=SOURCES.find(function(s){return s.key===live.key;});if(!src)return;
-        live.items.forEach(function(it){it.title_zh=it.title;it.summary_zh=it.summary||'';});
-        src.items=live.items;updated++;
+        var src=SOURCES.find(function(s){return s.key===live.key;});
+        if(src){
+          live.items.forEach(function(it){it.title_zh=it.title;it.summary_zh=it.summary||'';it.time_str=it.d||'';});
+          src.items=live.items;
+        }
       });
-      if(updated>0){
-        ART=[];SOURCES.forEach(function(s){s.items.forEach(function(it){
-          ART.push({t:it.title_zh||it.title,s:it.summary_zh||it.summary||'',
-            src:s.name,sk:s.key,c:s.cat,sc:s.color,
-            time:it.time_str,date:it.pub_date,u:it.link||'#'});
-        });});
-        ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
-        renderChips();renderWall();renderPanel();
-        if(liveEl){var now=new Date();liveEl.textContent='\u2713 \u5b9e\u65f6\u5df2\u66f4\u65b0 '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
-      }
+      // 重建 ART 数组
+      ART=[];
+      SOURCES.forEach(function(s){s.items.forEach(function(it){
+        ART.push({t:it.title_zh||it.title,s:it.summary_zh||it.summary||'',
+          src:s.name,sk:s.key,c:s.cat,sc:s.color,
+          time:it.time_str,date:it.pub_date,u:it.link||'#'});
+      });});
+      ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+      // 重新渲染
+      renderChips();renderWall();renderPanel();
+      if(liveEl){var now=new Date();liveEl.textContent='\u2713 \u5b9e\u65f6\u6570\u636e '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
     }).catch(function(e){
-      if(liveEl)liveEl.textContent='\u00b7 \u663e\u793a\u9759\u6001\u6784\u5efa\u6570\u636e';
+      if(liveEl)liveEl.textContent='\u00b7 \u9759\u6001\u6784\u5efa\u6570\u636e';
     });
-  },800);
+  })();
 })();
 </script>
 """
@@ -1186,6 +1191,12 @@ def main():
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html_doc)
+
+    # 生成 rss_sources.json（供 /api/rss 使用）
+    sources_json = json.dumps([{"key": s["key"], "name": s["name"], "cat": s["cat"],
+        "color": s["color"], "url": s["url"]} for s in RSS_SOURCES], ensure_ascii=False)
+    with open("rss_sources.json", "w", encoding="utf-8") as f:
+        f.write(sources_json)
 
     print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
 
