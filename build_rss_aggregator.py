@@ -1078,7 +1078,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   (function(){
     var ctrl=new AbortController();
     var tid=setTimeout(function(){ctrl.abort();},30000);
-    fetch('/api/rss',{signal:ctrl.signal}).then(function(r){
+    fetch('https://starhub-refresh.vercel.app/api/rss',{signal:ctrl.signal}).then(function(r){
       clearTimeout(tid);if(!r.ok)throw new Error('API '+r.status);return r.json();
     }).then(function(data){
       if(!data.sources)return;
