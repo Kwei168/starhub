@@ -16,6 +16,21 @@ const UA = 'starhub-rss-aggregator/1.0';
 let rollingCache = new Map();  // key → { items, lastModified }
 let fullCache = { t: 0, v: null };  // 完整响应缓存
 
+// ── 加载 API 快照（构建时生成的 72h 累积数据） ──
+
+function loadSnapshot() {
+  try {
+    const p = join(process.cwd(), 'rss_api_snapshot.json');
+    const snap = JSON.parse(readFileSync(p, 'utf-8'));
+    const total = (snap.sources || []).reduce((n, s) => n + (s.items || []).length, 0);
+    console.log(`[rss] Loaded snapshot: ${(snap.sources || []).length} sources, ${total} items`);
+    return snap;
+  } catch (err) {
+    console.log('[rss] Snapshot not found, falling back to live fetch');
+    return null;
+  }
+}
+
 // ── 加载翻译缓存 ──
 
 function loadTransCache() {
@@ -214,9 +229,10 @@ export default async function handler(req, res) {
   }
   
   const now = Date.now();
+  const isRefresh = req.query && req.query.refresh === '1';
   
-  // 检查完整响应缓存
-  if (fullCache.v && now - fullCache.t < CACHE_TTL) {
+  // 检查完整响应缓存（refresh 时跳过缓存）
+  if (fullCache.v && now - fullCache.t < CACHE_TTL && !isRefresh) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.setHeader('X-RSS-Cache', 'hit');
@@ -224,9 +240,32 @@ export default async function handler(req, res) {
   }
   
   try {
+    // 优先返回构建时生成的 API 快照（包含 72h 累积历史数据）
+    if (!isRefresh) {
+      const snapshot = loadSnapshot();
+      if (snapshot && snapshot.sources && snapshot.sources.length > 0) {
+        // 对快照数据做 HTML 清理（防御性）
+        snapshot.sources = snapshot.sources.map(src => ({
+          ...src,
+          items: (src.items || []).map(item => ({
+            ...item,
+            t: stripHtml(item.t || ''),
+            s: truncate(stripHtml(item.s || ''), 200),
+          })),
+        }));
+        const total = snapshot.sources.reduce((n, s) => n + s.items.length, 0);
+        console.log(`[rss] Serving snapshot: ${snapshot.sources.length} sources, ${total} items`);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('X-RSS-Source', 'snapshot');
+        return res.status(200).json(snapshot);
+      }
+    }
+    
+    // Fallback: 实时抓取 RSS（仅当快照不存在或 refresh=1 时）
     const sources = loadSources();
     const transCache = loadTransCache();  // 加载翻译缓存
-    console.log(`[rss] Fetching ${sources.length} sources...`);
+    console.log(`[rss] Live fetching ${sources.length} sources...`);
     
     const results = await fetchAllBatched(sources);
     
