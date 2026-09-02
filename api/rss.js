@@ -178,6 +178,16 @@ async function fetchAllBatched(sources) {
 // ── Handler ──
 
 export default async function handler(req, res) {
+  // CORS 头：允许 GitHub Pages 跨域访问
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // 处理 OPTIONS 预检请求
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  
   const now = Date.now();
   
   // 检查完整响应缓存
