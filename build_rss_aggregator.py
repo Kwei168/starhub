@@ -173,19 +173,23 @@ def _accumulate_history(sources_with_items):
     return result, total
 
 
-# ── RSS 信源配置（按分类组织，107 个精选源，已去除公众号/失效/重复/停更源） ─
+# ── RSS 信源配置（按分类组织，111 个精选源，已去除公众号/失效/重复/停更源） ─
 RSS_SOURCES = [
-    # ── 科技资讯 (10) ──
+    # ── 科技资讯 (14) ──
     {"key": "juliaevans_0", "name": "Julia Evans", "cat": "tech", "url": "https://jvns.ca/atom.xml", "color": "#e31937"},
     {"key": "overreacted_2", "name": "Overreacted", "cat": "tech", "url": "https://overreacted.io/rss.xml", "color": "#b31b1b"},
     {"key": "webdev_3", "name": "web.dev", "cat": "tech", "url": "https://web.dev/feed.xml", "color": "#000000"},
     {"key": "engadget_4", "name": "Engadget", "cat": "tech", "url": "http://www.engadget.com/rss.xml", "color": "#2563eb"},
     {"key": "joshcomeau_5", "name": "Josh Comeau", "cat": "tech", "url": "https://www.joshwcomeau.com/rss.xml", "color": "#7c3aed"},
-    {"key": "techcrunchai_7", "name": "TechCrunch AI", "cat": "tech", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "color": "#d97706"},
-    {"key": "thevergeai_8", "name": "The Verge AI", "cat": "tech", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "color": "#dc2626"},
+    {"key": "hackernews_6", "name": "Hacker News", "cat": "tech", "url": "https://hnrss.org/frontpage", "color": "#ff6600"},
+    {"key": "techcrunch_7", "name": "TechCrunch", "cat": "tech", "url": "https://techcrunch.com/feed/", "color": "#0a9e01"},
+    {"key": "techcrunchai_7b", "name": "TechCrunch AI", "cat": "tech", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "color": "#d97706"},
+    {"key": "theverge_8", "name": "The Verge", "cat": "tech", "url": "https://www.theverge.com/rss/index.xml", "color": "#e61919"},
+    {"key": "thevergeai_8b", "name": "The Verge AI", "cat": "tech", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "color": "#dc2626"},
     {"key": "wired_10", "name": "WIRED", "cat": "tech", "url": "https://www.wired.com/feed/rss", "color": "#4f46e5"},
     {"key": "atlasnote_11", "name": "AtlasNote", "cat": "tech", "url": "https://atlasnote.ai/rss.xml", "color": "#ca8a04"},
     {"key": "redisblog_12", "name": "Redis Blog", "cat": "tech", "url": "https://redis.io/feed/", "color": "#0891b2"},
+    {"key": "arxiv_cs_14", "name": "arXiv CS", "cat": "tech", "url": "https://rss.arxiv.org/rss/cs", "color": "#b31b1b"},
 
     # ── 中文科技 (23) ──
     {"key": "美团技术团队_0", "name": "美团技术团队", "cat": "cn_tech", "url": "https://tech.meituan.com/feed", "color": "#0055ff"},
