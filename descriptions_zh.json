@@ -335,5 +335,6 @@
  "datawhalechina/hello-agents": "📚 《从零开始构建智能体》——从零开始的智能体原理与实践教程",
  "blader/humanizer": "代理技能可消除文本中人工智能生成的书写痕迹",
  "OpenWhispr/openwhispr": "具有本地（Nvidia Parakeet/Whisper）和云模型（BYOK）的语音到文本听写应用程序。隐私第一且可用的跨平台。",
- "garrytan/gstack": "使用 Garry Tan 的精确 Claude Code 设置：23 个固执己见的工具，可充当 CEO、设计师、工程经理、发布经理、文档工程师和 QA"
+ "garrytan/gstack": "使用 Garry Tan 的精确 Claude Code 设置：23 个固执己见的工具，可充当 CEO、设计师、工程经理、发布经理、文档工程师和 QA",
+ "vercel-labs/portless": "将端口号替换为稳定的、命名的本地 URL。对于人类和特工来说。"
 }
