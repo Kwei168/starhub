@@ -924,6 +924,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
         time:it.time_str, date:it.pub_date, u:it.link||'#'});
     });
   });
+  var now=new Date().toISOString();
+  ART.forEach(function(a){ if(a.date&&a.date>now) a.date=now; });
   ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
   constrainConsecutive();
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
