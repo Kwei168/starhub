@@ -319,6 +319,7 @@ RSS_SOURCES = [
     {"key": "gemini_cli_rel_17", "name": "Gemini CLI Releases", "cat": "ai", "url": "https://github.com/google-gemini/gemini-cli/releases.atom", "color": "#4285f4"},
     {"key": "mcp_spec_rel_18", "name": "MCP Specification Releases", "cat": "ai", "url": "https://github.com/modelcontextprotocol/specification/releases.atom", "color": "#7c3aed"},
     {"key": "mcp_servers_rel_19", "name": "MCP Servers Releases", "cat": "ai", "url": "https://github.com/modelcontextprotocol/servers/releases.atom", "color": "#6d28d9"},
+    {"key": "aihot_20", "name": "AI Hot", "cat": "ai", "url": "https://aihot.virxact.com/agent?tab=rss", "color": "#f97316"},
 
     # ── 科技媒体 (5) ──
     {"key": "arstechnica_60", "name": "Ars Technica", "cat": "tech", "url": "https://feeds.arstechnica.com/arstechnica/index", "color": "#ff6600"},
