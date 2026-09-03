@@ -17322,5 +17322,10 @@
   "c1eeb4a6d37b751a8261c35ff431389e": "修复（ios）：启用后台刷新唤醒并获取后台m…",
   "f4a9fc8f5bb2d279b6e064a51372db6b": "修复（ios）：使用获取后台模式启用后台刷新唤醒（#136722）\n\nbgrefresh BGAppRefreshTask 已注册并调度，但 Info.plist\n从未声明 Apple 要求应用程序使用“fetch” UIBackgroundModes 条目\n刷新任务，因此每个 BGTaskScheduler.submit 都失败并显示 notPermission 和\n设备上从未运行过后台刷新唤醒。添加模式（通过project.yml\n和重新生成的 Info.plist）并在主程序上注册启动处理程序\n队列，使其执行器与 de 匹配",
   "49667099282451bee90e48f450dc8518": "0.153.0",
-  "aaab83f8d2f02c178fa23610b0480f9c": "新功能\n\nVim 模式现在支持使用 u 撤消和使用 Ctrl+R 重做，保留完整的草稿，包括粘贴的内容和附件。 （#41941，#42140）\n插件 CLI 可以从远程市场列出、安装和删除插件。 (#42150)\n设置 tui.auto_recap = false 以禁用自动重述，同时保持手动 /recap 可用。 (#42101)\nTUI 历史记录显示完整的补丁、发送到后台终端的输入以及各个已完成的命令。 （＃41893，＃42107）\nPlus 和 Team 用户会收到"
+  "aaab83f8d2f02c178fa23610b0480f9c": "新功能\n\nVim 模式现在支持使用 u 撤消和使用 Ctrl+R 重做，保留完整的草稿，包括粘贴的内容和附件。 （#41941，#42140）\n插件 CLI 可以从远程市场列出、安装和删除插件。 (#42150)\n设置 tui.auto_recap = false 以禁用自动重述，同时保持手动 /recap 可用。 (#42101)\nTUI 历史记录显示完整的补丁、发送到后台终端的输入以及各个已完成的命令。 （＃41893，＃42107）\nPlus 和 Team 用户会收到",
+  "7d1e5cb6193c76c7e21555bfc8ebb975": "AI-DLC – 一个核心，多种用途",
+  "cafc580e62ce42e543ea243e185614c3": "文章网址：https://github.com/awslabs/aidlc-workflows/tree/main\n评论网址：https://news.ycombinator.com/item?id=49545120\n积分：1\n# 评论: 0",
+  "2a2805e7edded88d727f71ce7280db5b": "文章网址：https://memhub.simplex.lat\n评论网址：https://news.ycombinator.com/item?id=49544996\n积分：2\n# 评论: 0",
+  "10e60d5d03ce06643500340d047a480e": "文章网址：https://www.kedglobal.com/artificial-intelligence/newsView/ked202607210007\n评论网址：https://news.ycombinator.com/item?id=49544762\n积分：8\n# 评论: 0",
+  "b84892e734b806b7e3e12b122d66e587": "文章网址：https://www.nytimes.com/2026/09/01/nyregion/ai-ban-schools-nyc.html\n评论网址：https://news.ycombinator.com/item?id=49542443\n积分：141\n# 评论: 118"
 }
