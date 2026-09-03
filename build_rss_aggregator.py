@@ -749,8 +749,9 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 
 /* ── Card wall ── */
 .wall-wrap { max-width:1560px; margin:0 auto; padding:14px 20px 60px; }
-.wall { columns:4 300px; column-gap:14px; }
-.card { break-inside:avoid; margin-bottom:14px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px 12px; cursor:pointer; position:relative; transition:box-shadow .18s, border-color .18s, transform .18s; }
+.wall { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px 12px; cursor:pointer; position:relative; transition:box-shadow .18s, border-color .18s, transform .18s; }
+.card.featured { grid-column:span 2; }
 .card:hover { border-color:var(--brand-line); box-shadow:var(--shadow-lift); transform:translateY(-2px); }
 .card.open { border-color:var(--brand); box-shadow:0 0 0 1px var(--brand-line); }
 .card-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
@@ -775,6 +776,9 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 .card.visited .card-summary { opacity:.65; }
 .pod-chip { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--cat-podcast); background:color-mix(in srgb, var(--cat-podcast) 10%, transparent); border-radius:4px; padding:1px 6px; font-weight:600; }
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
+.time-divider { grid-column:1/-1; display:flex; align-items:center; gap:12px; padding:18px 0 6px; font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.04em; }
+.time-divider::before,.time-divider::after { content:""; flex:1; height:1px; background:var(--line); }
+.time-divider .td-label { white-space:nowrap; }
 .load-more-wrap { text-align:center; padding:30px 0 10px; }
 .load-more-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 36px; border-radius:999px; font-size:13px; font-weight:600; border:1px solid var(--brand-line); background:var(--brand-weak); color:var(--brand-strong); cursor:pointer; transition:all .2s; }
 .load-more-btn:hover { background:var(--brand-strong); color:#fff; transform:translateY(-1px); box-shadow:var(--shadow-lift); }
@@ -1080,6 +1084,16 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   }
   function artKey(a){ return a.sk+'|'+(a.u&&a.u!=='#'?a.u:a.t); }
+  function getTimeGroup(d){
+    if(!d) return '\u66f4\u65e9';
+    var today=new Date(); today.setHours(0,0,0,0);
+    var dt=new Date(d+'T00:00:00');
+    var diff=Math.floor((today-dt)/864e5);
+    if(diff===0) return '\u4eca\u5929';
+    if(diff===1) return '\u6628\u5929';
+    if(diff<7) return '\u672c\u5468';
+    return '\u66f4\u65e9';
+  }
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
     if(!list.length){
@@ -1087,18 +1101,26 @@ def _build_js(sources_with_items, build_ts_ms=0):
       wall.innerHTML='<div class="empty-hint">'+em+'</div>';
       return;
     }
-    var start=wall.querySelectorAll('.card').length;
-    var shouldReset = start===0 || wallLimit<=WALL_STEP;
+    var existingCards=wall.querySelectorAll('.card').length;
+    var shouldReset = existingCards===0 || wallLimit<=WALL_STEP;
     if(shouldReset){
-      wall.innerHTML=''; start=0;
+      wall.innerHTML=''; existingCards=0;
     }
-    var end=Math.min(start===0?wallLimit:start+WALL_STEP, list.length);
-    if(start===0) wallLimit=Math.min(wallLimit,list.length);
-    var h='';
-    for(var i=start;i<end;i++){
+    var end=Math.min(existingCards===0?wallLimit:existingCards+WALL_STEP, list.length);
+    if(existingCards===0) wallLimit=Math.min(wallLimit,list.length);
+    var h='', seenGroups={}, featuredDone=existingCards>0;
+    wall.querySelectorAll('.time-divider').forEach(function(el){ seenGroups[el.textContent.trim()]=1; });
+    for(var i=existingCards;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
-      h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
+      var grp=getTimeGroup(a.date);
+      if(!seenGroups[grp]){
+        seenGroups[grp]=1;
+        h+='<div class="time-divider"><span class="td-label">'+grp+'</span></div>';
+      }
+      var isFeatured=!featuredDone&&grp==='\u4eca\u5929';
+      if(isFeatured) featuredDone=true;
+      h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+(isFeatured?' featured':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time">'+esc(a.time)+'</span>';
       h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
@@ -1114,7 +1136,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<div class="load-more-progress">'+end+' / '+list.length+' \u7bc7</div>';
       h+='</div>';
     }
-    if(start===0) wall.innerHTML=h;
+    if(existingCards===0) wall.innerHTML=h;
     else {
       var old=wall.querySelector('#loadMoreWrap'); if(old)old.remove();
       wall.insertAdjacentHTML('beforeend',h);
