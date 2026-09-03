@@ -725,6 +725,16 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .fpill .x:hover { background:rgba(255,255,255,.34); }
 .tool-meta { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); white-space:nowrap; }
 
+/* ── Global search ── */
+.global-search { position:relative; flex:0 1 260px; min-width:140px; }
+.global-search input { width:100%; padding:5px 28px 5px 10px; border-radius:999px; border:1px solid var(--line); background:var(--card); font-size:12.5px; color:var(--ink); font-family:var(--body); outline:none; transition:border-color .15s, box-shadow .15s; }
+.global-search input:focus { border-color:var(--brand-line); box-shadow:0 0 0 2px var(--brand-weak); }
+.global-search input::placeholder { color:var(--faint); }
+.global-search .sx { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:18px; height:18px; border-radius:999px; background:var(--line); color:var(--muted); display:none; align-items:center; justify-content:center; font-size:10px; cursor:pointer; transition:all .15s; }
+.global-search .sx:hover { background:var(--line-strong); color:var(--ink); }
+.global-search.has-q .sx { display:flex; }
+.global-search.has-q input { border-color:var(--brand-line); background:var(--brand-weak); }
+
 /* ── Card wall ── */
 .wall-wrap { max-width:1560px; margin:0 auto; padding:14px 20px 60px; }
 .wall { columns:4 300px; column-gap:14px; }
@@ -747,8 +757,10 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .src-name { font-weight:600; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .foot-meta { margin-left:auto; font-family:var(--mono); font-size:10.5px; display:flex; gap:8px; align-items:center; white-space:nowrap; }
 .no-ft { font-size:10px; color:var(--faint); border:1px dashed var(--line-strong); border-radius:4px; padding:0 5px; }
-.card.visited .card-title { color:var(--faint); }
+.card.visited { border-left:3px solid var(--line-strong); background:color-mix(in srgb, var(--card-2) 50%, var(--card)); }
+.card.visited .card-title { color:var(--faint); opacity:.72; }
 .card.visited .card-title::after { content:"\\5df2 \\8bfb"; font-family:var(--body); font-size:9px; font-weight:600; color:var(--faint); border:1px solid var(--line-strong); border-radius:4px; padding:0 4px; margin-left:6px; vertical-align:2px; }
+.card.visited .card-summary { opacity:.65; }
 .pod-chip { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--cat-podcast); background:color-mix(in srgb, var(--cat-podcast) 10%, transparent); border-radius:4px; padding:1px 6px; font-weight:600; }
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
 .load-more-wrap { text-align:center; padding:30px 0 10px; }
@@ -843,6 +855,7 @@ body.reading .reader2 { transform:none; }
   .wall-wrap { padding:12px 14px 50px; }
   .r2-inner { padding:22px 20px 70px; }
   .tool-meta { display:none; }
+  .global-search { flex:1 1 100%; order:10; margin-top:6px; }
   .build-bar { padding:2px 14px 6px; }
 }
 @media (max-width:700px) {
@@ -1011,6 +1024,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
     if(!any) h+='<div class="sp-none">\u6ca1\u6709\u5339\u914d\u300c'+esc(q)+'\u300d\u7684\u4fe1\u6e90</div>';
     document.getElementById('spList').innerHTML=h;
+    document.getElementById('spSearch').oninput=function(){ renderPanel(); };
     document.querySelectorAll('.sp-cat').forEach(function(el){
       el.onclick=function(){
         this.classList.toggle('folded');
@@ -1024,10 +1038,13 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
 
   /* ── Card wall ── */
+  var globalSearch = '';
   function visibleArts(){
+    var q = globalSearch;
     return ART.filter(function(a){
-      if(filter.type==='cat') return a.c===filter.cat;
-      if(filter.type==='src') return a.sk===filter.src;
+      if(filter.type==='cat' && a.c!==filter.cat) return false;
+      if(filter.type==='src' && a.sk!==filter.src) return false;
+      if(q) { var ql=q.toLowerCase(); return (a.t||'').toLowerCase().indexOf(ql)>=0 || (a.s||'').toLowerCase().indexOf(ql)>=0; }
       return true;
     });
   }
@@ -1166,6 +1183,27 @@ def _build_js(sources_with_items, build_ts_ms=0):
   window.toggleSrcPanel = toggleSrcPanel;
   window.selectSrc = selectSrc;
 
+  /* ── Global search ── */
+  var gsInput = document.getElementById('globalSearch');
+  var gsWrap = document.getElementById('globalSearchWrap');
+  var gsClear = document.getElementById('globalSearchClear');
+  if(gsInput) {
+    gsInput.addEventListener('input', function(){
+      globalSearch = this.value.trim();
+      gsWrap.classList.toggle('has-q', globalSearch.length > 0);
+      curArt = null; wallLimit = WALL_STEP;
+      renderWall();
+    });
+  }
+  if(gsClear) {
+    gsClear.addEventListener('click', function(){
+      gsInput.value = ''; globalSearch = '';
+      gsWrap.classList.remove('has-q');
+      curArt = null; wallLimit = WALL_STEP;
+      renderWall(); gsInput.focus();
+    });
+  }
+
   /* ── Keyboard nav ── */
   document.addEventListener('keydown', function(e){
     if(e.key==='Escape'){window.closeOverlays();return;}
@@ -1300,6 +1338,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<h1>时间线</h1>\n'
         '<button class="src-btn" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h13M4 18h9"/></svg> 信源 <span class="cnt" id="srcCnt"></span></button>\n'
         '<div class="chips" id="chips"></div>\n'
+        '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
