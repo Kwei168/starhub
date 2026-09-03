@@ -175,7 +175,7 @@
 ### 导航栏结构
 
 1. ** AI 晨报** — 高亮入口，链接到 `ai-daily.html`
-2. **📚 学习资源 ▾** — 小林笔记、KamaCoder、Agents Course、Vibe Coding
+2. **📚 学习资源 ** — 小林笔记、KamaCoder、Agents Course、Vibe Coding、AGI Hunt
 3. **📡 资讯平台 ▾** — NewsNow、今日热榜、赋范空间、V2EX、Linux Do
 4. **🤖 AI 工具 ▾** — CodeFather、CodeFather AI
 
