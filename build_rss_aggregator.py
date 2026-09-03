@@ -781,7 +781,7 @@ body.reading .reader2 { transform:none; }
 .footer { text-align:center; padding:6px 0; font-size:11px; color:var(--faint); font-family:var(--mono); border-top:1px solid var(--line); background:var(--bg); }
 
 /* ── Build bar ── */
-.build-bar { max-width:1560px; margin:0 auto; padding:2px 20px 8px; display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--faint); }
+.build-bar { position:sticky; top:45px; z-index:30; background:var(--bg); max-width:1560px; margin:0 auto; padding:2px 20px 8px; display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--faint); border-bottom:1px solid var(--line); }
 
 /* ── Responsive ── */
 @media (max-width:900px) {
