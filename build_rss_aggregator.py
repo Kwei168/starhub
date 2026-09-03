@@ -1283,22 +1283,20 @@ def _build_js(sources_with_items, build_ts_ms=0):
     return mins < 60 ? mins + ' 分钟前' : mins < 1440 ? Math.round(mins/60) + ' 小时前' : Math.round(mins/1440) + ' 天前';
   }
 
-  /* ── Live RSS update (API-First) ── */
+  /* ── Load RSS snapshot (from same origin, no Vercel dependency) ── */
   var liveEl = document.getElementById('liveStatus');
   if(liveEl) liveEl.textContent='\u00b7 \u52a0\u8f7d\u4e2d\u2026';
   (function(){
     var ctrl=new AbortController();
-    var tid=setTimeout(function(){ctrl.abort();},30000);
-    fetch('https://starhub-refresh.vercel.app/api/rss',{signal:ctrl.signal}).then(function(r){
-      clearTimeout(tid);if(!r.ok)throw new Error('API '+r.status);return r.json();
+    var tid=setTimeout(function(){ctrl.abort();},15000);
+    fetch('rss_api_snapshot.json',{signal:ctrl.signal}).then(function(r){
+      clearTimeout(tid);if(!r.ok)throw new Error('Snapshot '+r.status);return r.json();
     }).then(function(data){
       if(!data.sources)return;
-      // 用实时数据替换静态构建数据
       data.sources.forEach(function(live){
         if(!live.items||!live.items.length)return;
         var src=SOURCES.find(function(s){return s.key===live.key;});
         if(src){
-          // API 返回缩写字段：t=title, u=url, s=summary, d=date
           live.items.forEach(function(it){
             it.title = it.t || it.title;
             it.link = it.u || it.link;
@@ -1311,7 +1309,6 @@ def _build_js(sources_with_items, build_ts_ms=0):
           src.items = live.items;
         }
       });
-      // 重建 ART 数组
       ART=[];
       SOURCES.forEach(function(s){s.items.forEach(function(it){
         ART.push({t:it.title_zh||it.title,s:it.summary_zh||it.summary||'',
@@ -1320,11 +1317,10 @@ def _build_js(sources_with_items, build_ts_ms=0):
       });});
       ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
       interleaveArts();
-      // 重新渲染
       wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();
-      if(liveEl){var now=new Date();liveEl.textContent='\u2713 \u5b9e\u65f6\u6570\u636e '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
+      if(liveEl){var now=new Date();liveEl.textContent='\u2713 '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
     }).catch(function(e){
-      if(liveEl)liveEl.textContent='\u00b7 \u9759\u6001\u6784\u5efa\u6570\u636e';
+      if(liveEl)liveEl.textContent='';
     });
   })();
 })();
