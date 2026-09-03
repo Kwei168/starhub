@@ -250,17 +250,12 @@ RSS_SOURCES = [
 
     # ── 开发者博客 (33) ──
     {"key": "阮一峰的网络日志_0", "name": "阮一峰的网络日志", "cat": "dev", "url": "https://www.ruanyifeng.com/blog/atom.xml", "color": "#dc382d"},
-    
-    
     {"key": "太隐_4", "name": "太隐", "cat": "dev", "url": "https://wangyurui.com/feed.xml", "color": "#336699"},
     {"key": "云风的blog_5", "name": "云风的BLOG", "cat": "dev", "url": "http://blog.codingnow.com/atom.xml", "color": "#4CAF50"},
     {"key": "胡涂说_6", "name": "胡涂说", "cat": "dev", "url": "https://hutusi.com/feed.xml", "color": "#8e44ad"},
     {"key": "程序员的喵_7", "name": "程序员的喵", "cat": "dev", "url": "https://catcoding.me/atom.xml", "color": "#6c5ce7"},
     {"key": "oldjblog_8", "name": "oldj blog", "cat": "dev", "url": "https://oldj.net/feed", "color": "#2d3436"},
-    
-    
-    
-    {"key": "randy'sblog_12", "name": "Randy\'s Blog", "cat": "dev", "url": "https://lutaonan.com/rss.xml", "color": "#e67e22"},
+    {"key": "randy'sblog_12", "name": "Randy's Blog", "cat": "dev", "url": "https://lutaonan.com/rss.xml", "color": "#e67e22"},
     {"key": "卡瓦邦噶_13", "name": "卡瓦邦噶", "cat": "dev", "url": "https://www.kawabangga.com/feed", "color": "#3498db"},
     {"key": "风雪之隅_14", "name": "风雪之隅", "cat": "dev", "url": "http://www.laruence.com/feed", "color": "#1abc9c"},
     {"key": "离别歌_15", "name": "离别歌", "cat": "dev", "url": "https://www.leavesongs.com/feed/", "color": "#9b59b6"},
@@ -279,20 +274,75 @@ RSS_SOURCES = [
     {"key": "baiyun_30", "name": "BAI YUN", "cat": "dev", "url": "https://baiyun.me/feed", "color": "#2c3e50"},
     {"key": "elmagnifico_31", "name": "elmagnifico", "cat": "dev", "url": "http://elmagnifico.tech/feed.xml", "color": "#e67e22"},
     {"key": "tonybai_33", "name": "Tony Bai", "cat": "dev", "url": "http://tonybai.com/feed/", "color": "#1abc9c"},
-    
     {"key": "全栈应用开发_36", "name": "全栈应用开发", "cat": "dev", "url": "https://www.phodal.com/blog/feeds/rss/", "color": "#16a085"},
     {"key": "tinyprojects_37", "name": "Tiny Projects", "cat": "dev", "url": "https://tinyprojects.dev/feed.xml", "color": "#f39c12"},
     {"key": "笨方法学写作_38", "name": "笨方法学写作", "cat": "dev", "url": "https://www.cnfeat.com/feed.xml", "color": "#dc382d"},
     {"key": "西秦公子_39", "name": "西秦公子", "cat": "dev", "url": "https://www.ixiqin.com/feed/", "color": "#6366f1"},
-    
     {"key": "涛叔_41", "name": "涛叔", "cat": "dev", "url": "https://taoshu.in/feed.xml", "color": "#663399"},
     {"key": "小球飞鱼_42", "name": "小球飞鱼", "cat": "dev", "url": "https://mantyke.icu/index.xml", "color": "#336699"},
     {"key": "王登科dk_43", "name": "王登科DK", "cat": "dev", "url": "https://greatdk.com/feed", "color": "#4CAF50"},
     {"key": "小胡子哥_44", "name": "小胡子哥", "cat": "dev", "url": "http://www.barretlee.com/rss2.xml", "color": "#8e44ad"},
     {"key": "dbanotes_45", "name": "DBA Notes", "cat": "dev", "url": "http://dbanotes.net/feed", "color": "#6c5ce7"},
 
-    # ── AI 日报 (1) ──
+    # ── 技术社区 (9) ──
+    {"key": "v2ex_all_50", "name": "V2EX 全站最新", "cat": "dev", "url": "https://www.v2ex.com/index.xml", "color": "#d7434e"},
+    {"key": "v2ex_new_51", "name": "V2EX 最新", "cat": "dev", "url": "https://www.v2ex.com/feed/tab/all.xml", "color": "#e53935"},
+    {"key": "v2ex_creative_52", "name": "V2EX 创意", "cat": "dev", "url": "https://www.v2ex.com/feed/tab/creative.xml", "color": "#8e24aa"},
+    {"key": "v2ex_play_53", "name": "V2EX 好玩", "cat": "dev", "url": "https://www.v2ex.com/feed/tab/play.xml", "color": "#43a047"},
+    {"key": "nodeseek_54", "name": "NodeSeek", "cat": "dev", "url": "https://rss.nodeseek.com/", "color": "#1e88e5"},
+    {"key": "naixi_55", "name": "奶昔论坛", "cat": "dev", "url": "https://forum.naixi.net/forum.php?mod=rss", "color": "#f06292"},
+    {"key": "hn_newest_56", "name": "Hacker News 最新", "cat": "dev", "url": "https://hnrss.org/newest", "color": "#ff6600"},
+    {"key": "hn_ask_57", "name": "Hacker News Ask", "cat": "dev", "url": "https://hnrss.org/ask", "color": "#ef6c00"},
+    {"key": "hn_show_58", "name": "Hacker News Show", "cat": "dev", "url": "https://hnrss.org/show", "color": "#f57c00"},
+
+    # ── AI 日报 (20) ──
     {"key": "agihunt_0", "name": "AGI Hunt", "cat": "ai", "url": "https://agihunt.info/feed.xml", "color": "#6366f1"},
+    {"key": "openai_blog_1", "name": "OpenAI 博客", "cat": "ai", "url": "https://openai.com/news/rss.xml", "color": "#10a37f"},
+    {"key": "google_deepmind_2", "name": "Google DeepMind", "cat": "ai", "url": "https://deepmind.google/blog/rss.xml", "color": "#4285f4"},
+    {"key": "google_ai_blog_3", "name": "Google AI Blog", "cat": "ai", "url": "https://blog.google/technology/ai/rss/", "color": "#34a853"},
+    {"key": "arxiv_ai_4", "name": "arXiv AI", "cat": "ai", "url": "https://rss.arxiv.org/rss/cs.AI", "color": "#b31b1b"},
+    {"key": "arxiv_ml_5", "name": "arXiv 机器学习", "cat": "ai", "url": "https://rss.arxiv.org/rss/cs.LG", "color": "#c62828"},
+    {"key": "arxiv_nlp_6", "name": "arXiv NLP", "cat": "ai", "url": "https://rss.arxiv.org/rss/cs.CL", "color": "#d84315"},
+    {"key": "hn_ai_7", "name": "Hacker News AI", "cat": "ai", "url": "https://hnrss.org/newest?q=AI", "color": "#ff6600"},
+    {"key": "hn_llm_8", "name": "Hacker News LLM", "cat": "ai", "url": "https://hnrss.org/newest?q=LLM", "color": "#ef6c00"},
+    {"key": "hn_openclaw_9", "name": "Hacker News OpenClaw", "cat": "ai", "url": "https://hnrss.org/newest?q=OpenClaw", "color": "#f57c00"},
+    {"key": "google_research_10", "name": "Google Research Blog", "cat": "ai", "url": "https://research.google/blog/rss/", "color": "#4285f4"},
+    {"key": "huggingface_11", "name": "Hugging Face 博客", "cat": "ai", "url": "https://huggingface.co/blog/feed.xml", "color": "#ffd21e"},
+    {"key": "simonwillison_12", "name": "Simon Willison's Blog", "cat": "ai", "url": "https://simonwillison.net/atom/everything/", "color": "#5c6bc0"},
+    {"key": "openclaw_rel_13", "name": "OpenClaw Releases", "cat": "ai", "url": "https://github.com/openclaw/openclaw/releases.atom", "color": "#7e57c2"},
+    {"key": "openclaw_commits_14", "name": "OpenClaw Commits", "cat": "ai", "url": "https://github.com/openclaw/openclaw/commits/main.atom", "color": "#9575cd"},
+    {"key": "codex_rel_15", "name": "OpenAI Codex Releases", "cat": "ai", "url": "https://github.com/openai/codex/releases.atom", "color": "#10a37f"},
+    {"key": "claude_code_rel_16", "name": "Claude Code Releases", "cat": "ai", "url": "https://github.com/anthropics/claude-code/releases.atom", "color": "#d4a574"},
+    {"key": "gemini_cli_rel_17", "name": "Gemini CLI Releases", "cat": "ai", "url": "https://github.com/google-gemini/gemini-cli/releases.atom", "color": "#4285f4"},
+    {"key": "mcp_spec_rel_18", "name": "MCP Specification Releases", "cat": "ai", "url": "https://github.com/modelcontextprotocol/specification/releases.atom", "color": "#7c3aed"},
+    {"key": "mcp_servers_rel_19", "name": "MCP Servers Releases", "cat": "ai", "url": "https://github.com/modelcontextprotocol/servers/releases.atom", "color": "#6d28d9"},
+
+    # ── 科技媒体 (5) ──
+    {"key": "arstechnica_60", "name": "Ars Technica", "cat": "tech", "url": "https://feeds.arstechnica.com/arstechnica/index", "color": "#ff6600"},
+    {"key": "mit_tech_review_61", "name": "MIT Technology Review", "cat": "tech", "url": "https://www.technologyreview.com/feed/", "color": "#a50034"},
+    {"key": "krebs_62", "name": "Krebs on Security", "cat": "tech", "url": "https://krebsonsecurity.com/feed/", "color": "#1a1a1a"},
+    {"key": "thehackernews_63", "name": "The Hacker News", "cat": "tech", "url": "https://feeds.feedburner.com/TheHackersNews", "color": "#e53935"},
+    {"key": "schneier_64", "name": "Schneier on Security", "cat": "tech", "url": "https://www.schneier.com/feed/", "color": "#37474f"},
+
+    # ── 大厂技术博客 (12) ──
+    {"key": "github_blog_70", "name": "GitHub Blog", "cat": "tech", "url": "https://github.blog/feed/", "color": "#24292e"},
+    {"key": "github_changelog_71", "name": "GitHub Changelog", "cat": "tech", "url": "https://github.blog/changelog/feed/", "color": "#2d333b"},
+    {"key": "github_copilot_72", "name": "GitHub Copilot Changelog", "cat": "tech", "url": "https://github.blog/changelog/label/copilot/feed/", "color": "#6e40c9"},
+    {"key": "netflix_tech_73", "name": "Netflix Tech Blog", "cat": "tech", "url": "https://netflixtechblog.com/feed", "color": "#e50914"},
+    {"key": "aws_blog_74", "name": "AWS Blog", "cat": "tech", "url": "https://aws.amazon.com/blogs/aws/feed/", "color": "#ff9900"},
+    {"key": "cloudflare_blog_75", "name": "Cloudflare Blog", "cat": "tech", "url": "https://blog.cloudflare.com/rss/", "color": "#f38020"},
+    {"key": "google_dev_76", "name": "Google Developers", "cat": "tech", "url": "https://developers.googleblog.com/feeds/posts/default/", "color": "#4285f4"},
+    {"key": "mozilla_hacks_77", "name": "Mozilla Hacks", "cat": "tech", "url": "https://hacks.mozilla.org/feed/", "color": "#000000"},
+    {"key": "vercel_blog_78", "name": "Vercel Blog", "cat": "tech", "url": "https://vercel.com/atom", "color": "#000000"},
+    {"key": "supabase_blog_79", "name": "Supabase Blog", "cat": "tech", "url": "https://supabase.com/rss.xml", "color": "#3ecf8e"},
+    {"key": "stripe_blog_80", "name": "Stripe Blog", "cat": "tech", "url": "https://stripe.com/blog/feed.rss", "color": "#635bff"},
+    {"key": "meta_eng_81", "name": "Meta Engineering", "cat": "tech", "url": "https://engineering.fb.com/feed/", "color": "#0668E1"},
+
+    # ── 技术周刊 (4) ──
+    {"key": "js_weekly_90", "name": "JavaScript Weekly", "cat": "dev", "url": "https://javascriptweekly.com/rss/", "color": "#f7df1e"},
+    {"key": "rust_weekly_91", "name": "This Week in Rust", "cat": "dev", "url": "https://this-week-in-rust.org/atom.xml", "color": "#dea584"},
+    {"key": "golang_weekly_92", "name": "Golang Weekly", "cat": "dev", "url": "https://golangweekly.com/rss/", "color": "#00add8"},
+    {"key": "bytebytego_93", "name": "ByteByteGo", "cat": "dev", "url": "https://blog.bytebytego.com/feed", "color": "#e53935"},
 
     # ── 综合新闻 (14) ──
     {"key": "idaily_1", "name": "iDaily", "cat": "news", "url": "https://plink.anyfeeder.com/idaily/today", "color": "#003399"},
