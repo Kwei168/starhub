@@ -780,6 +780,9 @@ body.reading .reader2 { transform:none; }
 /* ── Footer ── */
 .footer { text-align:center; padding:6px 0; font-size:11px; color:var(--faint); font-family:var(--mono); border-top:1px solid var(--line); background:var(--bg); }
 
+/* ── Build bar ── */
+.build-bar { max-width:1560px; margin:0 auto; padding:2px 20px 8px; display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--faint); }
+
 /* ── Responsive ── */
 @media (max-width:900px) {
   .hd .logo .sub { display:none; }
@@ -787,6 +790,7 @@ body.reading .reader2 { transform:none; }
   .wall-wrap { padding:12px 14px 50px; }
   .r2-inner { padding:22px 20px 70px; }
   .tool-meta { display:none; }
+  .build-bar { padding:2px 14px 6px; }
 }
 @media (max-width:700px) {
   .hd .nav-links a { padding:5px 9px; font-size:12px; }
@@ -843,7 +847,35 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   });
   ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  interleaveArts();
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
+
+  /* ── 信源轮询交错排序：round-robin 避免高频信源垄断 ── */
+  function interleaveArts(){
+    var buckets={}, keys=[];
+    ART.forEach(function(a){
+      if(!buckets[a.sk]){buckets[a.sk]=[];keys.push(a.sk);}
+      buckets[a.sk].push(a);
+    });
+    keys.forEach(function(k){
+      buckets[k].sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+    });
+    var ptrs={}, i;
+    for(i=0;i<keys.length;i++) ptrs[keys[i]]=0;
+    var result=[];
+    while(true){
+      var added=false;
+      for(i=0;i<keys.length;i++){
+        var k=keys[i];
+        if(ptrs[k]<buckets[k].length){
+          result.push(buckets[k][ptrs[k]++]);
+          added=true;
+        }
+      }
+      if(!added)break;
+    }
+    ART=result;
+  }
 
   /* ── State ── */
   var visited = {};
@@ -1186,6 +1218,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
           time:it.time_str,date:it.pub_date,u:it.link||'#'});
       });});
       ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+      interleaveArts();
       // 重新渲染
       wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();
       if(liveEl){var now=new Date();liveEl.textContent='\u2713 \u5b9e\u65f6\u6570\u636e '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
@@ -1231,7 +1264,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
         '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
-        '<div class="footer">自动生成于 ' + _esc(build_time) + '（北京时间）· 共 ' + str(total_items) + ' 篇 · <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
+        '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         + _build_js(sources_with_items, build_ts_ms) +
         '</body>\n</html>'
     )
