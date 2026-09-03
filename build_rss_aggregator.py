@@ -812,9 +812,9 @@ body.src-open .src-panel { transform:none; }
 .scrim { position:fixed; inset:0; background:rgba(28,25,23,.45); opacity:0; pointer-events:none; transition:opacity .25s; z-index:60; }
 body.reading .scrim, body.src-open .scrim { opacity:1; pointer-events:auto; }
 
-/* ── Reader drawer (right) ── */
-.reader2 { position:fixed; top:0; right:0; bottom:0; width:min(760px,100%); z-index:70; background:var(--bg); border-left:1px solid var(--line); box-shadow:-18px 0 50px rgba(0,0,0,.16); transform:translateX(103%); transition:transform .3s cubic-bezier(.32,.72,.28,1); display:flex; flex-direction:column; }
-body.reading .reader2 { transform:none; }
+/* ── Reader modal (centered) ─ */
+.reader2 { position:fixed; top:50%; left:50%; width:min(640px,92vw); max-height:88vh; z-index:70; background:var(--bg); border-radius:14px; box-shadow:0 24px 80px rgba(0,0,0,.22); transform:translate(-50%,-50%) scale(.96); opacity:0; pointer-events:none; transition:transform .25s cubic-bezier(.32,.72,.28,1), opacity .2s; display:flex; flex-direction:column; overflow:hidden; }
+body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; pointer-events:auto; }
 .r2-top { flex:none; display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--line); background:var(--card); position:relative; }
 .r2-progress { position:absolute; left:0; bottom:-1px; height:2px; background:var(--brand); width:0%; transition:width .1s linear; }
 .r2-back { display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--muted); padding:5px 10px 5px 6px; border-radius:999px; border:1px solid transparent; white-space:nowrap; transition:all .15s; }
@@ -824,10 +824,6 @@ body.reading .reader2 { transform:none; }
 .r2-src .src-dot { width:9px; height:9px; }
 .r2-src b { color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .r2-acts { margin-left:auto; display:flex; align-items:center; gap:8px; }
-.seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--bg); }
-.seg button { padding:4px 13px; font-size:12px; font-weight:500; color:var(--muted); white-space:nowrap; transition:all .15s; }
-.seg button.on { background:var(--brand-weak); color:var(--brand-strong); font-weight:600; }
-.seg button[disabled] { opacity:.4; cursor:not-allowed; }
 .r2-open { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--brand-strong); background:var(--brand-weak); border:1px solid var(--brand-line); padding:4px 12px; border-radius:8px; white-space:nowrap; transition:all .15s; }
 .r2-open:hover { background:var(--brand-strong); color:#fff; }
 .r2-body { flex:1; overflow-y:auto; }
@@ -861,10 +857,12 @@ body.reading .reader2 { transform:none; }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition-duration:0s!important; animation-duration:0s!important; } }
 
 /* ── Responsive ── */
+@media (max-width:1100px) { .wall { columns:3 280px; } }
 @media (max-width:900px) {
   .hd .logo .sub { display:none; }
   .toolbar { padding:12px 14px 2px; }
   .wall-wrap { padding:12px 14px 50px; }
+  .wall { columns:2 260px; }
   .r2-inner { padding:22px 20px 70px; }
   .tool-meta { display:none; }
   .global-search { flex:1 1 100%; order:10; margin-top:6px; }
@@ -874,10 +872,15 @@ body.reading .reader2 { transform:none; }
   .hd .nav-links a { padding:5px 9px; font-size:12px; }
   .chips { overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px; }
   .chip { white-space:nowrap; flex:none; }
+  .wall { columns:1 minmax(0,1fr); }
+  .reader2 { width:96vw; max-height:92vh; border-radius:12px; }
   .r2-top { padding:8px 12px; }
   .r2-back span { display:none; }
   .r2-src b { max-width:110px; }
   .r2-open { padding:4px 9px; }
+  .r2-inner { padding:18px 16px 60px; }
+  .r2-title { font-size:19px; }
+  .r2-summary { font-size:14px; line-height:1.8; }
 }
 """
 
@@ -949,7 +952,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var visited = {};
   try { visited = JSON.parse(localStorage.getItem('rss_read_v2')||'{}'); } catch(e){}
   var filter = {type:'all', cat:null, src:null};
-  var curArt = null, rMode = 'summary';
+  var curArt = null;
   var wallLimit = 120, WALL_STEP = 80;
 
   /* ── Theme ── */
@@ -1119,7 +1122,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ── Reader ── */
   function markRead(a){visited[artKey(a)]=1;try{localStorage.setItem('rss_read_v2',JSON.stringify(visited));}catch(e){}}
   function openReader(a){
-    curArt=a; markRead(a); rMode='summary';
+    curArt=a; markRead(a);
     renderReader(); document.body.classList.add('reading');
     document.body.classList.remove('src-open');
     document.getElementById('r2Body').scrollTop=0; renderWall();
@@ -1128,14 +1131,6 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var a=curArt; if(!a) return;
     document.getElementById('r2Src').innerHTML='<span class="src-dot" style="--sc:'+a.sc+'"></span><b>'+esc(a.src)+'</b><span>\u00b7</span><span>'+esc(a.time)+'</span>';
     var openEl=document.getElementById('r2Open'); openEl.href=a.u;
-    var segBtns=document.querySelectorAll('#r2Seg button');
-    segBtns.forEach(function(b){
-      b.classList.toggle('on',b.dataset.m===rMode);
-      var hasFull=(curArt.s||'').length>60;
-      if(b.dataset.m==='full'&&!hasFull) b.setAttribute('disabled','');
-      else b.removeAttribute('disabled');
-      b.onclick=function(){rMode=this.dataset.m;renderReader();};
-    });
     var h='<h1 class="r2-title">'+esc(a.t)+'</h1>';
     h+='<div class="r2-meta" style="--cc:var(--cat-'+a.c+')"><span class="cat">'+(CAT_LABELS[a.c]||a.c)+'</span>';
     h+='<span class="src-dot" style="--sc:'+a.sc+'"></span><span>'+esc(a.src)+'</span>';
@@ -1365,8 +1360,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
         '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
-        '<div class="r2-acts"><div class="seg" id="r2Seg"><button data-m="summary">快览</button><button data-m="full">全文</button></div>\n'
-        '<a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
+        '<div class="r2-acts"><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
         '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
         + _build_js(sources_with_items, build_ts_ms) +
