@@ -347,6 +347,14 @@ RSS_SOURCES = [
     {"key": "golang_weekly_92", "name": "Golang Weekly", "cat": "dev", "url": "https://golangweekly.com/rss/", "color": "#00add8"},
     {"key": "bytebytego_93", "name": "ByteByteGo", "cat": "dev", "url": "https://blog.bytebytego.com/feed", "color": "#e53935"},
 
+    # ── Reddit 社区 (6) ──
+    {"key": "reddit_programming_100", "name": "r/programming", "cat": "dev", "url": "https://www.reddit.com/r/programming/top.rss?t=day", "color": "#ff4500"},
+    {"key": "reddit_webdev_101", "name": "r/webdev", "cat": "dev", "url": "https://www.reddit.com/r/webdev/top.rss?t=day", "color": "#0079d4"},
+    {"key": "reddit_selfhosted_102", "name": "r/selfhosted", "cat": "dev", "url": "https://www.reddit.com/r/selfhosted/top.rss?t=day", "color": "#4caf50"},
+    {"key": "reddit_ml_103", "name": "r/MachineLearning", "cat": "ai", "url": "https://www.reddit.com/r/MachineLearning/top.rss?t=day", "color": "#d32f2f"},
+    {"key": "reddit_localllama_104", "name": "r/LocalLLaMA", "cat": "ai", "url": "https://www.reddit.com/r/LocalLLaMA/top.rss?t=day", "color": "#f59e0b"},
+    {"key": "reddit_artificial_105", "name": "r/artificial", "cat": "ai", "url": "https://www.reddit.com/r/artificial/top.rss?t=day", "color": "#7c3aed"},
+
     # ── 综合新闻 (14) ──
     {"key": "idaily_1", "name": "iDaily", "cat": "news", "url": "https://plink.anyfeeder.com/idaily/today", "color": "#003399"},
     {"key": "中国日报双语_2", "name": "中国日报双语", "cat": "news", "url": "https://plink.anyfeeder.com/chinadaily/dual", "color": "#cc0000"},
@@ -714,7 +722,7 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .toolbar { max-width:1560px; margin:0 auto; padding:14px 20px 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .toolbar h1 { font-family:var(--display); font-size:19px; font-weight:900; margin-right:2px; }
 .src-btn { display:inline-flex; align-items:center; gap:6px; padding:5px 13px; border-radius:999px; font-size:12.5px; font-weight:600; border:1px solid var(--brand-line); background:var(--brand-weak); color:var(--brand-strong); transition:all .15s; }
-.src-btn:hover { background:var(--brand-line); color:#fff; }
+.src-btn:hover { background:var(--brand-strong); color:#fff; }
 .src-btn svg { width:13px; height:13px; }
 .src-btn .cnt { font-family:var(--mono); font-size:10px; opacity:.8; }
 .chips { display:flex; gap:6px; flex-wrap:wrap; }
@@ -731,6 +739,8 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .global-search { position:relative; flex:0 1 260px; min-width:140px; }
 .global-search input { width:100%; padding:5px 28px 5px 10px; border-radius:999px; border:1px solid var(--line); background:var(--card); font-size:12.5px; color:var(--ink); font-family:var(--body); outline:none; transition:border-color .15s, box-shadow .15s; }
 .global-search input:focus { border-color:var(--brand-line); box-shadow:0 0 0 2px var(--brand-weak); }
+.global-search input:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
+button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible { outline:2px solid var(--brand); outline-offset:2px; border-radius:var(--radius); }
 .global-search input::placeholder { color:var(--faint); }
 .global-search .sx { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:18px; height:18px; border-radius:999px; background:var(--line); color:var(--muted); display:none; align-items:center; justify-content:center; font-size:10px; cursor:pointer; transition:all .15s; }
 .global-search .sx:hover { background:var(--line-strong); color:var(--ink); }
@@ -767,7 +777,7 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
 .load-more-wrap { text-align:center; padding:30px 0 10px; }
 .load-more-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 36px; border-radius:999px; font-size:13px; font-weight:600; border:1px solid var(--brand-line); background:var(--brand-weak); color:var(--brand-strong); cursor:pointer; transition:all .2s; }
-.load-more-btn:hover { background:var(--brand-line); color:#fff; transform:translateY(-1px); box-shadow:var(--shadow-lift); }
+.load-more-btn:hover { background:var(--brand-strong); color:#fff; transform:translateY(-1px); box-shadow:var(--shadow-lift); }
 .load-more-progress { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:10px; }
 
 /* ── Source panel (left drawer) ── */
@@ -822,7 +832,7 @@ body.reading .reader2 { transform:none; }
 .seg button.on { background:var(--brand-weak); color:var(--brand-strong); font-weight:600; }
 .seg button[disabled] { opacity:.4; cursor:not-allowed; }
 .r2-open { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--brand-strong); background:var(--brand-weak); border:1px solid var(--brand-line); padding:4px 12px; border-radius:8px; white-space:nowrap; transition:all .15s; }
-.r2-open:hover { background:var(--brand-line); color:#fff; }
+.r2-open:hover { background:var(--brand-strong); color:#fff; }
 .r2-body { flex:1; overflow-y:auto; }
 .r2-inner { max-width:680px; margin:0 auto; padding:30px 34px 80px; }
 .r2-title { font-family:var(--display); font-size:23px; font-weight:900; line-height:1.42; margin-bottom:12px; }
@@ -848,7 +858,10 @@ body.reading .reader2 { transform:none; }
 .footer { text-align:center; padding:6px 0; font-size:11px; color:var(--faint); font-family:var(--mono); border-top:1px solid var(--line); background:var(--bg); }
 
 /* ── Build bar ── */
-.build-bar { position:sticky; top:45px; z-index:30; background:var(--bg); max-width:1560px; margin:0 auto; padding:2px 20px 8px; display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--faint); border-bottom:1px solid var(--line); }
+.build-bar { background:var(--bg); max-width:1560px; margin:0 auto; padding:2px 20px 8px; display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--faint); border-bottom:1px solid var(--line); }
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition-duration:0s!important; animation-duration:0s!important; } }
 
 /* ── Responsive ── */
 @media (max-width:900px) {
@@ -978,7 +991,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         var c=this.dataset.c;
         if(filter.type==='cat'&&filter.cat===c) filter={type:'all'};
         else filter={type:'cat',cat:c,src:null};
-        curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0});
+        curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0}); updateTitle(); updateHash();
       };
     });
     var pw=document.getElementById('fpillWrap');
@@ -990,8 +1003,24 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var ftN=ART.filter(function(a){return (a.s||'').length>60;}).length;
     document.getElementById('toolMeta').textContent=ART.length+' \u7bc7 \u00b7 \u5168\u6587\u8986\u76d6 '+ftN+'/'+ART.length;
   }
-  function SRC_OBJ(k){ return SOURCES.find(function(s){return s.key===k;}); }
-  window.clearSrcF=function(e){e.stopPropagation();filter={type:'all'};curArt=null;wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();};
+  function updateTitle(){
+    var h1=document.querySelector('.toolbar h1');
+    if(!h1)return;
+    if(filter.type==='cat') h1.textContent=CAT_LABELS[filter.cat]||filter.cat;
+    else if(filter.type==='src'){var s=SRC_OBJ(filter.src);h1.textContent=s?s.name:'\u4fe1\u6e90';}
+    else h1.textContent='\u65f6\u95f4\u7ebf';
+  }
+  function updateMeta(){
+    var el=document.getElementById('toolMeta');if(!el)return;
+    if(globalSearch){
+      var list=visibleArts();
+      el.textContent='\u547d\u4e2d '+list.length+' \u7bc7';return;
+    }
+    var ftN=ART.filter(function(a){return(a.s||'').length>60;}).length;
+    el.textContent=ART.length+' \u7bc7 \u00b7 \u5168\u6587\u8986\u76d6 '+ftN+'/'+ART.length;
+  }
+  function SRC_OBJ(k){ return SOURCES.find(function(s){return s.key===k}); }
+  window.clearSrcF=function(e){e.stopPropagation();filter={type:'all'};curArt=null;wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();updateTitle();updateHash();};
 
   /* ── Source panel ── */
   function toggleSrcPanel(){ document.body.classList.toggle('src-open'); }
@@ -999,7 +1028,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function selectSrc(key){
     if(!key){filter={type:'all'};} else {filter={type:'src',src:key};}
     curArt=null; wallLimit=WALL_STEP; document.body.classList.remove('src-open');
-    renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0});
+    renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0}); updateTitle(); updateHash();
   }
   window.selectSrc=selectSrc;
   function renderPanel(){
@@ -1054,7 +1083,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
     if(!list.length){
-      wall.innerHTML='<div class="empty-hint">\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0</div>';
+      var em=globalSearch?'\u672a\u627e\u5230\u4e0e\u300c'+esc(globalSearch)+'\u300d\u76f8\u5173\u7684\u6587\u7ae0':'\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0';
+      wall.innerHTML='<div class="empty-hint">'+em+'</div>';
       return;
     }
     var start=wall.querySelectorAll('.card').length;
@@ -1071,7 +1101,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time">'+esc(a.time)+'</span>';
-      h+='<span class="ext-btn" title="\u539f\u7ad9"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></span></div>';
+      h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
       h+='<h3 class="card-title">'+esc(a.t)+'</h3>';
       if(a.s) h+='<p class="card-summary">'+esc(a.s)+'</p>';
       h+='<div class="card-foot"><span class="src-dot" style="--sc:'+a.sc+'"></span><span class="src-name">'+esc(a.src)+'</span>';
@@ -1097,7 +1127,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var k=card.dataset.k;
     var a=ART.find(function(x){return artKey(x)===k;});
     if(!a) return;
-    if(e.target.closest('.ext-btn')){markRead(a);window.open(a.u,'_blank');return;}
+    if(e.target.closest('.ext-btn')){markRead(a);return;}
     openReader(a);
   });
   function loadMore(){
@@ -1111,13 +1141,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ── Reader ── */
   function markRead(a){visited[artKey(a)]=1;try{localStorage.setItem('rss_read_v2',JSON.stringify(visited));}catch(e){}}
   function openReader(a){
-    curArt=a; markRead(a); rMode=(a.s||'').length>60?'summary':'summary';
+    curArt=a; markRead(a); rMode='summary';
     renderReader(); document.body.classList.add('reading');
     document.body.classList.remove('src-open');
     document.getElementById('r2Body').scrollTop=0; renderWall();
   }
-  window.closeReader=function(){document.body.classList.remove('reading');curArt=null;renderWall();};
-  window.closeOverlays=function(){document.body.classList.remove('src-open');window.closeReader();};
   function renderReader(){
     var a=curArt; if(!a) return;
     document.getElementById('r2Src').innerHTML='<span class="src-dot" style="--sc:'+a.sc+'"></span><b>'+esc(a.src)+'</b><span>\u00b7</span><span>'+esc(a.time)+'</span>';
@@ -1125,6 +1153,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var segBtns=document.querySelectorAll('#r2Seg button');
     segBtns.forEach(function(b){
       b.classList.toggle('on',b.dataset.m===rMode);
+      var hasFull=(curArt.s||'').length>60;
+      if(b.dataset.m==='full'&&!hasFull) b.setAttribute('disabled','');
+      else b.removeAttribute('disabled');
       b.onclick=function(){rMode=this.dataset.m;renderReader();};
     });
     var h='<h1 class="r2-title">'+esc(a.t)+'</h1>';
@@ -1181,7 +1212,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   // ── Window exports ──
   window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; renderWall(); };
   window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
-  window.clearSrcF = function(e){ e.stopPropagation(); filter={type:'all'}; curArt=null; renderChips(); renderWall(); renderPanel(); };
+  window.clearSrcF = function(e){ e.stopPropagation(); filter={type:'all'}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); };
   window.toggleSrcPanel = toggleSrcPanel;
   window.selectSrc = selectSrc;
 
@@ -1194,7 +1225,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       globalSearch = this.value.trim();
       gsWrap.classList.toggle('has-q', globalSearch.length > 0);
       curArt = null; wallLimit = WALL_STEP;
-      renderWall();
+      renderWall(); updateMeta();
     });
   }
   if(gsClear) {
@@ -1202,7 +1233,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       gsInput.value = ''; globalSearch = '';
       gsWrap.classList.remove('has-q');
       curArt = null; wallLimit = WALL_STEP;
-      renderWall(); gsInput.focus();
+      renderWall(); updateMeta(); gsInput.focus();
     });
   }
 
@@ -1250,7 +1281,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Init ── */
   var restored = restoreFromHash();
-  renderChips(); renderWall(); renderPanel();
+  renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash();
   /* 无限滚动：接近底部自动加载更多 */
   window.addEventListener('scroll',function(){
     var list=visibleArts();
@@ -1345,15 +1376,15 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
-        '<div class="wall-wrap"><div class="wall" id="wall"></div></div>\n'
-        '<div class="scrim" onclick="closeOverlays()"></div>\n'
-        '<aside class="src-panel" id="srcPanel">\n'
+        '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"></div></div>\n'
+        '<div class="scrim" aria-hidden="true" onclick="closeOverlays()"></div>\n'
+        '<aside class="src-panel" id="srcPanel" role="dialog" aria-modal="true" aria-label="\u4fe1\u6e90\u9762\u677f">\n'
         '<div class="sp-head"><div class="row"><h2>信源</h2>\n'
         '<button class="sp-close" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>\n'
         '</div><label class="sp-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>\n'
         '<input id="spSearch" placeholder="搜索信源…" autocomplete="off"></label></div>\n'
         '<div class="sp-list" id="spList"></div></aside>\n'
-        '<aside class="reader2" id="reader2">\n'
+        '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
         '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
         '<div class="r2-acts"><div class="seg" id="r2Seg"><button data-m="summary">快览</button><button data-m="full">全文</button></div>\n'
