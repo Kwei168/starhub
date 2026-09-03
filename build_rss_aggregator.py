@@ -1078,17 +1078,12 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!list.length){
       var em=globalSearch?'\u672a\u627e\u5230\u4e0e\u300c'+esc(globalSearch)+'\u300d\u76f8\u5173\u7684\u6587\u7ae0':'\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0';
       wall.innerHTML='<div class="empty-hint">'+em+'</div>';
+      wallLimit=0;
       return;
     }
-    var existingCards=wall.querySelectorAll('.card').length;
-    var shouldReset = existingCards===0 || wallLimit<=WALL_STEP;
-    if(shouldReset){
-      wall.innerHTML=''; existingCards=0;
-    }
-    var end=Math.min(existingCards===0?wallLimit:existingCards+WALL_STEP, list.length);
-    if(existingCards===0) wallLimit=Math.min(wallLimit,list.length);
+    var end=Math.min(wallLimit, list.length);
     var h='';
-    for(var i=existingCards;i<end;i++){
+    for(var i=0;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
       h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
@@ -1101,17 +1096,27 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<span class="foot-meta"><span>'+estRead(a)+'</span></span></div>';
       h+='</article>';
     }
-    if(existingCards===0) wall.innerHTML=h;
-    else wall.insertAdjacentHTML('beforeend',h);
+    wall.innerHTML=h;
     wallLimit=end;
   }
-  /* 事件委托：一次性绑定，增量追加无需重新绑定 */
+  /* 轻量更新：仅更新卡片已读/打开状态的 CSS 类，不重建 DOM */
+  function updateCardStates(){
+    var cards=document.querySelectorAll('#wall .card');
+    for(var i=0;i<cards.length;i++){
+      var k=cards[i].dataset.k;
+      var isVis=!!visited[k];
+      var isOpen=curArt&&artKey(curArt)===k;
+      cards[i].classList.toggle('visited',isVis);
+      cards[i].classList.toggle('open',isOpen);
+    }
+  }
+  /* 事件委托：一次性绑定，无需重新绑定 */
   document.getElementById('wall').addEventListener('click',function(e){
     var card=e.target.closest('.card'); if(!card)return;
     var k=card.dataset.k;
     var a=ART.find(function(x){return artKey(x)===k;});
     if(!a) return;
-    if(e.target.closest('.ext-btn')){markRead(a);return;}
+    if(e.target.closest('.ext-btn')){markRead(a);updateCardStates();return;}
     openReader(a);
   });
   function loadMore(){
@@ -1128,7 +1133,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     curArt=a; markRead(a);
     renderReader(); document.body.classList.add('reading');
     document.body.classList.remove('src-open');
-    document.getElementById('r2Body').scrollTop=0; renderWall();
+    document.getElementById('r2Body').scrollTop=0; updateCardStates();
   }
   function renderReader(){
     var a=curArt; if(!a) return;
@@ -1186,7 +1191,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
 
   // ── Window exports ──
-  window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; renderWall(); };
+  window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; updateCardStates(); };
   window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
   window.clearSrcF = function(e){ e.stopPropagation(); filter={type:'all'}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); };
   window.toggleSrcPanel = toggleSrcPanel;
