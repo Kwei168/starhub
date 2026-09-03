@@ -749,9 +749,8 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 
 /* ── Card wall ── */
 .wall-wrap { max-width:1560px; margin:0 auto; padding:14px 20px 60px; }
-.wall { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px 12px; cursor:pointer; position:relative; transition:box-shadow .18s, border-color .18s, transform .18s; }
-.card.featured { grid-column:span 2; }
+.wall { columns:4 300px; column-gap:14px; }
+.card { break-inside:avoid; margin-bottom:14px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px 12px; cursor:pointer; position:relative; transition:box-shadow .18s, border-color .18s, transform .18s; }
 .card:hover { border-color:var(--brand-line); box-shadow:var(--shadow-lift); transform:translateY(-2px); }
 .card.open { border-color:var(--brand); box-shadow:0 0 0 1px var(--brand-line); }
 .card-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
@@ -776,9 +775,6 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 .card.visited .card-summary { opacity:.65; }
 .pod-chip { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--cat-podcast); background:color-mix(in srgb, var(--cat-podcast) 10%, transparent); border-radius:4px; padding:1px 6px; font-weight:600; }
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
-.time-divider { grid-column:1/-1; display:flex; align-items:center; gap:12px; padding:18px 0 6px; font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.04em; }
-.time-divider::before,.time-divider::after { content:""; flex:1; height:1px; background:var(--line); }
-.time-divider .td-label { white-space:nowrap; }
 
 
 /* ── Source panel (left drawer) ── */
@@ -929,34 +925,22 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   });
   ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-  interleaveArts();
+  constrainConsecutive();
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
 
-  /* ── 信源轮询交错排序：round-robin 避免高频信源垄断 ── */
-  function interleaveArts(){
-    var buckets={}, keys=[];
-    ART.forEach(function(a){
-      if(!buckets[a.sk]){buckets[a.sk]=[];keys.push(a.sk);}
-      buckets[a.sk].push(a);
-    });
-    keys.forEach(function(k){
-      buckets[k].sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
-    });
-    var ptrs={}, i;
-    for(i=0;i<keys.length;i++) ptrs[keys[i]]=0;
-    var result=[];
-    while(true){
-      var added=false;
-      for(i=0;i<keys.length;i++){
-        var k=keys[i];
-        if(ptrs[k]<buckets[k].length){
-          result.push(buckets[k][ptrs[k]++]);
-          added=true;
+  /* ── 局部信源约束：同一信源不连续超过 2 张 ─ */
+  function constrainConsecutive(){
+    var MAX=2, i, j;
+    for(i=2;i<ART.length;i++){
+      if(ART[i].sk===ART[i-1].sk && ART[i].sk===ART[i-2].sk){
+        for(j=i+1;j<ART.length;j++){
+          if(ART[j].sk!==ART[i-1].sk){
+            var tmp=ART[i]; ART[i]=ART[j]; ART[j]=tmp;
+            break;
+          }
         }
       }
-      if(!added)break;
     }
-    ART=result;
   }
 
   /* ── State ── */
@@ -1081,18 +1065,6 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   }
   function artKey(a){ return a.sk+'|'+(a.u&&a.u!=='#'?a.u:a.t); }
-  function getTimeGroup(d){
-    if(!d) return '\u66f4\u65e9';
-    var today=new Date(); today.setHours(0,0,0,0);
-    var ds=d.length>=10?d.substring(0,10):d;
-    var dt=new Date(ds+'T00:00:00');
-    if(isNaN(dt.getTime())) return '\u66f4\u65e9';
-    var diff=Math.floor((today-dt)/864e5);
-    if(diff===0) return '\u4eca\u5929';
-    if(diff===1) return '\u6628\u5929';
-    if(diff<7) return '\u672c\u5468';
-    return '\u66f4\u65e9';
-  }
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
     if(!list.length){
@@ -1107,19 +1079,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }
     var end=Math.min(existingCards===0?wallLimit:existingCards+WALL_STEP, list.length);
     if(existingCards===0) wallLimit=Math.min(wallLimit,list.length);
-    var h='', seenGroups={}, featuredDone=existingCards>0;
-    wall.querySelectorAll('.time-divider').forEach(function(el){ seenGroups[el.textContent.trim()]=1; });
+    var h='';
     for(var i=existingCards;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
-      var grp=getTimeGroup(a.date);
-      if(!seenGroups[grp]){
-        seenGroups[grp]=1;
-        h+='<div class="time-divider"><span class="td-label">'+grp+'</span></div>';
-      }
-      var isFeatured=!featuredDone&&grp==='\u4eca\u5929';
-      if(isFeatured) featuredDone=true;
-      h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+(isFeatured?' featured':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
+      h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time">'+esc(a.time)+'</span>';
       h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
@@ -1129,7 +1093,6 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<span class="foot-meta"><span>'+estRead(a)+'</span></span></div>';
       h+='</article>';
     }
-
     if(existingCards===0) wall.innerHTML=h;
     else wall.insertAdjacentHTML('beforeend',h);
     wallLimit=end;
