@@ -18,7 +18,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 OUT = "rss-aggregator.html"
-UA = {"User-Agent": "Mozilla/5.0 (starhub-rss-aggregator)"}
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "application/rss+xml, application/xml, text/xml, */*"}
 
 # ── 缓存配置 ──
 TRANS_CACHE_FILE = "translations.json"
@@ -677,6 +677,7 @@ def _build_css():
   --shadow:0 1px 2px rgba(28,25,23,.05);
   --shadow-lift:0 10px 26px rgba(0,0,0,.10),0 2px 4px rgba(0,0,0,.06);
   --cat-tech:#2f5d8a; --cat-cn_tech:#c2434d; --cat-dev:#7052c9; --cat-ai:#b06a10; --cat-news:#8a6d1f; --cat-podcast:#2e7d5f;
+  --unread:#1a8a3f; --read-badge:#c0392b;
 }
 [data-theme="dark"] {
   --bg:#161412; --card:#1d1a17; --card-2:#262019; --card-3:#2f2820;
@@ -686,6 +687,7 @@ def _build_css():
   --shadow:0 1px 2px rgba(0,0,0,.4);
   --shadow-lift:0 10px 26px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.4);
   --cat-tech:#8fb3d9; --cat-cn_tech:#e08790; --cat-dev:#a894e8; --cat-ai:#d3a15c; --cat-news:#cbb26a; --cat-podcast:#6cba9c;
+  --unread:#4ade80; --read-badge:#f87171;
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
 html { scroll-behavior:smooth; }
@@ -748,7 +750,7 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .ext-btn { flex:none; width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--faint); border:1px solid transparent; transition:all .15s; }
 .ext-btn:hover { color:var(--brand-strong); border-color:var(--brand-line); background:var(--brand-weak); }
 .ext-btn svg { width:11px; height:11px; }
-.card-title { font-family:var(--display); font-size:15.5px; font-weight:700; line-height:1.45; margin-bottom:7px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; transition:color .15s; }
+.card-title { font-family:var(--display); font-size:15.5px; font-weight:700; line-height:1.45; margin-bottom:7px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; color:var(--unread); transition:color .15s; }
 .card:hover .card-title { color:var(--brand-strong); }
 .card-summary { font-size:12.5px; color:var(--muted); line-height:1.7; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
 .card-foot { display:flex; align-items:center; gap:6px; margin-top:11px; padding-top:9px; border-top:1px solid var(--line); font-size:11px; color:var(--faint); }
@@ -759,7 +761,7 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .no-ft { font-size:10px; color:var(--faint); border:1px dashed var(--line-strong); border-radius:4px; padding:0 5px; }
 .card.visited { border-left:3px solid var(--line-strong); background:color-mix(in srgb, var(--card-2) 50%, var(--card)); }
 .card.visited .card-title { color:var(--faint); opacity:.72; }
-.card.visited .card-title::after { content:"\\5df2 \\8bfb"; font-family:var(--body); font-size:9px; font-weight:600; color:var(--faint); border:1px solid var(--line-strong); border-radius:4px; padding:0 4px; margin-left:6px; vertical-align:2px; }
+.card.visited .card-title::after { content:"\\5df2 \\8bfb"; font-family:var(--body); font-size:9px; font-weight:600; color:#fff; background:var(--read-badge); border-radius:4px; padding:0 5px; margin-left:6px; vertical-align:2px; }
 .card.visited .card-summary { opacity:.65; }
 .pod-chip { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; color:var(--cat-podcast); background:color-mix(in srgb, var(--cat-podcast) 10%, transparent); border-radius:4px; padding:1px 6px; font-weight:600; }
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
