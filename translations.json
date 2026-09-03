@@ -20439,5 +20439,11 @@
   "dd6a51974f2f393f7ee7abac2adc2058": "Gemini 3.8 Flash 现已在 GitHub Copilot 中提供",
   "14bb83d5d3e3c04c8f373922f4eeb520": "Gemini 3.8 Flash 是 Google 最新的 Flash 模型，现已在 GitHub Copilot 中提供。在我们的早期测试中，Gemini 3.8 Flash 在复杂的基于终端的编码任务上表现强劲，并表现出严格的……\nGemini 3.8 Flash 现已在 GitHub Copilot 中提供的帖子首先出现在 GitHub 博客上。",
   "1eb830bcd582eb0d1676a5691c76b5ae": "即将弃用选定的 GitHub Copilot 模型",
-  "7f7578c218c088f025eacebfcc3484e6": "我们将于 2026 年 10 月 2 日在所有 GitHub Copilot 体验（包括 Copilot Chat、内联编辑、询问和代理模式以及代码完成）中弃用以下模型：模型弃用日期...\n即将弃用选定 GitHub Copilot 模型的帖子首先出现在 GitHub 博客上。"
+  "7f7578c218c088f025eacebfcc3484e6": "我们将于 2026 年 10 月 2 日在所有 GitHub Copilot 体验（包括 Copilot Chat、内联编辑、询问和代理模式以及代码完成）中弃用以下模型：模型弃用日期...\n即将弃用选定 GitHub Copilot 模型的帖子首先出现在 GitHub 博客上。",
+  "3e88e4d27f6f19104b9f284214fde043": "需要有人来构建基本网站",
+  "f72a7293de70313a0dc5617c366cc057": "如果这是错误的子项，请随时为我指出正确的方向。  需要有人帮我建立一个基本的网站。我是一名导师，希望宣传我的服务。  请留言给我讨论。  我不确定“招揽”规则是否允许这样做。再次强调，如果是，请随时删除帖子/为我指出正确的方向！谢谢你！！    由 /u/LatrellSprewell88 提交 [链接] [评论]",
+  "f9d3c9567b347811fe3d61b410a69948": "Render vs Railway vs Cloudflare Workers",
+  "3b17149acd305ccc207e84e791654946": "对于小型生产应用程序，您会选择哪个托管平台：Render vs Railway vs Cloudflare Workers？我正在构建类似库存管理应用程序和网站的东西 - 经过身份验证的用户、Node/TypeScript API、PostgreSQL、后台作业/cron，以及随着时间的推移可能有几千个用户。目前正在考虑 **Render、Railway 和 Cloudflare Workers**。对于可靠性、可扩展性、数据库延迟和可预测成本都很重要的生产应用程序，您会选择哪一个？为什么？沃尔",
+  "174a8bbb477a6e3d9988566086403403": "还有人避免 CSS 重置/标准化吗？",
+  "c8f6ac863fbc82266631201da4122d7f": "过去，CSS 重置对于消除默认浏览器样式之间的差异非常重要，但大多数浏览器都采取了一致行动。如今更流行的是进行微重置/标准化/无论你想怎么称呼它来摆脱烦恼。它可能包含诸如 * { all: unset } 或 * { margin: 0; 之类的规则。 padding: 0 }，或者输入、按钮、文本区域，选择{ font:继承}，或者通常* { box-sizing: border-box }。我看到了上诉。但与此同时，我"
 }
