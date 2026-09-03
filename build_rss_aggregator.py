@@ -284,7 +284,7 @@ RSS_SOURCES = [
     {"key": "小胡子哥_44", "name": "小胡子哥", "cat": "dev", "url": "http://www.barretlee.com/rss2.xml", "color": "#8e44ad"},
     {"key": "dbanotes_45", "name": "DBA Notes", "cat": "dev", "url": "http://dbanotes.net/feed", "color": "#6c5ce7"},
 
-    # ── 技术社区 (9) ──
+    # ── 技术社区 (12) ──
     {"key": "v2ex_all_50", "name": "V2EX 全站最新", "cat": "dev", "url": "https://www.v2ex.com/index.xml", "color": "#d7434e"},
     {"key": "v2ex_new_51", "name": "V2EX 最新", "cat": "dev", "url": "https://www.v2ex.com/feed/tab/all.xml", "color": "#e53935"},
     {"key": "v2ex_creative_52", "name": "V2EX 创意", "cat": "dev", "url": "https://www.v2ex.com/feed/tab/creative.xml", "color": "#8e24aa"},
@@ -294,6 +294,9 @@ RSS_SOURCES = [
     {"key": "hn_newest_56", "name": "Hacker News 最新", "cat": "dev", "url": "https://hnrss.org/newest", "color": "#ff6600"},
     {"key": "hn_ask_57", "name": "Hacker News Ask", "cat": "dev", "url": "https://hnrss.org/ask", "color": "#ef6c00"},
     {"key": "hn_show_58", "name": "Hacker News Show", "cat": "dev", "url": "https://hnrss.org/show", "color": "#f57c00"},
+    {"key": "linuxdo_latest_59", "name": "LinuxDo 最新话题", "cat": "dev", "url": "https://linux.do/latest.rss", "color": "#2d8cff"},
+    {"key": "linuxdo_top_60", "name": "LinuxDo 热门话题", "cat": "dev", "url": "https://linux.do/top.rss", "color": "#1a73e8"},
+    {"key": "linuxdo_posts_61", "name": "LinuxDo 最新帖子", "cat": "dev", "url": "https://linux.do/posts.rss", "color": "#4a90d9"},
 
     # ── AI 日报 (20) ──
     {"key": "agihunt_0", "name": "AGI Hunt", "cat": "ai", "url": "https://agihunt.info/feed.xml", "color": "#6366f1"},
@@ -1036,7 +1039,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       return;
     }
     var start=wall.querySelectorAll('.card').length;
-    if(start>=list.length||start===0){
+    var shouldReset = start===0 || wallLimit<=WALL_STEP;
+    if(shouldReset){
       wall.innerHTML=''; start=0;
     }
     var end=Math.min(start===0?wallLimit:start+WALL_STEP, list.length);
