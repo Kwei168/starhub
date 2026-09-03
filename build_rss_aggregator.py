@@ -1087,7 +1087,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function getTimeGroup(d){
     if(!d) return '\u66f4\u65e9';
     var today=new Date(); today.setHours(0,0,0,0);
-    var dt=new Date(d+'T00:00:00');
+    var ds=d.length>=10?d.substring(0,10):d;
+    var dt=new Date(ds+'T00:00:00');
+    if(isNaN(dt.getTime())) return '\u66f4\u65e9';
     var diff=Math.floor((today-dt)/864e5);
     if(diff===0) return '\u4eca\u5929';
     if(diff===1) return '\u6628\u5929';
@@ -1132,7 +1134,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }
     if(end<list.length){
       h+='<div class="load-more-wrap" id="loadMoreWrap">';
-      h+='<button class="load-more-btn" id="loadMoreBtn">\u52a0\u8f7d\u66f4\u591a \u2193</button>';
+      h+='<button class="load-more-btn" id="loadMoreBtn" onclick="loadMore()">\u52a0\u8f7d\u66f4\u591a \u2193</button>';
       h+='<div class="load-more-progress">'+end+' / '+list.length+' \u7bc7</div>';
       h+='</div>';
     }
