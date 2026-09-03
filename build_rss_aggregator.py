@@ -1249,6 +1249,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
+        '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         '<div class="wall-wrap"><div class="wall" id="wall"></div></div>\n'
         '<div class="scrim" onclick="closeOverlays()"></div>\n'
         '<aside class="src-panel" id="srcPanel">\n'
@@ -1264,7 +1265,6 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
         '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
-        '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         + _build_js(sources_with_items, build_ts_ms) +
         '</body>\n</html>'
     )
