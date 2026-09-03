@@ -333,5 +333,7 @@
  "earendil-works/pi": "AI代理工具包：统一LLM API、代理循环、TUI、编码代理CLI",
  "arcboxlabs/arcbox": "在真实且隔离的机器（自己的内核、文件系统和网络）上运行 AI 代理，启动时间小于 100 毫秒。本地优先、OCI 兼容、纯 Rust。",
  "datawhalechina/hello-agents": "📚 《从零开始构建智能体》——从零开始的智能体原理与实践教程",
- "blader/humanizer": "代理技能可消除文本中人工智能生成的书写痕迹"
+ "blader/humanizer": "代理技能可消除文本中人工智能生成的书写痕迹",
+ "OpenWhispr/openwhispr": "具有本地（Nvidia Parakeet/Whisper）和云模型（BYOK）的语音到文本听写应用程序。隐私第一且可用的跨平台。",
+ "garrytan/gstack": "使用 Garry Tan 的精确 Claude Code 设置：23 个固执己见的工具，可充当 CEO、设计师、工程经理、发布经理、文档工程师和 QA"
 }
