@@ -779,10 +779,7 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 .time-divider { grid-column:1/-1; display:flex; align-items:center; gap:12px; padding:18px 0 6px; font-size:12px; font-weight:700; color:var(--muted); letter-spacing:.04em; }
 .time-divider::before,.time-divider::after { content:""; flex:1; height:1px; background:var(--line); }
 .time-divider .td-label { white-space:nowrap; }
-.load-more-wrap { text-align:center; padding:30px 0 10px; }
-.load-more-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 36px; border-radius:999px; font-size:13px; font-weight:600; border:1px solid var(--brand-line); background:var(--brand-weak); color:var(--brand-strong); cursor:pointer; transition:all .2s; }
-.load-more-btn:hover { background:var(--brand-strong); color:#fff; transform:translateY(-1px); box-shadow:var(--shadow-lift); }
-.load-more-progress { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:10px; }
+
 
 /* ── Source panel (left drawer) ── */
 .src-panel { position:fixed; top:0; left:0; bottom:0; width:min(340px,90vw); z-index:80; background:var(--card); border-right:1px solid var(--line); transform:translateX(-103%); transition:transform .28s cubic-bezier(.32,.72,.28,1); display:flex; flex-direction:column; box-shadow:18px 0 50px rgba(0,0,0,.12); }
@@ -1132,17 +1129,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<span class="foot-meta"><span>'+estRead(a)+'</span></span></div>';
       h+='</article>';
     }
-    if(end<list.length){
-      h+='<div class="load-more-wrap" id="loadMoreWrap">';
-      h+='<button class="load-more-btn" id="loadMoreBtn" onclick="loadMore()">\u52a0\u8f7d\u66f4\u591a \u2193</button>';
-      h+='<div class="load-more-progress">'+end+' / '+list.length+' \u7bc7</div>';
-      h+='</div>';
-    }
+
     if(existingCards===0) wall.innerHTML=h;
-    else {
-      var old=wall.querySelector('#loadMoreWrap'); if(old)old.remove();
-      wall.insertAdjacentHTML('beforeend',h);
-    }
+    else wall.insertAdjacentHTML('beforeend',h);
     wallLimit=end;
   }
   /* 事件委托：一次性绑定，增量追加无需重新绑定 */
