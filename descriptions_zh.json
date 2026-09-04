@@ -338,5 +338,6 @@
  "garrytan/gstack": "使用 Garry Tan 的精确 Claude Code 设置：23 个固执己见的工具，可充当 CEO、设计师、工程经理、发布经理、文档工程师和 QA",
  "vercel-labs/portless": "将端口号替换为稳定的、命名的本地 URL。对于人类和特工来说。",
  "2akouwu/reverify": "人工智能在读取二进制文件时会进行编造。 Reverify 会根据真实字节检查其每项声明，以便您了解真实情况 — 您可以信赖的人工智能辅助逆向工程。 LLM提出，确定性工具验证。 MCP 服务器 + CLI。",
- "AbuZar-Ansarii/Needle": "这个 14 MB Agentic LLM(Cactus Needle 2) 可以完全控制您的手机。"
+ "AbuZar-Ansarii/Needle": "这个 14 MB Agentic LLM(Cactus Needle 2) 可以完全控制您的手机。",
+ "xintaofei/codeg": "协作式多代理 AI 编码工作区：聚合来自 Claude Code、Codex、OpenCode、Pi、Grok Build 等桌面应用程序、自托管服务器或 Docker 的会话。"
 }
