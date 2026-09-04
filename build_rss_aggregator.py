@@ -1413,8 +1413,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
   function _doFetchRss(silent){
     var ctrl = new AbortController();
-    var tid = setTimeout(function(){ctrl.abort();},20000);
-    fetch('/api/rss',{signal:ctrl.signal}).then(function(r){
+    var tid = setTimeout(function(){ctrl.abort();},30000);
+    fetch('https://starhub-refresh.vercel.app/api/rss',{signal:ctrl.signal}).then(function(r){
       clearTimeout(tid); if(!r.ok) throw new Error('API '+r.status); return r.json();
     }).then(function(data){
       _mergeLiveSources(data, silent);
