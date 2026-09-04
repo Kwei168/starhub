@@ -1220,15 +1220,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
   // Format summary text into readable paragraphs
   function formatSummary(text){
     if(!text) return '';
-    // Split by common paragraph separators
-    var paragraphs = text.split(/\n\n+|\r\n\r\n+|\r\r+/);
-    if(paragraphs.length <= 1){
-      // Try splitting by single newlines if no double newlines
-      paragraphs = text.split(/\n|\r/);
-    }
-    // Filter empty paragraphs and wrap each in <p>
-    var html = paragraphs.filter(function(p){ return p.trim().length > 0; })
-      .map(function(p){ return '<p>' + esc(p.trim()) + '</p>'; })
+    // Replace newlines with paragraph breaks (escape backslashes for Python template)
+    var lines = text.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n').split('\\n');
+    // Filter empty lines and wrap each in <p>
+    var html = lines.filter(function(line){ return line.trim().length > 0; })
+      .map(function(line){ return '<p>' + esc(line.trim()) + '</p>'; })
       .join('');
     return html || '<p>' + esc(text) + '</p>';
   }
