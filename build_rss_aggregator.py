@@ -1579,6 +1579,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
 
   window.shareArticle=shareArticle;
+  window.r2ShareClick=function(){ shareArticle(curArt); };
   window.closeShareModal=closeShareModal;
   window.saveShareImage=saveShareImage;
   window.copyShareImage=copyShareImage;
@@ -1620,7 +1621,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
         '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
-        '<div class="r2-acts"><button class="r2-icon-btn" id="r2Share" title="分享文章" onclick="shareArticle(curArt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
+        '<div class="r2-acts"><button class="r2-icon-btn" id="r2Share" title="分享文章" onclick="r2ShareClick()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
         '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
         '<div class="toast" id="toast"></div>\n'
