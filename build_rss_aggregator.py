@@ -844,6 +844,8 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .r2-meta .src-dot { width:9px; height:9px; }
 .r2-meta .cat { font-weight:700; letter-spacing:.06em; font-size:10.5px; text-transform:uppercase; color:var(--cc); }
 .r2-summary { font-size:15px; line-height:1.9; color:var(--ink); }
+.r2-summary p { margin:0 0 1.2em 0; }
+.r2-summary p:last-child { margin-bottom:0; }
 .r2-summary .lead { font-size:16.5px; line-height:1.85; font-weight:500; margin-bottom:1em; }
 .r2-lang-toggle { display:inline-flex; align-items:center; gap:0; margin-top:16px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line); font-size:12px; }
 .r2-lang-toggle button { padding:4px 12px; border:none; background:transparent; color:var(--muted); cursor:pointer; transition:all .15s; font-family:var(--body); font-size:12px; }
@@ -890,6 +892,7 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .r2-inner { padding:18px 16px 60px; }
   .r2-title { font-size:19px; }
   .r2-summary { font-size:14px; line-height:1.8; }
+  .r2-summary p { margin-bottom:1em; }
 }
 
 /* ── Share button (card wall) ── */
@@ -1187,7 +1190,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
     h+='<span class="src-dot" style="--sc:'+a.sc+'"></span><span>'+esc(a.src)+'</span>';
     h+='<span>\u00b7</span><span>'+esc(a.time)+'</span><span>\u00b7</span><span>'+estRead(a)+'</span></div>';
     if(a.s){
-      h+='<div class="r2-summary"><p>'+esc(a.s)+'</p></div>';
+      // Auto-format summary into paragraphs
+      var formattedSummary = formatSummary(a.s);
+      h+='<div class="r2-summary">'+formattedSummary+'</div>';
       if(!isMostlyZh(a.s)){
         h+='<div class="r2-lang-toggle">';
         h+='<button class="active" id="btnOrig">\u539f\u6587</button>';
@@ -1203,13 +1208,29 @@ def _build_js(sources_with_items, build_ts_ms=0):
     document.getElementById('r2Inner').innerHTML=h;
     var btnT=document.getElementById('btnTrans');
     if(btnT) btnT.onclick=function(){
-      var el=document.querySelector('.r2-summary p');
-      if(!el) return; el.textContent='\u7ffb\u8bd1\u4e2d\u2026';
+      var el=document.querySelector('.r2-summary');
+      if(!el) return; el.innerHTML='<p>\u7ffb\u8bd1\u4e2d\u2026</p>';
       _clientTranslate(a.s,function(tr){
-        var cur=document.querySelector('.r2-summary p');
-        if(cur) cur.textContent=tr;
+        var cur=document.querySelector('.r2-summary');
+        if(cur) cur.innerHTML=formatSummary(tr);
       });
     };
+  }
+
+  // Format summary text into readable paragraphs
+  function formatSummary(text){
+    if(!text) return '';
+    // Split by common paragraph separators
+    var paragraphs = text.split(/\n\n+|\r\n\r\n+|\r\r+/);
+    if(paragraphs.length <= 1){
+      // Try splitting by single newlines if no double newlines
+      paragraphs = text.split(/\n|\r/);
+    }
+    // Filter empty paragraphs and wrap each in <p>
+    var html = paragraphs.filter(function(p){ return p.trim().length > 0; })
+      .map(function(p){ return '<p>' + esc(p.trim()) + '</p>'; })
+      .join('');
+    return html || '<p>' + esc(text) + '</p>';
   }
   document.getElementById('r2Body').addEventListener('scroll',function(){
     var el=this,max=el.scrollHeight-el.clientHeight;
