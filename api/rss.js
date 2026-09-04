@@ -71,7 +71,9 @@ function extractAttr(xml, tag, attr) {
 function stripHtml(text) {
   if (!text) return '';
   return text
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')  // 先提取 CDATA
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')  // 先提取闭合的 CDATA
+    .replace(/<!\[CDATA\[/g, '')                     // 移除未闭合的 CDATA 开始标记
+    .replace(/\]\]>/g, '')                            // 移除未闭合的 CDATA 结束标记
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')  // 移除 script
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')    // 移除 style
     .replace(/<[^>]+>/g, '')                            // 移除所有 HTML 标签
