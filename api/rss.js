@@ -7,15 +7,14 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
 
-const FETCH_TIMEOUT = 8000;     // 单源超时 8s
-const CONCURRENCY = 10;         // 10 路并发
+const FETCH_TIMEOUT = 5000;     // 单源超时 5s（从8s降低以加快失败速度）
+const CONCURRENCY = 20;         // 20 路并发（从10提高到20以加快速度）
 const CACHE_TTL = 5 * 60 * 1000;  // 服务端缓存 5 分钟
 const UA = 'starhub-rss-aggregator/1.0';
 
 // 滚动缓存：每个源保留上次成功抓取的数据
 let rollingCache = new Map();  // key → { items, lastModified }
 let fullCache = { t: 0, v: null };  // 完整响应缓存
-let sourceLastFetch = new Map();  // key → timestamp (用于增量更新)
 
 // ── 加载 API 快照（构建时生成的 72h 累积数据） ──
 
@@ -134,43 +133,25 @@ function parseFeed(xml, sourceKey, maxItems) {
   return items;
 }
 
-// ── 单源抓取（支持增量更新） ──
+// ── 单源抓取 ──
 
-async function fetchOne(source, isIncremental) {
+async function fetchOne(source) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
   
   try {
-    const headers = { 
-      'User-Agent': UA, 
-      'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml' 
-    };
-    
-    // 增量模式：使用 If-Modified-Since 检查是否有更新
-    if (isIncremental && sourceLastFetch.has(source.key)) {
-      const lastFetch = sourceLastFetch.get(source.key);
-      headers['If-Modified-Since'] = new Date(lastFetch).toUTCString();
-    }
-    
     const res = await fetch(source.url, {
       signal: ctrl.signal,
-      headers,
+      headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml' },
     });
     clearTimeout(timer);
-    
-    // 304 Not Modified: 源没有更新，跳过
-    if (res.status === 304) {
-      console.log(`[rss] ${source.key} not modified (304)`);
-      const cached = rollingCache.get(source.key);
-      return cached ? { ...cached, key: source.key, name: source.name, cat: source.cat, color: source.color, url: source.url, _unchanged: true } : null;
-    }
     
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     
     const xml = await res.text();
     const items = parseFeed(xml, source.key, 30);
     
-    // 成功：更新滚动缓存和时间戳
+    // 成功：更新滚动缓存
     const cached = {
       items: items.map(it => ({
         t: it.title,
@@ -181,7 +162,6 @@ async function fetchOne(source, isIncremental) {
       lastModified: new Date().toUTCString(),
     };
     rollingCache.set(source.key, cached);
-    sourceLastFetch.set(source.key, Date.now());
     
     return {
       key: source.key,
@@ -223,24 +203,15 @@ async function fetchOne(source, isIncremental) {
   }
 }
 
-// ── 并发控制（支持增量更新） ──
+// ── 并发控制 ──
 
-async function fetchAllBatched(sources, isIncremental) {
+async function fetchAllBatched(sources) {
   const results = [];
-  let unchangedCount = 0;
-  
   for (let i = 0; i < sources.length; i += CONCURRENCY) {
     const batch = sources.slice(i, i + CONCURRENCY);
-    const batchResults = await Promise.all(batch.map(src => fetchOne(src, isIncremental)));
-    
-    // 过滤掉未变化的源（304响应）
-    const validResults = batchResults.filter(r => r && !r._unchanged);
-    unchangedCount += batchResults.filter(r => r && r._unchanged).length;
-    
-    results.push(...validResults);
+    const batchResults = await Promise.all(batch.map(fetchOne));
+    results.push(...batchResults);
   }
-  
-  console.log(`[rss] Fetch complete: ${results.length} updated, ${unchangedCount} unchanged`);
   return results;
 }
 
@@ -294,25 +265,9 @@ export default async function handler(req, res) {
     // Fallback: 实时抓取 RSS（仅当快照不存在或 refresh=1 时）
     const sources = loadSources();
     const transCache = loadTransCache();  // 加载翻译缓存
+    console.log(`[rss] Live fetching ${sources.length} sources...`);
     
-    // 增量更新：只抓取有变化的源
-    if (isRefresh && sourceLastFetch.size > 0) {
-      console.log(`[rss] Incremental refresh for ${sources.length} sources...`);
-    } else {
-      console.log(`[rss] Live fetching ${sources.length} sources...`);
-    }
-    
-    const results = await fetchAllBatched(sources, isRefresh);
-    
-    // 如果是增量更新且没有新数据，返回特殊标记
-    if (isRefresh && results.length === 0 && sourceLastFetch.size > 0) {
-      console.log('[rss] No new content found');
-      return res.status(200).json({ 
-        t: new Date().toISOString(), 
-        sources: [],
-        _noNewContent: true 
-      });
-    }
+    const results = await fetchAllBatched(sources);
     
     // 日期过滤：只保留最近 72 小时的文章
     const cutoff = new Date(now - 72 * 60 * 60 * 1000);
