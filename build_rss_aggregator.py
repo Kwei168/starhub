@@ -1426,23 +1426,57 @@ def _build_js(sources_with_items, build_ts_ms=0):
       if(!silent) toast('已更新 '+newCount+' 篇新文章');
       else if(newCount > 0) toast('发现 '+newCount+' 篇新内容');
     }
+    // 移除按钮loading状态
+    var btn = document.getElementById('refreshBtn');
+    if(btn){
+      btn.classList.remove('loading');
+      btn.removeAttribute('data-loading');
+    }
     return newCount;
   }
   function _doFetchRss(silent){
     var ctrl = new AbortController();
-    var tid = setTimeout(function(){ctrl.abort();},30000);
+    var tid = setTimeout(function(){ctrl.abort();},90000); // 增加到90秒超时
     fetch('https://starhub-refresh.vercel.app/api/rss?refresh=1',{signal:ctrl.signal}).then(function(r){
       clearTimeout(tid); if(!r.ok) throw new Error('API '+r.status); return r.json();
     }).then(function(data){
-      _mergeLiveSources(data, silent);
+      // 处理无新内容的情况
+      if(data._noNewContent){
+        if(!silent) toast('已是最新，没有新文章');
+        _lastRefreshTs = Date.now();
+        // 移除按钮loading状态
+        var btn = document.getElementById('refreshBtn');
+        if(btn){
+          btn.classList.remove('loading');
+          btn.removeAttribute('data-loading');
+        }
+        return;
+      }
+      var newCount = _mergeLiveSources(data, silent);
       _lastRefreshTs = Date.now();
-    }).catch(function(){ /* silent fail, keep snapshot data */ });
+      // 如果没有新文章但有数据，显示提示
+      if(newCount === 0 && !silent && data.sources && data.sources.length > 0){
+        toast('已刷新，暂无新内容');
+      }
+    }).catch(function(err){
+      console.error('[rss] Refresh failed:', err);
+      // 移除按钮loading状态
+      var btn = document.getElementById('refreshBtn');
+      if(btn){
+        btn.classList.remove('loading');
+        btn.removeAttribute('data-loading');
+      }
+      if(!silent) toast('刷新失败：' + (err.message || '网络错误'));
+    });
   }
   window.refreshRss = function(){
     var btn = document.getElementById('refreshBtn');
-    if(btn) btn.classList.add('loading');
+    if(btn){
+      btn.classList.add('loading');
+      btn.setAttribute('data-loading', 'true');
+    }
     _doFetchRss(false);
-    setTimeout(function(){ if(btn) btn.classList.remove('loading'); },3000);
+    // 按钮loading状态在请求完成后移除（通过_fetchComplete标志）
   };
   // Auto-poll every 10 minutes (600000ms), first poll after 10min
   setInterval(function(){ _doFetchRss(true); }, 600000);
