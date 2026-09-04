@@ -1225,8 +1225,13 @@ def _build_js(sources_with_items, build_ts_ms=0):
     
     // Step 2: If no newlines exist, split by sentence-ending punctuation (Chinese + English)
     if(normalized.indexOf('\\n') === -1){
-      // Split after 。！？.!? but keep the punctuation with the sentence
-      normalized = normalized.replace(/([。！？.!?])(\\s*|$)/g, '$1\\n');
+      // Chinese punctuation: always split after 。！？
+      normalized = normalized.replace(/([。！？])/g, '$1\\n');
+      
+      // English punctuation: only split after .!? when followed by space+uppercase or end of string
+      // Avoid splitting decimals (129.3), versions (3.7), domains (example.com), abbreviations
+      normalized = normalized.replace(/(\\.)(\\s+[A-Z\\u4e00-\\u9fff])/g, '$1\\n$2')  // Period before uppercase/Chinese
+        .replace(/([!?])(\\s+)/g, '$1\\n$2');  // !? before space
     }
     
     // Step 3: Split by newlines and wrap each non-empty line in <p>
