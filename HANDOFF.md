@@ -1,6 +1,6 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-09-02
+> 最后更新：2026-09-04
 
 ## 一、项目一句话
 
@@ -99,7 +99,7 @@
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
 | `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
-| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合实时 API，111 源全量抓取，10 路并发，8s 超时，滚动缓存，5min 服务端缓存 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合实时 API，153 源全量抓取，**20 路并发**，**5s 超时**，滚动缓存，5min 服务端缓存 |
 
 ### 配置
 
@@ -331,6 +331,85 @@ API 实时（Node.js）：抓取 RSS → 查 translations.json → 返回（有�
 - 翻译只在构建时进行（利用 Python 四端点降级链）
 - API 实时性不受影响（查缓存很快）
 - 下次构建时，已翻译的内容不重复翻译（缓存命中）
+
+### 7.14 RSS 刷新机制演进（2026-09-04）
+
+**问题背景**：
+- Vercel Serverless 是无状态的，服务端维护的增量更新状态（`sourceLastFetch` Map）在冷启动后丢失
+- 153 个 RSS 源全量抓取耗时过长（理论最大 145 秒），前端超时设置过短会导致请求被 abort
+- 静默失败设计让用户看不到任何反馈，不知道刷新是否成功
+
+**第一次尝试（失败）**：
+- 在服务端实现基于 `If-Modified-Since` 头的增量更新
+- 维护 `sourceLastFetch` Map 记录每个源的最后抓取时间
+- **失败原因**：Vercel Serverless 冷启动后 Map 为空，增量逻辑失效；且全量抓取仍需要超过 90 秒
+
+**最终方案**：**前端增量更新 + 性能优化**
+
+#### API 端优化（`api/rss.js`）
+```javascript
+// 性能参数调整
+const FETCH_TIMEOUT = 5000;     // 从 8s 降低到 5s（加快失败速度）
+const CONCURRENCY = 20;         // 从 10 提高到 20（翻倍并发数）
+```
+- 移除不可靠的服务端增量逻辑（`sourceLastFetch`、`_unchanged` 标记等）
+- 保持简单可靠的全量抓取，但通过提高并发数加快速度
+- 理论耗时：153 源 ÷ 20 并发 × 5s ≈ 38 秒（留有余量）
+
+#### 前端增量更新（`rss-aggregator.html` / `build_rss_aggregator.py`）
+```javascript
+// localStorage 维护已读文章 URL 列表
+var READ_ARTICLES_KEY = 'starhub_rss_read_urls';
+
+function _getReadUrls() {
+  var stored = localStorage.getItem(READ_ARTICLES_KEY);
+  return stored ? JSON.parse(stored) : [];
+}
+
+function _saveReadUrls(urls) {
+  var limited = urls.slice(-5000);  // 最多保留 5000 条
+  localStorage.setItem(READ_ARTICLES_KEY, JSON.stringify(limited));
+}
+
+function _mergeLiveSources(liveData, silent) {
+  var readUrls = _getReadUrls();
+  var readSet = {};
+  readUrls.forEach(function(url) { readSet[url] = true; });
+  
+  // ... 遍历 API 返回的文章 ...
+  // 跳过已在 ART 数组或 localStorage 中的文章
+  if(existingKeys[key]) return;
+  if(readSet[url]) return;  // ← 真正的增量判断
+  
+  newUrls.push(url);
+  // ... 添加到 ART 数组 ...
+  
+  // 保存新 URL 到 localStorage
+  if(newUrls.length > 0) {
+    _saveReadUrls(readUrls.concat(newUrls));
+  }
+}
+```
+
+**关键改进**：
+1. **超时延长**：从 90 秒增加到 120 秒（适应 20 并发×5s 的理论值）
+2. **明确的 toast 提示**：
+   - 有新文章：`"已更新 N 篇新文章"`
+   - 无新内容：`"已刷新，暂无新内容"`
+   - 刷新失败：`"刷新失败：网络错误"`
+3. **移除静默失败**：catch 块显示错误信息
+4. **按钮状态管理**：在所有情况下（成功/失败/无新内容）都正确移除 loading 状态
+
+**测试结果**（2026-09-04 实测）：
+- ✅ API 请求从 `[pending]` 变为 HTTP 200 成功
+- ✅ Toast 提示正常显示，用户能看到明确反馈
+- ✅ 第二次刷新正确识别"暂无新内容"
+- ✅ localStorage 正确维护已读 URL 列表
+
+**经验教训**：
+- **不要在无状态 Serverless 上依赖内存状态做增量** — 应该用持久化存储（Redis/KV）或前端状态
+- **性能优化优先于架构复杂化** — 提高并发数比实现复杂的增量协议更简单有效
+- **用户反馈必须可见** — 静默失败是最差的用户体验
 
 ---
 
