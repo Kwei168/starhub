@@ -732,6 +732,12 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .chip { padding:4px 12px; border-radius:999px; font-size:12px; font-weight:500; border:1px solid var(--line); background:var(--card); color:var(--muted); transition:all .15s; white-space:nowrap; }
 .chip:hover { border-color:var(--line-strong); color:var(--ink); }
 .chip.on { background:var(--brand-weak); border-color:var(--brand-line); color:var(--brand-strong); font-weight:600; }
+.refresh-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--muted);transition:all .15s;cursor:pointer;}
+.refresh-btn:hover{border-color:var(--brand-line);color:var(--brand-strong);background:var(--brand-weak);}
+.refresh-btn.loading{pointer-events:none;opacity:.7;}
+.refresh-btn.loading svg{animation:spin 1s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.refresh-btn svg{width:13px;height:13px;}
 .chip .n { font-family:var(--mono); font-size:10px; opacity:.75; margin-left:3px; }
 .fpill { display:inline-flex; align-items:center; gap:6px; padding:4px 6px 4px 12px; border-radius:999px; font-size:12px; font-weight:600; background:var(--ink); color:var(--bg); }
 .fpill .x { width:16px; height:16px; border-radius:999px; background:rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; }
@@ -1371,6 +1377,58 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   })();
 
+  /* ── Live RSS refresh: manual button + auto-poll every 10min ── */
+  var _lastRefreshTs = 0;
+  function _mergeLiveSources(liveData, silent){
+    if(!liveData||!liveData.sources) return 0;
+    var existingKeys = {};
+    ART.forEach(function(a){ existingKeys[a.sk+'|'+(a.u||'')] = true; });
+    var newCount = 0;
+    liveData.sources.forEach(function(live){
+      if(!live.items||!live.items.length) return;
+      var src = SOURCES.find(function(s){return s.key===live.key;});
+      if(!src) return;
+      live.items.forEach(function(it){
+        it.title = it.t || it.title;
+        it.link = it.u || it.link;
+        it.summary = it.s || it.summary;
+        it.pub_date = it.d || it.pub_date;
+        var key = src.key+'|'+(it.link||'');
+        if(existingKeys[key]) return;
+        existingKeys[key] = true;
+        var art = {t:it.title,s:it.summary||'',src:src.name,sk:src.key,c:src.cat,sc:src.color,time:_fmtRelTime(it.pub_date),date:it.pub_date,u:it.link||'#'};
+        ART.unshift(art);
+        newCount++;
+      });
+    });
+    if(newCount > 0){
+      ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
+      wallLimit = Math.min(wallLimit + newCount, ART.length);
+      renderWall(); updateMeta();
+      if(!silent) toast('已更新 '+newCount+' 篇新文章');
+      else if(newCount > 0) toast('发现 '+newCount+' 篇新内容');
+    }
+    return newCount;
+  }
+  function _doFetchRss(silent){
+    var ctrl = new AbortController();
+    var tid = setTimeout(function(){ctrl.abort();},20000);
+    fetch('/api/rss',{signal:ctrl.signal}).then(function(r){
+      clearTimeout(tid); if(!r.ok) throw new Error('API '+r.status); return r.json();
+    }).then(function(data){
+      _mergeLiveSources(data, silent);
+      _lastRefreshTs = Date.now();
+    }).catch(function(){ /* silent fail, keep snapshot data */ });
+  }
+  window.refreshRss = function(){
+    var btn = document.getElementById('refreshBtn');
+    if(btn) btn.classList.add('loading');
+    _doFetchRss(false);
+    setTimeout(function(){ if(btn) btn.classList.remove('loading'); },3000);
+  };
+  // Auto-poll every 10 minutes (600000ms), first poll after 10min
+  setInterval(function(){ _doFetchRss(true); }, 600000);
+
   /* ══════════════════════════════════════════
      Share module: Canvas card + QR code + modal
      ══════════════════════════════════════════ */
@@ -1605,6 +1663,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<h1>时间线</h1>\n'
         '<button class="src-btn" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h13M4 18h9"/></svg> 信源 <span class="cnt" id="srcCnt"></span></button>\n'
         '<div class="chips" id="chips"></div>\n'
+        '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="刷新最新内容"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
