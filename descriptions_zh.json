@@ -343,5 +343,6 @@
  "icodesign/remote-installer": "通过互联网在真实设备上快速安装签名的iOS和Android版本，无需等待Testlight或Play Beta。",
  "TokenRhythm/opensquilla": "OpenSquilla — 具有相同预算、更高智能密度的代币高效 AI 代理",
  "gesta-run/subpool": "面向团队的轻量级自托管 AI 订阅池。",
- "cathrynlavery/diagram-design": "Claude Code、Codex 和 Pi 的 38 种编辑图表类型。独立的 HTML + SVG。没有阴影。没有美人鱼污水。"
+ "cathrynlavery/diagram-design": "Claude Code、Codex 和 Pi 的 38 种编辑图表类型。独立的 HTML + SVG。没有阴影。没有美人鱼污水。",
+ "magnitudedev/magnitude": "开源推理服务器，为您的硬件运行最佳本地模型，插入到您已经使用的代理中。适用于Pi、OpenCode、Hermes、OpenClaw、Codex、Claude Code、Oh My Pi和Cline。"
 }
