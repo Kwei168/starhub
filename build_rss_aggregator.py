@@ -887,16 +887,17 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 }
 
 /* ── Share button (card wall) ── */
-.share-btn{flex:none;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--faint);border:1px solid transparent;transition:all .15s;background:none;cursor:pointer;padding:0;}
+.share-btn{flex:none;width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--brand);border:1px solid transparent;transition:all .15s;background:none;cursor:pointer;padding:0;}
 .share-btn:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
 .share-btn.loading{pointer-events:none;opacity:.5;}
-.share-btn svg{width:11px;height:11px;}
+.share-btn svg{width:13px;height:13px;}
 
-/* ── Share button (reader toolbar) ── */
-.r2-icon-btn{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);border:1px solid transparent;background:none;cursor:pointer;transition:all .15s;padding:0;}
-.r2-icon-btn:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
-.r2-icon-btn.loading{pointer-events:none;opacity:.6;}
-.r2-icon-btn svg{width:15px;height:15px;}
+/* ── Share action bar (reader body bottom) ── */
+.r2-actions-bottom{display:flex;justify-content:center;padding:22px 0 4px;}
+.r2-share-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid var(--brand-line);background:var(--brand-weak);color:var(--brand-strong);cursor:pointer;transition:all .15s;}
+.r2-share-btn:hover{background:var(--brand-strong);color:#fff;border-color:var(--brand-strong);}
+.r2-share-btn.loading{pointer-events:none;opacity:.6;}
+.r2-share-btn svg{width:15px;height:15px;}
 
 /* ── Share modal ── */
 .share-modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;}
@@ -1124,12 +1125,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time">'+esc(a.time)+'</span>';
-      h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a>';
-      h+='<button class="share-btn" data-k="'+esc(k)+'" title="\u5206\u4eab\u6587\u7ae0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button></div>';
+      h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
       h+='<h3 class="card-title">'+esc(a.t)+'</h3>';
       if(a.s) h+='<p class="card-summary">'+esc(a.s)+'</p>';
       h+='<div class="card-foot"><span class="src-dot" style="--sc:'+a.sc+'"></span><span class="src-name">'+esc(a.src)+'</span>';
-      h+='<span class="foot-meta"><span>'+estRead(a)+'</span></span></div>';
+      h+='<span class="foot-meta"><button class="share-btn" data-k="'+esc(k)+'" title="\u5206\u4eab\u6587\u7ae0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><span>'+estRead(a)+'</span></span></div>';
       h+='</article>';
     }
     wall.innerHTML=h;
@@ -1153,7 +1153,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var a=ART.find(function(x){return artKey(x)===k;});
     if(!a) return;
     if(e.target.closest('.ext-btn')){markRead(a);updateCardStates();return;}
-    if(e.target.closest('.share-btn')){shareArticle(a);return;}
+    if(e.target.closest('.share-btn')){shareArticle(a,null,e.target.closest('.share-btn'));return;}
     openReader(a);
   });
   function loadMore(){
@@ -1193,6 +1193,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<a class="fb-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener">\u539f\u7ad9 \u2197</a></div>';
     }
     h+='<div class="r2-foot-hint">J / K \u6216 \u2190 \u2192 \u5207\u6362\u6587\u7ae0 \u00b7 ESC \u8fd4\u56de</div>';
+    h+='<div class="r2-actions-bottom"><button class="r2-share-btn" onclick="r2ShareClick()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg><span>\u5206\u4eab\u672c\u6587</span></button></div>';
     document.getElementById('r2Inner').innerHTML=h;
     var btnT=document.getElementById('btnTrans');
     if(btnT) btnT.onclick=function(){
@@ -1533,9 +1534,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
     return c.toDataURL('image/png');
   }
 
-  function shareArticle(a,platform){
+  function shareArticle(a,platform,btn){
     if(!a) return;
-    var btn=document.querySelector('.share-btn.loading')||document.getElementById('r2Share');
     if(btn) btn.classList.add('loading');
     loadQRLib().catch(function(){/* QR load failed, continue without */}).then(function(){
       var url;
@@ -1579,7 +1579,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
 
   window.shareArticle=shareArticle;
-  window.r2ShareClick=function(){ shareArticle(curArt); };
+  window.r2ShareClick=function(){ shareArticle(curArt,null,document.querySelector('.r2-share-btn')); };
   window.closeShareModal=closeShareModal;
   window.saveShareImage=saveShareImage;
   window.copyShareImage=copyShareImage;
@@ -1621,7 +1621,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
         '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
-        '<div class="r2-acts"><button class="r2-icon-btn" id="r2Share" title="分享文章" onclick="r2ShareClick()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
+        '<div class="r2-acts"><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
         '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
         '<div class="toast" id="toast"></div>\n'
