@@ -1235,6 +1235,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
 
   // ── Window exports ──
+  window.ART = ART;
   window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; updateCardStates(); };
   window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
   window.clearSrcF = function(e){ e.stopPropagation(); filter={type:'all'}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); };
