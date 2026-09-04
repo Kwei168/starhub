@@ -885,6 +885,41 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .r2-title { font-size:19px; }
   .r2-summary { font-size:14px; line-height:1.8; }
 }
+
+/* ── Share button (card wall) ── */
+.share-btn{flex:none;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--faint);border:1px solid transparent;transition:all .15s;background:none;cursor:pointer;padding:0;}
+.share-btn:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
+.share-btn.loading{pointer-events:none;opacity:.5;}
+.share-btn svg{width:11px;height:11px;}
+
+/* ── Share button (reader toolbar) ── */
+.r2-icon-btn{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);border:1px solid transparent;background:none;cursor:pointer;transition:all .15s;padding:0;}
+.r2-icon-btn:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
+.r2-icon-btn.loading{pointer-events:none;opacity:.6;}
+.r2-icon-btn svg{width:15px;height:15px;}
+
+/* ── Share modal ── */
+.share-modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;}
+.share-modal.open{display:flex;}
+.share-backdrop{position:absolute;inset:0;background:rgba(28,25,23,.55);}
+.share-panel{position:relative;z-index:1;width:min(400px,90vw);background:var(--bg);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.25);padding:20px;text-align:center;}
+.share-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.share-hd h3{font-family:var(--display);font-size:15px;font-weight:900;margin:0;}
+.share-close{width:28px;height:28px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
+.share-close:hover{border-color:var(--line-strong);color:var(--ink);}
+.share-img-wrap{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--card);}
+.share-img-wrap img{width:100%;display:block;}
+.share-hint{font-size:12px;color:var(--faint);margin:12px 0 14px;}
+.share-actions{display:flex;gap:10px;justify-content:center;}
+.btn-share-save,.btn-share-copy{padding:8px 22px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--brand-line);transition:all .15s;cursor:pointer;font-family:var(--body);}
+.btn-share-save{background:var(--brand-strong);color:#fff;}
+.btn-share-save:hover{opacity:.9;}
+.btn-share-copy{background:var(--brand-weak);color:var(--brand-strong);}
+.btn-share-copy:hover{background:var(--brand-line);color:#fff;}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);font-size:13px;padding:8px 20px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:200;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
 """
 
 
@@ -1089,7 +1124,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time">'+esc(a.time)+'</span>';
-      h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
+      h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a>';
+      h+='<button class="share-btn" data-k="'+esc(k)+'" title="\u5206\u4eab\u6587\u7ae0" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button></div>';
       h+='<h3 class="card-title">'+esc(a.t)+'</h3>';
       if(a.s) h+='<p class="card-summary">'+esc(a.s)+'</p>';
       h+='<div class="card-foot"><span class="src-dot" style="--sc:'+a.sc+'"></span><span class="src-name">'+esc(a.src)+'</span>';
@@ -1117,6 +1153,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var a=ART.find(function(x){return artKey(x)===k;});
     if(!a) return;
     if(e.target.closest('.ext-btn')){markRead(a);updateCardStates();return;}
+    if(e.target.closest('.share-btn')){shareArticle(a);return;}
     openReader(a);
   });
   function loadMore(){
@@ -1220,7 +1257,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Keyboard nav ── */
   document.addEventListener('keydown', function(e){
-    if(e.key==='Escape'){window.closeOverlays();return;}
+    if(e.key==='Escape'){
+      var sm=document.getElementById('shareModal');
+      if(sm&&sm.classList.contains('open')){closeShareModal();return;}
+      window.closeOverlays();return;
+    }
     if(e.target.tagName==='INPUT') return;
     var order=visibleArts();
     if(!curArt){if(e.key==='j'||e.key==='ArrowRight'){if(order[0])openReader(order[0]);}return;}
@@ -1328,6 +1369,221 @@ def _build_js(sources_with_items, build_ts_ms=0):
       if(liveEl)liveEl.textContent='';
     });
   })();
+
+  /* ══════════════════════════════════════════
+     Share module: Canvas card + QR code + modal
+     ══════════════════════════════════════════ */
+  var _qrLoaded=false, _shareDataURL='', _toastTimer;
+  function toast(msg){var t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(_toastTimer);_toastTimer=setTimeout(function(){t.classList.remove('show');},2000);}
+
+  function loadQRLib(){
+    if(_qrLoaded) return Promise.resolve();
+    return new Promise(function(resolve,reject){
+      var s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+      s.onload=function(){_qrLoaded=true;resolve();};
+      s.onerror=function(){
+        var s2=document.createElement('script');
+        s2.src='https://unpkg.com/qrcode-generator@1.4.4/qrcode.min.js';
+        s2.onload=function(){_qrLoaded=true;resolve();};
+        s2.onerror=reject;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  function wrapText(ctx,text,maxWidth){
+    var lines=[],line='';
+    for(var i=0;i<text.length;i++){
+      var test=line+text[i];
+      if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=text[i];}
+      else{line=test;}
+    }
+    if(line) lines.push(line);
+    return lines;
+  }
+
+  function getThemeColors(){
+    var dark=document.documentElement.dataset.theme==='dark';
+    return {
+      bg:      dark?'#161412':'#faf9f7',
+      title:   dark?'#ece7df':'#1c1917',
+      summary: dark?'#a59d90':'#5f594c',
+      line:    dark?'#37312a':'#ddd6c9',
+      qrFg:    dark?'#ece7df':'#1c1917',
+      qrBg:    dark?'#1d1a17':'#fffdf9',
+      brand:   dark?'#98907f':'#857e74'
+    };
+  }
+
+  function drawShareCard(a){
+    var W=750, PAD=40, GAP_T=28, GAP_S=16, GAP_M=24;
+    var c=document.createElement('canvas');
+    var ctx=c.getContext('2d');
+    var col=getThemeColors();
+    var font=getComputedStyle(document.body).fontFamily;
+    var catColor=a.sc||'#2f5d8a';
+    if(document.documentElement.dataset.theme==='dark') catColor=adjColor(a.sc||'#8fb3d9');
+
+    // ── Measure pass ──
+    ctx.font='26px '+font;
+    var titleLines=wrapText(ctx, a.t||'\u65e0\u6807\u9898\u6587\u7ae0', W-PAD*2);
+    var summaryLines=[];
+    if(a.s){
+      ctx.font='15px '+font;
+      summaryLines=wrapText(ctx, a.s, W-PAD*2);
+    }
+    var titleH=titleLines.length*(26*1.45);
+    var summaryH=summaryLines.length*(15*1.7);
+    var H=PAD+50+GAP_T+titleH+GAP_S+summaryH+(a.s?GAP_M:0)+1+GAP_M+110+36;
+
+    // ── Create canvas at 2x ──
+    c.width=W*2; c.height=H*2;
+    ctx.scale(2,2);
+
+    // ── Background with rounded corners ──
+    var R=16;
+    ctx.beginPath();
+    ctx.moveTo(R,0);ctx.lineTo(W-R,0);ctx.quadraticCurveTo(W,0,W,R);
+    ctx.lineTo(W,H-R);ctx.quadraticCurveTo(W,H,W-R,H);
+    ctx.lineTo(R,H);ctx.quadraticCurveTo(0,H,0,H-R);
+    ctx.lineTo(0,R);ctx.quadraticCurveTo(0,0,R,0);
+    ctx.closePath();ctx.fillStyle=col.bg;ctx.fill();
+
+    var y=PAD;
+    // ── Top bar ──
+    ctx.fillStyle=catColor;
+    ctx.beginPath();ctx.arc(PAD+3.5,y+6,3.5,0,Math.PI*2);ctx.fill();
+    ctx.font='bold 12px '+font;
+    ctx.fillStyle=catColor;
+    ctx.fillText((CAT_LABELS[a.c]||a.c).toUpperCase(),PAD+14,y+10);
+    ctx.font='12px '+font;
+    ctx.fillStyle=col.brand;
+    ctx.textAlign='right';
+    ctx.fillText('StarHub RSS \u805a\u5408',W-PAD,y+10);
+    ctx.textAlign='left';
+    y+=50+GAP_T;
+
+    // ── Title (never truncated) ──
+    ctx.font='bold 26px '+font;
+    ctx.fillStyle=col.title;
+    for(var i=0;i<titleLines.length;i++){
+      ctx.fillText(titleLines[i],PAD,y);
+      y+=26*1.45;
+    }
+    y+=GAP_S;
+
+    // ── Summary (never truncated) ──
+    if(a.s&&summaryLines.length){
+      ctx.font='15px '+font;
+      ctx.fillStyle=col.summary;
+      for(var i=0;i<summaryLines.length;i++){
+        ctx.fillText(summaryLines[i],PAD,y);
+        y+=15*1.7;
+      }
+      y+=GAP_M;
+    }
+
+    // ── Separator ──
+    ctx.strokeStyle=col.line;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke();
+    y+=GAP_M;
+
+    // ── Bottom: source + QR ──
+    ctx.fillStyle=a.sc||'#2f5d8a';
+    ctx.beginPath();ctx.arc(PAD+4,y+6,4,0,Math.PI*2);ctx.fill();
+    ctx.font='bold 12px '+font;
+    ctx.fillStyle=col.title;
+    var srcTxt=a.src||'';
+    ctx.fillText(srcTxt,PAD+16,y+10);
+    ctx.font='12px '+font;
+    ctx.fillStyle=col.summary;
+    ctx.fillText('\u00b7 '+(a.time||''),PAD+16+ctx.measureText(srcTxt).width+6,y+10);
+
+    ctx.font='11px '+font;
+    ctx.fillStyle=col.brand;
+    ctx.fillText('\u957f\u6309\u8bc6\u522b \u00b7 \u9605\u8bfb\u539f\u6587',PAD,y+40);
+
+    var qrSize=90, qrX=W-PAD-qrSize, qrY=y;
+    if(_qrLoaded){
+      try{
+        var qrUrl=(a.u&&a.u!=='#')?a.u:location.href;
+        var qr=qrcode(0,'M');
+        qr.addData(qrUrl);qr.make();
+        var cnt=qr.getModuleCount();
+        var cell=qrSize/cnt;
+        ctx.fillStyle=col.qrBg;
+        ctx.fillRect(qrX-4,qrY-4,qrSize+8,qrSize+8);
+        ctx.fillStyle=col.qrFg;
+        for(var r=0;r<cnt;r++)for(var c2=0;c2<cnt;c2++){
+          if(qr.isDark(r,c2)) ctx.fillRect(qrX+c2*cell,qrY+r*cell,Math.ceil(cell),Math.ceil(cell));
+        }
+      }catch(e){
+        ctx.fillStyle=col.summary;ctx.font='11px '+font;
+        ctx.textAlign='center';ctx.fillText('\u4e8c\u7ef4\u7801\u6682\u4e0d\u53ef\u7528',qrX+qrSize/2,qrY+qrSize/2);
+        ctx.textAlign='left';
+      }
+    } else {
+      ctx.fillStyle=col.summary;ctx.font='11px '+font;
+      ctx.textAlign='center';ctx.fillText('\u4e8c\u7ef4\u7801\u6682\u4e0d\u53ef\u7528',qrX+qrSize/2,qrY+qrSize/2);
+      ctx.textAlign='left';
+    }
+
+    return c.toDataURL('image/png');
+  }
+
+  function shareArticle(a,platform){
+    if(!a) return;
+    var btn=document.querySelector('.share-btn.loading')||document.getElementById('r2Share');
+    if(btn) btn.classList.add('loading');
+    loadQRLib().catch(function(){/* QR load failed, continue without */}).then(function(){
+      var url;
+      try{url=drawShareCard(a);}catch(e){url='';}
+      if(btn) btn.classList.remove('loading');
+      if(!url){toast('\u5206\u4eab\u56fe\u7247\u751f\u6210\u5931\u8d25');return;}
+      _shareDataURL=url;
+      showShareModal(url);
+    });
+  }
+
+  function showShareModal(url){
+    var m=document.getElementById('shareModal');
+    document.getElementById('shareImg').src=url;
+    m.classList.add('open');
+    var closeBtn=m.querySelector('.share-close');
+    if(closeBtn) closeBtn.focus();
+  }
+
+  function closeShareModal(){
+    document.getElementById('shareModal').classList.remove('open');
+  }
+
+  function saveShareImage(){
+    if(!_shareDataURL) return;
+    var a=document.createElement('a');
+    a.href=_shareDataURL;a.download='starhub-share.png';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    toast('\u56fe\u7247\u5df2\u4e0b\u8f7d');
+  }
+
+  function copyShareImage(){
+    if(!_shareDataURL) return;
+    fetch(_shareDataURL).then(function(r){return r.blob();}).then(function(blob){
+      if(navigator.clipboard&&window.ClipboardItem){
+        navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){
+          toast('\u56fe\u7247\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f');
+        }).catch(function(){toast('\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u957f\u6309\u56fe\u7247\u624b\u52a8\u4fdd\u5b58');});
+      } else {toast('\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u590d\u5236\u56fe\u7247');}
+    }).catch(function(){toast('\u590d\u5236\u5931\u8d25');});
+  }
+
+  window.shareArticle=shareArticle;
+  window.closeShareModal=closeShareModal;
+  window.saveShareImage=saveShareImage;
+  window.copyShareImage=copyShareImage;
+  window.toast=toast;
+
 })();
 </script>
 """
@@ -1364,9 +1620,22 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
         '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
-        '<div class="r2-acts"><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
+        '<div class="r2-acts"><button class="r2-icon-btn" id="r2Share" title="分享文章" onclick="shareArticle(curArt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">原站 ↗</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
         '<div class="r2-body" id="r2Body"><div class="r2-inner" id="r2Inner"></div></div></aside>\n'
+        '<div class="toast" id="toast"></div>\n'
+        '<div class="share-modal" id="shareModal" role="dialog" aria-modal="true" aria-label="分享文章">\n'
+        '<div class="share-backdrop" onclick="closeShareModal()"></div>\n'
+        '<div class="share-panel">\n'
+        '<div class="share-hd"><h3>分享图片已生成</h3><button class="share-close" onclick="closeShareModal()" aria-label="关闭">×</button></div>\n'
+        '<div class="share-img-wrap"><img id="shareImg" alt="分享图片"/></div>\n'
+        '<p class="share-hint">长按图片保存，发送至微信好友或朋友圈</p>\n'
+        '<div class="share-actions">\n'
+        '<button class="btn-share-save" id="btnShareSave" onclick="saveShareImage()">保存图片</button>\n'
+        '<button class="btn-share-copy" id="btnShareCopy" onclick="copyShareImage()">复制图片</button>\n'
+        '</div>\n'
+        '</div>\n'
+        '</div>\n'
         + _build_js(sources_with_items, build_ts_ms) +
         '</body>\n</html>'
     )
