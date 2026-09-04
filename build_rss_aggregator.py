@@ -1397,28 +1397,76 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Live RSS refresh: manual button + auto-poll every 10min ── */
   var _lastRefreshTs = 0;
+  
+  // localStorage key for read articles
+  var READ_ARTICLES_KEY = 'starhub_rss_read_urls';
+  
+  // Load read URLs from localStorage
+  function _getReadUrls() {
+    try {
+      var stored = localStorage.getItem(READ_ARTICLES_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch(e) {
+      console.warn('[rss] Failed to load read URLs:', e);
+      return [];
+    }
+  }
+  
+  // Save read URLs to localStorage (keep last 5000 to avoid storage limit)
+  function _saveReadUrls(urls) {
+    try {
+      var limited = urls.slice(-5000);
+      localStorage.setItem(READ_ARTICLES_KEY, JSON.stringify(limited));
+    } catch(e) {
+      console.warn('[rss] Failed to save read URLs:', e);
+    }
+  }
+  
   function _mergeLiveSources(liveData, silent){
     if(!liveData||!liveData.sources) return 0;
+    
+    var readUrls = _getReadUrls();
+    var readSet = {};
+    readUrls.forEach(function(url) { readSet[url] = true; });
+    
     var existingKeys = {};
     ART.forEach(function(a){ existingKeys[a.sk+'|'+(a.u||'')] = true; });
+    
     var newCount = 0;
+    var newUrls = [];
+    
     liveData.sources.forEach(function(live){
       if(!live.items||!live.items.length) return;
       var src = SOURCES.find(function(s){return s.key===live.key;});
       if(!src) return;
+      
       live.items.forEach(function(it){
         it.title = it.t || it.title;
         it.link = it.u || it.link;
         it.summary = it.s || it.summary;
         it.pub_date = it.d || it.pub_date;
-        var key = src.key+'|'+(it.link||'');
+        
+        var url = it.link || '';
+        var key = src.key+'|'+url;
+        
+        // Skip if already in ART or already read
         if(existingKeys[key]) return;
+        if(readSet[url]) return;
+        
         existingKeys[key] = true;
-        var art = {t:it.title,s:it.summary||'',src:src.name,sk:src.key,c:src.cat,sc:src.color,time:_fmtRelTime(it.pub_date),date:it.pub_date,u:it.link||'#'};
+        newUrls.push(url);
+        
+        var art = {t:it.title,s:it.summary||'',src:src.name,sk:src.key,c:src.cat,sc:src.color,time:_fmtRelTime(it.pub_date),date:it.pub_date,u:url};
         ART.unshift(art);
         newCount++;
       });
     });
+    
+    // Save new read URLs
+    if(newUrls.length > 0) {
+      _saveReadUrls(readUrls.concat(newUrls));
+    }
+    
     if(newCount > 0){
       ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
       wallLimit = Math.min(wallLimit + newCount, ART.length);
@@ -1426,6 +1474,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       if(!silent) toast('已更新 '+newCount+' 篇新文章');
       else if(newCount > 0) toast('发现 '+newCount+' 篇新内容');
     }
+    
     // 移除按钮loading状态
     var btn = document.getElementById('refreshBtn');
     if(btn){
@@ -1436,22 +1485,10 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
   function _doFetchRss(silent){
     var ctrl = new AbortController();
-    var tid = setTimeout(function(){ctrl.abort();},90000); // 增加到90秒超时
+    var tid = setTimeout(function(){ctrl.abort();},120000); // 增加到120秒超时（20并发×5秒超时≈45秒理论值，留余量）
     fetch('https://starhub-refresh.vercel.app/api/rss?refresh=1',{signal:ctrl.signal}).then(function(r){
       clearTimeout(tid); if(!r.ok) throw new Error('API '+r.status); return r.json();
     }).then(function(data){
-      // 处理无新内容的情况
-      if(data._noNewContent){
-        if(!silent) toast('已是最新，没有新文章');
-        _lastRefreshTs = Date.now();
-        // 移除按钮loading状态
-        var btn = document.getElementById('refreshBtn');
-        if(btn){
-          btn.classList.remove('loading');
-          btn.removeAttribute('data-loading');
-        }
-        return;
-      }
       var newCount = _mergeLiveSources(data, silent);
       _lastRefreshTs = Date.now();
       // 如果没有新文章但有数据，显示提示
