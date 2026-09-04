@@ -1220,9 +1220,17 @@ def _build_js(sources_with_items, build_ts_ms=0):
   // Format summary text into readable paragraphs
   function formatSummary(text){
     if(!text) return '';
-    // Replace newlines with paragraph breaks (escape backslashes for Python template)
-    var lines = text.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n').split('\\n');
-    // Filter empty lines and wrap each in <p>
+    // Step 1: Normalize line endings
+    var normalized = text.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n');
+    
+    // Step 2: If no newlines exist, split by sentence-ending punctuation (Chinese + English)
+    if(normalized.indexOf('\\n') === -1){
+      // Split after 。！？.!? but keep the punctuation with the sentence
+      normalized = normalized.replace(/([。！？.!?])(\\s*|$)/g, '$1\\n');
+    }
+    
+    // Step 3: Split by newlines and wrap each non-empty line in <p>
+    var lines = normalized.split('\\n');
     var html = lines.filter(function(line){ return line.trim().length > 0; })
       .map(function(line){ return '<p>' + esc(line.trim()) + '</p>'; })
       .join('');
