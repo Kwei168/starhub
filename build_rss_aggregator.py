@@ -1390,9 +1390,6 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .unread-toggle:hover{border-color:var(--brand-line);color:var(--brand-strong);background:var(--brand-weak);}
 .unread-toggle.on{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand-strong);}
 .unread-toggle svg{width:13px;height:13px;}
-.mark-all-btn{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint);border:1px solid var(--line);background:var(--card);cursor:pointer;transition:all .15s;padding:0;flex:none;}
-.mark-all-btn:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
-.mark-all-btn svg{width:14px;height:14px;}
 .back-top{position:fixed;bottom:24px;right:24px;width:40px;height:40px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;pointer-events:none;transition:all .2s;z-index:90;box-shadow:0 2px 8px rgba(0,0,0,.08);}
 .back-top.show{opacity:1;pointer-events:auto;}
 .back-top:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
@@ -1717,6 +1714,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   try { visited = JSON.parse(localStorage.getItem('rss_read_v2')||'{}'); } catch(e){}
   var filter = {type:'all', cats:{}, src:null, unreadOnly:false, filterBm:false};
   var curArt = null;
+  window.curArt = null;
   var wallLimit = 120, WALL_STEP = 80;
 
   /* ── Theme ── */
@@ -1779,7 +1777,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     el.textContent=ART.length+' \u7bc7 \u00b7 \u5168\u6587\u8986\u76d6 '+ftN+'/'+ART.length;
   }
   function SRC_OBJ(k){ return SOURCES.find(function(s){return s.key===k}); }
-  window.clearSrcF=function(e){e.stopPropagation();var uo=filter.unreadOnly,bm=filter.filterBm;filter={type:'all',unreadOnly:uo,filterBm:bm};curArt=null;wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();updateTitle();updateHash();updateUnreadBtn();updateBmChip();};
+  window.clearSrcF=function(e){e.stopPropagation();var uo=filter.unreadOnly,bm=filter.filterBm;filter={type:'all',unreadOnly:uo,filterBm:bm};curArt=null;window.curArt=null;wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();updateTitle();updateHash();updateUnreadBtn();updateBmChip();};
 
   /* ── Source panel ── */
   function toggleSrcPanel(){ document.body.classList.toggle('src-open'); }
@@ -1921,7 +1919,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
     if(!list.length){
-      var em=globalSearch?(_searchSrcMatch?'\u4fe1\u6e90 \u00ab'+esc(SRC_OBJ(_searchSrcMatch)?SRC_OBJ(_searchSrcMatch).name:globalSearch)+'\u00ab \u6682\u65e0\u6587\u7ae0':'\u672a\u627e\u5230\u4e0e\u300c'+esc(globalSearch)+'\u300d\u76f8\u5173\u7684\u6587\u7ae0'):(filter.filterBm?'\u6682\u65e0\u6536\u85cf\u6587\u7ae0':(filter.unreadOnly?'\u6240\u6709\u6587\u7ae0\u5df2\u8bfb':'\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0')));
+      var em=globalSearch?(_searchSrcMatch?'\u4fe1\u6e90 \u00ab'+esc(SRC_OBJ(_searchSrcMatch)?SRC_OBJ(_searchSrcMatch).name:globalSearch)+'\u00bb \u6682\u65e0\u6587\u7ae0':'\u672a\u627e\u5230\u4e0e\u300c'+esc(globalSearch)+'\u300d\u76f8\u5173\u7684\u6587\u7ae0'):(filter.filterBm?'\u6682\u65e0\u6536\u85cf\u6587\u7ae0':(filter.unreadOnly?'\u6240\u6709\u6587\u7ae0\u5df2\u8bfb':'\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0'));
       wall.innerHTML='<div class="empty-hint">'+em+'</div>';
       wallLimit=0;
       return;
@@ -2042,7 +2040,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
   function markRead(a){visited[artKey(a)]=1;try{localStorage.setItem('rss_read_v2',JSON.stringify(visited));}catch(e){}}
   function markAllRead(){
-    var list=visibleArtes(),cnt=0;
+    var list=visibleArts(),cnt=0;
     for(var i=0;i<list.length;i++){var k=artKey(list[i]);if(!visited[k]){visited[k]=1;cnt++;}}
     try{localStorage.setItem('rss_read_v2',JSON.stringify(visited));}catch(e){}
     updateCardStates();
@@ -2050,7 +2048,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(filter.unreadOnly){wallLimit=WALL_STEP;renderWall();}
   }
   function openReader(a){
-    curArt=a; markRead(a);
+    curArt=a; window.curArt=a; markRead(a);
     renderReader(); document.body.classList.add('reading');
     document.body.classList.remove('src-open');
     document.getElementById('r2Body').scrollTop=0; updateCardStates();
@@ -2180,7 +2178,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   // ── Window exports ──
   window.ART = ART;
-  window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; updateCardStates(); };
+  window.closeReader = function(){ document.body.classList.remove('reading'); curArt=null; window.curArt=null; updateCardStates(); };
   window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
   window.clearSrcF = function(e){ e.stopPropagation(); var uo=filter.unreadOnly,bm=filter.filterBm; filter={type:'all',unreadOnly:uo,filterBm:bm}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); updateBmChip(); };
   window.toggleSrcPanel = toggleSrcPanel;
@@ -2386,6 +2384,31 @@ def _build_js(sources_with_items, build_ts_ms=0):
     return lines;
   }
 
+  // Strip HTML tags → plain text, preserve paragraph breaks
+  function stripHtmlForCanvas(html){
+    if(!html) return '';
+    var t = html;
+    // Remove script/style
+    t = t.replace(/<script[\s\S]*?<\/script>/gi, '');
+    t = t.replace(/<style[\s\S]*?<\/style>/gi, '');
+    // Block elements → double newline
+    t = t.replace(/<\/?\s*(p|div|blockquote|pre|h[1-6]|li|tr|br)\s*[^>]*>/gi, '\\n');
+    // Inline images → alt text or [image]
+    t = t.replace(/<img[^>]*alt\s*=\s*"([^"]*)"[^>]*>/gi, ' $1 ');
+    t = t.replace(/<img[^>]*>/gi, ' [\u56fe\u7247] ');
+    // Links → keep text
+    t = t.replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1');
+    // Remaining tags
+    t = t.replace(/<[^>]+>/g, '');
+    // HTML entities
+    t = t.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+         .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+         .replace(/&#\d+;/g, '').replace(/&[a-z]+;/gi, '');
+    // Collapse whitespace within lines, keep paragraph breaks
+    t = t.split('\\n').map(function(l){ return l.replace(/\s+/g, ' ').trim(); }).filter(function(l){ return l.length > 0; }).join('\\n');
+    return t.trim();
+  }
+
   function getThemeColors(){
     var dark=document.documentElement.dataset.theme==='dark';
     return {
@@ -2399,7 +2422,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     };
   }
 
-  function drawShareCard(a){
+  function drawShareCard(a, fullText){
     var W=750, PAD=40, GAP_T=28, GAP_S=16, GAP_M=24;
     var c=document.createElement('canvas');
     var ctx=c.getContext('2d');
@@ -2408,17 +2431,44 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var catColor=a.sc||'#2f5d8a';
     if(document.documentElement.dataset.theme==='dark') catColor=adjColor(a.sc||'#8fb3d9');
 
+    // ─ Resolve content: full text preferred, fallback to summary ──
+    var BODY_FONT = 14;
+    var BODY_LH = 1.7;
+    var MAX_CONTENT_CHARS = 6000;
+    var contentText = '';
+    var useFull = false;
+    if(fullText && fullText.length > 60){
+      useFull = true;
+      contentText = fullText;
+      if(contentText.length > MAX_CONTENT_CHARS){
+        contentText = contentText.slice(0, MAX_CONTENT_CHARS);
+        var lastNl = contentText.lastIndexOf('\\n');
+        if(lastNl > MAX_CONTENT_CHARS * 0.7) contentText = contentText.slice(0, lastNl);
+        contentText += '\\n\\n\u2026\u2026 \u5168\u6587\u8bf7\u626b\u63cf\u4e8c\u7ef4\u7801\u9605\u8bfb';
+      }
+    }
+
     // ── Measure pass ──
     ctx.font='26px '+font;
     var titleLines=wrapText(ctx, a.t||'\u65e0\u6807\u9898\u6587\u7ae0', W-PAD*2);
-    var summaryLines=[];
-    if(a.s){
-      ctx.font='15px '+font;
-      summaryLines=wrapText(ctx, a.s, W-PAD*2);
-    }
     var titleH=titleLines.length*(26*1.45);
-    var summaryH=summaryLines.length*(15*1.7);
-    var H=PAD+50+GAP_T+titleH+GAP_S+summaryH+(a.s?GAP_M:0)+1+GAP_M+110+36;
+    var contentLines=[];
+    var contentH=0;
+    if(useFull){
+      ctx.font=BODY_FONT+'px '+font;
+      var paras = contentText.split('\\n');
+      for(var pi=0;pi<paras.length;pi++){
+        var pLines = wrapText(ctx, paras[pi], W-PAD*2);
+        for(var li=0;li<pLines.length;li++) contentLines.push(pLines[li]);
+        if(pi<paras.length-1) contentLines.push(''); // blank line between paragraphs
+      }
+      contentH = contentLines.length * (BODY_FONT * BODY_LH);
+    } else {
+      ctx.font='15px '+font;
+      if(a.s) contentLines=wrapText(ctx, a.s, W-PAD*2);
+      contentH = contentLines.length*(15*1.7);
+    }
+    var H=PAD+50+GAP_T+titleH+GAP_S+contentH+(contentH>0?GAP_M:0)+1+GAP_M+110+36;
 
     // ── Create canvas at 2x ──
     c.width=W*2; c.height=H*2;
@@ -2456,13 +2506,23 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }
     y+=GAP_S;
 
-    // ── Summary (never truncated) ──
-    if(a.s&&summaryLines.length){
-      ctx.font='15px '+font;
-      ctx.fillStyle=col.summary;
-      for(var i=0;i<summaryLines.length;i++){
-        ctx.fillText(summaryLines[i],PAD,y);
-        y+=15*1.7;
+    // ── Content: full text or summary ──
+    if(contentLines.length){
+      if(useFull){
+        ctx.font=BODY_FONT+'px '+font;
+        ctx.fillStyle=col.summary;
+        for(var i=0;i<contentLines.length;i++){
+          if(contentLines[i]==='') { y+=BODY_FONT*BODY_LH*0.6; continue; }
+          ctx.fillText(contentLines[i],PAD,y);
+          y+=BODY_FONT*BODY_LH;
+        }
+      } else {
+        ctx.font='15px '+font;
+        ctx.fillStyle=col.summary;
+        for(var i=0;i<contentLines.length;i++){
+          ctx.fillText(contentLines[i],PAD,y);
+          y+=15*1.7;
+        }
       }
       y+=GAP_M;
     }
@@ -2472,7 +2532,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke();
     y+=GAP_M;
 
-    // ── Bottom: source + QR ──
+    // ── Bottom: source + QR ─
     ctx.fillStyle=a.sc||'#2f5d8a';
     ctx.beginPath();ctx.arc(PAD+4,y+6,4,0,Math.PI*2);ctx.fill();
     ctx.font='bold 12px '+font;
@@ -2518,14 +2578,39 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function shareArticle(a,platform,btn){
     if(!a) return;
     if(btn) btn.classList.add('loading');
-    loadQRLib().catch(function(){/* QR load failed, continue without */}).then(function(){
-      var url;
-      try{url=drawShareCard(a);}catch(e){url='';}
-      if(btn) btn.classList.remove('loading');
-      if(!url){toast('\u5206\u4eab\u56fe\u7247\u751f\u6210\u5931\u8d25');return;}
-      _shareDataURL=url;
-      showShareModal(url);
-    });
+    // Gather full text from available sources
+    var fullText = '';
+    var ftEl = document.querySelector('.r2-fulltext');
+    if(ftEl) fullText = stripHtmlForCanvas(ftEl.innerText || ftEl.textContent);
+    if(!fullText && a.fc && a.fc.length > 100) fullText = stripHtmlForCanvas(a.fc);
+    if(!fullText && _articleCache[a.u] && _articleCache[a.u].ok) fullText = stripHtmlForCanvas(_articleCache[a.u].content);
+
+    function doShare(text){
+      loadQRLib().catch(function(){}).then(function(){
+        var url;
+        try{ url = drawShareCard(a, text); }catch(e){ url=''; }
+        if(btn) btn.classList.remove('loading');
+        if(!url){ toast('\u5206\u4eab\u56fe\u7247\u751f\u6210\u5931\u8d25'); return; }
+        _shareDataURL = url;
+        showShareModal(url);
+      });
+    }
+
+    if(fullText){ doShare(fullText); return; }
+
+    // Fetch full text from API
+    if(a.u && a.u !== '#'){
+      var apiBase = 'https://starhub-refresh.vercel.app/api/article';
+      fetch(apiBase + '?url=' + encodeURIComponent(a.u)).then(function(r){ return r.json(); }).then(function(d){
+        if(d.ok && d.content){
+          fullText = stripHtmlForCanvas(d.content);
+          if(_articleCache) _articleCache[a.u] = d;
+        }
+        doShare(fullText);
+      }).catch(function(){ doShare(''); });
+    } else {
+      doShare('');
+    }
   }
 
   function showShareModal(url){
@@ -2635,10 +2720,9 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="toolbar">\n'
         '<h1>时间线</h1>\n'
         '<button class="src-btn" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h13M4 18h9"/></svg> 信源 <span class="cnt" id="srcCnt"></span></button>\n'
-        '<div class="chips" id="chips"></div>\n'
         '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="重新加载页面以获取最新构建数据"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
+        '<div class="chips" id="chips"></div>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
-        '<button class="mark-all-btn" onclick="markAllRead()" title="\u6807\u8bb0\u5168\u90e8\u5df2\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button>\n'
         '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
