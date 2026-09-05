@@ -1992,7 +1992,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var hasParagraphs=/<p[\s>]/i.test(html);
     if(!hasParagraphs){
       // Plain text or minimal HTML - split into paragraphs
-      var blocks=html.split(/\n\s*\n/);
+      var blocks=html.split(/\\n\\s*\\n/);
       var formatted=blocks.map(function(block){
         block=block.trim();
         if(!block) return '';
@@ -2001,8 +2001,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
           return block;
         }
         // Wrap text blocks in <p> tags
-        return '<p>'+block.replace(/\n/g,'<br>')+'</p>';
-      }).filter(function(b){return b;}).join('\n');
+        return '<p>'+block.replace(/\\n/g,'<br>')+'</p>';
+      }).filter(function(b){return b;}).join('\\n');
       div.innerHTML=formatted;
     } else {
       // Already has proper HTML structure
