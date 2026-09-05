@@ -2352,8 +2352,87 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   })();
 
-  /* ── Refresh: 数据由 GitHub Actions 定时构建生成，点击按钮重新加载页面 ── */
-  window.refreshRss = function(){ location.reload(); };
+  /* ── Refresh: 后台增量更新 —— 不整页 reload，避免重新下载18MB 页面导致长时间白屏 ── */
+  var _refreshing=false, _lastTotal=ART.length;
+  function _fmtRel(dstr){
+    if(!dstr) return '';
+    var d=new Date(dstr); if(isNaN(d.getTime())) return '';
+    var diff=(Date.now()-d.getTime())/1000; if(diff<0) diff=0;
+    if(diff<60) return '刚刚';
+    if(diff<3600) return Math.floor(diff/60)+' 分钟前';
+    if(diff<86400) return Math.floor(diff/3600)+' 小时前';
+    if(diff<172800) return '昨天';
+    return Math.floor(diff/86400)+' 天前';
+  }
+  function _mergeRemoteSources(j){
+    try{
+      if(!j||!j.sources||!j.sources.length) return 0;
+      var known={}; for(var i=0;i<ART.length;i++) known[artKey(ART[i])]=1;
+      var added=[];
+      j.sources.forEach(function(s){
+        if(!s||!s.items||!s.items.length) return;
+        s.items.forEach(function(it){
+          if(!it||!it.u||it.u==='#') return;
+          var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
+                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||''};
+          if(!a.t) return;
+          var k=artKey(a);
+          if(known[k]) return;
+          known[k]=1; added.push(a);
+        });
+      });
+      if(!added.length) return 0;
+      added.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      for(var i=added.length-1;i>=0;i--) ART.unshift(added[i]);
+      ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      tierInterleave();
+      wallLimit=Math.min(ART.length, Math.max(wallLimit, WALL_STEP));
+      return added.length;
+    }catch(e){ return 0; }
+  }
+  function _applyRemote(j, manual){
+    var n=_mergeRemoteSources(j);
+    _lastTotal=ART.length;
+    if(n>0){
+      renderChips(); renderWall(); renderPanel();
+      toast('已更新 '+n+' 篇新文章');
+    } else if(manual){
+      toast('已是最新内容');
+    }
+  }
+  window.refreshRss=function(manual){
+    if(manual===undefined) manual=true;
+    if(_refreshing){ if(manual) toast('正在检查更新…'); return; }
+    _refreshing=true;
+    var btn=document.getElementById('refreshBtn');
+    if(btn) btn.classList.add('loading');
+    if(manual) toast('正在后台检查更新…');
+    var settled=false;
+    var ctrl=window.AbortController?new AbortController():null;
+    var timer=setTimeout(function(){ if(settled) return; settled=true; if(ctrl) ctrl.abort(); _refreshing=false; if(btn) btn.classList.remove('loading'); if(manual) toast('检查超时，请稍后重试'); }, 30000);
+    fetch('https://starhub-refresh.vercel.app/api/rss', ctrl?{signal:ctrl.signal}:{}).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(j){
+      if(settled) return; settled=true;
+      clearTimeout(timer); _refreshing=false;
+      if(btn) btn.classList.remove('loading');
+      _applyRemote(j, manual);
+    }).catch(function(){
+      if(settled) return; settled=true;
+      clearTimeout(timer); _refreshing=false;
+      if(btn) btn.classList.remove('loading');
+      if(manual) toast('检查更新失败，请稍后重试');
+    });
+  };
+  /* 自动刷新：每 5 分钟用轻量 meta 接口探测新构建，仅当有新内容时才拉取合并（页面隐藏时跳过） */
+  setInterval(function(){
+    if(document.hidden || _refreshing) return;
+    fetch('https://starhub-refresh.vercel.app/api/rss?meta=1').then(function(r){ return r.ok?r.json():null; }).then(function(m){
+      if(!m || typeof m.total!=='number') return;
+      if(m.total>_lastTotal) window.refreshRss(false);
+    }).catch(function(){});
+  }, 5*60*1000);
 
   /* ══════════════════════════════════════════
      Share module: Canvas card + QR code + modal
@@ -2725,7 +2804,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="toolbar">\n'
         '<h1>时间线</h1>\n'
         '<button class="src-btn" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h13M4 18h9"/></svg> 信源 <span class="cnt" id="srcCnt"></span></button>\n'
-        '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="重新加载页面以获取最新构建数据"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
+        '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="后台检查更新，不刷新页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<div class="chips" id="chips"></div>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
         '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0/\u4fe1\u606f\u6e90" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'

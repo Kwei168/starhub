@@ -274,7 +274,21 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
-  
+
+  // 轻量探测端点：仅返回快照总条数，供前端轮询检测新构建（避免整包拉取 15MB）
+  if (req.query && req.query.meta === '1') {
+    let metaTotal = 0;
+    try {
+      const snapMeta = loadSnapshot();
+      if (snapMeta && snapMeta.sources) {
+        metaTotal = snapMeta.sources.reduce((n, s) => n + (s.items || []).length, 0);
+      }
+    } catch (e) { /* 快照不可用时返回 0，前端不会触发合并 */ }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json({ total: metaTotal });
+  }
+
   const now = Date.now();
   const isRefresh = req.query && req.query.refresh === '1';
   
