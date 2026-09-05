@@ -31,7 +31,8 @@ function loadSnapshotContent() {
     snapshotLoadTime = Date.now();
     console.log(`[article] Loaded snapshot content map: ${Object.keys(urlMap).length} entries with full text`);
     return urlMap;
-  } catch {
+  } catch (err) {
+    console.error('[article] Failed to load snapshot:', err.message);
     return {};
   }
 }
