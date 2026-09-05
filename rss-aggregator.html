@@ -415,9 +415,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var CAT_ORDER = ["wechat", "ai", "tech", "cn_tech", "dev", "news", "podcast", "youtube"];
   var ART = [];
   var now=new Date().toISOString();
-  /* 全量数据按日期降序+分层交织后由构建脚本切成 rss-data-0.js（首屏）与
+  /* 全量数据按日期降序后由构建脚本切成 rss-data-0.js（首屏）与
      rss-data-1.js（后台合并）两块，页面不再内嵌数据（31MB→约0.15MB）。
-     展平+排序+交织统一收敛到 buildArt()，刷新路径共用。 */
+     首屏严格时间排序；chunk1 合并后或刷新时应用 tier 交织。 */
   function buildArt(){
     ART=[];
     SOURCES.forEach(function(s){
@@ -430,7 +430,6 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var nowIso=new Date().toISOString();
     ART.forEach(function(a){ if(a.date&&a.date>nowIso) a.date=nowIso; });
     ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-    tierInterleave();
     window.ART = ART;
   }
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
@@ -1145,7 +1144,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         SOURCES[i].items=SOURCES[i].items.concat(s.items);
         added+=s.items.length;
       });
-      if(added>0){buildArt();wallLimit=Math.min(ART.length,Math.max(wallLimit,120));renderChips();renderWall();renderPanel();}
+      if(added>0){buildArt();tierInterleave();wallLimit=Math.min(ART.length,Math.max(wallLimit,120));renderChips();renderWall();renderPanel();}
       return added;
     }catch(e){return 0;}
   }

@@ -1700,9 +1700,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var CAT_ORDER = """ + json.dumps(CATEGORY_ORDER, ensure_ascii=False) + """;
   var ART = [];
   var now=new Date().toISOString();
-  /* 全量数据按日期降序+分层交织后由构建脚本切成 rss-data-0.js（首屏）与
+  /* 全量数据按日期降序后由构建脚本切成 rss-data-0.js（首屏）与
      rss-data-1.js（后台合并）两块，页面不再内嵌数据（31MB→约0.15MB）。
-     展平+排序+交织统一收敛到 buildArt()，刷新路径共用。 */
+     首屏严格时间排序；chunk1 合并后或刷新时应用 tier 交织。 */
   function buildArt(){
     ART=[];
     SOURCES.forEach(function(s){
@@ -1715,7 +1715,6 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var nowIso=new Date().toISOString();
     ART.forEach(function(a){ if(a.date&&a.date>nowIso) a.date=nowIso; });
     ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-    tierInterleave();
     window.ART = ART;
   }
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
@@ -2430,7 +2429,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         SOURCES[i].items=SOURCES[i].items.concat(s.items);
         added+=s.items.length;
       });
-      if(added>0){buildArt();wallLimit=Math.min(ART.length,Math.max(wallLimit,120));renderChips();renderWall();renderPanel();}
+      if(added>0){buildArt();tierInterleave();wallLimit=Math.min(ART.length,Math.max(wallLimit,120));renderChips();renderWall();renderPanel();}
       return added;
     }catch(e){return 0;}
   }
@@ -2882,29 +2881,17 @@ def _build_js(sources_with_items, build_ts_ms=0):
 CHUNK0_SIZE = 360  # 首屏块文章数（复刻前端 ART 排序后取前 N 篇）
 
 def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
-    """把全量文章拆成两块：完整复刻前端顺序（展平→日期降序→tier 交织），
-    前 chunk0_size 篇为 chunk0（首屏），其余为 chunk1（后台合并）。
+    """把全量文章拆成两块：首屏 chunk0 按严格时间排序（不交织），
+    后台 chunk1 包含剩余文章；前端合并 chunk1 后再应用 tier 交织。
     两块均保持 sources 富字段结构，前端可原样消费。"""
-    tier_by_key = {}
-    for s in sources:
-        tier_by_key[s.get("key")] = s.get("tier", 3) or 3
     flat = []
     for s in sources:
         for it in s.get("items", []):
             flat.append((s, it))
     flat.sort(key=lambda x: x[1].get("pub_date") or "", reverse=True)
-    hi = [x for x in flat if (tier_by_key.get(x[0].get("key")) or 3) <= 2]
-    lo = [x for x in flat if (tier_by_key.get(x[0].get("key")) or 3) > 2]
-    ordered = []
-    i = j = 0
-    while i < len(hi) or j < len(lo):
-        for _ in range(min(4, len(hi) - i)):
-            ordered.append(hi[i]); i += 1
-        if j < len(lo):
-            ordered.append(lo[j]); j += 1
     seen = set()
     c0_items = {}
-    for s, it in ordered[:chunk0_size]:
+    for s, it in flat[:chunk0_size]:
         seen.add(id(it))
         c0_items.setdefault(s.get("key"), []).append(it)
     chunk0, chunk1 = [], []
