@@ -1,0 +1,16 @@
+rss_history.json
+rss_cache.json
+*.py
+_check_syntax.js
+_fix_regex.py
+check_html.py
+extract_bestblogs_sources.py
+merge_sources.py
+rss_sources_merged.py
+bestblogs_analysis.json
+bestblogs_sources.json
+t1_sources.json
+t2_sources.json
+screenshots/
+test-results/
+.qoder/
