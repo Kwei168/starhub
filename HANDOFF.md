@@ -232,6 +232,29 @@ python dev_render.py   # 本地渲染预览（不拉取真实数据）
 python fetch_and_build.py  # 完整构建（需要 GitHub API 访问）
 ```
 
+### 5.6 Vercel 部署认证（关键）
+
+**VERCEL_TOKEN 要求**：
+- GitHub Secret `VERCEL_TOKEN` 必须是 **guiyingyi2021 团队** 的 token，scope 到 `starhub-refresh` 项目
+- 正确 token 名称：`starhub-ci`（2026-08-31 创建，永不过期，格式：`vcp_...`）
+- **错误 token 会导致**：Vercel CLI 返回 `"The token provided via --token argument is not valid"`
+
+**获取正确 token**：
+1. 从用户剪贴板读取：`powershell -command "Get-Clipboard"`
+2. 更新 GitHub Secret：`gh secret set VERCEL_TOKEN -b "<token_value>"`
+3. 触发部署：`gh workflow run update.yml`
+
+**常见错误**：
+- ❌ 使用 kwei168 账户的 token（scope 不匹配，无法部署到 guiyingyi2021 的项目）
+- ❌ 使用过期或格式错误的 token
+- ✅ 必须使用 guiyingyi2021 团队的 starhub-ci token
+
+**验证部署成功**：
+```bash
+# 查看 workflow 运行日志，确认 "Ready in Xs"
+gh run view <run_id> --log | grep -E "(Ready|Error|Production)"
+```
+
 ---
 
 ## 六、部署流程详解

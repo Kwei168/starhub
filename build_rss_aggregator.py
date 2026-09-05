@@ -1987,7 +1987,28 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!inner||inner.querySelector('.r2-fulltext')) return;
     var div=document.createElement('div');
     div.className='r2-fulltext';
-    div.innerHTML=html;
+    
+    // Auto-format: detect if content lacks paragraph structure
+    var hasParagraphs=/<p[\s>]/i.test(html);
+    if(!hasParagraphs){
+      // Plain text or minimal HTML - split into paragraphs
+      var blocks=html.split(/\n\s*\n/);
+      var formatted=blocks.map(function(block){
+        block=block.trim();
+        if(!block) return '';
+        // Check if block contains only an image
+        if(/^<img\s/i.test(block)&&block.match(/^<img\s[^>]*>$/i)){
+          return block;
+        }
+        // Wrap text blocks in <p> tags
+        return '<p>'+block.replace(/\n/g,'<br>')+'</p>';
+      }).filter(function(b){return b;}).join('\n');
+      div.innerHTML=formatted;
+    } else {
+      // Already has proper HTML structure
+      div.innerHTML=html;
+    }
+    
     var hint=inner.querySelector('.r2-foot-hint');
     if(hint) inner.insertBefore(div,hint); else inner.appendChild(div);
   }
@@ -2288,128 +2309,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
   })();
 
-  /* ── Live RSS refresh: manual button + auto-poll every 10min ── */
-  var _lastRefreshTs = 0;
-  
-  // localStorage key for read articles
-  var READ_ARTICLES_KEY = 'starhub_rss_read_urls';
-  
-  // Load read URLs from localStorage
-  function _getReadUrls() {
-    try {
-      var stored = localStorage.getItem(READ_ARTICLES_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch(e) {
-      console.warn('[rss] Failed to load read URLs:', e);
-      return [];
-    }
-  }
-  
-  // Save read URLs to localStorage (keep last 5000 to avoid storage limit)
-  function _saveReadUrls(urls) {
-    try {
-      var limited = urls.slice(-5000);
-      localStorage.setItem(READ_ARTICLES_KEY, JSON.stringify(limited));
-    } catch(e) {
-      console.warn('[rss] Failed to save read URLs:', e);
-    }
-  }
-  
-  function _mergeLiveSources(liveData, silent){
-    if(!liveData||!liveData.sources) return 0;
-    
-    var readUrls = _getReadUrls();
-    var readSet = {};
-    readUrls.forEach(function(url) { readSet[url] = true; });
-    
-    var existingKeys = {};
-    ART.forEach(function(a){ existingKeys[a.sk+'|'+(a.u||'')] = true; });
-    
-    var newCount = 0;
-    var newUrls = [];
-    
-    liveData.sources.forEach(function(live){
-      if(!live.items||!live.items.length) return;
-      var src = SOURCES.find(function(s){return s.key===live.key;});
-      if(!src) return;
-      
-      live.items.forEach(function(it){
-        it.title = it.t || it.title;
-        it.link = it.u || it.link;
-        it.summary = it.s || it.summary;
-        it.pub_date = it.d || it.pub_date;
-        
-        var url = it.link || '';
-        var key = src.key+'|'+url;
-        
-        // Skip if already in ART or already read
-        if(existingKeys[key]) return;
-        if(readSet[url]) return;
-        
-        existingKeys[key] = true;
-        newUrls.push(url);
-        
-        var art = {t:it.title,s:it.summary||'',src:src.name,sk:src.key,c:src.cat,sc:src.color,time:_fmtRelTime(it.pub_date),date:it.pub_date,u:url};
-        ART.unshift(art);
-        newCount++;
-      });
-    });
-    
-    // Save new read URLs
-    if(newUrls.length > 0) {
-      _saveReadUrls(readUrls.concat(newUrls));
-    }
-    
-    if(newCount > 0){
-      ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
-      wallLimit = Math.min(wallLimit + newCount, ART.length);
-      renderWall(); updateMeta();
-      if(!silent) toast('已更新 '+newCount+' 篇新文章');
-      else if(newCount > 0) toast('发现 '+newCount+' 篇新内容');
-    }
-    
-    // 移除按钮loading状态
-    var btn = document.getElementById('refreshBtn');
-    if(btn){
-      btn.classList.remove('loading');
-      btn.removeAttribute('data-loading');
-    }
-    return newCount;
-  }
-  function _doFetchRss(silent){
-    var ctrl = new AbortController();
-    var tid = setTimeout(function(){ctrl.abort();},120000); // 增加到120秒超时（20并发×5秒超时≈45秒理论值，留余量）
-    fetch('https://starhub-refresh.vercel.app/api/rss?refresh=1',{signal:ctrl.signal}).then(function(r){
-      clearTimeout(tid); if(!r.ok) throw new Error('API '+r.status); return r.json();
-    }).then(function(data){
-      var newCount = _mergeLiveSources(data, silent);
-      _lastRefreshTs = Date.now();
-      // 如果没有新文章但有数据，显示提示
-      if(newCount === 0 && !silent && data.sources && data.sources.length > 0){
-        toast('已刷新，暂无新内容');
-      }
-    }).catch(function(err){
-      console.error('[rss] Refresh failed:', err);
-      // 移除按钮loading状态
-      var btn = document.getElementById('refreshBtn');
-      if(btn){
-        btn.classList.remove('loading');
-        btn.removeAttribute('data-loading');
-      }
-      if(!silent) toast('刷新失败：' + (err.message || '网络错误'));
-    });
-  }
-  window.refreshRss = function(){
-    var btn = document.getElementById('refreshBtn');
-    if(btn){
-      btn.classList.add('loading');
-      btn.setAttribute('data-loading', 'true');
-    }
-    _doFetchRss(false);
-    // 按钮loading状态在请求完成后移除（通过_fetchComplete标志）
-  };
-  // Auto-poll every 10 minutes (600000ms), first poll after 10min
-  setInterval(function(){ _doFetchRss(true); }, 600000);
+  /* ── Refresh: 数据由 GitHub Actions 定时构建生成，点击按钮重新加载页面 ── */
+  window.refreshRss = function(){ location.reload(); };
 
   /* ══════════════════════════════════════════
      Share module: Canvas card + QR code + modal
@@ -2645,7 +2546,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<h1>时间线</h1>\n'
         '<button class="src-btn" onclick="toggleSrcPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h13M4 18h9"/></svg> 信源 <span class="cnt" id="srcCnt"></span></button>\n'
         '<div class="chips" id="chips"></div>\n'
-        '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="刷新最新内容"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
+        '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="重新加载页面以获取最新构建数据"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
         '<button class="mark-all-btn" onclick="markAllRead()" title="\u6807\u8bb0\u5168\u90e8\u5df2\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></button>\n'
         '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
