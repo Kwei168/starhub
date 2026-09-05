@@ -1669,7 +1669,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     s.items.forEach(function(it){
       ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
         src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-        time:it.time_str, date:it.pub_date, u:it.link||'#'});
+        time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||''});
     });
   });
   var now=new Date().toISOString();
@@ -1957,6 +1957,10 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!a.u||a.u==='#') return;
     var inner=document.getElementById('r2Inner');
     if(!inner) return;
+    if(a.fc&&a.fc.length>100){
+      _insertFulltext(a.fc);
+      return;
+    }
     if(_articleCache[a.u]){
       var d=_articleCache[a.u];
       if(d.ok) _insertFulltext(d.content);
@@ -2273,7 +2277,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       SOURCES.forEach(function(s){s.items.forEach(function(it){
         ART.push({t:it.title_zh||it.title,s:it.summary_zh||it.summary||'',
           src:s.name,sk:s.key,c:s.cat,sc:s.color,
-          time:it.time_str,date:it.pub_date,u:it.link||'#'});
+          time:it.time_str,date:it.pub_date,u:it.link||'#',fc:it.fc||''});
       });});
       ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
       interleaveArts();
