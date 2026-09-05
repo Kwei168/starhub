@@ -1677,9 +1677,19 @@ def _build_js(sources_with_items, build_ts_ms=0):
     """Generate core JS for card wall + drawer reader."""
     data_json = json.dumps(sources_with_items, ensure_ascii=False)
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
+    # 内嵌 QR 生成库：国内移动端 jsdelivr/unpkg 常不可达且请求会长时间挂起，
+    # 导致分享模态框数十秒不出现甚至永远无反应。构建时直接内嵌 vendor 库。
+    qr_lib = ''
+    try:
+        _qr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vendor_qrcode.min.js')
+        with open(_qr_path, 'r', encoding='utf-8') as _f:
+            qr_lib = _f.read().split('//# sourceMappingURL=')[0].strip()
+    except Exception:
+        qr_lib = ''
     return """
 <script>
-(function(){
+""" + qr_lib + """
+;(function(){
   var BUILD_TS = """ + str(int(build_ts_ms)) + """;
   var SOURCES = """ + data_json + """;
   var CAT_LABELS = """ + cat_labels_json + """;
@@ -2281,7 +2291,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Init ── */
   var restored = restoreFromHash();
-  renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); initFontSize(); loadBookmarks(); renderChips(); updateBmBtn();
+  loadBookmarks(); renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); initFontSize(); updateBmBtn();
   /* 无限滚动：接近底部自动加载更多 */
   window.addEventListener('scroll',function(){
     var list=visibleArts();
@@ -2438,20 +2448,25 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ══════════════════════════════════════════
      Share module: Canvas card + QR code + modal
      ══════════════════════════════════════════ */
-  var _qrLoaded=false, _shareDataURL='', _toastTimer;
+  var _qrLoaded=typeof qrcode==='function', _shareDataURL='', _toastTimer;
   function toast(msg){var t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(_toastTimer);_toastTimer=setTimeout(function(){t.classList.remove('show');},2000);}
 
+  /* QR 库已构建时内嵌（typeof qrcode==='function' 即同步可用）；
+     此函数仅作为内嵌缺失时的 CDN 兑底，带 8s 超时防止 CDN 挂起 */
   function loadQRLib(){
     if(_qrLoaded) return Promise.resolve();
     return new Promise(function(resolve,reject){
+      var settled=false;
+      var timer=setTimeout(function(){ if(!settled){settled=true;reject(new Error('qr cdn timeout'));} },8000);
       var s=document.createElement('script');
       s.src='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
-      s.onload=function(){_qrLoaded=true;resolve();};
+      s.onload=function(){_qrLoaded=true;settled=true;clearTimeout(timer);resolve();};
       s.onerror=function(){
+        if(settled)return;
         var s2=document.createElement('script');
         s2.src='https://unpkg.com/qrcode-generator@1.4.4/qrcode.min.js';
-        s2.onload=function(){_qrLoaded=true;resolve();};
-        s2.onerror=reject;
+        s2.onload=function(){_qrLoaded=true;settled=true;clearTimeout(timer);resolve();};
+        s2.onerror=function(){ if(!settled){settled=true;clearTimeout(timer);reject(new Error('qr cdn failed'));} };
         document.head.appendChild(s2);
       };
       document.head.appendChild(s);
@@ -2519,7 +2534,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
     // ─ Resolve content: full text preferred, fallback to summary ──
     var BODY_FONT = 14;
     var BODY_LH = 1.7;
-    var MAX_CONTENT_CHARS = 6000;
+    var MAX_CONTENT_CHARS = 3000;
+    var MAX_LINES = 78; /* 限制画布高度，超出移动端 canvas 尺寸上限会导致绘制空白 */
     var contentText = '';
     var useFull = false;
     if(fullText && fullText.length > 60){
@@ -2546,6 +2562,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
         var pLines = wrapText(ctx, paras[pi], W-PAD*2);
         for(var li=0;li<pLines.length;li++) contentLines.push(pLines[li]);
         if(pi<paras.length-1) contentLines.push(''); // blank line between paragraphs
+      }
+      if(contentLines.length > MAX_LINES){
+        contentLines = contentLines.slice(0, MAX_LINES);
+        contentLines.push('');
+        contentLines.push('\u2026\u2026 \u5168\u6587\u8bf7\u626b\u63cf\u4e8c\u7ef4\u7801\u9605\u8bfb');
       }
       contentH = contentLines.length * (BODY_FONT * BODY_LH);
     } else {
@@ -2633,7 +2654,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     ctx.fillText('\u957f\u6309\u8bc6\u522b \u00b7 \u9605\u8bfb\u539f\u6587',PAD,y+40);
 
     var qrSize=90, qrX=W-PAD-qrSize, qrY=y;
-    if(_qrLoaded){
+    if(typeof qrcode==='function'){
       try{
         var qrUrl=(a.u&&a.u!=='#')?a.u:location.href;
         var qr=qrcode(0,'M');
@@ -2671,28 +2692,34 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!fullText && _articleCache[a.u] && _articleCache[a.u].ok) fullText = stripHtmlForCanvas(_articleCache[a.u].content);
 
     function doShare(text){
-      loadQRLib().catch(function(){}).then(function(){
-        var url;
-        try{ url = drawShareCard(a, text); }catch(e){ url=''; }
-        if(btn) btn.classList.remove('loading');
-        if(!url){ toast('\u5206\u4eab\u56fe\u7247\u751f\u6210\u5931\u8d25'); return; }
-        _shareDataURL = url;
-        showShareModal(url);
-      });
+      /* 内嵌 QR 后同步出图：模态框立即弹出，不再等待任何网络请求 */
+      var url='';
+      try{ url = drawShareCard(a, text); }catch(e){}
+      if(btn) btn.classList.remove('loading');
+      if(!url){ toast('\u5206\u4eab\u56fe\u7247\u751f\u6210\u5931\u8d25'); return; }
+      _shareDataURL = url;
+      showShareModal(url);
+      if(!_qrLoaded) loadQRLib().catch(function(){});
     }
 
     if(fullText){ doShare(fullText); return; }
 
-    // Fetch full text from API
+    // Fetch full text from API — 3s 超时：vercel 域名国内移动端常不可达，快速降级为摘要分享
     if(a.u && a.u !== '#'){
       var apiBase = 'https://starhub-refresh.vercel.app/api/article';
-      fetch(apiBase + '?url=' + encodeURIComponent(a.u)).then(function(r){ return r.json(); }).then(function(d){
+      var settled=false;
+      function once(text){ if(settled)return; settled=true; doShare(text); }
+      var ctrl = (typeof AbortController==='function') ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function(){ once(''); }, 3000) : null;
+      fetch(apiBase + '?url=' + encodeURIComponent(a.u), ctrl?{signal:ctrl.signal}:{}).then(function(r){ return r.json(); }).then(function(d){
+        if(timer) clearTimeout(timer);
+        var text='';
         if(d.ok && d.content){
-          fullText = stripHtmlForCanvas(d.content);
+          text = stripHtmlForCanvas(d.content);
           if(_articleCache) _articleCache[a.u] = d;
         }
-        doShare(fullText);
-      }).catch(function(){ doShare(''); });
+        once(text);
+      }).catch(function(){ if(timer) clearTimeout(timer); once(''); });
     } else {
       doShare('');
     }
