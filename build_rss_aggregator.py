@@ -999,7 +999,10 @@ _SAFE_TAGS = re.compile(
     re.IGNORECASE,
 )
 _EVT_ATTR = re.compile(r"^on[a-z]+$", re.IGNORECASE)
-_TAG_NAME = re.compile(r"^/?(\w[\w-]*)")
+_TAG_NAME = re.compile(r"^</?(\w[\w-]*)")
+# 仅保留渲染正文结构必需的属性：WeChat 段落带巨型内联 style，全量保留会撑爆快照
+_KEPT_ATTRS = {"img": ("src", "alt"), "a": ("href",)}
+_URL_SCHEME = re.compile(r"^\s*(?:https?:|mailto:|/|#|data:image/)", re.IGNORECASE)
 
 
 def _sanitize_html(text):
@@ -1019,14 +1022,17 @@ def _sanitize_html(text):
         tag = m_name.group(1)
         if not _SAFE_TAGS.match(tag):
             return ""
-        attrs = re.findall(r'([\w-]+)\s*=\s*"([^"]*)"', full)
+        kept = _KEPT_ATTRS.get(tag.lower(), ())
         safe_attrs = []
-        for k, v in attrs:
-            if _EVT_ATTR.match(k):
-                continue
-            if k.lower() == "href" and v.strip().lower().startswith("javascript:"):
-                continue
-            safe_attrs.append('%s="%s"' % (k, v))
+        if kept:
+            for k, v in re.findall(r'([\w-]+)\s*=\s*"([^"]*)"', full):
+                if k.lower() not in kept or _EVT_ATTR.match(k):
+                    continue
+                if not _URL_SCHEME.match(v):
+                    continue
+                safe_attrs.append('%s="%s"' % (k.lower(), v.replace("&", "&amp;")))
+        if tag.lower() == "img" and not any(a.startswith("src=") for a in safe_attrs):
+            return ""
         if safe_attrs:
             return "<%s %s>" % (tag, " ".join(safe_attrs))
         if full.startswith("</"):
