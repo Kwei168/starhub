@@ -1746,6 +1746,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
     document.getElementById('chips').innerHTML=h;
     document.querySelectorAll('.chip').forEach(function(el){
+      if(!el.dataset.c) return; /* \u65e0 data-c \u7684\u82af\u7247\uff08\u5982\u6536\u85cf\uff09\u4fdd\u7559\u5185\u8054 onclick\uff0c\u907f\u514d\u8986\u76d6\u6210 c=undefined */
       el.onclick=function(){
         var c=this.dataset.c, uo=filter.unreadOnly, bm=filter.filterBm;
         var cats=filter.type==='cat'?Object.assign({},filter.cats):{};
