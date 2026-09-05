@@ -120,6 +120,25 @@ function sanitizeHtml(text) {
   return text.trim();
 }
 
+// ── 深度清洗：移除 RSS 正文中的广告、推广、引导关注等噪音 ──
+
+function deepCleanHtml(text) {
+  if (!text) return '';
+  // 1. 移除广告/推广/订阅/评论相关 class 或 id 的整个元素
+  text = text.replace(/<(\w+)[^>]*\b(?:class|id)\s*=\s*"[^"]*\b(?:ad[s_-]?|advert|banner|sponsor|promo|newsletter|subscribe|social-share|share-buttons?|related-posts|recommend|widget|comments?|disqus|pagination|footer-links|follow-us|qrcode|qr-code)[^"]*"[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // 2. 逐块检测：剥离内联标签后匹配推广模式，避免 <strong> 等内联标签阻碍匹配
+  const promoRe = /\u4ee3\u5f00\u5173\u6ce8|\u957f\u6309\u4e8c\u7ef4\u7801|\u626b\u7801\u5173\u6ce8|\u626b\u4e00\u626b\u5173\u6ce8|\u5fae\u4fe1\u641c\u7d22.*\u5173\u6ce8|\u5173\u6ce8\u516c\u4f17\u53f7|\u5173\u6ce8\u6211\u4eec|\u7acb\u5373\u8d2d\u4e70|\u70b9\u51fb\u9886\u53d6|\u70b9\u51fb\u6ce8\u518c|\u9650\u65f6\u4f18\u60e0|\u79d2\u6740\u6d3b\u52a8|\u52a0\u5165\u793e\u7fa4|\u52a0\u5165\u6211\u4eec|\u52fe\u9009\u5173\u6ce8|\u957f\u6309\u5173\u6ce8|\u8bc6\u522b\u4e8c\u7ef4\u7801|\u4e8c\u7ef4\u7801|\u957f\u6309\u8bc6\u522b|\u5173\u6ce8.*\u516c\u4f17\u53f7|\u5173\u6ce8.*\u5fae\u4fe1|\u70b9\u51fb.*\u8ba2\u9605|\u8ba2\u9605.*\u9891\u9053|\u8ba2\u9605.*\u90ae\u4ef6|\u52a0\u5165.*\u90ae\u4ef6\u5217\u8868|\u5fae\u535a.*\u5173\u6ce8|\u5173\u6ce8.*\u5fae\u535a|\u5206\u4eab.*\u597d\u53cb|\u8f6c\u53d1.*\u670b\u53cb|buy now|subscribe\s+(?:now|today)|limited.?time|click here to|sign up (?:now|today)|special offer|discount code|use code|free trial|donate (?:now|today)|support us|follow us (?:on|for)|join our|share this (?:article|post)/i;
+  text = text.replace(/<(p|div)\b[^>]*>[\s\S]*?<\/\1>/gi, (block) => {
+    const plain = block.replace(/<[^>]+>/g, '');
+    return promoRe.test(plain) ? '' : block;
+  });
+  // 3. 移除清洗后残留的空块元素
+  text = text.replace(/<(?:p|div|span)\b[^>]*>\s*(?:<br\s*\/?>\s*)*<\/(?:p|div|span)>/gi, '');
+  // 4. 压缩连续空行（保留段落间距）
+  text = text.replace(/(?:\s*\n){3,}/g, '\n\n');
+  return text.trim();
+}
+
 function truncate(text, maxLen) {
   if (!text) return '';
   text = text.trim();
@@ -168,7 +187,7 @@ function parseFeed(xml, sourceKey, maxItems) {
         pub_date: pubDate || new Date().toISOString(),
       };
       if (fullContent) {
-        result.fullContent = sanitizeHtml(fullContent).slice(0, 50000);
+        result.fullContent = deepCleanHtml(sanitizeHtml(fullContent)).slice(0, 50000);
       }
       items.push(result);
     }

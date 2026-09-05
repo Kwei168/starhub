@@ -1058,6 +1058,40 @@ def _sanitize_html(text):
     return text.strip()
 
 
+def _deep_clean_html(text):
+    """深度清洗 RSS 正文：移除广告、推广、引导关注等噪音，保留正文结构"""
+    if not text:
+        return ""
+    # 1. 移除广告/推广/订阅/评论相关 class 或 id 的整个元素
+    text = re.sub(
+        r'<(\w+)[^>]*\b(?:class|id)\s*=\s*"[^"]*\b(?:ads?[_-]?|advert|banner|sponsor|promo|newsletter|subscribe|social-share|share-buttons?|related-posts|recommend|widget|comments?|disqus|pagination|footer-links|follow-us|qrcode|qr-code)[^"]*"[^>]*>[\s\S]*?</\1>',
+        '', text, flags=re.IGNORECASE)
+    # 2. 逐块检测：剥离内联标签后匹配推广模式，避免 <strong> 等内联标签阻碍匹配
+    _promo_re = re.compile(
+        r'代开关注|长按二维码|扫码关注|扫一扫关注|微信搜索.*关注|关注公众号|关注我们'
+        r'|立即购买|点击领取|点击注册|限时优惠|秒杀活动|加入社群|加入我们'
+        r'|勾选关注|长按关注|识别二维码|二维码|长按识别'
+        r'|关注.*公众号|关注.*微信|点击.*订阅|订阅.*频道|订阅.*邮件|加入.*邮件列表'
+        r'|微博.*关注|关注.*微博|分享.*好友|转发.*朋友'
+        r'|buy now|subscribe (?:now|today)|limited.?time|click here to'
+        r'|sign up (?:now|today)|special offer|discount code|use code|free trial'
+        r'|donate (?:now|today)|support us|follow us (?:on|for)|join our'
+        r'|share this (?:article|post)',
+        re.IGNORECASE)
+    def _strip_and_check(m):
+        block = m.group(0)
+        plain = re.sub(r'<[^>]+>', '', block)
+        return '' if _promo_re.search(plain) else block
+    text = re.sub(r'<(p|div)\b[^>]*>[\s\S]*?</\1>', _strip_and_check, text, flags=re.IGNORECASE)
+    # 3. 移除清洗后残留的空块元素
+    text = re.sub(
+        r'<(?:p|div|span)\b[^>]*>\s*(?:<br\s*/?>\s*)*</(?:p|div|span)>',
+        '', text, flags=re.IGNORECASE)
+    # 4. 压缩连续空行（保留段落间距）
+    text = re.sub(r'(?:\s*\n){3,}', '\n\n', text)
+    return text.strip()
+
+
 def _truncate(s, maxlen=500):
     if not s:
         return ""
@@ -1274,7 +1308,7 @@ def _fetch_rss(source):
             link_el = e.find(ns + "link")
             link = (link_el.get("href") if link_el is not None else (e.findtext(ns + "id") or "")).strip()
             desc = _strip_html(e.findtext(ns + "summary") or "")
-            atom_content = _sanitize_html(e.findtext(ns + "content") or "")
+            atom_content = _deep_clean_html(_sanitize_html(e.findtext(ns + "content") or ""))
             full_content = atom_content if len(atom_content) > len(desc) else ""
             pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
             if not title or not link:
@@ -1309,7 +1343,7 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
     desc = _strip_html(it.findtext("description") or "")
     pub = (it.findtext("pubDate") or "").strip()
     dc_content = "{http://purl.org/rss/1.0/modules/content/}"
-    content_encoded = _sanitize_html(it.findtext(dc_content + "encoded") or "")
+    content_encoded = _deep_clean_html(_sanitize_html(it.findtext(dc_content + "encoded") or ""))
     full_content = content_encoded if len(content_encoded) > len(desc) else ""
     if not title or not link:
         return
