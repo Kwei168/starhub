@@ -2221,6 +2221,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var gsInput = document.getElementById('globalSearch');
   var gsWrap = document.getElementById('globalSearchWrap');
   var gsClear = document.getElementById('globalSearchClear');
+  var _searchTimer=0;
   if(gsInput) {
     gsInput.addEventListener('input', function(){
       globalSearch = this.value.trim();
@@ -2236,8 +2237,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       }
       gsWrap.classList.toggle('has-q', globalSearch.length > 0);
       gsWrap.classList.toggle('src-hit', !!_searchSrcMatch);
-      curArt = null; wallLimit = WALL_STEP;
-      renderWall(); updateMeta();
+      clearTimeout(_searchTimer);
+      _searchTimer=setTimeout(function(){ curArt = null; wallLimit = WALL_STEP; renderWall(); updateMeta(); },300);
     });
   }
   if(gsClear) {
@@ -2315,7 +2316,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var _loadRest=function(){
       loadChunk(1).then(function(){
         var n=_mergeChunk(window.__CHUNKS&&window.__CHUNKS[1]);
-        if(n>0)toast('\u5df2\u52a0\u8f7d\u5168\u90e8 '+ART.length+' \u7bc7\u5185\u5bb9');
+        if(n>0)toast('\u5df2\u52a0\u8f7d\u5168\u90e8 '+ART.length+' \u7bc7\u5185\u5bb9\uff08\u65b0\u589e '+n+' \u7bc7\uff09');
       }).catch(function(){});
     };
     if(window.requestIdleCallback)window.requestIdleCallback(_loadRest,{timeout:5000});
@@ -2327,14 +2328,18 @@ def _build_js(sources_with_items, build_ts_ms=0):
     var w=document.getElementById('wall');
     if(w)w.innerHTML='<div class="empty-hint">\u5185\u5bb9\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u5237\u65b0\u91cd\u8bd5</div>';
   });}
-  /* 无限滚动：接近底部自动加载更多 */
+  /* 无限滚动：接近底部自动加载更多（带节流锁） */
+  var _scrollLock=false;
   window.addEventListener('scroll',function(){
+    if(_scrollLock)return;
     var list=visibleArts();
     if(wallLimit>=list.length)return;
     var wrap=document.querySelector('.wall-wrap');
     if(!wrap)return;
     if(wrap.getBoundingClientRect().bottom<window.innerHeight*3){
+      _scrollLock=true;
       loadMore();
+      setTimeout(function(){_scrollLock=false;},150);
     }
   },{passive:true});
   /* 返回顶部按钮 */
@@ -3015,9 +3020,10 @@ def main(mode="full"):
         key = src["key"]
         tier = src.get("tier", 3)
 
-        # 增量模式跳过规则：
+        # 增量模式跳过规则（按 tier 分级阈值）：
         # 1. T1 源始终跳过（由 api/rss.js 实时抓取）
-        # 2. 距上次抓取 < 4h 的源跳过
+        # 2. T2 源：距上次抓取 < 1h 跳过
+        # 3. T3 源：距上次抓取 < 2h 跳过
         if mode == "incremental":
             if tier == 1:
                 skipped_count += 1
@@ -3032,7 +3038,8 @@ def main(mode="full"):
             if prev:
                 try:
                     prev_time = datetime.datetime.fromisoformat(prev)
-                    if (now - prev_time).total_seconds() < 4 * 3600:
+                    threshold = 1 * 3600 if tier <= 2 else 2 * 3600
+                    if (now - prev_time).total_seconds() < threshold:
                         skipped_count += 1
                         sources_with_items.append({
                             "key": key, "name": src["name"], "cat": src["cat"],

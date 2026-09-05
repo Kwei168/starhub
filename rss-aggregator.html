@@ -935,6 +935,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var gsInput = document.getElementById('globalSearch');
   var gsWrap = document.getElementById('globalSearchWrap');
   var gsClear = document.getElementById('globalSearchClear');
+  var _searchTimer=0;
   if(gsInput) {
     gsInput.addEventListener('input', function(){
       globalSearch = this.value.trim();
@@ -950,8 +951,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       }
       gsWrap.classList.toggle('has-q', globalSearch.length > 0);
       gsWrap.classList.toggle('src-hit', !!_searchSrcMatch);
-      curArt = null; wallLimit = WALL_STEP;
-      renderWall(); updateMeta();
+      clearTimeout(_searchTimer);
+      _searchTimer=setTimeout(function(){ curArt = null; wallLimit = WALL_STEP; renderWall(); updateMeta(); },300);
     });
   }
   if(gsClear) {
@@ -1029,7 +1030,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var _loadRest=function(){
       loadChunk(1).then(function(){
         var n=_mergeChunk(window.__CHUNKS&&window.__CHUNKS[1]);
-        if(n>0)toast('已加载全部 '+ART.length+' 篇内容');
+        if(n>0)toast('已加载全部 '+ART.length+' 篇内容（新增 '+n+' 篇）');
       }).catch(function(){});
     };
     if(window.requestIdleCallback)window.requestIdleCallback(_loadRest,{timeout:5000});
@@ -1041,14 +1042,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var w=document.getElementById('wall');
     if(w)w.innerHTML='<div class="empty-hint">内容加载失败，请检查网络后刷新重试</div>';
   });}
-  /* 无限滚动：接近底部自动加载更多 */
+  /* 无限滚动：接近底部自动加载更多（带节流锁） */
+  var _scrollLock=false;
   window.addEventListener('scroll',function(){
+    if(_scrollLock)return;
     var list=visibleArts();
     if(wallLimit>=list.length)return;
     var wrap=document.querySelector('.wall-wrap');
     if(!wrap)return;
     if(wrap.getBoundingClientRect().bottom<window.innerHeight*3){
+      _scrollLock=true;
       loadMore();
+      setTimeout(function(){_scrollLock=false;},150);
     }
   },{passive:true});
   /* 返回顶部按钮 */
