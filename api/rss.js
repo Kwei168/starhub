@@ -267,45 +267,105 @@ export default async function handler(req, res) {
     // Fallback: 实时抓取 RSS（仅当快照不存在或 refresh=1 时）
     const sources = loadSources();
     const transCache = loadTransCache();  // 加载翻译缓存
-    console.log(`[rss] Live fetching ${sources.length} sources...`);
-    
-    const results = await fetchAllBatched(sources);
-    
+    const snapshot = loadSnapshot();
+    const snapshotMap = {};
+    if (snapshot && snapshot.sources) {
+      for (const s of snapshot.sources) {
+        snapshotMap[s.key] = s;
+      }
+    }
+
+    // 分层：T1 实时抓取，T2/T3 从快照读取
+    const t1Sources = sources.filter(s => s.tier === 1);
+    const otherSources = sources.filter(s => s.tier !== 1);
+    console.log(`[rss] T1 live fetch: ${t1Sources.length} sources, T2/T3 from snapshot: ${otherSources.length} sources`);
+
+    const t1Results = await fetchAllBatched(t1Sources);
+
+    // T1 英文源实时翻译
+    const t1EnKeys = new Set([
+      'agihunt_0', 'openclaw_commits_14', 'hn_newest_56',
+      'hn_ai_7', 'hackernews_6', 'hn_show_58',
+      'arxiv_ai_4', 'arxiv_ml_5', 'arxiv_nlp_6',
+    ]);
+    const translateEndpoints = [
+      (text) => `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text.substring(0, 500))}`,
+      (text) => `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(0, 500))}&langpair=en|zh-CN`,
+      (text) => `https://translate.googleapis.com/translate_a/single?client=dict-chrome&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.substring(0, 500))}`,
+    ];
+
+    async function translateText(text) {
+      if (!text || !/[a-zA-Z]/.test(text)) return null;
+      const hash = md5(text);
+      if (transCache[hash]) return transCache[hash];
+      for (const makeUrl of translateEndpoints) {
+        try {
+          const res = await fetch(makeUrl(text), { signal: AbortSignal.timeout(3000) });
+          if (!res.ok) continue;
+          const data = await res.json();
+          let result = null;
+          if (Array.isArray(data) && data[0]) {
+            result = data[0].map(seg => seg[0]).join('');
+          } else if (data && data.responseData) {
+            result = data.responseData.translatedText;
+          }
+          if (result && result !== text) {
+            transCache[hash] = result;
+            return result;
+          }
+        } catch { /* try next endpoint */ }
+      }
+      return null;
+    }
+
+    // 翻译 T1 英文源的文章标题和摘要
+    const translatePromises = [];
+    for (const src of t1Results) {
+      if (!t1EnKeys.has(src.key)) continue;
+      for (const item of (src.items || [])) {
+        if (item.t) translatePromises.push(translateText(item.t).then(r => { if (r) item.t = stripHtml(r); }));
+        if (item.s) translatePromises.push(translateText(item.s).then(r => { if (r) item.s = stripHtml(r); }));
+      }
+    }
+    await Promise.all(translatePromises);
+
     // 日期过滤：只保留最近 72 小时的文章
     const cutoff = new Date(now - 72 * 60 * 60 * 1000);
-    const filtered = results.map(source => {
-      if (!source.items) return source;
-      const filteredItems = source.items.filter(item => {
-        if (!item.d) return false;  // 无日期则过滤
-        try {
-          const pubDate = new Date(item.d);
-          return pubDate >= cutoff;
-        } catch {
-          return false;  // 日期解析失败则过滤
-        }
-      }).map(item => {
-        // 应用翻译缓存
-        const titleHash = md5(item.t || '');
-        const summaryHash = md5(item.s || '');
-        const translatedTitle = transCache[titleHash] || item.t;
-        const translatedSummary = transCache[summaryHash] || item.s;
-        return {
-          ...item,
-          t: stripHtml(translatedTitle),  // 清理 HTML
-          s: stripHtml(translatedSummary),  // 清理 HTML
-        };
-      });
-      return { ...source, items: filteredItems };
+    const filterItems = (items) => (items || []).filter(item => {
+      if (!item.d) return true;  // 无日期保留（快照数据可能缺日期）
+      try { return new Date(item.d) >= cutoff; } catch { return false; }
     });
-    
+
+    // 合并 T1 实时 + T2/T3 快照
+    const mergedSources = t1Results.map(src => ({
+      key: src.key, name: src.name, cat: src.cat, color: src.color,
+      tier: 1,
+      items: filterItems(src.items).map(item => ({
+        ...item,
+        t: stripHtml(item.t || ''),
+        s: truncate(stripHtml(item.s || ''), 200),
+      })),
+    })).concat(otherSources.map(src => {
+      const snap = snapshotMap[src.key];
+      return {
+        key: src.key, name: src.name, cat: src.cat, color: src.color,
+        tier: src.tier || 3,
+        items: filterItems(snap ? snap.items : []).map(item => ({
+          ...item,
+          t: stripHtml(item.t || ''),
+          s: truncate(stripHtml(item.s || ''), 200),
+        })),
+      };
+    }));
+
     const response = {
       t: new Date().toISOString(),
-      sources: filtered,
+      sources: mergedSources,
     };
-    
+
     // 更新完整响应缓存
     fullCache = { t: now, v: response };
-    
+
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.setHeader('X-RSS-Cache', 'miss');
