@@ -346,5 +346,6 @@
  "cathrynlavery/diagram-design": "Claude Code、Codex 和 Pi 的 38 种编辑图表类型。独立的 HTML + SVG。没有阴影。没有美人鱼污水。",
  "magnitudedev/magnitude": "开源推理服务器，为您的硬件运行最佳本地模型，插入到您已经使用的代理中。适用于Pi、OpenCode、Hermes、OpenClaw、Codex、Claude Code、Oh My Pi和Cline。",
  "deusyu/translate-book": "Codex、Claude Code 和 OpenClaw 的代理技能，可使用并行子代理将整本书 (PDF/DOCX/EPUB) 翻译成任何语言。",
- "NVIDIA/SkillSpector": "AI 代理技能的安全扫描器。在安装之前检测 Claude Code、Codex 和 MCP 技能中的漏洞、恶意模式、安全风险、提示注入、数据泄露和供应链风险。"
+ "NVIDIA/SkillSpector": "AI 代理技能的安全扫描器。在安装之前检测 Claude Code、Codex 和 MCP 技能中的漏洞、恶意模式、安全风险、提示注入、数据泄露和供应链风险。",
+ "pierrenade/short-video-generator-AI": "免费开源项目，旨在将 YouTube 视频转变成病毒式短视频。突出显示检测、字幕、翻译、画外音，全部为您的内容提供。"
 }
