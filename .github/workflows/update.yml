@@ -2,9 +2,10 @@ name: Update Star Hub
 
 on:
   schedule:
-    # 每小时一次（UTC :16 触发，与 cron-job.org 整点错开 16 分钟）：构建兜底
-    # （原 30 分钟档位经 8-17/8-18 观测多次被 GitHub Actions 跳过，已降级为兜底频率）
-    - cron: "16 * * * *"
+    # UTC 21:00 = 北京 05:00 → 凌晨全量构建
+    - cron: "0 21 * * *"
+    # UTC 2/6/10/14 = 北京 10/14/18/22 → 白天增量构建
+    - cron: "0 2,6,10,14 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -34,8 +35,20 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+      - name: Determine build mode
+        run: |
+          # UTC 21:00 (北京 05:00) → full，其余 → incremental
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" = "21" ]; then
+            echo "MODE=full" >> $GITHUB_ENV
+            echo "构建模式: 全量 (full)"
+          else
+            echo "MODE=incremental" >> $GITHUB_ENV
+            echo "构建模式: 增量 (incremental)"
+          fi
+
       - name: Fetch stars & build
-        run: python fetch_and_build.py
+        run: python fetch_and_build.py $MODE
 
       - name: Commit & push if changed
         run: |
@@ -52,7 +65,7 @@ jobs:
               echo "Lease check failed, remote changed. Re-fetching and retrying..."
               git fetch origin main
               git reset --hard origin/main
-              python fetch_and_build.py
+              python fetch_and_build.py $MODE
               git add index.html ai-daily.html rss-aggregator.html known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_cache.json rss_history.json rss_sources.json rss_api_snapshot.json
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
               git push --force-with-lease

@@ -567,7 +567,7 @@ def _safe_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
-def main():
+def main(mode="full"):
     known = {}
     try:
         known = json.load(open("known_categories.json", encoding="utf-8"))
@@ -661,7 +661,7 @@ def main():
     # RSS 聚合页：生成 rss-aggregator.html（独立页面）
     try:
         import build_rss_aggregator
-        build_rss_aggregator.main()
+        build_rss_aggregator.main(mode=mode)
     except Exception as e:
         print("[RSS聚合] 生成失败: %s" % e, file=sys.stderr)
 
@@ -669,4 +669,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    mode = sys.argv[1] if len(sys.argv) > 1 else "full"
+    main(mode)
