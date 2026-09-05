@@ -523,6 +523,7 @@ RSS_SOURCES = [
     {"key": "有赞coder_122", "name": "有赞coder", "cat": "cn_tech", "url": "https://wechat2rss.bestblogs.dev/feed/75ad69f1c1d0d1f289f7702cf5eb553287441fdc.xml", "color": "#ff6b6b"},
     {"key": "draco正在vibecoding_123", "name": "Draco正在VibeCoding", "cat": "cn_tech", "url": "https://wechat2rss.bestblogs.dev/feed/54dd1b1511fd066dfea2b4acde3e62787e8a687b.xml", "color": "#ff6b6b"},
     {"key": "36氪_124", "name": "36氪", "cat": "cn_tech", "url": "https://wechat2rss.bestblogs.dev/feed/c68b58fb17ac7ae4b23c2af276cdd61c9eca1a48.xml", "color": "#ff6b6b"},
+    {"key": "36氪官网_376", "name": "36氪官网", "cat": "cn_tech", "url": "https://rsshub.ktachibana.party/36kr/information/AI", "color": "#ff6b6b", "tier": 2},
     {"key": "playwright实战教程_125", "name": "Playwright实战教程", "cat": "cn_tech", "url": "https://wechat2rss.bestblogs.dev/feed/bd8be44d64fa249f76615867dfb89e1d9f905d3e.xml", "color": "#ff6b6b"},
     {"key": "华尔街见闻_126", "name": "华尔街见闻", "cat": "cn_tech", "url": "https://wechat2rss.bestblogs.dev/feed/4162e7fc1ecdeca20d88e9ce3fa0d9070af3eaff.xml", "color": "#ff6b6b"},
     {"key": "青稞ai_127", "name": "青稞AI", "cat": "cn_tech", "url": "https://wechat2rss.bestblogs.dev/feed/b22be100fcd702f02cd6574b5aecb8a08d48438f.xml", "color": "#ff6b6b"},
@@ -1220,7 +1221,7 @@ def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None):
         headers["Accept"] = accept
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read(1000000).decode("utf-8", errors="replace")
+        return r.read(5000000).decode("utf-8", errors="replace")
 
 
 def _fetch_rss(source):
