@@ -1507,10 +1507,14 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .r2-acts { margin-left:auto; display:flex; align-items:center; gap:8px; }
 .r2-open { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--brand-strong); background:var(--brand-weak); border:1px solid var(--brand-line); padding:4px 12px; border-radius:8px; white-space:nowrap; transition:all .15s; }
 .r2-open:hover { background:var(--brand-strong); color:#fff; }
-.r2-body { flex:1; overflow-y:auto; }
+.r2-body { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .r2-body.fs-sm .r2-summary { font-size:13.5px; }
 .r2-body.fs-md .r2-summary { font-size:15px; }
 .r2-body.fs-lg .r2-summary { font-size:17.5px; }
+.r2-body.fs-sm .r2-title { font-size:20px; }
+.r2-body.fs-lg .r2-title { font-size:26px; }
+.r2-body.fs-sm .r2-fulltext { font-size:13.5px; }
+.r2-body.fs-lg .r2-fulltext { font-size:17.5px; }
 .r2-fs-btns { display:inline-flex; align-items:center; gap:2px; margin-right:4px; }
 .r2-fs-btn { width:26px; height:26px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; border:1px solid var(--line); background:var(--card); color:var(--muted); cursor:pointer; transition:all .15s; font-family:var(--body); }
 .r2-fs-btn:hover { border-color:var(--brand-line); color:var(--brand-strong); background:var(--brand-weak); }
@@ -1732,13 +1736,14 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function renderChips(){
     var counts={}; ART.forEach(function(a){counts[a.c]=(counts[a.c]||0)+1;});
     var h='';
+    // 收藏芯片置首：手机端 chips 横向滚动时保证入口始终可见
+    var bmCnt=Object.keys(_bookmarks).length;
+    if(bmCnt>0) h+='<button class="chip bm-chip'+(filter.filterBm?' on':'')+'" id="bmChip" onclick="toggleBmFilter()">\u2605 \u6536\u85cf <span class="n">'+bmCnt+'</span></button>';
     CAT_ORDER.forEach(function(c){
       if(!counts[c]) return;
       var label=CAT_LABELS[c]||c, on=filter.type==='cat'&&filter.cats[c];
       h+='<button class="chip'+(on?' on':'')+'" data-c="'+c+'">'+label+' <span class="n">'+counts[c]+'</span></button>';
     });
-    var bmCnt=Object.keys(_bookmarks).length;
-    if(bmCnt>0) h+='<button class="chip bm-chip'+(filter.filterBm?' on':'')+'" id="bmChip" onclick="toggleBmFilter()">\u2605 \u6536\u85cf <span class="n">'+bmCnt+'</span></button>';
     document.getElementById('chips').innerHTML=h;
     document.querySelectorAll('.chip').forEach(function(el){
       el.onclick=function(){
@@ -2723,7 +2728,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="重新加载页面以获取最新构建数据"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<div class="chips" id="chips"></div>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
-        '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
+        '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0/\u4fe1\u606f\u6e90" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
