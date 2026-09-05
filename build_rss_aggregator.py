@@ -1649,6 +1649,9 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .kbd-help-body td{padding:6px 0;font-size:13px;color:var(--muted);vertical-align:middle;}
 .kbd-help-body td:first-child{width:120px;}
 .kbd-help-body kbd{display:inline-block;min-width:22px;text-align:center;padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:var(--card);font-family:var(--mono);font-size:12px;color:var(--ink);line-height:1.5;}
+.boot-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:72px 16px;color:var(--muted);font-size:13px;}
+.boot-spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:bootspin .8s linear infinite;}
+@keyframes bootspin{to{transform:rotate(360deg)}}
 """
 
 
@@ -1675,7 +1678,6 @@ def _build_header():
 
 def _build_js(sources_with_items, build_ts_ms=0):
     """Generate core JS for card wall + drawer reader."""
-    data_json = json.dumps(sources_with_items, ensure_ascii=False)
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
     # 内嵌 QR 生成库：国内移动端 jsdelivr/unpkg 常不可达且请求会长时间挂起，
     # 导致分享模态框数十秒不出现甚至永远无反应。构建时直接内嵌 vendor 库。
@@ -1691,23 +1693,31 @@ def _build_js(sources_with_items, build_ts_ms=0):
 """ + qr_lib + """
 ;(function(){
   var BUILD_TS = """ + str(int(build_ts_ms)) + """;
-  var SOURCES = """ + data_json + """;
+  var SOURCES = [];
   var CAT_LABELS = """ + cat_labels_json + """;
 
   /* ── Data ── */
   var CAT_ORDER = """ + json.dumps(CATEGORY_ORDER, ensure_ascii=False) + """;
   var ART = [];
-  SOURCES.forEach(function(s){
-    s.items.forEach(function(it){
-      ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
-        src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-        time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||''});
-    });
-  });
   var now=new Date().toISOString();
-  ART.forEach(function(a){ if(a.date&&a.date>now) a.date=now; });
-  ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-  tierInterleave();
+  /* 全量数据按日期降序+分层交织后由构建脚本切成 rss-data-0.js（首屏）与
+     rss-data-1.js（后台合并）两块，页面不再内嵌数据（31MB→约0.15MB）。
+     展平+排序+交织统一收敛到 buildArt()，刷新路径共用。 */
+  function buildArt(){
+    ART=[];
+    SOURCES.forEach(function(s){
+      s.items.forEach(function(it){
+        ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
+          src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
+          time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||''});
+      });
+    });
+    var nowIso=new Date().toISOString();
+    ART.forEach(function(a){ if(a.date&&a.date>nowIso) a.date=nowIso; });
+    ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    tierInterleave();
+    window.ART = ART;
+  }
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
 
   /* ── 分层交织：每 4 篇高频文章穿插 1 篇低频文章 ─ */
@@ -2291,7 +2301,32 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Init ── */
   var restored = restoreFromHash();
-  loadBookmarks(); renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); initFontSize(); updateBmBtn();
+  /* 启动：chunk0 在 body 末尾同步加载（此时 DOM 已渲染，骨架可见不白屏）。
+     不依赖数据的部分先行；数据到达后渲染首屏；chunk1 后台静默合并。 */
+  loadBookmarks(); initFontSize(); updateHash();
+  var _bootEl=document.getElementById('bootLoading');
+  function _bootFinish(){ if(_bootEl&&_bootEl.parentNode)_bootEl.parentNode.removeChild(_bootEl); }
+  function _bootWith(cs){
+    SOURCES=cs||[];
+    buildArt();
+    renderChips(); renderWall(); renderPanel(); updateTitle(); updateUnreadBtn(); updateBmBtn();
+    _bootFinish();
+    /* 让首屏先稳定可交互，再在空闲时解析 25MB 的 chunk1，避免后台加载反过来卡住主线程 */
+    var _loadRest=function(){
+      loadChunk(1).then(function(){
+        var n=_mergeChunk(window.__CHUNKS&&window.__CHUNKS[1]);
+        if(n>0)toast('\u5df2\u52a0\u8f7d\u5168\u90e8 '+ART.length+' \u7bc7\u5185\u5bb9');
+      }).catch(function(){});
+    };
+    if(window.requestIdleCallback)window.requestIdleCallback(_loadRest,{timeout:5000});
+    else setTimeout(_loadRest,1200);
+  }
+  if(window.__CHUNKS&&window.__CHUNKS[0]){_bootWith(window.__CHUNKS[0].sources);}
+  else{loadChunk(0).then(function(){_bootWith(window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources);}).catch(function(e){
+    _bootFinish();
+    var w=document.getElementById('wall');
+    if(w)w.innerHTML='<div class="empty-hint">\u5185\u5bb9\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u5237\u65b0\u91cd\u8bd5</div>';
+  });}
   /* 无限滚动：接近底部自动加载更多 */
   window.addEventListener('scroll',function(){
     var list=visibleArts();
@@ -2348,14 +2383,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
           src.items = live.items;
         }
       });
-      ART=[];
-      SOURCES.forEach(function(s){s.items.forEach(function(it){
-        ART.push({t:it.title_zh||it.title,s:it.summary_zh||it.summary||'',
-          src:s.name,sk:s.key,c:s.cat,sc:s.color,
-          time:it.time_str,date:it.pub_date,u:it.link||'#',fc:it.fc||''});
-      });});
-      ART.sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
-      interleaveArts();
+      buildArt();
       wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();
       if(liveEl){var now=new Date();liveEl.textContent='\u2713 '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
     }).catch(function(e){
@@ -2374,6 +2402,37 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(diff<86400) return Math.floor(diff/3600)+' 小时前';
     if(diff<172800) return '昨天';
     return Math.floor(diff/86400)+' 天前';
+  }
+    /* ── 数据分块加载与合并（rss-data-0/1.js）── */
+  function loadChunk(i){
+    return new Promise(function(resolve,reject){
+      try{
+        if(window.__CHUNKS&&window.__CHUNKS[i])return resolve();
+        var sc=document.createElement('script'),done=false;
+        var t=setTimeout(function(){if(!done){done=true;reject(new Error('chunk '+i+' timeout'));}},45000);
+        sc.src='rss-data-'+i+'.js?v='+BUILD_TS;
+        sc.onload=function(){if(!done){done=true;clearTimeout(t);resolve();}};
+        sc.onerror=function(){if(!done){done=true;clearTimeout(t);reject(new Error('chunk '+i+' fail'));}};
+        document.head.appendChild(sc);
+      }catch(e){reject(e);}
+    });
+  }
+  /* 富字段分块合并：chunk1 是构建时从 chunk0 切出的剩余项，原样追加不去重，保证数据不丢失 */
+  function _mergeChunk(pack){
+    try{
+      var cs=pack&&pack.sources;if(!cs||!cs.length)return 0;
+      var idx={};SOURCES.forEach(function(s,i){idx[s.key]=i;});
+      var added=0;
+      cs.forEach(function(s){
+        if(!s||!s.items||!s.items.length)return;
+        var i=idx[s.key];
+        if(i===undefined){SOURCES.push(s);idx[s.key]=SOURCES.length-1;added+=s.items.length;return;}
+        SOURCES[i].items=SOURCES[i].items.concat(s.items);
+        added+=s.items.length;
+      });
+      if(added>0){buildArt();wallLimit=Math.min(ART.length,Math.max(wallLimit,120));renderChips();renderWall();renderPanel();}
+      return added;
+    }catch(e){return 0;}
   }
   function _mergeRemoteSources(j){
     try{
@@ -2818,6 +2877,69 @@ def _build_js(sources_with_items, build_ts_ms=0):
 """
 
 
+# ──────────────────────────── 数据分块 ────────────────────────────
+
+CHUNK0_SIZE = 360  # 首屏块文章数（复刻前端 ART 排序后取前 N 篇）
+
+def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
+    """把全量文章拆成两块：完整复刻前端顺序（展平→日期降序→tier 交织），
+    前 chunk0_size 篇为 chunk0（首屏），其余为 chunk1（后台合并）。
+    两块均保持 sources 富字段结构，前端可原样消费。"""
+    tier_by_key = {}
+    for s in sources:
+        tier_by_key[s.get("key")] = s.get("tier", 3) or 3
+    flat = []
+    for s in sources:
+        for it in s.get("items", []):
+            flat.append((s, it))
+    flat.sort(key=lambda x: x[1].get("pub_date") or "", reverse=True)
+    hi = [x for x in flat if (tier_by_key.get(x[0].get("key")) or 3) <= 2]
+    lo = [x for x in flat if (tier_by_key.get(x[0].get("key")) or 3) > 2]
+    ordered = []
+    i = j = 0
+    while i < len(hi) or j < len(lo):
+        for _ in range(min(4, len(hi) - i)):
+            ordered.append(hi[i]); i += 1
+        if j < len(lo):
+            ordered.append(lo[j]); j += 1
+    seen = set()
+    c0_items = {}
+    for s, it in ordered[:chunk0_size]:
+        seen.add(id(it))
+        c0_items.setdefault(s.get("key"), []).append(it)
+    chunk0, chunk1 = [], []
+    for s in sources:
+        k = s.get("key")
+        if k in c0_items:
+            c0 = dict(s); c0["items"] = c0_items[k]
+            chunk0.append(c0)
+            rest = [it for it in s.get("items", []) if id(it) not in seen]
+            if rest:
+                c1 = dict(s); c1["items"] = rest
+                chunk1.append(c1)
+        elif s.get("items"):
+            chunk1.append(s)
+    return chunk0, chunk1
+
+def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
+    """写出 rss-data-0.js / rss-data-1.js（与 OUT 同目录），页面经 script 标签加载。"""
+    out_dir = os.path.dirname(os.path.abspath(OUT)) or "."
+    chunk0, chunk1 = _split_data_chunks(sources, chunk0_size)
+
+    def _dump(obj):
+        return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+
+    with open(os.path.join(out_dir, "rss-data-0.js"), "w", encoding="utf-8") as f:
+        f.write("/* StarHub data chunk 0 (first screen) - auto generated, do not edit */\n")
+        f.write("(window.__CHUNKS=window.__CHUNKS||[])[0]=" + _dump({"sources": chunk0}) + ";\n")
+    with open(os.path.join(out_dir, "rss-data-1.js"), "w", encoding="utf-8") as f:
+        f.write("/* StarHub data chunk 1 (background merge) - auto generated, do not edit */\n")
+        f.write("(window.__CHUNKS=window.__CHUNKS||[])[1]=" + _dump({"sources": chunk1}) + ";\n")
+    n0 = sum(len(s.get("items", [])) for s in chunk0)
+    n1 = sum(len(s.get("items", [])) for s in chunk1)
+    print("[数据分块] chunk0 %d 篇 / chunk1 %d 篇（共 %d）" % (n0, n1, n0 + n1))
+
+
 def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
     """生成完整 HTML 页面 — 卡片墙 + 抽屉阅读器。"""
     return (
@@ -2827,6 +2949,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">\n'
         '<title>RSS 聚合阅读器 · StarHub</title>\n'
         '<style>' + _build_css() + '</style>\n'
+        + '<link rel="preload" href="rss-data-0.js?v=' + str(int(build_ts_ms)) + '" as="script">\n'
         '</head>\n<body>\n'
         + _build_header() +
         '<div class="toolbar">\n'
@@ -2840,7 +2963,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
-        '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"></div></div>\n'
+        '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
         '<div class="scrim" aria-hidden="true" onclick="closeOverlays()"></div>\n'
         '<aside class="src-panel" id="srcPanel" role="dialog" aria-modal="true" aria-label="\u4fe1\u6e90\u9762\u677f">\n'
         '<div class="sp-head"><div class="row"><h2>信源</h2>\n'
@@ -2870,7 +2993,8 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '</div>\n'
         '</div>\n'
         '</div>\n'
-        + _build_js(sources_with_items, build_ts_ms) +
+        + '<script src="rss-data-0.js?v=' + str(int(build_ts_ms)) + '"></' + 'script>\n'
++ _build_js(sources_with_items, build_ts_ms) +
         '</body>\n</html>'
     )
 
@@ -2972,6 +3096,12 @@ def main(mode="full"):
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html_doc)
+
+    # 数据分块：rss-data-0.js（首屏）/ rss-data-1.js（全量，后台合并）
+    try:
+        write_data_chunks(sources_with_items)
+    except Exception as e:
+        print("[数据分块] 写出失败: %s" % e, file=sys.stderr)
 
     # 生成 rss_sources.json（供 /api/rss 使用）
     sources_json = json.dumps([{"key": s["key"], "name": s["name"], "cat": s["cat"],
