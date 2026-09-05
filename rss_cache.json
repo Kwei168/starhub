@@ -40239,7 +40239,7 @@
         "cat": "dev",
         "title_zh": "是否可以在一台计算机上模拟多个 API、数据库和网络服务器的网络？",
         "summary_zh": "你好，我一直在考虑一个我想尝试的项目，其中有一个数据库、一个 API 服务器和一个 Web 服务器。它不是太大，主要是为了了解它们如何相互作用。问题是，我宁愿不必支付多台服务器来托管所有内容。有没有办法在一台机器上模拟现实生活中的情况？    由 /u/HelloMyNameIsKaren 提交 [链接] [评论]",
-        "time_str": "1小时前"
+        "time_str": "5小时前"
       },
       {
         "title": "Do you have a separate tester before launch?",
@@ -40251,7 +40251,7 @@
         "cat": "dev",
         "title_zh": "发布前你们有单独的测试仪吗？",
         "summary_zh": "嘿伙计们，刚刚发表意见。如果您要启动一个相当大的网站，并且正在进行很多事情，您会依靠自己的测试还是建议使用第三方测试仪？主要是为了我想测试的用户体验之类的东西。我知道我希望事情能够顺利进行，但作为唯一的开发人员，我认为我可能对某些事情有点盲目。我有朋友在检查方面做了一些工作，但我想知道是否达成共识只是得到一个实际的t",
-        "time_str": "4小时前"
+        "time_str": "7小时前"
       },
       {
         "title": "I built a distributed web directory for exploring the open web",
@@ -40263,7 +40263,7 @@
         "cat": "dev",
         "title_zh": "我构建了一个分布式网络目录来探索开放网络",
         "summary_zh": "最近，我有了一个研究工具的想法，我意识到我需要能够以编程方式查找网站，而网络数据是最大的公司背后的，而不是我们能够可靠地访问以进行开发的东西。  所以这让我开始思考，如果您只关心获取元数据（标题、描述和 url），您首先可以构建多轻量级的爬虫？然后我开始思考，我们是否可以不共享负载，创建一个分布式对等网络并制作此数据",
-        "time_str": "47分钟前"
+        "time_str": "4小时前"
       },
       {
         "title": "What are current best practices around feed length and pagination?",
@@ -40275,7 +40275,7 @@
         "cat": "dev",
         "title_zh": "当前关于提要长度和分页的最佳实践是什么？",
         "summary_zh": "考虑博客的主页——按时间倒序排列的帖子列表，沿着页面延伸。在您决定不列出显示整个内容之前，此列表需要多长时间？文件/有效负载大小并不是什么大问题。该页面压缩得很好——现在，它只传输 18KB（服务器上为 54KB）。在我担心带宽之前，我必须变得更大。所有图像都是延迟加载的，因此在滚动到视图中之前不会加载。我不担心",
-        "time_str": "1小时前"
+        "time_str": "4小时前"
       },
       {
         "title": "is there a way to validate uml diagrams when the jury might see the app differently than you",
@@ -40287,7 +40287,19 @@
         "cat": "dev",
         "title_zh": "当陪审团对应用程序的看法可能与你不同时，有没有办法验证 uml 图",
         "summary_zh": "所以我正在做我的最后一年项目报告（pfe）（projet fin d'annee = 最后一年项目，这实际上是一个大项目，结束我在大学的 6 年），我必须做整个 uml 事情，用例图，类图，主要流程的序列图，当我做的时候，我不断问自己，我实际上如何知道我绘制的内容是否“正确”，就像应用程序的全局逻辑显然是固定的一样，我知道应用程序做什么以及它应该如何做工作，但当涉及到建模时",
-        "time_str": "8小时前"
+        "time_str": "11小时前"
+      },
+      {
+        "title": "Showoff Saturday: a 59-tool utility site in 10 languages, Flask backend, every tool is a plain JS file",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7n9tq/showoff_saturday_a_59tool_utility_site_in_10/",
+        "summary": "toolkitsapp.com Formatters (JSON, SQL, CSS, HTML, YAML), converters (CSV to JSON, number bases, timestamps, units, timezones), generators (QR, UUID, passwords, cron expressions, favicons, meta tags), image tools (compress, resize, format convert, SVG to PNG), a JWT decoder, a regex tester, a handful of calculators. 59 in total. Each one is a single JS file that runs in the browser, so what you paste never leaves the page. The backend is Flask + Jinja, and it exists mostly for i18n and SEO. Ten l…",
+        "pub_date": "2026-09-05T01:41:36+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "Showoff Saturday：一个包含 59 个工具的实用网站，支持 10 种语言，Flask 后端，每个工具都是纯 JS 文件",
+        "summary_zh": "toolkitsapp.com 格式化程序（JSON、SQL、CSS、HTML、YAML）、转换器（CSV 到 JSON、数字基数、时间戳、单位、时区）、生成器（QR、UUID、密码、cron 表达式、图标、元标记）、图像工具（压缩、调整大小、格式转换、SVG 到 PNG）、JWT 解码器、正则表达式测试器、一些计算器。总共 59 个。每个都是在浏览器中运行的单个 JS 文件，因此您粘贴的内容永远不会离开页面。后端是 Flask + Jinja，主要用于 i18n 和 SEO。十升",
+        "time_str": "21分钟前"
       },
       {
         "title": "Vscode color theme",
@@ -40299,31 +40311,7 @@
         "cat": "dev",
         "title_zh": "vscode 颜色主题",
         "summary_zh": "你好，有人能帮我找到这个主题吗？     由/u/Concient_Force_735提交 [链接] [评论]",
-        "time_str": "14小时前"
-      },
-      {
-        "title": "How do you feel about the role evolving since to AI tooling?",
-        "link": "https://www.reddit.com/r/webdev/comments/1w6rqa4/how_do_you_feel_about_the_role_evolving_since_to/",
-        "summary": "I’m a full-stack developer with nearly six years of experience Since the start of the year, I’ve integrated AI tooling heavily across my day job (Claude Code) and freelance work (Gemini Antigravity). The trade off is clear, I write significantly less code, but I ship significantly more. Taking time off recently gave me the space to reflect and I have realised how I barely write code manually anymore and I’m torn about where the profession is headed. On one hand, this feels like natural career ev…",
-        "pub_date": "2026-09-04T02:29:27+00:00",
-        "source": "r/webdev",
-        "source_key": "reddit_webdev_101",
-        "cat": "dev",
-        "title_zh": "您对人工智能工具这一角色的演变有何看法？",
-        "summary_zh": "我是一名拥有近六年经验的全栈开发人员，自今年年初以来，我在日常工作（Claude Code）和自由工作（Gemini Antigravity）中大量集成了人工智能工具。权衡很明显，我编写的代码显着减少，但交付的代码却显着增加。最近休假给了我反思的空间，我意识到我几乎不再手动编写代码了，而且我对这个职业的发展方向感到困惑。一方面，这感觉像是自然的职业生涯",
-        "time_str": "19小时前"
-      },
-      {
-        "title": "Add video calls to a website?",
-        "link": "https://www.reddit.com/r/webdev/comments/1w7074w/add_video_calls_to_a_website/",
-        "summary": "Does anyone know how to add completely secure video calls to a website? I’m struggling to find the best way. Additionally, how do I then host this for free / as low cost as possible. If anyone has advice that would be great!    submitted by    /u/prxudd   [link]   [comments]",
-        "pub_date": "2026-09-04T10:09:04+00:00",
-        "source": "r/webdev",
-        "source_key": "reddit_webdev_101",
-        "cat": "dev",
-        "title_zh": "向网站添加视频通话？",
-        "summary_zh": "有谁知道如何向网站添加完全安全的视频通话？我正在努力寻找最好的方法。此外，我如何免费/尽可能低的成本托管它。如果有人有建议那就太好了！    由 /u/prxudd 提交 [链接] [评论]",
-        "time_str": "12小时前"
+        "time_str": "18小时前"
       },
       {
         "title": "Where should i host ?",
@@ -40335,7 +40323,19 @@
         "cat": "dev",
         "title_zh": "我应该在哪里主持？",
         "summary_zh": "我全部使用 codex 完成了我的网站 😅 它只是为了展示产品，没有任何付款处理或任何东西，所以可以进行 vivicoded。  我需要知道应该使用哪种服务来托管该网站。以及购买域名。  我由 /u/Ysmsthejoker [链接] [评论] 提交",
-        "time_str": "8小时前"
+        "time_str": "12小时前"
+      },
+      {
+        "title": "How do you feel about the role evolving since to AI tooling?",
+        "link": "https://www.reddit.com/r/webdev/comments/1w6rqa4/how_do_you_feel_about_the_role_evolving_since_to/",
+        "summary": "I’m a full-stack developer with nearly six years of experience Since the start of the year, I’ve integrated AI tooling heavily across my day job (Claude Code) and freelance work (Gemini Antigravity). The trade off is clear, I write significantly less code, but I ship significantly more. Taking time off recently gave me the space to reflect and I have realised how I barely write code manually anymore and I’m torn about where the profession is headed. On one hand, this feels like natural career ev…",
+        "pub_date": "2026-09-04T02:29:27+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "您对人工智能工具这一角色的演变有何看法？",
+        "summary_zh": "我是一名拥有近六年经验的全栈开发人员，自今年年初以来，我在日常工作（Claude Code）和自由工作（Gemini Antigravity）中大量集成了人工智能工具。权衡很明显，我编写的代码显着减少，但交付的代码却显着增加。最近休假给了我反思的空间，我意识到我几乎不再手动编写代码了，而且我对这个职业的发展方向感到困惑。一方面，这感觉像是自然的职业生涯",
+        "time_str": "23小时前"
       },
       {
         "title": "I’m 17 and built this little interactive web project called Oceana 🌊",
@@ -40347,7 +40347,43 @@
         "cat": "dev",
         "title_zh": "我 17 岁，构建了一个名为 Oceana 的小型交互式网络项目 🌊",
         "summary_zh": "它可以免费使用且无广告。我一直在尝试交互式网站，并希望制作出比普通网页更像是一种体验的东西。所以我制作了 Oceana，在这里你可以为某人创建个性化的水下故事。您选择名字、鱼的颜色、友谊/浪漫氛围，然后写一条信息。它会生成一个小动画海洋故事，您可以与他们分享。有动画鱼、气泡、音乐、滚动时的不同场景以及其他一些小元素。",
-        "time_str": "2小时前"
+        "time_str": "6小时前"
+      },
+      {
+        "title": "Add video calls to a website?",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7074w/add_video_calls_to_a_website/",
+        "summary": "Does anyone know how to add completely secure video calls to a website? I’m struggling to find the best way. Additionally, how do I then host this for free / as low cost as possible. If anyone has advice that would be great!    submitted by    /u/prxudd   [link]   [comments]",
+        "pub_date": "2026-09-04T10:09:04+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "向网站添加视频通话？",
+        "summary_zh": "有谁知道如何向网站添加完全安全的视频通话？我正在努力寻找最好的方法。此外，我如何免费/尽可能低的成本托管它。如果有人有建议那就太好了！    由 /u/prxudd 提交 [链接] [评论]",
+        "time_str": "15小时前"
+      },
+      {
+        "title": "Built a full office suite that runs 100% client side with no backend, sharing for feedback (Showoff Saturday)",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7lqa6/built_a_full_office_suite_that_runs_100_client/",
+        "summary": "I built OBSCURA OS, a workspace suite (docs, sheets, slides, notes, file storage, forms, calendar) that runs entirely client side in the browser. No backend database for user content, no accounts, no server round trips for your data. State lives in memory during the session and users export their own backups as a portable JSON file. The interesting technical constraint was doing spreadsheet style calculation, rich text editing, and file storage entirely in the browser without a server to fall ba…",
+        "pub_date": "2026-09-05T00:28:38+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "构建了一个完整的办公套件，可 100% 客户端运行，无后端，共享反馈（周六炫耀）",
+        "summary_zh": "我构建了 OBSCURA OS，这是一个工作区套件（文档、工作表、幻灯片、笔记、文件存储、表单、日历），完全在浏览器客户端运行。没有用户内容的后端数据库，没有帐户，没有数据的服务器往返。会话期间状态存在于内存中，用户将自己的备份导出为可移植的 JSON 文件。有趣的技术限制是完全在浏览器中进行电子表格样式计算、富文本编辑和文件存储，而无需服务器来支持",
+        "time_str": "1小时前"
+      },
+      {
+        "title": "Should I use my dead name in the website?",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7mg4n/should_i_use_my_dead_name_in_the_website/",
+        "summary": "Hi, im working at a restaurant as a man, and recently they needed an updated website. I have the website, but I have <meta name=\"developer\" content=\"First Last\"> (not actually First Last)in the head to show I made it for the future, but I am a trans woman and go by a different name. If i use my dead name, then it may be difficult to explain why my name is different in the site in the future, but if I use my new name, then someone right now may see it and either think the work was done by someone…",
+        "pub_date": "2026-09-05T01:02:45+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "我应该在网站上使用我已故的名字吗？",
+        "summary_zh": "你好，我作为一名男性在一家餐厅工作，最近他们需要一个更新的网站。我有这个网站，但我脑子里有（实际上不是名字）来表明我是为了未来而做的，但我是一个跨性别女人，有一个不同的名字。如果我使用我的死名字，那么将来可能很难解释为什么我的名字在网站上不同，但如果我使用我的新名字，那么现在有人可能会看到它，并且认为该工作是由某人完成的......",
+        "time_str": "1小时前"
       },
       {
         "title": "Your typeof Is Lying to You",
@@ -40359,7 +40395,19 @@
         "cat": "dev",
         "title_zh": "您的类型对您撒谎",
         "summary_zh": "JavaScript 的 typeof 不是类型系统，它只是一个粗略的运行时标签，这就是为什么 null、函数、数组、日期和其他值都折叠到同一个“对象”存储桶中的原因。    由 /u/OtherwisePush6424 提交 [链接] [评论]",
-        "time_str": "7小时前"
+        "time_str": "11小时前"
+      },
+      {
+        "title": "My favorite website stack",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7n3vy/my_favorite_website_stack/",
+        "summary": "Nextjs for pages Payload for content admin Polar for payments Mastra for agents Not right for any app, but I'd argue you can hit any modern website requirements with these four tools    submitted by    /u/thehashimwarren   [link]   [comments]",
+        "pub_date": "2026-09-05T01:33:35+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "我最喜欢的网站堆栈",
+        "summary_zh": "Nextjs 用于页面 内容管理的 Payload 用于支付的 Polar 用于代理的 Mastra 不适合任何应用程序，但我认为您可以使用 /u/thehashimwarren 提交的这四个工具来满足任何现代网站的要求 [链接] [评论]",
+        "time_str": "29分钟前"
       },
       {
         "title": "How do you learn something new today?",
@@ -40371,10 +40419,10 @@
         "cat": "dev",
         "title_zh": "您今天如何学习新事物？",
         "summary_zh": "AI 为我们取代了 Stack Overflow。但这是否也改变了我们实际学习的方式？几年前，当开发人员想要学习新技术时，我们学习了 Udemy、Pluralsight 或 Coursera 上的课程。然后我们使用 Google 和 Stack Overflow 来回答具体问题。如今，人工智能已在很大程度上取代了第二个角色。但第一个呢？当你想从头开始学习新的框架、语言或技术时 - 你还会参加在线课程吗？如果是这样，您使用它们的方式是否改变了？做",
-        "time_str": "9小时前"
+        "time_str": "12小时前"
       }
     ],
-    "fetched_at": 1788560643.1942887
+    "fetched_at": 1788573761.9805233
   },
   "aihot_summary_20": {
     "items": [
@@ -112745,5 +112793,130 @@
       }
     ],
     "fetched_at": 1788570194.4959617
+  },
+  "雷峰网_171": {
+    "items": [
+      {
+        "title": "3000万用户、过半是企业，千问办公靠什么拿下B端？",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651756123&idx=1&sn=c80073b9761081ce88ede92fdfe6d86e",
+        "summary": "用户规模背后，阿里AI办公商业化还有哪些潜力？",
+        "pub_date": "2026-09-04T23:50:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "3000万用户、过半是企业，千问办公靠什么拿下B端？",
+        "summary_zh": "用户规模背后，阿里AI办公商业化还有哪些潜力？",
+        "time_str": "10小时前"
+      },
+      {
+        "title": "全生态物理 AI 落地，小米的主场攻防战",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651756110&idx=1&sn=82e5b94aff0b6ebd72844f25b953c4c8",
+        "summary": "小米顺时而为。",
+        "pub_date": "2026-09-04T17:30:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "全生态物理 AI 落地，小米的主场攻防战",
+        "summary_zh": "小米顺时而为。",
+        "time_str": "16小时前"
+      },
+      {
+        "title": "独家丨微软云亚太「一拆为二」，侯阳接掌东南亚、印度与大中华区",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651756110&idx=2&sn=32fd8489112da7ddd1dc3806c2fb94c7",
+        "summary": "此前关于侯阳跳槽火山等种种传闻，基本画上句号。",
+        "pub_date": "2026-09-04T17:30:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "独家丨微软云亚太「一拆为二」，侯阳接掌东南亚、印度与大中华区",
+        "summary_zh": "此前关于侯阳跳槽火山等种种传闻，基本画上句号。",
+        "time_str": "16小时前"
+      },
+      {
+        "title": "和苹果比肯定物超所值！卢伟冰确认小米18 Fold起售价过万；GPT-6 震撼发布！能自主操作电脑；字节跳动将获得约296亿美元银团贷款",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651756013&idx=1&sn=bb113086f2de6be4a81d6f28aecd389f",
+        "summary": "燧原科技中签号出炉，发行价 142.18 元/股；美国政府拟对进口芯片加征新一轮关税，力促制造业回流；奥尔特曼：OpenAI肯定会研发人形机器人",
+        "pub_date": "2026-09-04T08:49:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "和苹果比肯定物超所值！卢伟冰确认小米18 Fold起售价过万；GPT-6 震撼发布！能自主操作电脑；字节跳动将获得约296亿美元银团贷款",
+        "summary_zh": "燧原科技中签号出炉，发行价 142.18 元/股；美国政府拟对进口芯片加征新一轮关税，力促制造业回流；奥尔特曼：OpenAI肯定会研发人形机器人",
+        "time_str": "1天前"
+      },
+      {
+        "title": "独家解读丨净利润下跌后，欣旺达如何讲一个新故事？",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651756013&idx=2&sn=6621f24fb0656e029b5565b6f8796ebe",
+        "summary": "动力电池毛利率接近宁德时代，归母净利润却下滑三成。",
+        "pub_date": "2026-09-04T08:49:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "独家解读丨净利润下跌后，欣旺达如何讲一个新故事？",
+        "summary_zh": "动力电池毛利率接近宁德时代，归母净利润却下滑三成。",
+        "time_str": "1天前"
+      },
+      {
+        "title": "一池水，困住了中国机器人",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651755977&idx=1&sn=4e8a61195fd767456c95d6c336babf90",
+        "summary": "产品还没成熟，泳池机器人战争已进后半场。",
+        "pub_date": "2026-09-03T18:24:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "一池水，困住了中国机器人",
+        "summary_zh": "产品还没成熟，泳池机器人战争已进后半场。",
+        "time_str": "1天前"
+      },
+      {
+        "title": "从募资投向看希音上市：规模之外，继续做厚能力",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651755969&idx=1&sn=8b84b0a8691e67e74233542578b220f4",
+        "summary": "表面看是三笔不同的钱，实际做的是一件事。",
+        "pub_date": "2026-09-03T11:50:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "从募资投向看希音上市：规模之外，继续做厚能力",
+        "summary_zh": "表面看是三笔不同的钱，实际做的是一件事。",
+        "time_str": "1天前"
+      },
+      {
+        "title": "独家丨小红书「问一问」下线，平台 AI 搜索全面升级为「点点」",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651755969&idx=2&sn=cac4e7dd0daf993fb4f674020a0daaa4",
+        "summary": "小红书 AI 搜索业务走向聚焦。",
+        "pub_date": "2026-09-03T11:50:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "独家丨小红书「问一问」下线，平台 AI 搜索全面升级为「点点」",
+        "summary_zh": "小红书 AI 搜索业务走向聚焦。",
+        "time_str": "1天前"
+      },
+      {
+        "title": "宇树机器狗被曝灰产链：421Wh电池贴假标签改成97Wh，「偷渡」上飞机；罕见！小米华为发布时间撞档，网友：神仙打架；月之暗面启动港股IPO",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651755966&idx=1&sn=3038380c049fc14458c028b3e59c312a",
+        "summary": "燧原科技：科创板 IPO 网上发行最终中签率 0.02455315%；章泽天播客突然更新，透露曾经的职业梦想：做一个记者；被曝要求供应商大幅降价，本田中国回应",
+        "pub_date": "2026-09-03T08:35:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "宇树机器狗被曝灰产链：421Wh电池贴假标签改成97Wh，「偷渡」上飞机；罕见！小米华为发布时间撞档，网友：神仙打架；月之暗面启动港股IPO",
+        "summary_zh": "燧原科技：科创板 IPO 网上发行最终中签率 0.02455315%；章泽天播客突然更新，透露曾经的职业梦想：做一个记者；被曝要求供应商大幅降价，本田中国回应",
+        "time_str": "2天前"
+      },
+      {
+        "title": "独家丨理想智能座舱产品负责人胡含离职，下一站将加入AI公司",
+        "link": "https://mp.weixin.qq.com/s?__biz=MTM2ODM0ODYyMQ==&mid=2651755966&idx=2&sn=9b0195a3fe1bad1bdec1825aa4773896",
+        "summary": "座舱核心骨干流向AI赛道，是理想智能化体系孵化力与吸引顶级人才的缩影。",
+        "pub_date": "2026-09-03T08:35:00+08:00",
+        "source": "雷峰网",
+        "source_key": "雷峰网_171",
+        "cat": "cn_tech",
+        "title_zh": "独家丨理想智能座舱产品负责人胡含离职，下一站将加入AI公司",
+        "summary_zh": "座舱核心骨干流向AI赛道，是理想智能化体系孵化力与吸引顶级人才的缩影。",
+        "time_str": "2天前"
+      }
+    ],
+    "fetched_at": 1788573790.8700445
   }
 }
