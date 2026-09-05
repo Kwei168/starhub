@@ -1066,13 +1066,23 @@ def _deep_clean_html(text):
     text = re.sub(
         r'<(\w+)[^>]*\b(?:class|id)\s*=\s*"[^"]*\b(?:ads?[_-]?|advert|banner|sponsor|promo|newsletter|subscribe|social-share|share-buttons?|related-posts|recommend|widget|comments?|disqus|pagination|footer-links|follow-us|qrcode|qr-code)[^"]*"[^>]*>[\s\S]*?</\1>',
         '', text, flags=re.IGNORECASE)
-    # 2. 逐块检测：剥离内联标签后匹配推广模式，避免 <strong> 等内联标签阻碍匹配
+    # 1.5 移除 wechat2rss / link-proxy 跳转链接（"跳转微信打开"等）
+    text = re.sub(
+        r'<a[^>]*href="[^"]*(?:link-proxy|wechat2rss|mp\.weixin\.qq\.com)[^"]*"[^>]*>[^<]*</a>',
+        '', text, flags=re.IGNORECASE)
+    text = re.sub(
+        r'<a[^>]*>[^<]*跳转微信[^<]*</a>',
+        '', text, flags=re.IGNORECASE)
+    # 2. 逐块检测：剥离内联标签后匹配推广模式
     _promo_re = re.compile(
         r'代开关注|长按二维码|扫码关注|扫一扫关注|微信搜索.*关注|关注公众号|关注我们'
         r'|立即购买|点击领取|点击注册|限时优惠|秒杀活动|加入社群|加入我们'
         r'|勾选关注|长按关注|识别二维码|二维码|长按识别'
         r'|关注.*公众号|关注.*微信|点击.*订阅|订阅.*频道|订阅.*邮件|加入.*邮件列表'
         r'|微博.*关注|关注.*微博|分享.*好友|转发.*朋友'
+        r'|转发.*关注|关注.*转发|点赞.*关注|关注.*点赞|点赞.*在看'
+        r'|喜欢.*关注|喜欢.*点赞|觉得.*关注|觉得.*有用|精彩.*不错过'
+        r'|请长按|请扫码|点击原文|点击.*原文|点击.*查看原文'
         r'|buy now|subscribe (?:now|today)|limited.?time|click here to'
         r'|sign up (?:now|today)|special offer|discount code|use code|free trial'
         r'|donate (?:now|today)|support us|follow us (?:on|for)|join our'
