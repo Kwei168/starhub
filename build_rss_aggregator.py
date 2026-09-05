@@ -17,6 +17,11 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+if sys.stdout and hasattr(sys.stdout, 'buffer'):
+    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+if sys.stderr and hasattr(sys.stderr, 'buffer'):
+    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+
 OUT = "rss-aggregator.html"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "application/rss+xml, application/xml, text/xml, */*"}
 
@@ -129,6 +134,7 @@ def _accumulate_history(sources_with_items):
                 "cat": src["cat"], "color": src["color"],
                 "title": it.get("title", ""), "title_zh": it.get("title_zh", ""),
                 "summary": it.get("summary", ""), "summary_zh": it.get("summary_zh", ""),
+                "full_content": it.get("full_content", ""),
                 "pub_date": pd_str,
             }
             new_count += 1
@@ -192,12 +198,16 @@ def _save_api_snapshot(sources_with_items, meta=None):
     for src in sources_with_items:
         items = []
         for it in src.get("items", []):
-            items.append({
+            item = {
                 "t": it.get("title_zh", "") or it.get("title", ""),
                 "u": it.get("link", "#"),
                 "s": it.get("summary_zh", "") or it.get("summary", ""),
                 "d": it.get("pub_date", ""),
-            })
+            }
+            fc = it.get("full_content", "")
+            if fc:
+                item["fc"] = fc[:50000]
+            items.append(item)
         snapshot_sources.append({
             "key": src["key"], "name": src["name"],
             "cat": src["cat"], "color": src["color"],
@@ -983,6 +993,51 @@ def _strip_html(text):
     return text.strip()
 
 
+_SAFE_TAGS = re.compile(
+    r"^(/?(p|br|img|a|b|i|em|strong|h[1-6]|ul|ol|li|blockquote|pre|code"
+    r"|figure|figcaption|table|tr|td|th|thead|tbody|span|div|hr|sup|sub|dl|dt|dd))$",
+    re.IGNORECASE,
+)
+_EVT_ATTR = re.compile(r"^on[a-z]+$", re.IGNORECASE)
+_TAG_NAME = re.compile(r"^/?(\w[\w-]*)")
+
+
+def _sanitize_html(text):
+    if not text:
+        return ""
+    text = html_mod.unescape(text)
+    text = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<iframe[^>]*>[\s\S]*?</iframe>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<form[^>]*>[\s\S]*?</form>", "", text, flags=re.IGNORECASE)
+
+    def _clean_tag(m):
+        full = m.group(0)
+        m_name = _TAG_NAME.match(full)
+        if not m_name:
+            return ""
+        tag = m_name.group(1)
+        if not _SAFE_TAGS.match(tag):
+            return ""
+        attrs = re.findall(r'([\w-]+)\s*=\s*"([^"]*)"', full)
+        safe_attrs = []
+        for k, v in attrs:
+            if _EVT_ATTR.match(k):
+                continue
+            if k.lower() == "href" and v.strip().lower().startswith("javascript:"):
+                continue
+            safe_attrs.append('%s="%s"' % (k, v))
+        if safe_attrs:
+            return "<%s %s>" % (tag, " ".join(safe_attrs))
+        if full.startswith("</"):
+            return "</%s>" % tag
+        return "<%s>" % tag
+
+    text = re.sub(r"<[^>]+>", _clean_tag, text)
+    text = re.sub(r"<[^>]*$", "", text)
+    return text.strip()
+
+
 def _truncate(s, maxlen=500):
     if not s:
         return ""
@@ -1198,12 +1253,15 @@ def _fetch_rss(source):
             title = _strip_html(e.findtext(ns + "title") or "")
             link_el = e.find(ns + "link")
             link = (link_el.get("href") if link_el is not None else (e.findtext(ns + "id") or "")).strip()
-            desc = _strip_html(e.findtext(ns + "summary") or e.findtext(ns + "content") or "")
+            desc = _strip_html(e.findtext(ns + "summary") or "")
+            atom_content = _sanitize_html(e.findtext(ns + "content") or "")
+            full_content = atom_content if len(atom_content) > len(desc) else ""
             pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
             if not title or not link:
                 continue
             items.append({
                 "title": title, "link": link, "summary": _truncate(desc),
+                "full_content": full_content,
                 "pub_date": _parse_iso(pub), "source": name, "source_key": source["key"],
                 "cat": source["cat"],
             })
@@ -1230,10 +1288,14 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
     link = (it.findtext("link") or "").strip()
     desc = _strip_html(it.findtext("description") or "")
     pub = (it.findtext("pubDate") or "").strip()
+    dc_content = "{http://purl.org/rss/1.0/modules/content/}"
+    content_encoded = _sanitize_html(it.findtext(dc_content + "encoded") or "")
+    full_content = content_encoded if len(content_encoded) > len(desc) else ""
     if not title or not link:
         return
     items.append({
         "title": title, "link": link, "summary": _truncate(desc),
+        "full_content": full_content,
         "pub_date": _parse_rss_date(pub), "source": source_name, "source_key": source_key,
         "cat": cat,
     })

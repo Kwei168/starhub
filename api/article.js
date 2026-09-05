@@ -1,5 +1,7 @@
 const { JSDOM } = require('jsdom');
 const { Readability } = require('@mozilla/readability');
+const { readFileSync } = require('fs');
+const { join } = require('path');
 
 const FETCH_TIMEOUT = 8000;
 const CACHE_MAX = 500;
@@ -7,6 +9,32 @@ const CACHE_TTL = 4 * 60 * 60 * 1000;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
 const cache = new Map();
+let snapshotContentCache = null;
+let snapshotLoadTime = 0;
+
+function loadSnapshotContent() {
+  if (snapshotContentCache && Date.now() - snapshotLoadTime < 10 * 60 * 1000) {
+    return snapshotContentCache;
+  }
+  try {
+    const p = join(process.cwd(), 'rss_api_snapshot.json');
+    const snap = JSON.parse(readFileSync(p, 'utf-8'));
+    const urlMap = {};
+    for (const src of (snap.sources || [])) {
+      for (const it of (src.items || [])) {
+        if (it.u && it.fc) {
+          urlMap[it.u] = { title: it.t, content: it.fc, source: 'rss_fulltext' };
+        }
+      }
+    }
+    snapshotContentCache = urlMap;
+    snapshotLoadTime = Date.now();
+    console.log(`[article] Loaded snapshot content map: ${Object.keys(urlMap).length} entries with full text`);
+    return urlMap;
+  } catch {
+    return {};
+  }
+}
 
 function cacheGet(key) {
   const entry = cache.get(key);
@@ -107,6 +135,15 @@ module.exports = async (req, res) => {
   if (cached) {
     res.setHeader('Cache-Control', 'public, max-age=14400, s-maxage=86400');
     return res.json(cached);
+  }
+
+  const snapshotMap = loadSnapshotContent();
+  if (snapshotMap[url]) {
+    const entry = snapshotMap[url];
+    const out = { ok: true, url, title: entry.title, content: entry.content, source: entry.source };
+    cacheSet(url, out);
+    res.setHeader('Cache-Control', 'public, max-age=14400, s-maxage=86400');
+    return res.json(out);
   }
 
   let dom;
