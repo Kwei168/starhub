@@ -71,17 +71,18 @@ function extractAttr(xml, tag, attr) {
 function stripHtml(text) {
   if (!text) return '';
   return text
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')  // 先提取闭合的 CDATA
-    .replace(/<!\[CDATA\[/g, '')                     // 移除未闭合的 CDATA 开始标记
-    .replace(/\]\]>/g, '')                            // 移除未闭合的 CDATA 结束标记
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')  // 移除 script
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')    // 移除 style
-    .replace(/<[^>]+>/g, '')                            // 移除所有 HTML 标签
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<!\[CDATA\[/g, '')
+    .replace(/\]\]>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/&#\d+;/g, '')                             // 移除数字实体
-    .replace(/&[a-z]+;/gi, '')                          // 移除命名实体
-    .replace(/\s+/g, ' ')                               // 合并空白
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/<[^>]*$/, '')   // 移除末尾未闭合的标签片段（如 <video src="..." controls="controls" webkit-playsin…）
+    .replace(/\s+/g, ' ')
     .trim();
 }
 

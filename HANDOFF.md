@@ -40,7 +40,8 @@
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │              Python: fetch_and_build.py              │    │
 │  │   拉取 starred repos → 智能分类 → 翻译描述 →         │    │
-│  │   生成 index.html + ai-daily.html                    │    │
+│  │   生成 index.html + ai-daily.html +                  │    │
+│  │   rss-aggregator.html（710 源三层分级构建）            │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 
@@ -68,6 +69,7 @@
 | **主数据区**（Star 项目列表） | GitHub API: `/users/Kwei168/starred` | workflow 触发 `fetch_and_build.py` 静态构建 | `index.html` |
 | **关注动态区**（右侧 Feed） | GitHub API: `/users/{user}/events/public` | `/api/events.js` 实时查询，前端 30min 轮询 | 运行时 API |
 | **AI 晨报** | AIHOT 公开 API v1（降级回退 RSS）+ HN / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis / AtlasNote 多渠道 | `build_ai_daily.py` 每次构建时云端拉取生成 | `ai-daily.html` |
+| **RSS 聚合** | 710 源（GitHub/新闻/公众号/播客/YouTube），三层分级 | `build_rss_aggregator.py` 构建快照 + `api/rss.js` T1 实时抓取 | `rss-aggregator.html` + `rss_api_snapshot.json` |
 
 ---
 
@@ -82,6 +84,9 @@
 | `template.html` | ~1905 | **页面模板**。包含全部 CSS + HTML 结构 + JS 交互逻辑。`fetch_and_build.py` 读取此文件，替换占位符生成 `index.html`。2026-08-29 重设计为纸感编辑风（暖纸底+衬线标题+等宽数字），搜索置顶通栏+340px粘性侧栏 |
 | `index.html` | 自动生成 | 最终部署页面。**不要直接编辑**，每次 workflow 会从 template 重新生成 |
 | `ai-daily.html` | 自动生成 | AI 晨报页面。**不要直接编辑**，每次构建重新生成 |
+| `build_rss_aggregator.py` | ~2500 | **RSS 聚合页生成器**。710 源三层分级（T1=23/T2=19/T3=668），支持 full/incremental 两种构建模式。合并 BestBlogs 559 源（公众号+播客+YouTube），生成 `rss-aggregator.html` + `rss_api_snapshot.json` + `rss_sources.json` + `rss_history.json` + `translations.json` |
+| `rss-aggregator.html` | 自动生成 | RSS 聚合页面。**不要直接编辑**。卡片墙 + 源面板 + 抽屉阅读器，支持分类筛选/搜索/分享/主题切换/实时刷新 |
+| `bestblogs_sources.json` | 559 条 | BestBlogs 项目导出的 RSS 源列表（375 公众号 + 60 播客 + 124 YouTube），构建时自动合并 |
 
 ### 数据文件（workflow 自动维护）
 
@@ -90,6 +95,10 @@
 | `known_categories.json` | 项目→分类映射缓存（避免每次重新分类） |
 | `descriptions_zh.json` | 项目→中文描述缓存（避免重复翻译） |
 | `trending_snapshot.json` | 趋势分析快照数据 |
+| `rss_api_snapshot.json` | RSS API 快照（72h 累积历史 + meta.last_fetch 增量状态） |
+| `rss_sources.json` | RSS 源元数据（710 条，含 tier 字段） |
+| `rss_history.json` | RSS 文章历史累积（跨构建持久化） |
+| `translations.json` | 翻译缓存（MD5 hash → 中文，供构建和 API 共享） |
 
 ### Vercel Serverless 函数
 
@@ -99,14 +108,14 @@
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
 | `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
-| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合实时 API，153 源全量抓取，**20 路并发**，**5s 超时**，滚动缓存，5min 服务端缓存 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：返回构建时生成的 72h 累积快照（710 源）；`?refresh=1` 时仅实时抓取 T1 高频源（23 个），T2/T3 从快照读取；T1 英文源实时翻译 |
 
 ### 配置
 
 | 文件 | 作用 |
 |---|---|
 | `vercel.json` | Vercel 项目配置，声明 4 个 serverless 函数及超时 |
-| `.github/workflows/update.yml` | GitHub Actions 工作流定义 |
+| `.github/workflows/update.yml` | GitHub Actions 工作流定义。**分层调度**：UTC 21:00（北京 05:00）全量构建，UTC 2/6/10/14（北京 10/14/18/22）增量构建 |
 | `.gitignore` | 忽略 `__pycache__/`、`.deploy-tmp/` 等 |
 
 ### 辅助目录
@@ -230,19 +239,23 @@ python fetch_and_build.py  # 完整构建（需要 GitHub API 访问）
 ```
 push code → (不会自动触发！)
                 ↓
-手动触发 workflow_dispatch (或 cron-job.org 每小时触发)
+手动触发 workflow_dispatch (或 cron 定时触发)
                 ↓
 GitHub Actions: update.yml
-  1. checkout main
+  1. checkout main (fetch-depth: 0, 完整历史)
   2. setup Python 3.11
-  3. python fetch_and_build.py
+  3. 判断构建模式：UTC 21:00 → full，其余 → incremental
+  4. python fetch_and_build.py $MODE
      - 拉取 Kwei168 的 starred repos（分页，每页 100）
      - 智能分类（关键词匹配 + known_categories.json 缓存）
      - 翻译英文描述为中文（Google 翻译 → 保留原文）
      - 生成 index.html（从 template.html 替换占位符）
      - 调用 build_ai_daily.main() 生成 ai-daily.html
-  4. git add + commit + push（仅当有变更时）
-  5. npx vercel --prod --yes --token $VERCEL_TOKEN
+     - 调用 build_rss_aggregator.main(mode) 生成 RSS 聚合页
+       · full 模式：抓取全部 710 源
+       · incremental 模式：跳过 T1 源 + 4h 内已抓源
+  5. git add + commit + push（仅当有变更时）
+  6. npx vercel --prod --yes --token $VERCEL_TOKEN
                 ↓
 Vercel 部署完成（约 2-3 分钟）
 ```
@@ -252,7 +265,8 @@ Vercel 部署完成（约 2-3 分钟）
 - **workflow 没有 `on: push` 触发器**，push 代码后必须手动触发 `workflow_dispatch`
 - **`index.html` 是自动生成文件**，直接编辑会被 workflow 覆盖
 - **Vercel 环境变量变更后必须 Redeploy**，否则新值不生效
-- **concurrency: cancel-in-progress: false**，防止并发构建互相覆盖
+- **concurrency: cancel-in-progress: true**，新触发取消旧排队，永远只跑最新一次，从根本上消除并发冲突
+- **分层调度预算**：全量 ~15min × 30天 + 增量 ~5min × 4次 × 30天 + star数据 ~30min × 30天 ≈ 1950 min/月（安全线内）
 
 ---
 
@@ -411,6 +425,51 @@ function _mergeLiveSources(liveData, silent) {
 - **性能优化优先于架构复杂化** — 提高并发数比实现复杂的增量协议更简单有效
 - **用户反馈必须可见** — 静默失败是最差的用户体验
 
+### 7.15 RSS 聚合器三层分级架构（2026-09-05）
+
+**背景**：集成 BestBlogs 559 源后总计 710 源，全量抓取超出 GitHub Actions 分钟预算。
+
+**三层分级**：
+
+| Tier | 定义 | 源数量 | 刷新方式 |
+|------|------|--------|---------|
+| T1 | 日均产出 > 30 篇 | 23（全部现有源） | 用户刷新时 api/rss.js 实时抓取 |
+| T2 | 日均产出 10-30 篇 | 19（全部现有源） | Actions 增量构建 |
+| T3 | 日均产出 < 10 篇 | 668（110 现有 + 558 BestBlogs） | Actions 增量构建 |
+
+**BestBlogs 559 源分类**：
+- 375 公众号（wechat2rss）→ `cn_tech`
+- 60 播客（rsshub）→ `podcast`
+- 124 YouTube → `youtube`（新增分类）
+- 全部 BestBlogs 源产出低（最高 ~1 篇/天），归入 T3
+
+**增量构建逻辑**（`build_rss_aggregator.py`）：
+```
+incremental 模式：
+  1. 读取 rss_api_snapshot.json 的 meta.last_fetch
+  2. 跳过所有 T1 源（由 api/rss.js 实时负责）
+  3. 跳过 4h 内已成功抓取的源
+  4. 抓取剩余 T2/T3 源，合并到历史
+  5. 更新 meta.last_fetch，保存快照
+```
+
+**API 层分层抓取**（`api/rss.js`）：
+- 快照优先：默认返回构建时生成的 72h 累积快照
+- `?refresh=1` 时：仅实时抓取 23 个 T1 源（~3s），T2/T3 从快照读取
+- T1 英文源（9 个）实时翻译：Google → MyMemory → Google-chrome 三端点降级
+
+**卡片墙交织算法**（`tierInterleave`）：
+- 双队列 4:1 交织：每 4 篇 T1/T2 文章穿插 1 篇 T3 文章
+- 防止 T3 的 668 个低频源被 T1 的 23 个高频源完全淹没
+- T1+T2 占 ~80% 卡片位，T3 占 ~20%
+
+**源面板排序**：每个分类内按文章数降序排列，用户可快速定位活跃源。
+
+**经验教训**：
+- **源数量增长时必须引入分级** — 710 源全量抓取不可行，T1 实时 + T2/T3 快照是合理分工
+- **增量状态嵌入快照** — meta.last_fetch 放在 rss_api_snapshot.json 内，不引入额外存储
+- **快照只增不减** — 不主动清理旧条目，72h 窗口自然过期
+
 ---
 
 ## 八、技术栈总结
@@ -420,8 +479,9 @@ function _mergeLiveSources(liveData, silent) {
 | 构建脚本 | Python 3.11（纯标准库，无第三方依赖） |
 | Serverless | Vercel Functions（Node.js，原生 fetch） |
 | 托管 | Vercel（主）+ GitHub Pages（备） |
-| CI/CD | GitHub Actions |
-| 定时触发 | cron-job.org（主力）+ GitHub schedule（兜底） |
+| CI/CD | GitHub Actions（分层调度：凌晨全量 + 白天增量） |
+| 定时触发 | GitHub cron（主力，5 次/天） |
 | 前端 | 原生 HTML/CSS/JS，无框架 |
-| 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS |
-| 翻译 | Google 翻译非官方端点 → MyMemory 降级 |
+| 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源：公众号+播客+YouTube） |
+| 翻译 | Google 翻译非官方端点 → MyMemory → Google-chrome 三端点降级链 |
+| RSS 架构 | 710 源三层分级（T1 实时/T2/T3 快照）+ 增量构建 + 卡片墙 4:1 交织 |

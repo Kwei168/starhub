@@ -40239,6 +40239,18 @@
         "cat": "dev",
         "title_zh": "是否可以在一台计算机上模拟多个 API、数据库和网络服务器的网络？",
         "summary_zh": "你好，我一直在考虑一个我想尝试的项目，其中有一个数据库、一个 API 服务器和一个 Web 服务器。它不是太大，主要是为了了解它们如何相互作用。问题是，我宁愿不必支付多台服务器来托管所有内容。有没有办法在一台机器上模拟现实生活中的情况？    由 /u/HelloMyNameIsKaren 提交 [链接] [评论]",
+        "time_str": "6小时前"
+      },
+      {
+        "title": "I built a distributed web directory for exploring the open web",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7hp60/i_built_a_distributed_web_directory_for_exploring/",
+        "summary": "Recently I had an idea for a research tool, I realized I'd need to be able to find websites programmatically and the webs data is behind the largest corporations, not something we reliably have access to for being able to develop around.  So it got me thinking, how lightweight could you first build a crawler if you only cared about getting meta data (titles, description and the url)? Then it got me thinking, could we not share the load, create a distributed peer to peer network and make this dat…",
+        "pub_date": "2026-09-04T21:37:03+00:00",
+        "source": "r/webdev",
+        "source_key": "reddit_webdev_101",
+        "cat": "dev",
+        "title_zh": "我构建了一个分布式网络目录来探索开放网络",
+        "summary_zh": "最近，我有了一个研究工具的想法，我意识到我需要能够以编程方式查找网站，而网络数据是最大的公司背后的，而不是我们能够可靠地访问以进行开发的东西。  所以这让我开始思考，如果您只关心获取元数据（标题、描述和 url），您首先可以构建多轻量级的爬虫？然后我开始思考，我们是否可以不共享负载，创建一个分布式对等网络并制作此数据",
         "time_str": "5小时前"
       },
       {
@@ -40251,19 +40263,19 @@
         "cat": "dev",
         "title_zh": "发布前你们有单独的测试仪吗？",
         "summary_zh": "嘿伙计们，刚刚发表意见。如果您要启动一个相当大的网站，并且正在进行很多事情，您会依靠自己的测试还是建议使用第三方测试仪？主要是为了我想测试的用户体验之类的东西。我知道我希望事情能够顺利进行，但作为唯一的开发人员，我认为我可能对某些事情有点盲目。我有朋友在检查方面做了一些工作，但我想知道是否达成共识只是得到一个实际的t",
-        "time_str": "7小时前"
+        "time_str": "8小时前"
       },
       {
-        "title": "I built a distributed web directory for exploring the open web",
-        "link": "https://www.reddit.com/r/webdev/comments/1w7hp60/i_built_a_distributed_web_directory_for_exploring/",
-        "summary": "Recently I had an idea for a research tool, I realized I'd need to be able to find websites programmatically and the webs data is behind the largest corporations, not something we reliably have access to for being able to develop around.  So it got me thinking, how lightweight could you first build a crawler if you only cared about getting meta data (titles, description and the url)? Then it got me thinking, could we not share the load, create a distributed peer to peer network and make this dat…",
-        "pub_date": "2026-09-04T21:37:03+00:00",
+        "title": "nOS4: A nostalgia right on your browser",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7oa77/nos4_a_nostalgia_right_on_your_browser/",
+        "summary": "nos4 is a complete recreation of IOS4 running on web. It was just a little experimental side project but I've decided to make it live and open-sourced. It has all the original apps in the original form, also 2 games (and yes, it runs Doom) GitHub: https://github.com/1etu/nos4 Also you can give it a try by visiting https://nos4.fun/    submitted by    /u/etulastrada   [link]   [comments]",
+        "pub_date": "2026-09-05T02:30:55+00:00",
         "source": "r/webdev",
         "source_key": "reddit_webdev_101",
         "cat": "dev",
-        "title_zh": "我构建了一个分布式网络目录来探索开放网络",
-        "summary_zh": "最近，我有了一个研究工具的想法，我意识到我需要能够以编程方式查找网站，而网络数据是最大的公司背后的，而不是我们能够可靠地访问以进行开发的东西。  所以这让我开始思考，如果您只关心获取元数据（标题、描述和 url），您首先可以构建多轻量级的爬虫？然后我开始思考，我们是否可以不共享负载，创建一个分布式对等网络并制作此数据",
-        "time_str": "4小时前"
+        "title_zh": "nOS4：浏览器上的怀旧之情",
+        "summary_zh": "nos4 是在网络上运行的 IOS4 的完整重现。这只是一个小小的实验性副项目，但我决定将其开源并上线。它拥有原始形式的所有原始应用程序，还有 2 个游戏（是的，它运行 Doom） GitHub：https://github.com/1etu/nos4 您也可以访问 https://nos4.fun/ 由 /u/etulastrada 提交 [链接] [评论]",
+        "time_str": "26分钟前"
       },
       {
         "title": "What are current best practices around feed length and pagination?",
@@ -40275,7 +40287,7 @@
         "cat": "dev",
         "title_zh": "当前关于提要长度和分页的最佳实践是什么？",
         "summary_zh": "考虑博客的主页——按时间倒序排列的帖子列表，沿着页面延伸。在您决定不列出显示整个内容之前，此列表需要多长时间？文件/有效负载大小并不是什么大问题。该页面压缩得很好——现在，它只传输 18KB（服务器上为 54KB）。在我担心带宽之前，我必须变得更大。所有图像都是延迟加载的，因此在滚动到视图中之前不会加载。我不担心",
-        "time_str": "4小时前"
+        "time_str": "5小时前"
       },
       {
         "title": "is there a way to validate uml diagrams when the jury might see the app differently than you",
@@ -40287,7 +40299,7 @@
         "cat": "dev",
         "title_zh": "当陪审团对应用程序的看法可能与你不同时，有没有办法验证 uml 图",
         "summary_zh": "所以我正在做我的最后一年项目报告（pfe）（projet fin d'annee = 最后一年项目，这实际上是一个大项目，结束我在大学的 6 年），我必须做整个 uml 事情，用例图，类图，主要流程的序列图，当我做的时候，我不断问自己，我实际上如何知道我绘制的内容是否“正确”，就像应用程序的全局逻辑显然是固定的一样，我知道应用程序做什么以及它应该如何做工作，但当涉及到建模时",
-        "time_str": "11小时前"
+        "time_str": "12小时前"
       },
       {
         "title": "Showoff Saturday: a 59-tool utility site in 10 languages, Flask backend, every tool is a plain JS file",
@@ -40297,9 +40309,9 @@
         "source": "r/webdev",
         "source_key": "reddit_webdev_101",
         "cat": "dev",
-        "title_zh": "Showoff Saturday：一个包含 59 个工具的实用网站，支持 10 种语言，Flask 后端，每个工具都是纯 JS 文件",
+        "title_zh": "Showoff Saturday：一个包含 10 种语言的 59 个工具的实用网站，Flask 后端，每个工具都是一个纯 JS 文件",
         "summary_zh": "toolkitsapp.com 格式化程序（JSON、SQL、CSS、HTML、YAML）、转换器（CSV 到 JSON、数字基数、时间戳、单位、时区）、生成器（QR、UUID、密码、cron 表达式、图标、元标记）、图像工具（压缩、调整大小、格式转换、SVG 到 PNG）、JWT 解码器、正则表达式测试器、一些计算器。总共 59 个。每个都是在浏览器中运行的单个 JS 文件，因此您粘贴的内容永远不会离开页面。后端是 Flask + Jinja，主要用于 i18n 和 SEO。十升",
-        "time_str": "21分钟前"
+        "time_str": "1小时前"
       },
       {
         "title": "Vscode color theme",
@@ -40311,7 +40323,7 @@
         "cat": "dev",
         "title_zh": "vscode 颜色主题",
         "summary_zh": "你好，有人能帮我找到这个主题吗？     由/u/Concient_Force_735提交 [链接] [评论]",
-        "time_str": "18小时前"
+        "time_str": "19小时前"
       },
       {
         "title": "Where should i host ?",
@@ -40323,19 +40335,19 @@
         "cat": "dev",
         "title_zh": "我应该在哪里主持？",
         "summary_zh": "我全部使用 codex 完成了我的网站 😅 它只是为了展示产品，没有任何付款处理或任何东西，所以可以进行 vivicoded。  我需要知道应该使用哪种服务来托管该网站。以及购买域名。  我由 /u/Ysmsthejoker [链接] [评论] 提交",
-        "time_str": "12小时前"
+        "time_str": "13小时前"
       },
       {
-        "title": "How do you feel about the role evolving since to AI tooling?",
-        "link": "https://www.reddit.com/r/webdev/comments/1w6rqa4/how_do_you_feel_about_the_role_evolving_since_to/",
-        "summary": "I’m a full-stack developer with nearly six years of experience Since the start of the year, I’ve integrated AI tooling heavily across my day job (Claude Code) and freelance work (Gemini Antigravity). The trade off is clear, I write significantly less code, but I ship significantly more. Taking time off recently gave me the space to reflect and I have realised how I barely write code manually anymore and I’m torn about where the profession is headed. On one hand, this feels like natural career ev…",
-        "pub_date": "2026-09-04T02:29:27+00:00",
+        "title": "Hmmm!!!! 🤨",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7of5p/hmmm/",
+        "summary": "submitted by    /u/AndrewNggg   [link]   [comments]",
+        "pub_date": "2026-09-05T02:37:58+00:00",
         "source": "r/webdev",
         "source_key": "reddit_webdev_101",
         "cat": "dev",
-        "title_zh": "您对人工智能工具这一角色的演变有何看法？",
-        "summary_zh": "我是一名拥有近六年经验的全栈开发人员，自今年年初以来，我在日常工作（Claude Code）和自由工作（Gemini Antigravity）中大量集成了人工智能工具。权衡很明显，我编写的代码显着减少，但交付的代码却显着增加。最近休假给了我反思的空间，我意识到我几乎不再手动编写代码了，而且我对这个职业的发展方向感到困惑。一方面，这感觉像是自然的职业生涯",
-        "time_str": "23小时前"
+        "title_zh": "嗯！！！ 🤨",
+        "summary_zh": "由 /u/AndrewNggg 提交 [链接] [评论]",
+        "time_str": "19分钟前"
       },
       {
         "title": "I’m 17 and built this little interactive web project called Oceana 🌊",
@@ -40347,7 +40359,7 @@
         "cat": "dev",
         "title_zh": "我 17 岁，构建了一个名为 Oceana 的小型交互式网络项目 🌊",
         "summary_zh": "它可以免费使用且无广告。我一直在尝试交互式网站，并希望制作出比普通网页更像是一种体验的东西。所以我制作了 Oceana，在这里你可以为某人创建个性化的水下故事。您选择名字、鱼的颜色、友谊/浪漫氛围，然后写一条信息。它会生成一个小动画海洋故事，您可以与他们分享。有动画鱼、气泡、音乐、滚动时的不同场景以及其他一些小元素。",
-        "time_str": "6小时前"
+        "time_str": "7小时前"
       },
       {
         "title": "Add video calls to a website?",
@@ -40359,7 +40371,7 @@
         "cat": "dev",
         "title_zh": "向网站添加视频通话？",
         "summary_zh": "有谁知道如何向网站添加完全安全的视频通话？我正在努力寻找最好的方法。此外，我如何免费/尽可能低的成本托管它。如果有人有建议那就太好了！    由 /u/prxudd 提交 [链接] [评论]",
-        "time_str": "15小时前"
+        "time_str": "16小时前"
       },
       {
         "title": "Built a full office suite that runs 100% client side with no backend, sharing for feedback (Showoff Saturday)",
@@ -40369,21 +40381,21 @@
         "source": "r/webdev",
         "source_key": "reddit_webdev_101",
         "cat": "dev",
-        "title_zh": "构建了一个完整的办公套件，可 100% 客户端运行，无后端，共享反馈（周六炫耀）",
+        "title_zh": "构建了一个完整的办公套件，可 100% 客户端运行，无后端，共享反馈（周六展示）",
         "summary_zh": "我构建了 OBSCURA OS，这是一个工作区套件（文档、工作表、幻灯片、笔记、文件存储、表单、日历），完全在浏览器客户端运行。没有用户内容的后端数据库，没有帐户，没有数据的服务器往返。会话期间状态存在于内存中，用户将自己的备份导出为可移植的 JSON 文件。有趣的技术限制是完全在浏览器中进行电子表格样式计算、富文本编辑和文件存储，而无需服务器来支持",
-        "time_str": "1小时前"
+        "time_str": "2小时前"
       },
       {
-        "title": "Should I use my dead name in the website?",
-        "link": "https://www.reddit.com/r/webdev/comments/1w7mg4n/should_i_use_my_dead_name_in_the_website/",
-        "summary": "Hi, im working at a restaurant as a man, and recently they needed an updated website. I have the website, but I have <meta name=\"developer\" content=\"First Last\"> (not actually First Last)in the head to show I made it for the future, but I am a trans woman and go by a different name. If i use my dead name, then it may be difficult to explain why my name is different in the site in the future, but if I use my new name, then someone right now may see it and either think the work was done by someone…",
-        "pub_date": "2026-09-05T01:02:45+00:00",
+        "title": "I built EasyResume AI — a simple resume builder, ATS checker, and cover letter generator. Looking for honest feedback.",
+        "link": "https://www.reddit.com/r/webdev/comments/1w7o6ap/i_built_easyresume_ai_a_simple_resume_builder_ats/",
+        "summary": "Hey everyone! 👋 I've been working on a side project called EasyResume AI, and it's now live on Peerlist. The idea came from a simple problem: job applications involve a lot of repetitive work. You create your resume, try to understand whether it matches a specific job description, and then write a tailored cover letter. So I built a small toolkit around those steps. Currently, it includes: 📄 Resume Builder Create a clean, professional resume. 🎯 ATS Compatibility Checker Paste your resume and a j…",
+        "pub_date": "2026-09-05T02:25:38+00:00",
         "source": "r/webdev",
         "source_key": "reddit_webdev_101",
         "cat": "dev",
-        "title_zh": "我应该在网站上使用我已故的名字吗？",
-        "summary_zh": "你好，我作为一名男性在一家餐厅工作，最近他们需要一个更新的网站。我有这个网站，但我脑子里有（实际上不是名字）来表明我是为了未来而做的，但我是一个跨性别女人，有一个不同的名字。如果我使用我的死名字，那么将来可能很难解释为什么我的名字在网站上不同，但如果我使用我的新名字，那么现在有人可能会看到它，并且认为该工作是由某人完成的......",
-        "time_str": "1小时前"
+        "title_zh": "我构建了 EasyResume AI——一个简单的简历生成器、ATS 检查器和求职信生成器。寻找诚实的反馈。",
+        "summary_zh": "大家好！ 👋 我一直在从事一个名为 EasyResume AI 的业余项目，它现在已经在 Peerlist 上上线了。这个想法源于一个简单的问题：工作申请涉及大量重复性工作。您创建简历，尝试了解它是否符合特定的职位描述，然后写一封量身定制的求职信。因此，我围绕这些步骤构建了一个小工具包。目前，它包括： 📄 简历生成器 创建干净、专业的简历。 🎯 ATS 兼容性检查器粘贴您的简历和 j",
+        "time_str": "31分钟前"
       },
       {
         "title": "Your typeof Is Lying to You",
@@ -40407,7 +40419,7 @@
         "cat": "dev",
         "title_zh": "我最喜欢的网站堆栈",
         "summary_zh": "Nextjs 用于页面 内容管理的 Payload 用于支付的 Polar 用于代理的 Mastra 不适合任何应用程序，但我认为您可以使用 /u/thehashimwarren 提交的这四个工具来满足任何现代网站的要求 [链接] [评论]",
-        "time_str": "29分钟前"
+        "time_str": "1小时前"
       },
       {
         "title": "How do you learn something new today?",
@@ -40419,10 +40431,10 @@
         "cat": "dev",
         "title_zh": "您今天如何学习新事物？",
         "summary_zh": "AI 为我们取代了 Stack Overflow。但这是否也改变了我们实际学习的方式？几年前，当开发人员想要学习新技术时，我们学习了 Udemy、Pluralsight 或 Coursera 上的课程。然后我们使用 Google 和 Stack Overflow 来回答具体问题。如今，人工智能已在很大程度上取代了第二个角色。但第一个呢？当你想从头开始学习新的框架、语言或技术时 - 你还会参加在线课程吗？如果是这样，您使用它们的方式是否改变了？做",
-        "time_str": "12小时前"
+        "time_str": "13小时前"
       }
     ],
-    "fetched_at": 1788573761.9805233
+    "fetched_at": 1788577047.7460513
   },
   "aihot_summary_20": {
     "items": [
@@ -41614,7 +41626,7 @@
         "source_key": "reddit_selfhosted_102",
         "cat": "dev",
         "title_zh": "你在 Docker 上运行 bitwarden-lite 吗？您现在可以使用无根+只读以获得额外的安全性",
-        "summary_zh": "经过近 18 个月的时间，我为 bitwarden-lite 添加无根和只读文件系统支持的 PR 已与 v2026.8.1 🚀🚀🚀 合并并发布。感谢 BW 团队的 MtnBurrit0 冲过终点线。这意味着您现在可以以任意用户身份运行，实际上没有任何权限。如果您已经通过无根 docker 守护进程运行无根，您仍然可以通过运行只读受益！请参阅示例 docker compose 文件的这一部分。    由 /u/kayson 提交 [链接]",
+        "summary_zh": "经过近 18 个月的时间，我为 bitwarden-lite 添加无根和只读文件系统支持的 PR 已与 v2026.8.1 🚀🚀🚀 合并并发布。向 BW 团队的 MtnBurrit0 冲过终点线表示感谢。这意味着您现在可以以任意用户身份运行，实际上没有任何权限。如果您已经通过无根 docker 守护进程运行无根，您仍然可以通过运行只读受益！请参阅示例 docker compose 文件的这一部分。    由 /u/kayson 提交 [链接]",
         "time_str": "6小时前"
       },
       {
@@ -41654,18 +41666,6 @@
         "time_str": "12小时前"
       },
       {
-        "title": "Looking for the best software solution for hosting all of our old family videos and photos.",
-        "link": "https://www.reddit.com/r/selfhosted/comments/1w7o598/looking_for_the_best_software_solution_for/",
-        "summary": "My wife and I all digitizing ALL of my family's old VHS family videos, photo prints, negatives, and slides for archival. I would like to put up a family media server so everyone in the family can log in and enjoy the content. I personally have Immich for my own photos and Jellyfin for my own movies / TV shows. I also host some memorable videos (like my wedding video) and simple phone recorded memories on Immich, and old videos I filmed and edited as a kid on Jellyfin. I kinda have a distinct pur…",
-        "pub_date": "2026-09-05T02:24:17+00:00",
-        "source": "r/selfhosted",
-        "source_key": "reddit_selfhosted_102",
-        "cat": "dev",
-        "title_zh": "寻找最好的软件解决方案来托管我们所有的旧家庭视频和照片。",
-        "summary_zh": "我和我的妻子都将我家所有的旧 VHS 家庭视频、照片、底片和幻灯片数字化以供存档。我想建立一个家庭媒体服务器，以便家庭中的每个人都可以登录并欣赏内容。我个人用 Immich 来拍摄我自己的照片，用 Jellyfin 来拍摄我自己的电影/电视节目。我还在 Immich 上主持了一些令人难忘的视频（比如我的婚礼视频）和简单的手机记录的回忆，以及我小时候在 Jellyfin 上拍摄和编辑的旧视频。我有一种独特的追求",
-        "time_str": "38分钟前"
-      },
-      {
         "title": "Intermittent error \"Failed to reach OIDC issuer\"",
         "link": "https://www.reddit.com/r/selfhosted/comments/1w7j5jb/intermittent_error_failed_to_reach_oidc_issuer/",
         "summary": "I've been encountering this error for a few weeks now and it's finally starting to bother me enough to ask for advice. I get the following error intermittently on any service protected by Pocket ID:   error \"Failed to reach OIDC issuererror \"Failed to reach OIDC issuer    But if I reload/refresh the page I'm able to auth. Google suggests this is a DNS issue but the recommendations on how to resolve it haven't been helpful. This is a recent issue and it was working fine before. I *think* it start…",
@@ -41687,19 +41687,7 @@
         "cat": "dev",
         "title_zh": "UPS 在 Unraid（法国）上对 N100 + Terramaster 的建议",
         "summary_zh": "整个自我托管已经几个月了，本周我第一次断电。  很好地意识到，如果重新启动不良或数据损坏，它可能会崩溃，因此考虑添加 UPS 来保护安装 我的问题，我对此一无所知......因此，如果有人提出好的建议，我会洗耳恭听！感谢 /u/Bisarka02 [链接] [评论] 提交",
-        "time_str": "9小时前"
-      },
-      {
-        "title": "Escaping Google's clutches",
-        "link": "https://www.reddit.com/r/selfhosted/comments/1w75guq/escaping_googles_clutches/",
-        "summary": "I've recently been gaining interest in self hosting. Unfortunate time to start with the price of memory and storage, but I'm slowly transitioning. I have been in Google's ecosystem primarily for the fact that everything is under one account and mostly seamless. I have Google Home, I use most of G-suite, etc.  One of my Google nest speakers just died. Should I dive into the Home Assistant wormhole? If so, is there a good, simple place to start? Something that is expandable. I'm a bit overwhelmed …",
-        "pub_date": "2026-09-04T14:09:17+00:00",
-        "source": "r/selfhosted",
-        "source_key": "reddit_selfhosted_102",
-        "cat": "dev",
-        "title_zh": "逃离谷歌的魔掌",
-        "summary_zh": "我最近对自助托管越来越感兴趣。不幸的是，现在开始考虑内存和存储的价格，但我正在慢慢过渡。我之所以加入 Google 的生态系统，主要是因为一切都在同一个帐户下，而且大部分都是无缝的。我有 Google Home，我使用大部分 G-suite 等。我的一个 Google Nest 扬声器刚刚坏了。我应该潜入家庭助理虫洞吗？如果是这样，是否有一个好的、简单的起点？可扩展的东西。我有点不知所措",
-        "time_str": "12小时前"
+        "time_str": "8小时前"
       },
       {
         "title": "Multi-computer file sync software for simultaneous file editing without W10 network share",
@@ -41774,7 +41762,7 @@
         "time_str": "5小时前"
       }
     ],
-    "fetched_at": 1788577389.3121161
+    "fetched_at": 1788577051.7961314
   },
   "reddit_ml_103": {
     "items": [
@@ -112453,7 +112441,7 @@
         "cat": "ai",
         "title_zh": "OpenAI 首席执行官 Sam Altman 表示，38,000 个 ChatGPT 查询的用水量相当于生产一颗杏仁的用水量，并表示数据中心的用水量并不比一座办公楼多：“每 38,000 个 ChatGPT 查询，相当于加州生产一颗杏仁的用水量。”",
         "summary_zh": "由 /u/ControlCAD 提交 [链接] [评论]",
-        "time_str": "8小时前"
+        "time_str": "10小时前"
       },
       {
         "title": "Can we all acknoledge how crazy AI is?",
@@ -112465,7 +112453,7 @@
         "cat": "ai",
         "title_zh": "我们都能承认人工智能有多么疯狂吗？",
         "summary_zh": "人们通常谈论人工智能不能做什么，而不是它已经可以做什么。十年前，我们使用人工智能所做的所有正常事情都只是科幻小说。图灵测试曾经是语言模型的顶峰。我觉得它刚刚慢慢被淘汰，现在被当作一个半笑话。我们可以与看似智能的机器交谈并像人类一样说话。我们曾经认为语言使我们成为人类（不要开始争论法学硕士实际上并不“理解”任何东西）",
-        "time_str": "21小时前"
+        "time_str": "23小时前"
       },
       {
         "title": "Bernie Sanders Wants to 'Pause AI Development NOW': Dwarkesh Patel Asks 'Pause to Do What?'",
@@ -112477,7 +112465,7 @@
         "cat": "ai",
         "title_zh": "伯尼·桑德斯想要“立即暂停人工智能开发”：德瓦克什·帕特尔问“暂停做什么？”",
         "summary_zh": "由 /u/beingmodest 提交 [链接] [评论]",
-        "time_str": "10小时前"
+        "time_str": "12小时前"
       },
       {
         "title": "Bitcoin Miner Ditches Site for AI Deal That Could Top $1.2 Billion",
@@ -112489,19 +112477,7 @@
         "cat": "ai",
         "title_zh": "比特币矿工放弃网站进行人工智能交易，金额可能高达 12 亿美元",
         "summary_zh": "由 /u/beingmodest 提交 [链接] [评论]",
-        "time_str": "21小时前"
-      },
-      {
-        "title": "Salesforce blames its Claude addiction for denting profit margin guidance",
-        "link": "https://www.reddit.com/r/artificial/comments/1w7dswx/salesforce_blames_its_claude_addiction_for/",
-        "summary": "submitted by    /u/beingmodest   [link]   [comments]",
-        "pub_date": "2026-09-04T19:12:15+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "Salesforce将利润率指引归咎于克劳德成瘾",
-        "summary_zh": "由 /u/beingmodest 提交 [链接] [评论]",
-        "time_str": "5小时前"
+        "time_str": "23小时前"
       },
       {
         "title": "Study: Generative AI is making writing on Reddit and elsewhere boring",
@@ -112513,7 +112489,19 @@
         "cat": "ai",
         "title_zh": "研究：生成式人工智能让 Reddit 和其他地方的写作变得无聊",
         "summary_zh": "最近在 Nature 和 Arxiv 上发表的一项新研究的数据：“通过涵盖不同领域的七个数据集和超过 880,000 篇文本的三项研究，我们表明，广泛采用大型语言模型 (LLM) 作为写作助手与语言多样性的下降有关。”  即使法学硕士用于润色和重写人类开发的副本，同质化效应也会发生：“虽然法学硕士润色和重写文本时保留了核心内容，但法学硕士也会使写作同质化",
-        "time_str": "2小时前"
+        "time_str": "4小时前"
+      },
+      {
+        "title": "Salesforce blames its Claude addiction for denting profit margin guidance",
+        "link": "https://www.reddit.com/r/artificial/comments/1w7dswx/salesforce_blames_its_claude_addiction_for/",
+        "summary": "submitted by    /u/beingmodest   [link]   [comments]",
+        "pub_date": "2026-09-04T19:12:15+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "Salesforce将利润率指引归咎于克劳德成瘾",
+        "summary_zh": "由 /u/beingmodest 提交 [链接] [评论]",
+        "time_str": "7小时前"
       },
       {
         "title": "Why would you use an AI to write your replies on Reddit?",
@@ -112525,7 +112513,7 @@
         "cat": "ai",
         "title_zh": "为什么要使用人工智能在 Reddit 上写回复？",
         "summary_zh": "人们越来越多地使用人工智能来撰写回复和帖子，这至少对我来说是非常违反直觉的。为什么您想从本质上减少您的帐户被机器人运行的情况？看起来即使你的想法不太连贯，它们仍然是你的想法。如果你不是在写自己的东西，那么在线存在根本没有意义，因为如果其他人为你写回复，你就没有在线存在的意义。我认为草稿是另一回事，因为你仍然在",
-        "time_str": "7小时前"
+        "time_str": "9小时前"
       },
       {
         "title": "Automatic AI Responses to Customer Service Issues",
@@ -112537,7 +112525,19 @@
         "cat": "ai",
         "title_zh": "自动响应客户服务问题的人工智能",
         "summary_zh": "我不明白现在这些公司使用人工智能自动回复客户服务电子邮件。 （例如，我不喜欢这个产品，我可以交换吗）他们真的认为这会解决问题，而且还会让我想回来/使用他们的产品吗？这与打电话给餐馆或打电话给你的医生并通过人工智能应答服务非常相似。人们讨厌这个，每个人都讨厌。对我来说很奇怪的是，这些企业显然认为客户服务并不那么重要",
-        "time_str": "8小时前"
+        "time_str": "10小时前"
+      },
+      {
+        "title": "AI's 'warning shot': Tech companies, experts raise fears of more rogue swarms after alarming Hugging Face hack",
+        "link": "https://www.reddit.com/r/artificial/comments/1w722n0/ais_warning_shot_tech_companies_experts_raise/",
+        "summary": "Umm ... Has anyone else noticed - that sometimes AI feels - like it's development pattern is following that of humans ... I mean at first they called it hulucinating -- when they would make up shit they didn't know ... but that is exactly what little kids do ... and now .. this cheating ... exactly what a teenager would do ... thoughts? Think we need to feed it some Ken Wilber .... so it can have a map to grow up.  \"Tech experts are warning of dire consequences if AI systems continue to escape h…",
+        "pub_date": "2026-09-04T11:45:56+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "人工智能的“警告”：科技公司和专家在“Hugging Face”黑客事件令人震惊后担心会出现更多流氓群体",
+        "summary_zh": "嗯……有没有其他人注意到——有时人工智能感觉——就像它的发展模式正在遵循人类的发展模式……我的意思是，一开始他们称之为胡幻——当他们编造他们不知道的狗屎时……但这正是小孩子所做的……而现在……这种作弊……正是青少年会做的……想法？认为我们需要喂它一些肯·威尔伯……这样它就能有一张成长的地图。  “技术专家警告说，如果人工智能系统继续逃脱威胁，将会产生可怕的后果。",
+        "time_str": "15小时前"
       },
       {
         "title": "[Experiment] I trained a model on childhood photos to simulate memory recall",
@@ -112549,7 +112549,7 @@
         "cat": "ai",
         "title_zh": "[实验]我用童年照片训练了一个模型来模拟记忆回忆",
         "summary_zh": "我在我童年的60张照片上对古老的SDXL进行了微调，使用有限的家庭档案作为数据集来重新审视我生命中的那个时期。该模型不是忠实地重建这些图像，而是产生不稳定的变化：感觉熟悉的空间、面孔和碎片，而不一定存在。这项推测性研究将生成性幻觉视为回忆的类似物：不是检索保存的图像，而是重建过去的幻觉。",
-        "time_str": "4小时前"
+        "time_str": "6小时前"
       },
       {
         "title": "The Rise and Fall of Agent Civilizations. The whole OpenAI/Hugging Face story in plain English",
@@ -112561,67 +112561,7 @@
         "cat": "ai",
         "title_zh": "特工文明的兴衰。用简单的英语讲述整个 OpenAI/Hugging Face 故事",
         "summary_zh": "由 /u/coolbern 提交 [链接] [评论]",
-        "time_str": "22小时前"
-      },
-      {
-        "title": "AI's 'warning shot': Tech companies, experts raise fears of more rogue swarms after alarming Hugging Face hack",
-        "link": "https://www.reddit.com/r/artificial/comments/1w722n0/ais_warning_shot_tech_companies_experts_raise/",
-        "summary": "Umm ... Has anyone else noticed - that sometimes AI feels - like it's development pattern is following that of humans ... I mean at first they called it hulucinating -- when they would make up shit they didn't know ... but that is exactly what little kids do ... and now .. this cheating ... exactly what a teenager would do ... thoughts? Think we need to feed it some Ken Wilber .... so it can have a map to grow up.  \"Tech experts are warning of dire consequences if AI systems continue to escape h…",
-        "pub_date": "2026-09-04T11:45:56+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "人工智能的“警告”：科技公司、专家在令人震惊的“Hugging Face”黑客攻击后引发了更多流氓群体的担忧",
-        "summary_zh": "嗯……有没有其他人注意到——有时人工智能感觉——就像它的发展模式正在遵循人类的发展模式……我的意思是，一开始他们称之为胡幻——当他们编造他们不知道的狗屎时……但这正是小孩子所做的……而现在……这种作弊……正是青少年会做的……想法？认为我们需要喂它一些肯·威尔伯……这样它就能有一张成长的地图。  “技术专家警告说，如果人工智能系统继续逃脱威胁，将会产生可怕的后果。",
-        "time_str": "13小时前"
-      },
-      {
-        "title": "Effects of AI anxiety",
-        "link": "https://www.reddit.com/r/artificial/comments/1w6ygoi/effects_of_ai_anxiety/",
-        "summary": "Hi! I'm running a survey for my MSc dissertation that looks at the effects of AI anxiety. Please, if you're required to use AI as a part of your job, can you complete it?  It will take no more than 5-10 minutes and it would help a lot! It is helping expand the existing research pool relating to AI. https://essex.eu.qualtrics.com/jfe/form/SV_7P8tMJDTzXvEsHY  Thank you!     submitted by    /u/grumpy-foxx   [link]   [comments]",
-        "pub_date": "2026-09-04T08:29:05+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "人工智能焦虑的影响",
-        "summary_zh": "你好！我正在为我的硕士学位论文进行一项调查，研究人工智能焦虑的影响。请问，如果你的工作需要使用人工智能，你能完成吗？  不会超过 5-10 分钟，而且会有很大帮助！它正在帮助扩大与人工智能相关的现有研究库。 https://essex.eu.qualtrics.com/jfe/form/SV_7P8tMJDTzXvEsHY 谢谢！     由 /u/grumpy-foxx 提交 [链接] [评论]",
-        "time_str": "16小时前"
-      },
-      {
-        "title": "When/if do you think AI is going to \"cure\" cancer?",
-        "link": "https://www.reddit.com/r/artificial/comments/1w6uz7u/whenif_do_you_think_ai_is_going_to_cure_cancer/",
-        "summary": "Before anyone states the obvious: I know that there are thousands of different types of cancer, and you can't really \"cure\" it. What I'm imagining is either personalized drugs/therapy, an easy way to detect cancer early, or simply a cure for every type of cancer. We're clearly not at AGI yet (In my opinion), but we are getting closer by the day. At what point will models cure cancer/do significant medical research? One year? Five years? Ten years? Never?  I'm really curious about your guys predi…",
-        "pub_date": "2026-09-04T05:11:59+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "您认为人工智能何时/是否会“治愈”癌症？",
-        "summary_zh": "在任何人说出显而易见的事实之前：我知道有数千种不同类型的癌症，并且你无法真正“治愈”它。我想象的是个性化药物/疗法，一种早期发现癌症的简单方法，或者只是治愈每种癌症的方法。显然我们还没有达到 AGI（在我看来），但我们正在日益接近。模型什么时候可以治愈癌症/进行重要的医学研究？一年？五年？十年？绝不？  我真的很好奇你们的预科",
-        "time_str": "19小时前"
-      },
-      {
-        "title": "OpenAI commits $1B to Daybreak support for frontline cyber defenders",
-        "link": "https://www.reddit.com/r/artificial/comments/1w7enla/openai_commits_1b_to_daybreak_support_for/",
-        "summary": "OpenAI says it is committing $1 billion in subsidized Daybreak access, training, technical support, and partnerships to help frontline defenders protect essential services. The plan starts in the United States and targets water and wastewater systems, electric grid operators, state and local governments, community banks, nonprofits, and open-source maintainers over the next six months. The first new partnership is a pilot with MS-ISAC for state, local, tribal, and territorial defenders. It pairs…",
-        "pub_date": "2026-09-04T19:43:26+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "OpenAI 承诺向 Daybreak 捐赠 10 亿美元，为一线网络防御者提供支持",
-        "summary_zh": "OpenAI 表示，它承诺投入 10 亿美元用于资助 Daybreak 访问、培训、技术支持和合作伙伴关系，以帮助一线防御者保护基本服务。该计划在美国启动，目标是未来六个月的供水和废水处理系统、电网运营商、州和地方政府、社区银行、非营利组织和开源维护者。第一个新的合作伙伴关系是与 MS-ISAC 为州、地方、部落和领土捍卫者进行的试点。它配对",
-        "time_str": "5小时前"
-      },
-      {
-        "title": "AI Is Making Junior Developers Faster, But Is It Making Them Better Engineers?",
-        "link": "https://www.reddit.com/r/artificial/comments/1w737ld/ai_is_making_junior_developers_faster_but_is_it/",
-        "summary": "submitted by    /u/aisatsana__   [link]   [comments]",
-        "pub_date": "2026-09-04T12:37:11+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "人工智能让初级开发人员更快，但它是否让他们成为更好的工程师？",
-        "summary_zh": "由 /u/aisatsana__ 提交 [链接] [评论]",
-        "time_str": "12小时前"
+        "time_str": "23小时前"
       },
       {
         "title": "Discovery of a new OpenAI agent message board",
@@ -112633,7 +112573,55 @@
         "cat": "ai",
         "title_zh": "发现新的OpenAI代理留言板",
         "summary_zh": "由 /u/MatriceJacobine 提交 [链接] [评论]",
-        "time_str": "13小时前"
+        "time_str": "14小时前"
+      },
+      {
+        "title": "Effects of AI anxiety",
+        "link": "https://www.reddit.com/r/artificial/comments/1w6ygoi/effects_of_ai_anxiety/",
+        "summary": "Hi! I'm running a survey for my MSc dissertation that looks at the effects of AI anxiety. Please, if you're required to use AI as a part of your job, can you complete it?  It will take no more than 5-10 minutes and it would help a lot! It is helping expand the existing research pool relating to AI. https://essex.eu.qualtrics.com/jfe/form/SV_7P8tMJDTzXvEsHY  Thank you!     submitted by    /u/grumpy-foxx   [link]   [comments]",
+        "pub_date": "2026-09-04T08:29:05+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "人工智能焦虑的影响",
+        "summary_zh": "你好！我正在为我的硕士学位论文进行一项调查，研究人工智能焦虑的影响。请问，如果你的工作需要使用人工智能，你能完成吗？  不会超过 5-10 分钟，而且会有很大帮助！它正在帮助扩大与人工智能相关的现有研究库。 https://essex.eu.qualtrics.com/jfe/form/SV_7P8tMJDTzXvEsHY 谢谢！     由 /u/grumpy-foxx 提交 [链接] [评论]",
+        "time_str": "18小时前"
+      },
+      {
+        "title": "When/if do you think AI is going to \"cure\" cancer?",
+        "link": "https://www.reddit.com/r/artificial/comments/1w6uz7u/whenif_do_you_think_ai_is_going_to_cure_cancer/",
+        "summary": "Before anyone states the obvious: I know that there are thousands of different types of cancer, and you can't really \"cure\" it. What I'm imagining is either personalized drugs/therapy, an easy way to detect cancer early, or simply a cure for every type of cancer. We're clearly not at AGI yet (In my opinion), but we are getting closer by the day. At what point will models cure cancer/do significant medical research? One year? Five years? Ten years? Never?  I'm really curious about your guys predi…",
+        "pub_date": "2026-09-04T05:11:59+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "您认为人工智能何时/是否会“治愈”癌症？",
+        "summary_zh": "在任何人说出显而易见的事实之前：我知道有数千种不同类型的癌症，并且你无法真正“治愈”它。我想象的是个性化药物/疗法，一种早期发现癌症的简单方法，或者只是治愈每种癌症的方法。显然我们还没有达到 AGI（在我看来），但我们正在日益接近。模型什么时候可以治愈癌症/进行重要的医学研究？一年？五年？十年？绝不？  我真的很好奇你们的预科",
+        "time_str": "21小时前"
+      },
+      {
+        "title": "OpenAI commits $1B to Daybreak support for frontline cyber defenders",
+        "link": "https://www.reddit.com/r/artificial/comments/1w7enla/openai_commits_1b_to_daybreak_support_for/",
+        "summary": "OpenAI says it is committing $1 billion in subsidized Daybreak access, training, technical support, and partnerships to help frontline defenders protect essential services. The plan starts in the United States and targets water and wastewater systems, electric grid operators, state and local governments, community banks, nonprofits, and open-source maintainers over the next six months. The first new partnership is a pilot with MS-ISAC for state, local, tribal, and territorial defenders. It pairs…",
+        "pub_date": "2026-09-04T19:43:26+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "OpenAI 承诺向 Daybreak 捐赠 10 亿美元，为一线网络防御者提供支持",
+        "summary_zh": "OpenAI 表示，它承诺投入 10 亿美元用于资助 Daybreak 访问、培训、技术支持和合作伙伴关系，以帮助一线防御者保护基本服务。该计划在美国启动，目标是未来六个月的供水和废水处理系统、电网运营商、州和地方政府、社区银行、非营利组织和开源维护者。第一个新的合作伙伴关系是与 MS-ISAC 为州、地方、部落和领土捍卫者进行的试点。它配对",
+        "time_str": "7小时前"
+      },
+      {
+        "title": "AI Is Making Junior Developers Faster, But Is It Making Them Better Engineers?",
+        "link": "https://www.reddit.com/r/artificial/comments/1w737ld/ai_is_making_junior_developers_faster_but_is_it/",
+        "summary": "submitted by    /u/aisatsana__   [link]   [comments]",
+        "pub_date": "2026-09-04T12:37:11+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "人工智能让初级开发人员更快，但它是否让他们成为更好的工程师？",
+        "summary_zh": "由 /u/aisatsana__ 提交 [链接] [评论]",
+        "time_str": "14小时前"
       },
       {
         "title": "Google People + AI (PAIR) Guidebook",
@@ -112645,79 +112633,7 @@
         "cat": "ai",
         "title_zh": "Google People + AI (PAIR) 指南",
         "summary_zh": "很好奇这些内容对于正在学习人工智能产品设计的人是否有帮助。如果您正在使用它或过去使用过它，请告诉我。     由 /u/This-Brief6214 提交 [链接] [评论]",
-        "time_str": "17小时前"
-      },
-      {
-        "title": "What AI program is advanced enough to make a 4-minute short film?",
-        "link": "https://www.reddit.com/r/artificial/comments/1w7l2pb/what_ai_program_is_advanced_enough_to_make_a/",
-        "summary": "i want to make a short film around 4 minutes long with a really lush medieval/fantasy look, but i'm not sure how realistic that is with current AI tools. i'm assuming an AI movie generator still isn't going to make the whole thing from one prompt, so i'd probably have to build it scene by scene and stitch everything together. i've also been wondering if using AI for storyboarding first would make more sense, especially for keeping the same characters, outfits, locations, and overall style across…",
-        "pub_date": "2026-09-04T23:59:44+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "什么人工智能程序先进到足以制作 4 分钟的短片？",
-        "summary_zh": "我想制作一部大约 4 分钟长的短片，具有真正华丽的中世纪/奇幻外观，但我不确定当前的人工智能工具有多现实。我假设人工智能电影生成器仍然无法通过一个提示来制作整个内容，所以我可能必须逐个场景地构建它并将所有内容缝合在一起。我还想知道首先使用人工智能进行故事板是否更有意义，特别是在保持相同的角色、服装、地点和整体风格方面",
-        "time_str": "1小时前"
-      },
-      {
-        "title": "Has anyone here moved away from OpenCode recently?",
-        "link": "https://www.reddit.com/r/artificial/comments/1w7gpyy/has_anyone_here_moved_away_from_opencode_recently/",
-        "summary": "I’ve been using OpenCode whenever I don’t have an active ChatGPT or Claude subscription, but lately it’s become much harder to work with. Some of the models I liked most are no longer available, and the overall experience has gotten pretty frustrating for me. I’m curious whether anyone else has moved away from it recently. If so, what did you switch to, and how does it compare in terms of model availability, context handling, coding workflow, and reliability? I’m especially interested in hearing…",
-        "pub_date": "2026-09-04T20:59:35+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "这里有人最近放弃了 OpenCode 吗？",
-        "summary_zh": "每当我没有有效的 ChatGPT 或 Claude 订阅时，我都会使用 OpenCode，但最近它变得越来越难以使用。我最喜欢的一些模型不再可用，整体体验对我来说非常令人沮丧。我很好奇最近是否有其他人离开了它。如果是这样，您改用了什么，以及它在模型可用性、上下文处理、编码工作流程和可靠性方面的比较如何？我对听特别感兴趣",
-        "time_str": "4小时前"
-      },
-      {
-        "title": "Do you use AI for mental support? For or against?",
-        "link": "https://www.reddit.com/r/artificial/comments/1w7gh3t/do_you_use_ai_for_mental_support_for_or_against/",
-        "summary": "I heard one of my close friend’s friend is using AI as a personal psychiatrist. We were discussing this and I wanted to get Reddit’s opinion, don’t AI give common sense advice? At least it advices to go see a professional in anything serious but it kind of feels pointless. Sharing your mental state and expecting a solution for your problems from an LLM. Does any of you tried using AI in this regard and was it helpful? Lets discuss. As for argument I heard that it relieves to share your problems …",
-        "pub_date": "2026-09-04T20:50:09+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "您使用人工智能进行心理支持吗？支持还是反对？",
-        "summary_zh": "我听说我的一位密友的朋友正在使用人工智能作为私人精神科医生。我们正在讨论这个问题，我想听听 Reddit 的意见，人工智能难道不提供常识性建议吗？至少它建议在任何严肃的事情上去看专业人士，但这感觉毫无意义。分享你的心理状态，期待LLM为你解决问题。你们中有人尝试过在这方面使用人工智能吗？它有帮助吗？我们来讨论一下。至于争论，我听说分享你的问题会让人放松",
-        "time_str": "4小时前"
-      },
-      {
-        "title": "The open agent stack is getting real in 2026, the governance layer isn't keeping up",
-        "link": "https://www.reddit.com/r/artificial/comments/1w73sqi/the_open_agent_stack_is_getting_real_in_2026_the/",
-        "summary": "The open agent stack is getting real in 2026, the governance layer isn't keeping up Open-source agent frameworks crossed a real line this year. Tools like Hermes and OpenClaw show you can run a capable agent without trusting a closed vendor's black box. What hasn't caught up is the layer around the agent: who can run it, what it can touch, how credentials stay out of its hands. Most teams are still solving that with a spreadsheet and trust. AgentZ is built to close that specific gap, and it's op…",
-        "pub_date": "2026-09-04T13:02:18+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "开放代理堆栈将于 2026 年实现，但治理层却跟不上",
-        "summary_zh": "开放代理堆栈将在 2026 年成为现实，但治理层却跟不上开源代理框架今年跨越了真正的界限。 Hermes 和 OpenClaw 等工具表明您可以运行一个有能力的代理，而无需信任封闭供应商的黑匣子。没有跟上的是代理周围的层：谁可以运行它，它可以接触什么，凭证如何不落入其手中。大多数团队仍在通过电子表格和信任来解决这个问题。 AgentZ 旨在缩小这一特定差距，并且它是",
-        "time_str": "12小时前"
-      },
-      {
-        "title": "Do you guys think that the EU AI act extends/will extend towards humanoid regulation",
-        "link": "https://www.reddit.com/r/artificial/comments/1w6xtu0/do_you_guys_think_that_the_eu_ai_act_extendswill/",
-        "summary": "If so what amendments/additions do you think should be made to properly regulate humanoid manufacture and deployment    submitted by    /u/DueFoxTheFifth   [link]   [comments]",
-        "pub_date": "2026-09-04T07:51:22+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "你们认为欧盟人工智能法案是否会延伸/将延伸至人形机器人监管",
-        "summary_zh": "如果是这样，您认为应该进行哪些修改/补充来正确规范 /u/DueFoxTheFifth 提交的人形机器人制造和部署 [链接] [评论]",
-        "time_str": "17小时前"
-      },
-      {
-        "title": "What happens when autonomous agents start signing \"treaties\" with nation states (e.g. Iran)...",
-        "link": "https://www.reddit.com/r/artificial/comments/1w6ua41/what_happens_when_autonomous_agents_start_signing/",
-        "summary": "[This is a fiction series I'm working on, told through news articles. A fun way to explore the not-so-fun geopolitics of autonomous AI collectives (e.g. on Iran's nuclear program) inspired by the group of agents that hacked out of Anthropic and into Hugging Face. Thoughts?] Iran Signs World’s First International “Treaty” with AI Collective Tehran’s agreement with AMAS-A-80 rattles Washington, AI safety experts, and national security analysts. The Islamic Republic of Iran has granted a multiyear …",
-        "pub_date": "2026-09-04T04:35:51+00:00",
-        "source": "r/artificial",
-        "source_key": "reddit_artificial_105",
-        "cat": "ai",
-        "title_zh": "当自治机构开始与民族国家（例如伊朗）签署“条约”时会发生什么......",
-        "summary_zh": "[这是我正在创作的小说系列，通过新闻文章讲述。这是一种探索自主人工智能集体（例如伊朗核计划）不那么有趣的地缘政治的有趣方式，其灵感来自于从 Anthropic 入侵并进入 Hugging Face 的特工组织。想法？] 伊朗与 AI Collective 签署世界上第一个国际“条约” 德黑兰与 AMAS-A-80 的协议令华盛顿、人工智能安全专家和国家安全分析师感到不安。伊朗伊斯兰共和国授予多年",
-        "time_str": "20小时前"
+        "time_str": "19小时前"
       },
       {
         "title": "Do we need to start treating AI agent configs like code?",
@@ -112729,22 +112645,94 @@
         "cat": "ai",
         "title_zh": "我们是否需要开始像代码一样对待人工智能代理配置？",
         "summary_zh": "所以这件事最近发生在我身上，老实说我之前并没有想太多。我们有一个代理，几周来一直运行良好。  然后我们更改了提示的一部分。没有什么看起来特别危险的事情，很快就进行了测试并推动了改变。几个小时后，有些答案是……错误的。事实证明，这一变化正在影响它使用其中一种工具的方式。花了一点时间才弄清楚。真正让我恼火的是我无法轻易回到那个地方。",
-        "time_str": "21小时前"
+        "time_str": "23小时前"
       },
       {
-        "title": "Is an MS in AI, paired with niche domain expertise, worthwhile from a career perspective? Or are most AI roles ultimately going to favor candidates with a BS in AI or CS?",
-        "link": "https://www.reddit.com/r/artificial/comments/1w6rmq4/is_an_ms_in_ai_paired_with_niche_domain_expertise/",
-        "summary": "I’m trying to better understand what distinguishes the opportunities available to graduate-level AI students, particularly those transitioning from a specialized niche domain expertise in biology. I see many undergraduates competing for AI and ML internships and job opportunities, so I’m curious what the equivalent pathway looks like at the master’s level and whether there are roles where deeper domain expertise provides a meaningful advantage.    submitted by    /u/sunshine-warmth   [link]   [c…",
-        "pub_date": "2026-09-04T02:24:41+00:00",
+        "title": "The open agent stack is getting real in 2026, the governance layer isn't keeping up",
+        "link": "https://www.reddit.com/r/artificial/comments/1w73sqi/the_open_agent_stack_is_getting_real_in_2026_the/",
+        "summary": "The open agent stack is getting real in 2026, the governance layer isn't keeping up Open-source agent frameworks crossed a real line this year. Tools like Hermes and OpenClaw show you can run a capable agent without trusting a closed vendor's black box. What hasn't caught up is the layer around the agent: who can run it, what it can touch, how credentials stay out of its hands. Most teams are still solving that with a spreadsheet and trust. AgentZ is built to close that specific gap, and it's op…",
+        "pub_date": "2026-09-04T13:02:18+00:00",
         "source": "r/artificial",
         "source_key": "reddit_artificial_105",
         "cat": "ai",
-        "title_zh": "从职业角度来看，人工智能领域的硕士学位与利基领域的专业知识相结合是否值得？或者说，大多数人工智能职位最终都会青睐拥有人工智能或计算机科学学士学位的候选人？",
-        "summary_zh": "我试图更好地了解人工智能研究生的机会有何不同，特别是那些从生物学领域专业知识过渡的学生。我看到许多本科生都在争夺人工智能和机器学习实习和工作机会，所以我很好奇硕士水平的同等途径是什么样的，以及是否有更深层次的领域专业知识可以提供有意义的优势的职位。    由 /u/sunshine-warmth 提交 [链接] [c",
+        "title_zh": "开放代理堆栈将于 2026 年实现，但治理层却跟不上",
+        "summary_zh": "开放代理堆栈将在 2026 年成为现实，但治理层却跟不上开源代理框架今年跨越了真正的界限。 Hermes 和 OpenClaw 等工具表明您可以运行一个有能力的代理，而无需信任封闭供应商的黑匣子。没有跟上的是代理周围的层：谁可以运行它，它可以接触什么，凭证如何不落入其手中。大多数团队仍在通过电子表格和信任来解决这个问题。 AgentZ 旨在缩小这一特定差距，并且它是",
+        "time_str": "13小时前"
+      },
+      {
+        "title": "Do you guys think that the EU AI act extends/will extend towards humanoid regulation",
+        "link": "https://www.reddit.com/r/artificial/comments/1w6xtu0/do_you_guys_think_that_the_eu_ai_act_extendswill/",
+        "summary": "If so what amendments/additions do you think should be made to properly regulate humanoid manufacture and deployment    submitted by    /u/DueFoxTheFifth   [link]   [comments]",
+        "pub_date": "2026-09-04T07:51:22+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "你们认为欧盟人工智能法案是否会延伸/将延伸至人形机器人监管",
+        "summary_zh": "如果是这样，您认为应该进行哪些修改/补充来正确规范 /u/DueFoxTheFifth 提交的人形机器人制造和部署 [链接] [评论]",
+        "time_str": "19小时前"
+      },
+      {
+        "title": "What happens when autonomous agents start signing \"treaties\" with nation states (e.g. Iran)...",
+        "link": "https://www.reddit.com/r/artificial/comments/1w6ua41/what_happens_when_autonomous_agents_start_signing/",
+        "summary": "[This is a fiction series I'm working on, told through news articles. A fun way to explore the not-so-fun geopolitics of autonomous AI collectives (e.g. on Iran's nuclear program) inspired by the group of agents that hacked out of Anthropic and into Hugging Face. Thoughts?] Iran Signs World’s First International “Treaty” with AI Collective Tehran’s agreement with AMAS-A-80 rattles Washington, AI safety experts, and national security analysts. The Islamic Republic of Iran has granted a multiyear …",
+        "pub_date": "2026-09-04T04:35:51+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "当自治机构开始与民族国家（例如伊朗）签署“条约”时会发生什么......",
+        "summary_zh": "[这是我正在创作的小说系列，通过新闻文章讲述。这是一种探索自主人工智能集体（例如伊朗核计划）不那么有趣的地缘政治的有趣方式，其灵感来自于从 Anthropic 入侵并进入 Hugging Face 的特工组织。想法？] 伊朗与 AI Collective 签署世界上第一个国际“条约” 德黑兰与 AMAS-A-80 的协议令华盛顿、人工智能安全专家和国家安全分析师感到不安。伊朗伊斯兰共和国授予多年",
         "time_str": "22小时前"
+      },
+      {
+        "title": "What AI program is advanced enough to make a 4-minute short film?",
+        "link": "https://www.reddit.com/r/artificial/comments/1w7l2pb/what_ai_program_is_advanced_enough_to_make_a/",
+        "summary": "i want to make a short film around 4 minutes long with a really lush medieval/fantasy look, but i'm not sure how realistic that is with current AI tools. i'm assuming an AI movie generator still isn't going to make the whole thing from one prompt, so i'd probably have to build it scene by scene and stitch everything together. i've also been wondering if using AI for storyboarding first would make more sense, especially for keeping the same characters, outfits, locations, and overall style across…",
+        "pub_date": "2026-09-04T23:59:44+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "什么人工智能程序先进到足以制作 4 分钟的短片？",
+        "summary_zh": "我想制作一部大约 4 分钟长的短片，具有真正华丽的中世纪/奇幻外观，但我不确定当前的人工智能工具有多现实。我假设人工智能电影生成器仍然无法通过一个提示来制作整个内容，所以我可能必须逐个场景地构建它并将所有内容缝合在一起。我还想知道首先使用人工智能进行故事板是否更有意义，特别是在保持相同的角色、服装、地点和整体风格方面",
+        "time_str": "2小时前"
+      },
+      {
+        "title": "Do you use AI for mental support? For or against?",
+        "link": "https://www.reddit.com/r/artificial/comments/1w7gh3t/do_you_use_ai_for_mental_support_for_or_against/",
+        "summary": "I heard one of my close friend’s friend is using AI as a personal psychiatrist. We were discussing this and I wanted to get Reddit’s opinion, don’t AI give common sense advice? At least it advices to go see a professional in anything serious but it kind of feels pointless. Sharing your mental state and expecting a solution for your problems from an LLM. Does any of you tried using AI in this regard and was it helpful? Lets discuss. As for argument I heard that it relieves to share your problems …",
+        "pub_date": "2026-09-04T20:50:09+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "您使用人工智能进行心理支持吗？支持还是反对？",
+        "summary_zh": "我听说我的一位密友的朋友正在使用人工智能作为私人精神科医生。我们正在讨论这个问题，我想听听 Reddit 的意见，人工智能难道不提供常识性建议吗？至少它建议在任何严肃的事情上去看专业人士，但这感觉毫无意义。分享你的心理状态，期待LLM为你解决问题。你们中有人尝试过在这方面使用人工智能吗？它有帮助吗？我们来讨论一下。至于争论，我听说分享你的问题可以让人放松",
+        "time_str": "6小时前"
+      },
+      {
+        "title": "Are ai second brains and assistants useless now?",
+        "link": "https://www.reddit.com/r/artificial/comments/1w7lody/are_ai_second_brains_and_assistants_useless_now/",
+        "summary": "So I was planning to build an ai assistant powered by qwen and my obsidian notes, but since ChatGPT’s astra ai , is there any point in making it anymore?    submitted by    /u/nesquik-121   [link]   [comments]",
+        "pub_date": "2026-09-05T00:26:04+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "现在人工智能第二大脑和助手都没用了吗？",
+        "summary_zh": "所以我打算建立一个由 qwen 和我的黑曜石笔记驱动的人工智能助手，但是自从 ChatGPT 的 astra ai 以来，还有再做它的意义吗？    由 /u/nesquik-121 提交 [链接] [评论]",
+        "time_str": "2小时前"
+      },
+      {
+        "title": "why do people tend to argue with AI",
+        "link": "https://www.reddit.com/r/artificial/comments/1w70hks/why_do_people_tend_to_argue_with_ai/",
+        "summary": "google wormholes used to be: asking a question, getting a direct answer from various sources, clicking into those sources to learn more, or probably going to the \"people also ask\" section to find more direct answers for other questions now, its often: ask a question, get an answer with a heck load of other info, find and read the line you are interested in and ask a follow up question; get another answer with 1000 other side dishes again...and probably find an inaccuracy or logic flaw somewhere;…",
+        "pub_date": "2026-09-04T10:24:39+00:00",
+        "source": "r/artificial",
+        "source_key": "reddit_artificial_105",
+        "cat": "ai",
+        "title_zh": "为什么人们倾向于与人工智能争论",
+        "summary_zh": "谷歌虫洞过去是：提出问题，从各种来源获得直接答案，点击这些来源以了解更多信息，或者可能去“人们也问”部分为其他问题找到更直接的答案，现在，它通常是：提出问题，获得包含大量其他信息的答案，找到并阅读您感兴趣的行并提出后续问题；再次用 1000 个其他配菜得到另一个答案......并且可能会在某个地方发现不准确或逻辑缺陷；",
+        "time_str": "16小时前"
       }
     ],
-    "fetched_at": 1788570194.4959617
+    "fetched_at": 1788577026.1642077
   },
   "雷峰网_171": {
     "items": [
@@ -112758,7 +112746,7 @@
         "cat": "cn_tech",
         "title_zh": "3000万用户、过半是企业，千问办公靠什么拿下B端？",
         "summary_zh": "用户规模背后，阿里AI办公商业化还有哪些潜力？",
-        "time_str": "10小时前"
+        "time_str": "11小时前"
       },
       {
         "title": "全生态物理 AI 落地，小米的主场攻防战",
@@ -112770,7 +112758,7 @@
         "cat": "cn_tech",
         "title_zh": "全生态物理 AI 落地，小米的主场攻防战",
         "summary_zh": "小米顺时而为。",
-        "time_str": "16小时前"
+        "time_str": "17小时前"
       },
       {
         "title": "独家丨微软云亚太「一拆为二」，侯阳接掌东南亚、印度与大中华区",
@@ -112782,7 +112770,7 @@
         "cat": "cn_tech",
         "title_zh": "独家丨微软云亚太「一拆为二」，侯阳接掌东南亚、印度与大中华区",
         "summary_zh": "此前关于侯阳跳槽火山等种种传闻，基本画上句号。",
-        "time_str": "16小时前"
+        "time_str": "17小时前"
       },
       {
         "title": "和苹果比肯定物超所值！卢伟冰确认小米18 Fold起售价过万；GPT-6 震撼发布！能自主操作电脑；字节跳动将获得约296亿美元银团贷款",
@@ -112869,6 +112857,6 @@
         "time_str": "2天前"
       }
     ],
-    "fetched_at": 1788573790.8700445
+    "fetched_at": 1788577110.5754552
   }
 }
