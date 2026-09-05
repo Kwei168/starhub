@@ -86,6 +86,40 @@ function stripHtml(text) {
     .trim();
 }
 
+const SAFE_TAGS = new Set(['p','br','img','a','b','i','em','strong','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','figure','figcaption','table','tr','td','th','thead','tbody','span','div','hr','sup','sub','dl','dt','dd']);
+
+function sanitizeHtml(text) {
+  if (!text) return '';
+  text = text
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<!\[CDATA\[/g, '')
+    .replace(/\]\]>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  text = text.replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '');
+  text = text.replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '');
+  text = text.replace(/<[^>]+>/g, (match) => {
+    const m = match.match(/^<\/?(\w[\w-]*)/);
+    if (!m) return '';
+    const tag = m[1].toLowerCase();
+    if (!SAFE_TAGS.has(tag)) return '';
+    const attrs = [];
+    const attrRe = /([\w-]+)\s*=\s*"([^"]*)"/g;
+    let am;
+    while ((am = attrRe.exec(match)) !== null) {
+      if (/^on/i.test(am[1])) continue;
+      if (am[1].toLowerCase() === 'href' && am[2].trim().toLowerCase().startsWith('javascript:')) continue;
+      attrs.push(am[1] + '="' + am[2] + '"');
+    }
+    const isClose = match.startsWith('</');
+    if (attrs.length) return '<' + (isClose ? '/' : '') + tag + ' ' + attrs.join(' ') + '>';
+    return isClose ? '</' + tag + '>' : '<' + tag + '>';
+  });
+  return text.trim();
+}
+
 function truncate(text, maxLen) {
   if (!text) return '';
   text = text.trim();
@@ -122,15 +156,21 @@ function parseFeed(xml, sourceKey, maxItems) {
   for (const item of rssItems.slice(0, maxItems)) {
     const title = extractTag(item, 'title');
     const link = extractTag(item, 'link');
-    const desc = extractTag(item, 'description') || extractTag(item, 'content:encoded');
+    const desc = extractTag(item, 'description') || '';
+    const contentEncoded = extractTag(item, 'content:encoded') || '';
+    const fullContent = contentEncoded.length > desc.length ? contentEncoded : '';
     const pubDate = extractTag(item, 'pubDate') || extractTag(item, 'dc:date');
     if (title) {
-      items.push({
+      const result = {
         title: stripHtml(title),
         link: link || '#',
-        summary: truncate(stripHtml(desc), 200),
+        summary: truncate(stripHtml(desc || contentEncoded), 200),
         pub_date: pubDate || new Date().toISOString(),
-      });
+      };
+      if (fullContent) {
+        result.fullContent = sanitizeHtml(fullContent).slice(0, 50000);
+      }
+      items.push(result);
     }
   }
   return items;
@@ -156,12 +196,16 @@ async function fetchOne(source) {
     
     // 成功：更新滚动缓存
     const cached = {
-      items: items.map(it => ({
-        t: it.title,
-        u: it.link,
-        s: it.summary,
-        d: it.pub_date,
-      })),
+      items: items.map(it => {
+        const obj = {
+          t: it.title,
+          u: it.link,
+          s: it.summary,
+          d: it.pub_date,
+        };
+        if (it.fullContent) obj.fc = it.fullContent;
+        return obj;
+      }),
       lastModified: new Date().toUTCString(),
     };
     rollingCache.set(source.key, cached);
