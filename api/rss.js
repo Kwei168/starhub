@@ -411,8 +411,17 @@ export default async function handler(req, res) {
     // 更新完整响应缓存
     fullCache = { t: now, v: response };
 
+    const liveItemCount = t1Results.reduce((n, s) => n + (s.items || []).length, 0);
+    const snapItemCount = mergedSources.reduce((n, s) => n + (s.items || []).length, 0);
+    console.log(`[rss] Refresh merge: T1 live=${liveItemCount} items from ${t1Sources.length} sources, total merged=${snapItemCount} items`);
+
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    if(isRefresh) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('X-RSS-Refresh', '1');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+    }
     res.setHeader('X-RSS-Cache', 'miss');
     return res.status(200).json(response);
   } catch (err) {

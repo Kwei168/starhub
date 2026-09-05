@@ -109,6 +109,7 @@ def _accumulate_history(sources_with_items):
 
     # 合并新文章（按 link 去重，新数据覆盖旧数据）
     new_count = 0
+    genuinely_new = 0  # 真正新增的链接（非覆盖）
     for src in sources_with_items:
         for it in src.get("items", []):
             link = it.get("link", "")
@@ -128,6 +129,8 @@ def _accumulate_history(sources_with_items):
                     pass  # 保持默认当前时间
             if pd_bj < cutoff:
                 continue  # 过期文章跳过
+            if link not in _rss_history:
+                genuinely_new += 1
             _rss_history[link] = {
                 "link": link,
                 "source": src["name"], "source_key": src["key"],
@@ -136,6 +139,7 @@ def _accumulate_history(sources_with_items):
                 "summary": it.get("summary", ""), "summary_zh": it.get("summary_zh", ""),
                 "full_content": it.get("full_content", ""),
                 "pub_date": pd_str,
+                "first_seen": _rss_history.get(link, {}).get("first_seen", now_bj.replace(tzinfo=None).isoformat()),
             }
             new_count += 1
 
@@ -177,8 +181,8 @@ def _accumulate_history(sources_with_items):
     result = list(src_map.values())
     total = sum(len(s["items"]) for s in result)
     pruned = before - len(_rss_history)
-    print("[历史] 合并 %d 篇新文，裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
-        new_count, pruned, len(_rss_history), RSS_HISTORY_HOURS))
+    print("[历史] 合并 %d 篇新文（其中 %d 篇为新增链接，%d 篇为覆盖更新），裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
+        new_count, genuinely_new, new_count - genuinely_new, pruned, len(_rss_history), RSS_HISTORY_HOURS))
     return result, total
 
 
@@ -962,6 +966,7 @@ RSS_SOURCES = [
 
 # 分类标签
 CATEGORY_LABELS = {
+    "wechat": "公众号",
     "ai":      "AI 日报",
     "tech":    "科技资讯",
     "cn_tech": "中文科技",
@@ -970,6 +975,14 @@ CATEGORY_LABELS = {
     "podcast": "播客",
     "youtube": "YouTube",
 }
+
+# 分类排序（公众号置顶）
+CATEGORY_ORDER = ["wechat", "ai", "tech", "cn_tech", "dev", "news", "podcast", "youtube"]
+
+# ── 公众号信源自动归类：wechat2rss URL → cat=wechat ──
+for _s in RSS_SOURCES:
+    if "wechat2rss" in _s.get("url", ""):
+        _s["cat"] = "wechat"
 
 ITEMS_PER_SOURCE = 30
 FETCH_TIMEOUT = 8
@@ -1413,6 +1426,8 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 .global-search .sx:hover { background:var(--line-strong); color:var(--ink); }
 .global-search.has-q .sx { display:flex; }
 .global-search.has-q input { border-color:var(--brand-line); background:var(--brand-weak); }
+.global-search.src-hit input { border-color:var(--brand-strong); background:var(--brand-weak); box-shadow:0 0 0 2px var(--brand-weak); }
+.global-search.src-hit::after { content:'\u2316'; position:absolute; left:-2px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--brand-strong); pointer-events:none; }
 
 /* ── Card wall ── */
 .wall-wrap { max-width:1560px; margin:0 auto; padding:14px 20px 60px; }
@@ -1669,7 +1684,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var CAT_LABELS = """ + cat_labels_json + """;
 
   /* ── Data ── */
-  var CAT_ORDER = ['ai','tech','cn_tech','dev','news','podcast','youtube'];
+  var CAT_ORDER = """ + json.dumps(CATEGORY_ORDER, ensure_ascii=False) + """;
   var ART = [];
   SOURCES.forEach(function(s){
     s.items.forEach(function(it){
@@ -1818,6 +1833,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Card wall ── */
   var globalSearch = '';
+  var _searchSrcMatch = null; // 搜索匹配到的信源 key
   function visibleArts(){
     var q = globalSearch;
     return ART.filter(function(a){
@@ -1825,7 +1841,10 @@ def _build_js(sources_with_items, build_ts_ms=0):
       if(filter.type==='src' && a.sk!==filter.src) return false;
       if(filter.filterBm && !_bookmarks[artKey(a)]) return false;
       if(filter.unreadOnly && visited[artKey(a)]) return false;
-      if(q) { var ql=q.toLowerCase(); return (a.t||'').toLowerCase().indexOf(ql)>=0 || (a.s||'').toLowerCase().indexOf(ql)>=0; }
+      if(q) {
+        if(_searchSrcMatch) return a.sk === _searchSrcMatch;
+        var ql=q.toLowerCase(); return (a.t||'').toLowerCase().indexOf(ql)>=0 || (a.s||'').toLowerCase().indexOf(ql)>=0 || (a.src||'').toLowerCase().indexOf(ql)>=0;
+      }
       return true;
     });
   }
@@ -1902,14 +1921,17 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
     if(!list.length){
-      var em=globalSearch?'\u672a\u627e\u5230\u4e0e\u300c'+esc(globalSearch)+'\u300d\u76f8\u5173\u7684\u6587\u7ae0':(filter.filterBm?'\u6682\u65e0\u6536\u85cf\u6587\u7ae0':(filter.unreadOnly?'\u6240\u6709\u6587\u7ae0\u5df2\u8bfb':'\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0'));
+      var em=globalSearch?(_searchSrcMatch?'\u4fe1\u6e90 \u00ab'+esc(SRC_OBJ(_searchSrcMatch)?SRC_OBJ(_searchSrcMatch).name:globalSearch)+'\u00ab \u6682\u65e0\u6587\u7ae0':'\u672a\u627e\u5230\u4e0e\u300c'+esc(globalSearch)+'\u300d\u76f8\u5173\u7684\u6587\u7ae0'):(filter.filterBm?'\u6682\u65e0\u6536\u85cf\u6587\u7ae0':(filter.unreadOnly?'\u6240\u6709\u6587\u7ae0\u5df2\u8bfb':'\u8be5\u7b5b\u9009\u4e0b\u6ca1\u6709\u6587\u7ae0')));
       wall.innerHTML='<div class="empty-hint">'+em+'</div>';
       wallLimit=0;
       return;
     }
     var end=Math.min(wallLimit, list.length);
     var h='';
-    if(globalSearch) h+='<div class="search-banner">\u641c\u7d22 \u00ab'+esc(globalSearch)+'\u00bb \u2014 \u547d\u4e2d '+list.length+' \u7bc7</div>';
+    if(globalSearch) {
+      var bannerTxt = _searchSrcMatch ? '\u4fe1\u6e90 \u00ab' + esc(SRC_OBJ(_searchSrcMatch)?SRC_OBJ(_searchSrcMatch).name:globalSearch) + '\u00bb \u2014 ' + list.length + ' \u7bc7' : '\u641c\u7d22 \u00ab' + esc(globalSearch) + '\u00bb \u2014 \u547d\u4e2d ' + list.length + ' \u7bc7';
+      h += '<div class="search-banner">' + bannerTxt + '</div>';
+    }
     for(var i=0;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
@@ -2178,7 +2200,18 @@ def _build_js(sources_with_items, build_ts_ms=0):
   if(gsInput) {
     gsInput.addEventListener('input', function(){
       globalSearch = this.value.trim();
+      _searchSrcMatch = null;
+      if(globalSearch.length >= 1) {
+        var ql = globalSearch.toLowerCase();
+        var matched = SOURCES.filter(function(s){ return s.name.toLowerCase().indexOf(ql) >= 0; });
+        if(matched.length === 1) _searchSrcMatch = matched[0].key;
+        else if(matched.length > 1 && matched.length <= 5) {
+          var exact = matched.find(function(s){ return s.name.toLowerCase() === ql; });
+          if(exact) _searchSrcMatch = exact.key;
+        }
+      }
       gsWrap.classList.toggle('has-q', globalSearch.length > 0);
+      gsWrap.classList.toggle('src-hit', !!_searchSrcMatch);
       curArt = null; wallLimit = WALL_STEP;
       renderWall(); updateMeta();
     });
@@ -2186,7 +2219,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
   if(gsClear) {
     gsClear.addEventListener('click', function(){
       gsInput.value = ''; globalSearch = '';
-      gsWrap.classList.remove('has-q');
+      _searchSrcMatch = null;
+      gsWrap.classList.remove('has-q', 'src-hit');
       curArt = null; wallLimit = WALL_STEP;
       renderWall(); updateMeta(); gsInput.focus();
     });
@@ -2525,11 +2559,61 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }).catch(function(){toast('\u590d\u5236\u5931\u8d25');});
   }
 
+  function copyFullHtml(){
+    var a = curArt;
+    if(!a){ toast('\u8bf7\u5148\u6253\u5f00\u6587\u7ae0'); return; }
+    var ftEl = document.querySelector('.r2-fulltext');
+    var contentHtml = '';
+    if(ftEl){ contentHtml = ftEl.innerHTML; }
+    else if(a.fc && a.fc.length > 100){ contentHtml = a.fc; }
+    else if(_articleCache[a.u] && _articleCache[a.u].ok){ contentHtml = _articleCache[a.u].content; }
+    var srcName = esc(a.src||'');
+    var catLabel = CAT_LABELS[a.c]||a.c;
+    var fullHtml = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+      + '<title>' + esc(a.t) + ' \u00b7 StarHub</title>'
+      + '<style>'
+      + 'body{max-width:720px;margin:40px auto;padding:0 20px;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans SC",sans-serif;line-height:1.8;color:#1c1917;background:#fafaf9;}'
+      + '.meta{display:flex;align-items:center;gap:8px;font-size:13px;color:#78716c;margin-bottom:24px;flex-wrap:wrap;}'
+      + '.meta .cat{color:#2563eb;font-weight:600;}'
+      + '.meta .dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:' + (a.sc||'#78716c') + ';}'
+      + 'h1{font-size:28px;font-weight:900;line-height:1.3;margin:0 0 16px;}'
+      + 'img{max-width:100%;height:auto;border-radius:8px;margin:16px 0;}'
+      + 'p{margin:0 0 16px;}a{color:#2563eb;}blockquote{border-left:3px solid #d6d3d1;padding-left:16px;color:#57534e;margin:16px 0;}'
+      + 'pre{background:#f5f5f4;padding:16px;border-radius:8px;overflow-x:auto;font-size:13px;}'
+      + 'code{background:#f5f5f4;padding:2px 6px;border-radius:4px;font-size:13px;}'
+      + '.footer{margin-top:40px;padding-top:20px;border-top:1px solid #e7e5e4;font-size:12px;color:#a8a29e;}'
+      + '.footer a{color:#78716c;text-decoration:none;}'
+      + '</style></head><body>'
+      + '<h1>' + esc(a.t) + '</h1>'
+      + '<div class="meta"><span class="cat">' + catLabel + '</span>'
+      + '<span class="dot"></span><span>' + srcName + '</span>'
+      + '<span>\u00b7</span><span>' + esc(a.time) + '</span></div>';
+    if(contentHtml){ fullHtml += '<div class="content">' + contentHtml + '</div>'; }
+    else if(a.s){ fullHtml += '<div class="content"><p>' + esc(a.s) + '</p></div>'; }
+    fullHtml += '<div class="footer">\u6765\u6e90\uff1a<a href="' + esc(a.u) + '" target="_blank">' + srcName + ' \u2197</a> \u00b7 StarHub RSS \u805a\u5408</div>'
+      + '</body></html>';
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(fullHtml).then(function(){
+        toast('\u5168\u6587 HTML \u5df2\u590d\u5236\u5230\u526a\u8d34\u677f');
+      }).catch(function(){ _fallbackCopy(fullHtml); });
+    } else { _fallbackCopy(fullHtml); }
+  }
+  function _fallbackCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('\u5168\u6587 HTML \u5df2\u590d\u5236'); }
+    catch(e){ toast('\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u590d\u5236'); }
+    document.body.removeChild(ta);
+  }
+
   window.shareArticle=shareArticle;
   window.r2ShareClick=function(){ shareArticle(curArt,null,document.querySelector('.r2-share-btn')); };
   window.closeShareModal=closeShareModal;
   window.saveShareImage=saveShareImage;
   window.copyShareImage=copyShareImage;
+  window.copyFullHtml=copyFullHtml;
   window.toast=toast;
 
 })();
@@ -2586,6 +2670,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="share-actions">\n'
         '<button class="btn-share-save" id="btnShareSave" onclick="saveShareImage()">保存图片</button>\n'
         '<button class="btn-share-copy" id="btnShareCopy" onclick="copyShareImage()">复制图片</button>\n'
+        '<button class="btn-share-html" id="btnShareHtml" onclick="copyFullHtml()" style="margin-left:6px;padding:8px 22px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;transition:all .15s;font-family:var(--body);">复制全文HTML</button>\n'
         '</div>\n'
         '</div>\n'
         '</div>\n'
