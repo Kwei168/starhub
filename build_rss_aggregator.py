@@ -1770,27 +1770,12 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .ai-feed-btn.on{background:var(--brand-strong);color:#fff;}
 .ai-feed-btn svg{width:13px;height:13px;}
 
-/* ── BestBlogs toggle (toolbar) ── */
-.bb-toggle{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--muted);transition:all .15s;cursor:pointer;}
-.bb-toggle:hover{border-color:var(--brand-line);color:var(--brand-strong);background:var(--brand-weak);}
-.bb-toggle.on{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand-strong);}
-.bb-toggle .cnt{font-family:var(--mono);font-size:10px;opacity:.8;}
-.bb-sub-chips{display:none;align-items:center;gap:4px;margin-left:4px;}
-.bb-sub-chips.show{display:inline-flex;}
-.bb-sub{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;transition:all .15s;}
-.bb-sub:hover{border-color:var(--brand-line);color:var(--brand-strong);}
-.bb-sub.on{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand-strong);font-weight:600;}
-
 /* ── AI Feed panel (right side drawer) ── */
 .ai-feed-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--card);border-left:1px solid var(--line);transform:translateX(103%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;box-shadow:-18px 0 50px rgba(0,0,0,.12);}
 body.ai-open .ai-feed-panel{transform:none;}
 body.ai-open .scrim{opacity:1;pointer-events:auto;}
 .af-head{flex:none;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
 .af-head h2{font-family:var(--display);font-size:15px;font-weight:900;flex:1;}
-.af-tabs{display:flex;gap:0;padding:0 16px;border-bottom:1px solid var(--line);}
-.af-tab{padding:8px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:0;border-left:0;border-right:0;font-family:var(--body);}
-.af-tab:hover{color:var(--ink);}
-.af-tab.on{color:var(--brand-strong);border-bottom-color:var(--brand-strong);}
 .af-close{width:26px;height:26px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .15s;flex:none;}
 .af-close:hover{border-color:var(--line-strong);color:var(--ink);}
 .af-close svg{width:12px;height:12px;}
@@ -3082,10 +3067,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
   var AGIHUNT_API = 'https://starhub-refresh.vercel.app/api/agihunt';
   var AIHOT_CATS = {industry:['\u884c\u4e1a','#2f5d8a'],paper:['\u8bba\u6587','#7052c9'],product:['\u4ea7\u54c1','#b06a10'],tip:['\u6280\u5de7','#2e7d5f'],agi:['AGI','#c2434d']};
-  var afTab = 'aihot';   // 当前标签：aihot | agihunt
-  var afLoaded = {aihot:false, agihunt:false};
-  var aihotItems = [], aihotCursor = '', aihotFilter = 'all';
-  var agihuntItems = [], agihuntChannel = 'models', agihuntSort = 'hot';
+  var afLoaded = false;
+  var afItems = [], afCursor = '', afFilter = 'all';
   var AGIHUNT_CHANNELS = [
     ['models','\u6a21\u578b'],['research','\u7814\u7a76'],['coding-agents','\u7f16\u7a0b&Agent'],
     ['products','\u5e94\u7528'],['multimodal','\u591a\u6a21\u6001'],['infra','Infra'],
@@ -3100,222 +3083,143 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function toggleAiFeed(){
     var open = document.body.classList.toggle('ai-open');
     document.getElementById('btnAiFeed').classList.toggle('on', open);
-    if(open && !afLoaded[afTab]) _loadAfTab();
+    if(open && !afLoaded) _loadAll();
   }
   window.toggleAiFeed = toggleAiFeed;
 
-  // 标签切换
-  (function(){
-    var tabs = document.querySelectorAll('.af-tab');
-    tabs.forEach(function(tab){
-      tab.addEventListener('click', function(){
-        tabs.forEach(function(t){ t.classList.remove('on'); });
-        tab.classList.add('on');
-        afTab = tab.getAttribute('data-tab');
-        if(!afLoaded[afTab]) _loadAfTab();
-        else _renderAfTab();
-      });
-    });
-  })();
 
-  function _loadAfTab(){
-    if(afTab === 'aihot') _loadAihot();
-    else if(afTab === 'agihunt') _loadAgihunt();
-  }
-  function _renderAfTab(){
-    if(afTab === 'aihot') _renderAihot();
-    else if(afTab === 'agihunt') _renderAgihunt();
-  }
 
-  /* ── AIHOT 标签 ── */
-  async function _loadAihot(){
+  /* ── 统一加载 AIHOT + AGI Hunt ── */
+  async function _loadAll(){
     var list = document.getElementById('afList');
     var upd = document.getElementById('afUpdated');
     list.innerHTML = '<div class="af-loading"><span class="af-spin"></span> \u52a0\u8f7d\u4e2d\u2026</div>';
     upd.textContent = '\u52a0\u8f7d\u4e2d\u2026';
-    try{
-      var r = await fetch(AIHOT_API);
+    var seen = new Set();
+    var merged = [];
+    // AIHOT 请求
+    var aihotP = fetch(AIHOT_API).then(function(r){
       if(!r.ok) throw new Error('http '+r.status);
-      var j = await r.json();
-      aihotItems = (j.items||[]).slice();
-      aihotCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
-      afLoaded.aihot = true;
-      _renderAihot();
-      upd.textContent = 'AIHOT \u00b7 \u8fd1 24 \u5c0f\u65f6 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
-      // 异步追加 /api/news
-      fetch('https://starhub-refresh.vercel.app/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
-        if(!nj||!nj.items||!nj.items.length) return;
-        var cutoff=Date.now()-24*3600000;
-        var seen=new Set(aihotItems.map(function(x){return _normT(x.title);}));
-        nj.items.filter(function(it){return it.title&&it.link&&(!it.publishedAt||new Date(it.publishedAt).getTime()>=cutoff);})
-          .slice(0,15).forEach(function(it){
-            var k=_normT(it.title); if(!seen.has(k)){seen.add(k);
-              aihotItems.push({title:it.title,category:'industry',source:{name:it.source||'36\u6c2a'},links:{original:it.link},publishedAt:it.publishedAt||'',selected:false});
-            }
-          });
-        aihotItems.sort(function(a,b){return (b.publishedAt||'').localeCompare(a.publishedAt||'');});
-        _renderAihot();
-      }).catch(function(){});
-    }catch(e){
-      list.innerHTML = '<div class="af-empty">AIHOT \u52a0\u8f7d\u5931\u8d25\uff0c\u7a0d\u540e\u91cd\u8bd5</div>';
-      upd.textContent = 'AIHOT';
-    }
+      return r.json();
+    }).then(function(j){
+      afCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
+      (j.items||[]).forEach(function(it){
+        var k=_normT(it.title);
+        if(!seen.has(k)){seen.add(k); merged.push(Object.assign({},it,{_src:'aihot'}));}
+      });
+    }).catch(function(){ afCursor=''; });
+    // AGI Hunt 请求（遍历全部频道）
+    var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+    var agihuntP = Promise.all(AGIHUNT_CHANNELS.map(function(ch){
+      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort=hot')
+        .then(function(r){return r.ok?r.json():null;})
+        .then(function(j){return (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch[0]});});})
+        .catch(function(){return [];});
+    })).then(function(arrs){
+      arrs.forEach(function(arr){
+        arr.forEach(function(it){
+          var k=_normT(it.title);
+          if(!seen.has(k)){seen.add(k); merged.push(it);}
+        });
+      });
+    }).catch(function(){});
+    await Promise.allSettled([aihotP, agihuntP]);
+    afItems = merged;
+    afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
+    afLoaded = true;
+    _renderAll();
+    upd.textContent = 'AI \u52a8\u6001\u6d41 \u00b7 ' + afItems.length + ' \u6761 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+    // 异步追加 /api/news
+    fetch('https://starhub-refresh.vercel.app/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
+      if(!nj||!nj.items||!nj.items.length) return;
+      var cutoff=Date.now()-24*3600000;
+      var seen2=new Set(afItems.map(function(x){return _normT(x.title);}));
+      nj.items.filter(function(it){return it.title&&it.link&&(!it.publishedAt||new Date(it.publishedAt).getTime()>=cutoff);})
+        .slice(0,15).forEach(function(it){
+          var k=_normT(it.title); if(!seen2.has(k)){seen2.add(k);
+            afItems.push({title:it.title,category:'industry',source:{name:it.source||'36\u6c2a'},links:{original:it.link},publishedAt:it.publishedAt||'',selected:false,_src:'aihot'});
+          }
+        });
+      afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
+      _renderAll();
+    }).catch(function(){});
   }
 
-  function _renderAihot(){
+  function _renderAll(){
     var list = document.getElementById('afList');
     var filterBox = document.getElementById('afFilter');
     var moreBtn = document.getElementById('afLoadMore');
-    // 筛选条
-    var items = aihotFilter==='all' ? aihotItems : aihotItems.filter(function(it){return it.category===aihotFilter;});
-    if(aihotItems.length){
+    // 筛选条：全部 / AIHOT分类 / AGI Hunt频道
+    var filtered = afItems;
+    if(afFilter !== 'all'){
+      if(afFilter.startsWith('ch:')){
+        var ch = afFilter.slice(3);
+        filtered = afItems.filter(function(it){return it._ch===ch;});
+      } else {
+        filtered = afItems.filter(function(it){return it._src==='aihot'&&it.category===afFilter;});
+      }
+    }
+    if(afItems.length){
       filterBox.style.display = '';
-      var cats = [['all','\u5168\u90e8']].concat(Object.keys(AIHOT_CATS).map(function(k){return [k,AIHOT_CATS[k][0]];}));
-      filterBox.innerHTML = cats.map(function(c){
-        var n = c[0]==='all' ? aihotItems.length : aihotItems.filter(function(it){return it.category===c[0];}).length;
-        return '<button class="fchip'+(aihotFilter===c[0]?' on':'')+'" data-cat="'+c[0]+'">'+c[1]+' <span class="n">'+n+'</span></button>';
+      var chips = [['all','\u5168\u90e8',afItems.length]];
+      // AIHOT 分类
+      Object.keys(AIHOT_CATS).forEach(function(k){
+        var n = afItems.filter(function(it){return it._src==='aihot'&&it.category===k;}).length;
+        if(n) chips.push([k,AIHOT_CATS[k][0],n]);
+      });
+      // AGI Hunt 频道
+      AGIHUNT_CHANNELS.forEach(function(c){
+        var n = afItems.filter(function(it){return it._ch===c[0];}).length;
+        if(n) chips.push(['ch:'+c[0],c[1],n]);
+      });
+      filterBox.innerHTML = chips.map(function(c){
+        return '<button class="fchip'+(afFilter===c[0]?' on':'')+'" data-cat="'+c[0]+'">'+c[1]+' <span class="n">'+c[2]+'</span></button>';
       }).join('');
       filterBox.querySelectorAll('.fchip').forEach(function(chip){
-        chip.addEventListener('click', function(){ aihotFilter=chip.getAttribute('data-cat'); _renderAihot(); });
+        chip.addEventListener('click', function(){ afFilter=chip.getAttribute('data-cat'); _renderAll(); });
       });
     } else { filterBox.style.display = 'none'; }
     // 列表
-    if(!items.length){ list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001</div>'; moreBtn.style.display='none'; return; }
-    list.innerHTML = items.map(function(it){
-      var cat = AIHOT_CATS[it.category] || ['\u52a8\u6001','#8b949e'];
-      var url = (it.links&&(it.links.original||it.links.aihot)) || '#';
-      var src = (it.source&&it.source.name)||'';
-      var tm = _fmtRel(it.publishedAt);
+    if(!filtered.length){ list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001</div>'; moreBtn.style.display='none'; return; }
+    list.innerHTML = filtered.map(function(it){
+      var isAgi = it._src==='agihunt';
+      var cat, url, src, tm;
+      if(isAgi){
+        var chInfo = AGIHUNT_CHANNELS.filter(function(c){return c[0]===it._ch;})[0];
+        cat = [chInfo?chInfo[1]:'\u52a8\u6001','#6366f1'];
+        url = it.url || '#';
+        src = it.author || 'AGI Hunt';
+        tm = _fmtRel(it.published_at);
+      } else {
+        cat = AIHOT_CATS[it.category] || ['\u52a8\u6001','#8b949e'];
+        url = (it.links&&(it.links.original||it.links.aihot)) || '#';
+        src = (it.source&&it.source.name)||'';
+        tm = _fmtRel(it.publishedAt);
+      }
       return '<div class="af-item"><span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+_escH(cat[0])+'</span>'
         +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
         +'<span class="meta">'+_escH(src)+(src&&tm?' \u00b7 ':'')+_escH(tm)+(it.selected?' \u00b7 \u2605 \u7cbe\u9009':'')+'</span></div></div>';
     }).join('');
-    moreBtn.style.display = (aihotCursor && aihotFilter==='all') ? '' : 'none';
+    moreBtn.style.display = (afCursor && afFilter==='all') ? '' : 'none';
   }
 
-  // 加载更多
+  // 加载更多（仅 AIHOT 游标分页）
   document.getElementById('afLoadMore').addEventListener('click', async function(){
-    var btn = this; if(!aihotCursor) return;
+    var btn = this; if(!afCursor) return;
     btn.disabled = true; btn.textContent = '\u52a0\u8f7d\u4e2d\u2026';
     try{
-      var r = await fetch(AIHOT_API + '&cursor=' + encodeURIComponent(aihotCursor));
+      var r = await fetch(AIHOT_API + '&cursor=' + encodeURIComponent(afCursor));
       if(!r.ok) throw new Error('http '+r.status);
       var j = await r.json();
-      aihotCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
-      var seen = new Set(aihotItems.map(function(x){return _normT(x.title);}));
-      (j.items||[]).forEach(function(it){var k=_normT(it.title);if(!seen.has(k)){seen.add(k);aihotItems.push(it);}});
-      _renderAihot();
+      afCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
+      var seen = new Set(afItems.map(function(x){return _normT(x.title);}));
+      (j.items||[]).forEach(function(it){var k=_normT(it.title);if(!seen.has(k)){seen.add(k);afItems.push(Object.assign({},it,{_src:'aihot'}));}});
+      _renderAll();
     }catch(e){ /* ignore */ }
     btn.disabled = false; btn.textContent = '\u52a0\u8f7d\u66f4\u591a';
   });
 
-  /* ── AGI Hunt 标签 ── */
-  async function _loadAgihunt(){
-    var list = document.getElementById('afList');
-    var upd = document.getElementById('afUpdated');
-    list.innerHTML = '<div class="af-loading"><span class="af-spin"></span> \u52a0\u8f7d\u4e2d\u2026</div>';
-    upd.textContent = '\u52a0\u8f7d\u4e2d\u2026';
-    try{
-      var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
-      var url = AGIHUNT_API + '?channel=' + agihuntChannel + '&day=' + today + '&sort=' + agihuntSort;
-      var r = await fetch(url);
-      if(!r.ok) throw new Error('http '+r.status);
-      var j = await r.json();
-      agihuntItems = (j.items||[]).slice();
-      afLoaded.agihunt = true;
-      _renderAgihunt();
-      var chName = agihuntChannel;
-      AGIHUNT_CHANNELS.forEach(function(c){ if(c[0]===agihuntChannel) chName=c[1]; });
-      upd.textContent = 'AGI Hunt \u00b7 ' + chName + ' \u00b7 ' + (agihuntSort==='hot'?'\u6700\u70ed':'\u6700\u65b0') + ' \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
-    }catch(e){
-      list.innerHTML = '<div class="af-empty">AGI Hunt \u52a0\u8f7d\u5931\u8d25' + (e.message.indexOf('500')>=0?'\uff08API Key \u672a\u914d\u7f6e\uff09':'') + '</div>';
-      upd.textContent = 'AGI Hunt';
-    }
-  }
 
-  function _renderAgihunt(){
-    var list = document.getElementById('afList');
-    var filterBox = document.getElementById('afFilter');
-    var moreBtn = document.getElementById('afLoadMore');
-    moreBtn.style.display = 'none';
-    // 频道筛选条
-    filterBox.style.display = '';
-    filterBox.innerHTML = AGIHUNT_CHANNELS.map(function(c){
-      return '<button class="fchip'+(agihuntChannel===c[0]?' on':'')+'" data-ch="'+c[0]+'">'+c[1]+'</button>';
-    }).join('') + '<button class="fchip" data-sort="' + (agihuntSort==='hot'?'new':'hot') + '" style="margin-left:auto">' + (agihuntSort==='hot'?'\u2192 \u6700\u65b0':'\u2192 \u6700\u70ed') + '</button>';
-    filterBox.querySelectorAll('.fchip[data-ch]').forEach(function(chip){
-      chip.addEventListener('click', function(){ agihuntChannel=chip.getAttribute('data-ch'); afLoaded.agihunt=false; _loadAgihunt(); });
-    });
-    var sortChip = filterBox.querySelector('.fchip[data-sort]');
-    if(sortChip) sortChip.addEventListener('click', function(){ agihuntSort=sortChip.getAttribute('data-sort'); afLoaded.agihunt=false; _loadAgihunt(); });
-    // 列表
-    if(!agihuntItems.length){ list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001</div>'; return; }
-    list.innerHTML = agihuntItems.slice(0,50).map(function(it){
-      var url = it.url || '#';
-      var author = it.author || '';
-      var hot = it.hot ? Math.round(it.hot*10)/10 : '';
-      var tm = _fmtRel(it.published_at);
-      return '<div class="af-item"><div class="body">'
-        +'<a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
-        +'<span class="meta">'+_escH(author)+(hot?' \u00b7 \u2605'+hot:'')+(tm?' \u00b7 '+tm:'')+'</span></div></div>';
-    }).join('');
-  }
-
-  /* ══════ BestBlogs 筛选 ══════ */
-  var bbActive = false;
-  var bbSubFilter = 'all';  // all | wechat | podcast | youtube
-  var _fullArt = null;  // 保存全量 ART 引用
-
-  function toggleBestBlogs(){
-    bbActive = !bbActive;
-    document.getElementById('btnBestBlogs').classList.toggle('on', bbActive);
-    var subChips = document.getElementById('bbSubChips');
-    if(bbActive){
-      // 统计 BestBlogs 文章数
-      var bbAll = ART.filter(function(a){return a.bb;}).length;
-      subChips.innerHTML = '<button class="bb-sub on" data-bb="all">\u5168\u90e8 <span class="n">'+bbAll+'</span></button>'
-        + '<button class="bb-sub" data-bb="wechat">\u516c\u4f17\u53f7</button>'
-        + '<button class="bb-sub" data-bb="podcast">\u64ad\u5ba2</button>'
-        + '<button class="bb-sub" data-bb="youtube">YouTube</button>';
-      subChips.classList.add('show');
-      subChips.querySelectorAll('.bb-sub').forEach(function(btn){
-        btn.addEventListener('click', function(){
-          subChips.querySelectorAll('.bb-sub').forEach(function(b){b.classList.remove('on');});
-          btn.classList.add('on');
-          bbSubFilter = btn.getAttribute('data-bb');
-          _applyBbFilter();
-        });
-      });
-      _applyBbFilter();
-    } else {
-      subChips.classList.remove('show');
-      subChips.innerHTML = '';
-      // 恢复全量
-      if(_fullArt){ ART = _fullArt; }
-      wallLimit = WALL_STEP; curArt = null; renderChips(); renderWall();
-    }
-    _updateBbCnt();
-  }
-  window.toggleBestBlogs = toggleBestBlogs;
-
-  function _applyBbFilter(){
-    if(!bbActive) return;
-    if(!_fullArt) _fullArt = ART;
-    var filtered = _fullArt.filter(function(a){ return a.bb; });
-    if(bbSubFilter === 'wechat') filtered = filtered.filter(function(a){return a.c==='wechat';});
-    else if(bbSubFilter === 'podcast') filtered = filtered.filter(function(a){return a.c==='podcast';});
-    else if(bbSubFilter === 'youtube') filtered = filtered.filter(function(a){return a.c==='youtube';});
-    ART = filtered;
-    wallLimit = WALL_STEP; curArt = null; renderChips(); renderWall();
-    _updateBbCnt();
-  }
-  function _updateBbCnt(){
-    var cnt = document.getElementById('bbCnt');
-    if(cnt){
-      var n = bbActive ? ART.length : _fullArt ? _fullArt.filter(function(a){return a.bb;}).length : 0;
-      cnt.textContent = n ? n : '';
-    }
-  }
 
 })();
 </script>
@@ -3397,8 +3301,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="chips" id="chips"></div>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
         '<button class="ai-feed-btn" id="btnAiFeed" onclick="toggleAiFeed()" title="AI \u52a8\u6001\u6d41"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI \u52a8\u6001</button>\n'
-        '<button class="bb-toggle" id="btnBestBlogs" onclick="toggleBestBlogs()" title="BestBlogs \u5185\u5bb9\u7b5b\u9009">BestBlogs <span class="cnt" id="bbCnt"></span></button>\n'
-        '<span class="bb-sub-chips" id="bbSubChips"></span>\n'
+        
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
@@ -3411,9 +3314,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<aside class="ai-feed-panel" id="aiFeedPanel">\n'
         '<div class="af-head"><h2>AI \u52a8\u6001\u6d41</h2>\n'
         '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
-        '<div class="af-tabs" id="afTabs">\n'
-        '<button class="af-tab on" data-tab="aihot">AIHOT</button>\n'
-        '<button class="af-tab" data-tab="agihunt">AGI Hunt</button></div>\n'
+
         '<div class="af-sub" id="afUpdated"></div>\n'
         '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
         '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'
