@@ -455,6 +455,10 @@ RSS_SOURCES = [
     {"key": "半岛电视台_15", "name": "半岛电视台", "cat": "news", "url": "https://www.aljazeera.com/xml/rss/all.xml", "color": "#c4792b", "tier": 1},
     {"key": "CNN_16", "name": "CNN", "cat": "news", "url": "https://news.google.com/rss/search?q=site:cnn.com&hl=en-US&gl=US&ceid=US:en", "color": "#cc0000", "tier": 1},
     {"key": "新华社_17", "name": "新华社", "cat": "news", "url": "https://plink.anyfeeder.com/newscn/whxw", "color": "#d32f2f", "tier": 1},
+    {"key": "德国之声DW_18", "name": "德国之声 DW", "cat": "news", "url": "https://rss.dw.com/rdf/rss-en-all", "color": "#00728f", "tier": 1},
+    {"key": "香港01_19", "name": "香港01", "cat": "news", "url": "https://news.google.com/rss/search?q=site:hk01.com&hl=zh-HK&gl=HK&ceid=HK:zh-Hant", "color": "#e74c3c", "tier": 2},
+    {"key": "朝日新闻_20", "name": "朝日新闻", "cat": "news", "url": "https://news.google.com/rss/search?q=site:asahi.com&hl=ja&gl=JP&ceid=JP:ja", "color": "#1a1a1a", "tier": 2},
+    {"key": "NHK World_21", "name": "NHK World", "cat": "news", "url": "https://www3.nhk.or.jp/nhkworld/data/en/news/backstory/rss.xml", "color": "#0055a5", "tier": 1},
 
     # ── 播客 (6) ──
     {"key": "42章经_1", "name": "42章经", "cat": "podcast", "url": "https://feed.xyzfm.space/evgg6xle9rdc", "color": "#0891b2"},
@@ -1437,11 +1441,16 @@ def _fetch_rss(source):
             })
     else:
         ch = root.find("channel")
-        if ch is None:
+        rdf_ns = "{http://purl.org/rss/1.0/}"
+        if ch is None and root.find(rdf_ns + "channel") is None:
             for it in root.findall(".//item"):
                 _parse_rss_item(it, name, source["key"], source["cat"], items)
-        else:
+        elif ch is not None:
             for it in ch.findall("item"):
+                _parse_rss_item(it, name, source["key"], source["cat"], items)
+        else:
+            # RSS 1.0 RDF format (e.g. DW)
+            for it in root.findall(".//" + rdf_ns + "item"):
                 _parse_rss_item(it, name, source["key"], source["cat"], items)
 
     # 写入缓存
@@ -1456,9 +1465,15 @@ def _fetch_rss(source):
 def _parse_rss_item(it, source_name, source_key, cat, items):
     title = _strip_html(it.findtext("title") or "")
     link = (it.findtext("link") or "").strip()
+    # RSS 1.0 RDF: link is in rdf:about attribute
+    if not link:
+        link = (it.get("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about") or "").strip()
     desc_raw = it.findtext("description") or ""
     desc = _strip_html(desc_raw)
     pub = (it.findtext("pubDate") or "").strip()
+    # RSS 1.0 RDF: date is in dc:date
+    if not pub:
+        pub = (it.findtext("{http://purl.org/dc/elements/1.1/}date") or "").strip()
     dc_content = "{http://purl.org/rss/1.0/modules/content/}"
     content_raw = it.findtext(dc_content + "encoded") or ""
     content_encoded = _deep_clean_html(_sanitize_html(content_raw))
@@ -1468,7 +1483,7 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
     items.append({
         "title": title, "link": link, "summary": _truncate(desc),
         "full_content": full_content, "image": _pick_item_image(it, desc_raw, content_raw),
-        "pub_date": _parse_rss_date(pub), "source": source_name, "source_key": source_key,
+        "pub_date": _parse_rss_date(pub) or _parse_iso(pub), "source": source_name, "source_key": source_key,
         "cat": cat,
     })
 
