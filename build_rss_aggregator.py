@@ -1457,19 +1457,23 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .fpill .x:hover { background:rgba(255,255,255,.34); }
 .tool-meta { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); white-space:nowrap; }
 
-/* ── Global search ── */
-.global-search { position:relative; flex:0 1 260px; min-width:140px; }
-.global-search input { width:100%; padding:5px 28px 5px 10px; border-radius:999px; border:1px solid var(--line); background:var(--card); font-size:12.5px; color:var(--ink); font-family:var(--body); outline:none; transition:border-color .15s, box-shadow .15s; }
-.global-search input:focus { border-color:var(--brand-line); box-shadow:0 0 0 2px var(--brand-weak); }
+/* ── Search row ── */
+.search-row { max-width:1560px; margin:0 auto; padding:10px 20px 0; display:flex; align-items:center; gap:10px; }
+.global-search { position:relative; flex:1; min-width:0; }
+.global-search input { width:100%; padding:10px 36px 10px 16px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); font-size:14px; color:var(--ink); font-family:var(--body); outline:none; transition:border-color .15s, box-shadow .15s; }
+.global-search input:focus { border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-weak); }
 .global-search input:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
 button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible { outline:2px solid var(--brand); outline-offset:2px; border-radius:var(--radius); }
-.global-search input::placeholder { color:var(--faint); }
-.global-search .sx { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:18px; height:18px; border-radius:999px; background:var(--line); color:var(--muted); display:none; align-items:center; justify-content:center; font-size:10px; cursor:pointer; transition:all .15s; }
+.global-search input::placeholder { color:var(--faint); font-size:13.5px; }
+.global-search .sx { position:absolute; right:10px; top:50%; transform:translateY(-50%); width:22px; height:22px; border-radius:999px; background:var(--line); color:var(--muted); display:none; align-items:center; justify-content:center; font-size:11px; cursor:pointer; transition:all .15s; }
 .global-search .sx:hover { background:var(--line-strong); color:var(--ink); }
 .global-search.has-q .sx { display:flex; }
 .global-search.has-q input { border-color:var(--brand-line); background:var(--brand-weak); }
-.global-search.src-hit input { border-color:var(--brand-strong); background:var(--brand-weak); box-shadow:0 0 0 2px var(--brand-weak); }
-.global-search.src-hit::after { content:'\u2316'; position:absolute; left:-2px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--brand-strong); pointer-events:none; }
+.global-search.src-hit input { border-color:var(--brand-strong); background:var(--brand-weak); box-shadow:0 0 0 3px var(--brand-weak); }
+.global-search.src-hit::after { content:'\u2316'; position:absolute; left:4px; top:50%; transform:translateY(-50%); font-size:14px; color:var(--brand-strong); pointer-events:none; }
+.sort-select { padding:10px 32px 10px 14px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); font-size:13px; font-weight:500; color:var(--muted); font-family:var(--body); outline:none; cursor:pointer; transition:border-color .15s; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23857e74' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; flex:none; }
+.sort-select:hover { border-color:var(--brand-line); }
+.sort-select:focus { border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-weak); }
 
 /* ── Card wall ── */
 .wall-wrap { max-width:1560px; margin:0 auto; padding:14px 20px 60px; }
@@ -1619,17 +1623,19 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 @media (max-width:900px) {
   .hd .logo .sub { display:none; }
   .toolbar { padding:12px 14px 2px; }
+  .search-row { padding:8px 14px 0; }
   .wall-wrap { padding:12px 14px 50px; }
   .wall { columns:2 260px; }
   .r2-inner { padding:22px 20px 70px; }
   .tool-meta { display:none; }
-  .global-search { flex:1 1 100%; order:10; margin-top:6px; }
   .build-bar { padding:2px 14px 6px; }
 }
 @media (max-width:700px) {
   .hd .nav-links a { padding:5px 9px; font-size:12px; }
   .chips { overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px; }
   .chip { white-space:nowrap; flex:none; }
+  .search-row { flex-wrap:wrap; }
+  .sort-select { flex:1; min-width:0; }
   .wall { columns:1 minmax(0,1fr); }
   .reader2 { width:96vw; max-height:92vh; border-radius:12px; }
   .r2-top { padding:8px 12px; }
@@ -1759,9 +1765,18 @@ def _build_js(sources_with_items, build_ts_ms=0):
     });
     var nowIso=new Date().toISOString();
     ART.forEach(function(a){ if(a.date&&a.date>nowIso) a.date=nowIso; });
-    ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    applySort();
     window.ART = ART;
   }
+  /* ── Sort ── */
+  var sortMode = localStorage.getItem('rss_sort_mode') || 'newest';
+  function applySort(){
+    if(sortMode==='oldest') ART.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+    else if(sortMode==='active') ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    else ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  }
+  var _sortEl = document.getElementById('sortSelect');
+  if(_sortEl){ _sortEl.value=sortMode; _sortEl.addEventListener('change',function(){ sortMode=this.value; localStorage.setItem('rss_sort_mode',sortMode); applySort(); wallLimit=WALL_STEP; curArt=null; renderWall(); }); }
   function estRead(a){ return Math.max(1,Math.round((a.s||'').length/90))+' min'; }
 
   /* ── 分层交织：每 4 篇高频文章穿插 1 篇低频文章 ─ */
@@ -2995,9 +3010,12 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="后台检查更新，不刷新页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<div class="chips" id="chips"></div>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
-        '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0/\u4fe1\u606f\u6e90" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
+        '</div>\n'
+        '<div class="search-row">\n'
+        '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u6807\u9898\u3001\u6458\u8981\u6216\u4fe1\u606f\u6e90\u540d\u79f0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
+        '<select class="sort-select" id="sortSelect" title="\u6392\u5e8f\u65b9\u5f0f"><option value="newest">\u6700\u65b0\u53d1\u5e03</option><option value="oldest">\u6700\u65e9\u53d1\u5e03</option><option value="active">\u6700\u8fd1\u6d3b\u8dc3</option></select>\n'
         '</div>\n'
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
