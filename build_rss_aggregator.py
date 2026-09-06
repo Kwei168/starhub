@@ -1731,6 +1731,7 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .share-close{width:28px;height:28px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
 .share-close:hover{border-color:var(--line-strong);color:var(--ink);}
 .share-img-wrap{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--card);}
+.share-textcard{display:none;text-align:left;white-space:pre-wrap;word-break:break-word;background:var(--card);border:1px dashed var(--line-strong);border-radius:10px;padding:16px;font-size:13px;line-height:1.7;color:var(--ink);max-height:340px;overflow:auto;font-family:var(--body);}
 .share-img-wrap img{width:100%;display:block;}
 .share-hint{font-size:12px;color:var(--faint);margin:12px 0 14px;}
 .share-actions{display:flex;gap:10px;justify-content:center;}
@@ -2955,7 +2956,12 @@ def _build_js(sources_with_items, build_ts_ms=0):
       var url='';
       try{ url = drawShareCard(a, text); }catch(e){}
       if(btn) btn.classList.remove('loading');
-      if(!url){ toast('\u5206\u4eab\u56fe\u7247\u751f\u6210\u5931\u8d25'); return; }
+      if(!url){
+        /* Canvas 不可用（getContext null / toDataURL 异常）：降级纯文本信息卡 */
+        toast('\u56fe\u7247\u751f\u6210\u5931\u8d25\uff0c\u5df2\u8f6c\u4e3a\u6587\u5b57\u5206\u4eab');
+        showShareTextCard(a, text);
+        return;
+      }
       _shareDataURL = url;
       showShareModal(url);
       if(!_qrLoaded) loadQRLib().catch(function(){});
@@ -2986,10 +2992,49 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   function showShareModal(url){
     var m=document.getElementById('shareModal');
-    document.getElementById('shareImg').src=url;
+    var img=document.getElementById('shareImg');
+    img.src=url; img.style.display='';
+    var tc=document.getElementById('shareTextCard');
+    if(tc) tc.style.display='none';
+    var bs=document.getElementById('btnShareSave'); if(bs) bs.style.display='';
+    var bc=document.getElementById('btnShareCopy'); if(bc) bc.style.display='';
+    var ct=document.getElementById('btnShareCopyText'); if(ct) ct.style.display='none';
     m.classList.add('open');
     var closeBtn=m.querySelector('.share-close');
     if(closeBtn) closeBtn.focus();
+  }
+
+  /* ── Canvas 不可用时的纯文本降级卡 ── */
+  function _shareTextCard(a, text){
+    var lines=[];
+    lines.push('\u3010'+(CAT_LABELS[a.c]||a.c||'')+'\u3011'+(a.t||'\u65e0\u6807\u9898\u6587\u7ae0'));
+    lines.push('');
+    if(text&&text.length>60){ lines.push(text.slice(0,1500)); lines.push(''); }
+    else if(a.s){ lines.push(a.s); lines.push(''); }
+    lines.push('\u6765\u6e90\uff1a'+(a.src||'')+(a.time?(' \u00b7 '+a.time):''));
+    lines.push('\u539f\u6587\uff1a'+((a.u&&a.u!=='#')?a.u:location.href));
+    lines.push('\u2014\u2014 StarHub RSS \u805a\u5408');
+    return lines.join('\\n');
+  }
+
+  function showShareTextCard(a, text){
+    _shareDataURL='';
+    var img=document.getElementById('shareImg');
+    if(img) img.style.display='none';
+    var tc=document.getElementById('shareTextCard');
+    if(tc){ tc.textContent=_shareTextCard(a,text); tc.style.display='block'; }
+    var bs=document.getElementById('btnShareSave'); if(bs) bs.style.display='none';
+    var bc=document.getElementById('btnShareCopy'); if(bc) bc.style.display='none';
+    var ct=document.getElementById('btnShareCopyText'); if(ct) ct.style.display='';
+    document.getElementById('shareModal').classList.add('open');
+  }
+
+  function copyShareText(){
+    var tc=document.getElementById('shareTextCard');
+    if(!tc||!tc.textContent) return;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(tc.textContent).then(function(){toast('\u6587\u5b57\u5df2\u590d\u5236');}).catch(function(){toast('\u590d\u5236\u5931\u8d25');});
+    } else { toast('\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u590d\u5236'); }
   }
 
   function closeShareModal(){
@@ -3435,10 +3480,12 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="share-panel">\n'
         '<div class="share-hd"><h3>分享图片已生成</h3><button class="share-close" onclick="closeShareModal()" aria-label="关闭">×</button></div>\n'
         '<div class="share-img-wrap"><img id="shareImg" alt="分享图片"/></div>\n'
+        '<div class="share-textcard" id="shareTextCard"></div>\n'
         '<p class="share-hint">长按图片保存，发送至微信好友或朋友圈</p>\n'
         '<div class="share-actions">\n'
         '<button class="btn-share-save" id="btnShareSave" onclick="saveShareImage()">保存图片</button>\n'
         '<button class="btn-share-copy" id="btnShareCopy" onclick="copyShareImage()">复制图片</button>\n'
+        '<button class="btn-share-copy" id="btnShareCopyText" onclick="copyShareText()" style="display:none;">复制文字</button>\n'
         '<button class="btn-share-html" id="btnShareHtml" onclick="copyFullHtml()" style="margin-left:6px;padding:8px 22px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;transition:all .15s;font-family:var(--body);">复制全文HTML</button>\n'
         '</div>\n'
         '</div>\n'
