@@ -1935,9 +1935,14 @@ def _build_js(sources_with_items, build_ts_ms=0):
      rss-data-1.js（后台合并）两块，页面不再内嵌数据（31MB→约0.15MB）。
      首屏严格时间排序；chunk1 合并后或刷新时应用 tier 交织。 */
   function buildArt(){
-    ART=[];
+    /* 渲染前全局去重：以 源key|链接 为唯一键，防止任何合并路径（chunk/快照/远程刷新）
+       造成的同源同链文章重复渲染 */
+    ART=[];var _seen={};
     SOURCES.forEach(function(s){
       s.items.forEach(function(it){
+        var _u=it.link||'';
+        var _k=(s.key||'')+'|'+(_u&&_u!=='#'?_u:(it.title_zh||it.title||''));
+        if(_seen[_k])return; _seen[_k]=1;
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
           time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||'',
@@ -2200,11 +2205,15 @@ def _build_js(sources_with_items, build_ts_ms=0):
     for(var i=0;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
-      h+='<article class="card cover-card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
-      h+='<a class="cover" href="'+esc(a.u)+'" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true" onclick="event.stopPropagation()">';
-      h+='<span class="cover-fallback">'+esc((a.t||'#').charAt(0).toUpperCase())+'</span>';
-      if(a.img) h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">';
-      h+='</a>';
+      var hasImg=!!a.img;
+      /* 有封面图才走封面卡；无图回退纯文字紧凑卡，避免渐变占位浪费空间 */
+      h+='<article class="card'+(hasImg?' cover-card':'')+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
+      if(hasImg){
+        h+='<a class="cover" href="'+esc(a.u)+'" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true" onclick="event.stopPropagation()">';
+        h+='<span class="cover-fallback">'+esc((a.t||'#').charAt(0).toUpperCase())+'</span>';
+        h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">';
+        h+='</a>';
+      }
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time" title="'+esc(a.date||'')+'">'+_dynTime(a)+'</span>';
       h+='<button class="bm-btn'+(isBookmarked(k)?' on':'')+'" data-k="'+esc(k)+'" title="\u6536\u85cf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>';
@@ -2612,39 +2621,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
     return mins < 60 ? mins + ' 分钟前' : mins < 1440 ? Math.round(mins/60) + ' 小时前' : Math.round(mins/1440) + ' 天前';
   }
 
-  /* ── Load RSS snapshot (from same origin, no Vercel dependency) ── */
-  var liveEl = document.getElementById('liveStatus');
-  if(liveEl) liveEl.textContent='\u00b7 \u52a0\u8f7d\u4e2d\u2026';
-  (function(){
-    var ctrl=new AbortController();
-    var tid=setTimeout(function(){ctrl.abort();},15000);
-    fetch('rss_api_snapshot.json',{signal:ctrl.signal}).then(function(r){
-      clearTimeout(tid);if(!r.ok)throw new Error('Snapshot '+r.status);return r.json();
-    }).then(function(data){
-      if(!data.sources)return;
-      data.sources.forEach(function(live){
-        if(!live.items||!live.items.length)return;
-        var src=SOURCES.find(function(s){return s.key===live.key;});
-        if(src){
-          live.items.forEach(function(it){
-            it.title = it.t || it.title;
-            it.link = it.u || it.link;
-            it.summary = it.s || it.summary;
-            it.pub_date = it.d || it.pub_date;
-            it.title_zh = it.title;
-            it.summary_zh = it.summary || '';
-            it.time_str = _fmtRelTime(it.pub_date);
-          });
-          src.items = live.items;
-        }
-      });
-      buildArt();
-      wallLimit=WALL_STEP;renderChips();renderWall();renderPanel();
-      if(liveEl){var now=new Date();liveEl.textContent='\u2713 '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
-    }).catch(function(e){
-      if(liveEl)liveEl.textContent='';
-    });
-  })();
+  /* 旧“同域快照替换”机制已移除：chunk0+chunk1 已包含同一构建的全量数据，
+     快照（约 30MB）冗余下载且与 chunk1 合并存在竞态——若快照先整体替换
+     src.items、chunk1 后无去重 concat，同源同链文章会全部重复。 */
 
   /* ── Refresh: 后台增量更新 —— 不整页 reload，避免重新下载18MB 页面导致长时间白屏 ── */
   var _refreshing=false, _lastTotal=ART.length;
@@ -2696,7 +2675,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       }catch(e){reject(e);}
     });
   }
-  /* 富字段分块合并：chunk1 是构建时从 chunk0 切出的剩余项，原样追加不去重，保证数据不丢失 */
+  /* 富字段分块合并：chunk1 是构建时从 chunk0 切出的剩余项；
+     按 link 去重后追加，正常路径零丢失，防御任何来源的数据重叠 */
   function _mergeChunk(pack){
     try{
       var cs=pack&&pack.sources;if(!cs||!cs.length)return 0;
@@ -2705,9 +2685,13 @@ def _build_js(sources_with_items, build_ts_ms=0):
       cs.forEach(function(s){
         if(!s||!s.items||!s.items.length)return;
         var i=idx[s.key];
-        if(i===undefined){SOURCES.push(s);idx[s.key]=SOURCES.length-1;added+=s.items.length;return;}
-        SOURCES[i].items=SOURCES[i].items.concat(s.items);
-        added+=s.items.length;
+        var _have={};
+        if(i!==undefined)SOURCES[i].items.forEach(function(_it){if(_it&&_it.link)_have[_it.link]=1;});
+        var fresh=s.items.filter(function(_it){return _it&&_it.link&&!_have[_it.link];});
+        if(!fresh.length)return;
+        if(i===undefined){s.items=fresh;SOURCES.push(s);idx[s.key]=SOURCES.length-1;added+=fresh.length;return;}
+        SOURCES[i].items=SOURCES[i].items.concat(fresh);
+        added+=fresh.length;
       });
       if(added>0){buildArt();tierInterleave();wallLimit=Math.min(ART.length,Math.max(wallLimit,120));renderChips();renderWall();renderPanel();}
       return added;
@@ -2723,7 +2707,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         s.items.forEach(function(it){
           if(!it||!it.u||it.u==='#') return;
           var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', bad_date:!!it.bad_date};
+                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', bad_date:!!it.bad_date};
           if(!a.t) return;
           var k=artKey(a);
           if(known[k]) return;
