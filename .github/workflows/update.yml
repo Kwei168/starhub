@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0  # 完整历史，确保 reset 能正确追踪 origin/main
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -79,14 +79,14 @@ jobs:
           VERCEL_PROJECT_ID: prj_7gK5d3EOJYTC8AmUxR2cNuHi7arB
           VERCEL_ORG_ID: team_iovvEy0us9KkCNkuMRLQrIeA
         run: |
-          # Vercel CLI 上传后偶发网络瞬时故障（fetch failed），退避重试 3 次
+          # Vercel CLI 上传后偶发网络瞬时故障（fetch failed），退避重试 5 次
           ok=0
-          for i in 1 2 3; do
-            echo "Vercel deploy attempt $i/3..."
+          for i in 1 2 3 4 5; do
+            echo "Vercel deploy attempt $i/5..."
             if npx --yes vercel --prod --yes --token "$VERCEL_TOKEN"; then ok=1; break; fi
-            if [ "$i" != "3" ]; then sleep $((i*20)); fi
+            if [ "$i" != "5" ]; then sleep $((i*15)); fi
           done
           if [ "$ok" != "1" ]; then
-            echo "::error::Vercel deploy failed after 3 attempts"
+            echo "::error::Vercel deploy failed after 5 attempts"
             exit 1
           fi
