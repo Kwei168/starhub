@@ -175,6 +175,20 @@ def _accumulate_history(sources_with_items):
         sk = item["source_key"]
         if sk in src_map:
             entry = dict(item)
+            # 检测可疑日期：pub_date 与 first_seen 差距 < 10 分钟 = 大概率是抓取时间而非真实发布时间
+            pd_str = entry.get("pub_date", "")
+            fs_str = entry.get("first_seen", "")
+            entry["bad_date"] = False
+            if pd_str and fs_str:
+                try:
+                    pd = datetime.datetime.fromisoformat(pd_str)
+                    if pd.tzinfo:
+                        pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+                    fs = datetime.datetime.fromisoformat(fs_str)
+                    if abs((fs - pd).total_seconds()) < 600:  # 10 分钟
+                        entry["bad_date"] = True
+                except (ValueError, TypeError):
+                    pass
             entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
             src_map[sk]["items"].append(entry)
 
@@ -208,6 +222,8 @@ def _save_api_snapshot(sources_with_items, meta=None):
                 "s": it.get("summary_zh", "") or it.get("summary", ""),
                 "d": it.get("pub_date", ""),
             }
+            if it.get("bad_date"):
+                item["bad_date"] = True
             fc = it.get("full_content", "")
             if fc:
                 item["fc"] = fc[:50000]
@@ -1760,7 +1776,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       s.items.forEach(function(it){
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-          time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||''});
+          time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||'',
+          bad_date:!!it.bad_date});
       });
     });
     var nowIso=new Date().toISOString();
@@ -2460,6 +2477,18 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ── Dynamic relative time: computed from a.date at render time, never frozen ─ */
   function _dynTime(a) {
     if (!a || !a.date) return a && a.time ? a.time : '';
+    // bad_date: pub_date 不可信（如微信源返回抓取时间），显示绝对日期
+    if (a.bad_date) {
+      var d = new Date(a.date);
+      if (!isNaN(d.getTime())) {
+        var mo = (d.getMonth()+1).toString().padStart(2,'0');
+        var da = d.getDate().toString().padStart(2,'0');
+        var hh = d.getHours().toString().padStart(2,'0');
+        var mm = d.getMinutes().toString().padStart(2,'0');
+        return mo + '-' + da + ' ' + hh + ':' + mm;
+      }
+      return a.time || '';
+    }
     var d = new Date(a.date);
     if (isNaN(d.getTime())) return a.time || '';
     var diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
@@ -2520,7 +2549,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         s.items.forEach(function(it){
           if(!it||!it.u||it.u==='#') return;
           var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||''};
+                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', bad_date:!!it.bad_date};
           if(!a.t) return;
           var k=artKey(a);
           if(known[k]) return;
