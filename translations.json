@@ -27787,5 +27787,14 @@
   "9164d89566334e7083e2f38373c80eaa": "在动态工作流上削减（ Claude Code ）代币支出80%",
   "245f661265f5c57854273c3fb5ffc053": "几天前偶然发现了一些非常有趣的事情，并认为这对其他使用claude代码运行动态工作流程的人来说可能很有趣。工作流脚本本身是javascript。Claude代码知道这种格式，它可以创建一个组成工作流的工具，而不是每次都通过LLM。我做到了，通过更多的调整，它将工作流执行和监控的代币支出降至之前的20 ％左右，大大加快了速度",
   "186d68680ea663fad80f930cfc753d2d": "评论网址： https://news.ycombinator.com/item?id=49586478\n积分： 3\n#评论： 2",
-  "6c52f2e0fb500bf2f393c6d79f2dcd8e": "我已经尝试了不少不同的提示，但Astra仍然无法创建像样的旋转Ambigram。有人尝试过吗？\n\n评论网址： https://news.ycombinator.com/item?id=49585683\n积分： 3\n#评论： 2"
+  "6c52f2e0fb500bf2f393c6d79f2dcd8e": "我已经尝试了不少不同的提示，但Astra仍然无法创建像样的旋转Ambigram。有人尝试过吗？\n\n评论网址： https://news.ycombinator.com/item?id=49585683\n积分： 3\n#评论： 2",
+  "9a32af0b7b4c58ed9d82ba16e46845d4": "询问HN ： （为什么） LLM的突破对图片、音频等有用吗？",
+  "5fcfb466b0e91350bacd12eeab06cbf7": "这困扰了我一段时间。我觉得我对LLM使用书面文本所做的事情有了很好的概念把握。但似乎他们在理解和生成图像、音频和视频方面也取得了一系列进展。我不能扭曲我的大脑来理解这种联系。生成的非文本内容的繁荣是否也建立在LLM的基础上，还是仅仅因为一连串的兴奋推动了对该行业的投资而与之相关？我希望有一个ELI-non-ai-but-cs-majo",
+  "5d9af975df102da4f329107f89e0e7b2": "文章网址： https://twitter.com/RTomMcCoy/status/2094870131939684488\n评论网址： https://news.ycombinator.com/item?id=49586590\n积分： 8\n#评论： 0",
+  "6e22cb3a571af65a5eb4417f06da1603": "LiteLLM中的CVE-2026-35029权限提升提醒您，中间件不是您可以一次安装就忘记的东西。 \n您对使用自托管LLM网关有什么看法？ \n我写了这篇文章- https://leanroute.dev/blog/self-hosting-an-llm-gateway\n想听听您的意见。\n\n评论网址： https://news.ycombinator.com/item?id=49586552\n积分： 1\n#评论： 2",
+  "53a08a060bf2f6047c8d19b35196b68c": "文章网址： https://github.com/vitaliyfedotovpro-art/astrum-hsam-embedded\n评论网址： https://news.ycombinator.com/item?id=49564954\n积分： 3\n#评论： 0",
+  "d1eaeef75745189f96ebe9bf80d854f4": "为什么专家们担心下一次生物安全活动# ai",
+  "71a97364b91198bc8033eaa7b1479a1e": "“我在Lindsay Clancy的精神病房工作。以下是我的想法。” - Dr K HealthyGamer",
+  "f288d93a5d6c8793d063af17debe0df2": "从大草原到狮子王百老汇|狮子|国家地理",
+  "9b4a286b8d5dfb405880965b78d05d87": "人工智能代码审查是否变得更糟？"
 }
