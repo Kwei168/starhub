@@ -1058,7 +1058,7 @@ for _s in RSS_SOURCES:
 
 ITEMS_PER_SOURCE = 30
 FETCH_TIMEOUT = 8
-TRANSLATE_TIMEOUT = 4
+TRANSLATE_TIMEOUT = 3
 
 
 # ──────────────────────────── 工具函数 ────────────────────────────
