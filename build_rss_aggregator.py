@@ -1674,9 +1674,6 @@ body.reading .scrim, body.src-open .scrim { opacity:1; pointer-events:auto; }
 body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; pointer-events:auto; }
 .r2-top { flex:none; display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--line); background:var(--card); position:relative; }
 .r2-progress { position:absolute; left:0; bottom:-1px; height:2px; background:var(--brand); width:0%; transition:width .1s linear; }
-.r2-back { display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--muted); padding:5px 10px 5px 6px; border-radius:999px; border:1px solid transparent; white-space:nowrap; transition:all .15s; }
-.r2-back:hover { color:var(--ink); border-color:var(--line); background:var(--bg); }
-.r2-back svg { width:14px; height:14px; }
 .r2-close { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:999px; border:1px solid transparent; color:var(--muted); transition:all .15s; flex:none; }
 .r2-close:hover { color:var(--read-badge); border-color:var(--line); background:var(--bg); }
 .r2-close svg { width:14px; height:14px; }
@@ -1769,10 +1766,8 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .wall { columns:1 minmax(0,1fr); }
   .reader2 { width:96vw; max-height:92vh; border-radius:12px; }
   .r2-top { padding:8px 10px; gap:8px; }
-  .r2-back span { display:none; }
   /* 移动端工具栏：统一控件高度 28px，防溢出挤压变形 */
-  .r2-back, .r2-close, .r2-bm, .r2-open { height:28px; flex:none; align-items:center; }
-  .r2-back { padding:0 9px 0 7px; }
+  .r2-close, .r2-bm, .r2-open { height:28px; flex:none; align-items:center; }
   .r2-close { width:28px; height:28px; }
   .r2-fs-btn { width:28px; height:28px; }
   .r2-fs-btns { margin-right:0; }
@@ -2456,7 +2451,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     renderReader(); document.body.classList.add('reading');
     document.body.classList.remove('src-open');
     document.getElementById('r2Body').scrollTop=0; updateCardStates();
-    var back=document.querySelector('.r2-back');if(back)back.focus();
+    var closeBtn=document.querySelector('.r2-close');if(closeBtn)closeBtn.focus();
   }
   function _navReader(dir){
     if(!curArt)return;
@@ -3696,7 +3691,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<input id="spSearch" placeholder="搜索信源…" autocomplete="off"></label></div>\n'
         '<div class="sp-list" id="spList"></div></aside>\n'
         '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
-        '<div class="r2-top"><button class="r2-close" onclick="closeReader()" title="关闭阅读器" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
+        '<div class="r2-top"><button class="r2-close" onclick="closeReader()" title="关闭阅读器" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
         '<div class="r2-acts"><div class="r2-fs-btns"><button class="r2-fs-btn" onclick="setFontSize(\'sm\')" title="\u5c0f\u5b57\u53f7">A-</button><button class="r2-fs-btn" onclick="setFontSize(\'md\')" title="\u9ed8\u8ba4\u5b57\u53f7">A</button><button class="r2-fs-btn" onclick="setFontSize(\'lg\')" title="\u5927\u5b57\u53f7">A+</button></div><button class="r2-bm" id="r2Bm" onclick="if(curArt)toggleBookmark(curArt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>\u6536\u85cf</span></button><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">\u539f\u7ad9 \u2197</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
