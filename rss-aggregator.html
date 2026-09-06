@@ -1968,7 +1968,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
 
 
-  /* ── 统一加载 AIHOT + AGI Hunt ── */
+  /* ── 统一加载 AIHOT + AGI Hunt（渐进式渲染：先到先渲染，全部加超时兜底） ── */
   async function _loadAll(isRefresh){
     var list = document.getElementById('afList');
     var upd = document.getElementById('afUpdated');
@@ -1978,40 +1978,70 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }
     var seen = new Set();
     var merged = [];
-    // AIHOT 请求
-    var aihotP = fetch(AIHOT_API).then(function(r){
+    var rendered = false;
+
+    // ① AIHOT 请求：超时 10s（移动端弱网兜底）
+    var aiCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var aiTimer = aiCtrl ? setTimeout(function(){ aiCtrl.abort(); }, 10000) : null;
+    var aihotP = fetch(AIHOT_API, aiCtrl ? { signal: aiCtrl.signal } : {}).then(function(r){
       if(!r.ok) throw new Error('http '+r.status);
       return r.json();
     }).then(function(j){
+      if(aiTimer) clearTimeout(aiTimer);
       afCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
       (j.items||[]).forEach(function(it){
         var k=_normT(it.title);
         if(!seen.has(k)){seen.add(k); merged.push(Object.assign({},it,{_src:'aihot'}));}
       });
-    }).catch(function(){ afCursor=''; });
-    // AGI Hunt 请求（遍历全部频道）
+      // AIHOT 先到先渲染，不等 AGI Hunt
+      if(!rendered && merged.length){
+        rendered = true;
+        afItems = merged.slice();
+        afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
+        _renderAll();
+        upd.textContent = 'AI 动态流 · ' + afItems.length + ' 条 · 更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+      }
+    }).catch(function(){ if(aiTimer) clearTimeout(aiTimer); afCursor=''; });
+
+    // ② AGI Hunt 请求（12 频道并行）：总超时 15s，避免单个频道拖住全部
+    var agiCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var agiTimer = agiCtrl ? setTimeout(function(){ agiCtrl.abort(); }, 15000) : null;
     var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
     var agihuntP = Promise.all(AGIHUNT_CHANNELS.map(function(ch){
-      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort)
+      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort, agiCtrl ? { signal: agiCtrl.signal } : {})
         .then(function(r){return r.ok?r.json():null;})
         .then(function(j){return (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch[0]});});})
         .catch(function(){return [];});
     })).then(function(arrs){
+      if(agiTimer) clearTimeout(agiTimer);
       arrs.forEach(function(arr){
         arr.forEach(function(it){
           var k=_normT(it.title);
           if(!seen.has(k)){seen.add(k); merged.push(it);}
         });
       });
-    }).catch(function(){});
+    }).catch(function(){ if(agiTimer) clearTimeout(agiTimer); });
+
+    // 等待 AIHOT + AGI Hunt 全部 settle（各自已有超时保护）
     await Promise.allSettled([aihotP, agihuntP]);
     afItems = merged;
     afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
     afLoaded = true;
     _renderAll();
-    upd.textContent = 'AI 动态流 · ' + afItems.length + ' 条 · 更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
-    // 异步追加 /api/news
-    fetch('https://starhub-refresh.vercel.app/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
+    if(!afItems.length){
+      upd.textContent = 'AI 动态流';
+      list.innerHTML = '<div class="af-empty">暂无动态，请稍后重试</div>';
+    } else {
+      upd.textContent = 'AI 动态流 · ' + afItems.length + ' 条 · 更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+    }
+
+    // ③ 异步追加 /api/news：超时 12s
+    var newsCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var newsTimer = newsCtrl ? setTimeout(function(){ newsCtrl.abort(); }, 12000) : null;
+    fetch('https://starhub-refresh.vercel.app/api/news', newsCtrl ? { signal: newsCtrl.signal } : {}).then(function(r){
+      if(newsTimer) clearTimeout(newsTimer);
+      return r.ok?r.json():null;
+    }).then(function(nj){
       if(!nj||!nj.items||!nj.items.length) return;
       var cutoff=Date.now()-24*3600000;
       var seen2=new Set(afItems.map(function(x){return _normT(x.title);}));
@@ -2023,7 +2053,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         });
       afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
       _renderAll();
-    }).catch(function(){});
+    }).catch(function(){ if(newsTimer) clearTimeout(newsTimer); });
   }
 
   /* ── AI 动态条目 → 分享卡片 ART 结构（复用卡片墙分享链路） ── */
