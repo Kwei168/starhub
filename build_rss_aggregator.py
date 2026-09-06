@@ -456,7 +456,8 @@ RSS_SOURCES = [
     {"key": "CNN_16", "name": "CNN", "cat": "news", "url": "https://news.google.com/rss/search?q=site:cnn.com&hl=en-US&gl=US&ceid=US:en", "color": "#cc0000", "tier": 1},
     {"key": "新华社_17", "name": "新华社", "cat": "news", "url": "https://plink.anyfeeder.com/newscn/whxw", "color": "#d32f2f", "tier": 1},
     {"key": "德国之声DW_18", "name": "德国之声 DW", "cat": "news", "url": "https://rss.dw.com/rdf/rss-en-all", "color": "#00728f", "tier": 1},
-    {"key": "香港01_19", "name": "香港01", "cat": "news", "url": "https://news.google.com/rss/search?q=site:hk01.com&hl=zh-HK&gl=HK&ceid=HK:zh-Hant", "color": "#e74c3c", "tier": 2},
+    {"key": "香港01本地_19", "name": "香港01 本地", "cat": "news", "url": "https://news.google.com/rss/search?q=site:hk01.com+%E9%A6%99%E6%B8%AF&hl=zh-HK&gl=HK&ceid=HK:zh-Hant", "color": "#e74c3c", "tier": 2},
+    {"key": "香港01國際_22", "name": "香港01 國際", "cat": "news", "url": "https://news.google.com/rss/search?q=site:hk01.com+%E5%9C%8B%E9%9A%9B&hl=zh-HK&gl=HK&ceid=HK:zh-Hant", "color": "#c0392b", "tier": 2},
     {"key": "朝日新闻_20", "name": "朝日新闻", "cat": "news", "url": "https://news.google.com/rss/search?q=site:asahi.com&hl=ja&gl=JP&ceid=JP:ja", "color": "#1a1a1a", "tier": 2},
     {"key": "NHK World_21", "name": "NHK World", "cat": "news", "url": "https://www3.nhk.or.jp/nhkworld/data/en/news/backstory/rss.xml", "color": "#0055a5", "tier": 1},
 
