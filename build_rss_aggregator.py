@@ -3080,7 +3080,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ══════ AI 动态流面板（AIHOT + AGI Hunt） ══════ */
   var AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
-  var AGIHUNT_API = '/api/agihunt';
+  var AGIHUNT_API = 'https://starhub-refresh.vercel.app/api/agihunt';
   var AIHOT_CATS = {industry:['\u884c\u4e1a','#2f5d8a'],paper:['\u8bba\u6587','#7052c9'],product:['\u4ea7\u54c1','#b06a10'],tip:['\u6280\u5de7','#2e7d5f'],agi:['AGI','#c2434d']};
   var afTab = 'aihot';   // 当前标签：aihot | agihunt
   var afLoaded = {aihot:false, agihunt:false};
@@ -3143,7 +3143,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       _renderAihot();
       upd.textContent = 'AIHOT \u00b7 \u8fd1 24 \u5c0f\u65f6 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
       // 异步追加 /api/news
-      fetch('/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
+      fetch('https://starhub-refresh.vercel.app/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
         if(!nj||!nj.items||!nj.items.length) return;
         var cutoff=Date.now()-24*3600000;
         var seen=new Set(aihotItems.map(function(x){return _normT(x.title);}));
