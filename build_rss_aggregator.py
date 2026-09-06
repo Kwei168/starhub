@@ -3081,10 +3081,10 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var afAgiSort = 'hot';  // hot | new
   var afRefreshing = false;
   var AGIHUNT_CHANNELS = [
-    ['models','\u6a21\u578b'],['research','\u7814\u7a76'],['coding-agents','\u7f16\u7a0b&Agent'],
-    ['products','\u5e94\u7528'],['multimodal','\u591a\u6a21\u6001'],['infra','Infra'],
-    ['hardware','\u5177\u8eab'],['funding','\u521b\u6295'],['policy','\u5b89\u5168'],
-    ['agi','\u6f2b\u8bddAGI'],['companies','\u516c\u53f8\u548c\u4eba'],['fun','Fun']
+    ['models','\u6a21\u578b','#2563eb'],['research','\u7814\u7a76','#7c3aed'],['coding-agents','\u7f16\u7a0b&Agent','#059669'],
+    ['products','\u5e94\u7528','#b45309'],['multimodal','\u591a\u6a21\u6001','#db2777'],['infra','Infra','#475569'],
+    ['hardware','\u5177\u8eab','#0891b2'],['funding','\u521b\u6295','#a16207'],['policy','\u5b89\u5168','#dc2626'],
+    ['agi','\u6f2b\u8bddAGI','#c026d3'],['companies','\u516c\u53f8\u548c\u4eba','#4d7c0f'],['fun','Fun','#ea580c']
   ];
 
   function _escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -3187,7 +3187,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!it) return null;
     if(it._src==='agihunt'){
       var chInfo = AGIHUNT_CHANNELS.filter(function(c){return c[0]===it._ch;})[0];
-      return {t:it.title||'', s:'', c:chInfo?chInfo[1]:'AGI Hunt', sc:'#6366f1',
+      return {t:it.title||'', s:'', c:chInfo?chInfo[1]:'AGI Hunt', sc:(chInfo&&chInfo[2])||'#6366f1',
         src:it.author||'AGI Hunt', u:it.url||'', time:_fmtRel(it.published_at), _af:true};
     }
     var ci = AIHOT_CATS[it.category] || ['\u52a8\u6001','#8b949e'];
@@ -3241,12 +3241,12 @@ def _build_js(sources_with_items, build_ts_ms=0):
     } else { filterBox.style.display = 'none'; }
     // 列表
     if(!filtered.length){ list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001</div>'; moreBtn.style.display='none'; return; }
-    list.innerHTML = filtered.map(function(it){
+    list.innerHTML = filtered.map(function(it, i){
       var isAgi = it._src==='agihunt';
       var cat, url, src, tm;
       if(isAgi){
         var chInfo = AGIHUNT_CHANNELS.filter(function(c){return c[0]===it._ch;})[0];
-        cat = [chInfo?chInfo[1]:'\u52a8\u6001','#6366f1'];
+        cat = [chInfo?chInfo[1]:'\u52a8\u6001',(chInfo&&chInfo[2])||'#6366f1'];
         url = it.url || '#';
         src = it.author || 'AGI Hunt';
         tm = _fmtRel(it.published_at);
