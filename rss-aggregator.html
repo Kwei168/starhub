@@ -1134,7 +1134,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ── Dynamic relative time: computed from a.date at render time, never frozen ─ */
   function _dynTime(a) {
     if (!a || !a.date) return a && a.time ? a.time : '';
-    // bad_date: pub_date 不可信（如微信源返回抓取时间），显示绝对日期
+    // bad_date: pub_date 不可信（构建时自动检测：wechat类目/日期倒挂/抓取时间冒充），显示绝对日期
     if (a.bad_date) {
       var d = new Date(a.date);
       if (!isNaN(d.getTime())) {
