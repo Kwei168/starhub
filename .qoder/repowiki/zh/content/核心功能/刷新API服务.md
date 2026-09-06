@@ -3,8 +3,14 @@
 <cite>
 **本文引用的文件**
 - [api/refresh.js](file://api/refresh.js)
+- [api/rss.js](file://api/rss.js)
+- [api/article.js](file://api/article.js)
+- [api/news.js](file://api/news.js)
+- [api/events.js](file://api/events.js)
+- [api/search.js](file://api/search.js)
+- [api/agihunt.js](file://api/agihunt.js)
 - [vercel.json](file://vercel.json)
-- [.github/workflows/update.yml](file://github/workflows/update.yml)
+- [.github/workflows/update.yml](file://.github/workflows/update.yml)
 - [fetch_and_build.py](file://fetch_and_build.py)
 - [trending_snapshot.json](file://trending_snapshot.json)
 - [known_categories.json](file://known_categories.json)
@@ -35,15 +41,32 @@
 10. [附录](#附录)
 
 ## 简介
-本项目是一个"GitHub Star 收藏台"的自动更新与展示系统。通过 Vercel Serverless Function 暴露一个刷新接口，触发 GitHub Actions 定时任务执行 Python 脚本，拉取并分类用户的 Star 列表，生成静态页面 index.html 并提交到仓库，最终由 GitHub Pages 托管发布。同时，脚本还会维护 AI 排行榜快照、中文描述缓存与分类映射等数据文件。
+本项目的 API 层服务两条主线：`/api/refresh` 触发 Star/RSS 统一构建，`/api/rss`、`/api/article`、`/api/events`、`/api/search`、`/api/news`、`/api/agihunt` 为运行时数据服务。GitHub Pages 是用户入口，所有需要 Serverless 的请求必须访问绝对 Vercel URL。
 
-**重大更新** 刷新API服务已进行重大安全加固，包括CORS严格限制、X-Refresh-Key认证头验证、错误响应信息泄露防护等安全措施，确保API调用的安全性和可控性。**最新增强**：实现了大小写不敏感的域名匹配，解决了GitHub Pages域名大小写不一致导致的验证失败问题。
+**刷新接口**仍采用 CORS 白名单、`X-Refresh-Key` 和方法限制；**RSS 全文接口**则允许 GitHub Pages 跨域 GET/OPTIONS，以保证 reader2 的兜底链路可用。
+
+## 当前 API 架构（2026-09-06）
+
+| 路由 | 作用 | 关键行为 |
+|---|---|---|
+| `/api/refresh` | 触发 `workflow_dispatch` | POST + `X-Refresh-Key` + Origin 白名单 |
+| `/api/rss` | RSS 聚合 | 默认快照优先，`?refresh=1` 仅实时抓取 T1=23 |
+| `/api/article` | 阅读器全文 | 快照全文 map → GitHub/YouTube 特殊提取 → Readability；GET/OPTIONS CORS |
+| `/api/events` | Star 主站关注动态 | 24 小时事件聚合 |
+| `/api/search` | Star 主站仓库搜索 | 中文翻译和多语言搜索 |
+| `/api/news` | RSS/AI 新闻代理 | 36 氪 RSSHub 镜像链 + Redis 博客 |
+| `/api/agihunt` | AI 动态侧栏频道 | 公开读取代理 |
+
+`/api/article` 必须保留 `Access-Control-Allow-Origin: *`、`Access-Control-Allow-Methods: GET, OPTIONS`、`Access-Control-Allow-Headers: Content-Type`，OPTIONS 返回 204。GitHub Pages 上禁止使用相对 `/api/...` URL。
+
+**重大更新** 刷新 API 的鉴权边界与 RSS 全文 API 的公开跨域边界不同，修改其中一个接口时不要套用另一个接口的 CORS 规则。
 
 ## 项目结构
 - **api/refresh.js**：Vercel Serverless Function，提供 POST /api/refresh 端点，用于触发 GitHub Actions workflow_dispatch。**已实现多重安全防护，支持大小写不敏感域名匹配**。
-- **.github/workflows/update.yml**：GitHub Actions 工作流，每天北京时间 07:35（UTC 23:35）运行，调用 fetch_and_build.py 生成页面并推送变更。
-- **fetch_and_build.py**：核心自动化脚本，负责拉取 Star、智能分类、翻译简介、构建排行榜、生成 index.html 并持久化数据。
-- **vercel.json**：Vercel 部署配置，声明函数入口与超时限制（10秒）。
+- **.github/workflows/update.yml**：GitHub Actions 工作流，支持 schedule 与 `workflow_dispatch`；UTC 21:00 full，其余 UTC 2/6/10/14 incremental。
+- **fetch_and_build.py**：Star 主线自动化脚本，负责拉取 Star、智能分类、翻译简介、构建排行榜、生成 index.html 并调用 RSS 生成器。
+- **build_rss_aggregator.py**：RSS 主线生成器，负责 711 源、72 小时历史、快照与页面 chunk。
+- **vercel.json**：Vercel 部署配置，声明 7 个函数及其超时限制。
 - **trending_snapshot.json**：AI 排行榜的星标快照，用于计算"涨星榜"。
 - **known_categories.json**：已知项目的稳定分类映射，避免重复分类。
 - **descriptions_zh.json**：已翻译的中文描述缓存，减少重复翻译成本。
@@ -68,7 +91,7 @@ end
 
 **图表来源**
 - [api/refresh.js:6-29](file://api/refresh.js#L6-L29)
-- [.github/workflows/update.yml:1-44](file://github/workflows/update.yml#L1-L44)
+- [.github/workflows/update.yml:1-44](file://.github/workflows/update.yml#L1-L44)
 - [fetch_and_build.py:409-487](file://fetch_and_build.py#L409-L487)
 
 **章节来源**
@@ -84,15 +107,14 @@ end
   - 构建 AI 排行榜（总榜、涨星榜、新秀榜）
   - 生成 index.html 并持久化数据
 - **数据文件**：
-  - trending_snapshot.json：记录各项目的星标数作为基线
-  - known_categories.json：稳定分类映射
-  - descriptions_zh.json：中文描述缓存
+  - Star 主线：`trending_snapshot.json`、`known_categories.json`、`descriptions_zh.json`
+  - RSS 主线：`rss_sources.json`、`rss_history.json`、`rss_api_snapshot.json`、`rss-data-0.js`、`rss-data-1.js`、`translations.json`
 
 **重大更新** 实现了完整的安全防护体系，包括CORS严格限制、认证头验证和错误信息泄露防护，确保API调用的安全性。**最新增强**：实现了大小写不敏感的域名匹配，解决了GitHub Pages域名大小写不一致导致的验证失败问题。
 
 **章节来源**
 - [api/refresh.js:1-62](file://api/refresh.js#L1-L62)
-- [.github/workflows/update.yml:1-44](file://github/workflows/update.yml#L1-L44)
+- [.github/workflows/update.yml:1-44](file://.github/workflows/update.yml#L1-L44)
 - [fetch_and_build.py:126-487](file://fetch_and_build.py#L126-L487)
 - [trending_snapshot.json:1-431](file://trending_snapshot.json#L1-L431)
 - [known_categories.json:1-130](file://known_categories.json#L1-L130)
@@ -135,7 +157,7 @@ P-->>C : 页面更新后可访问
 
 **图表来源**
 - [api/refresh.js:6-29](file://api/refresh.js#L6-L29)
-- [.github/workflows/update.yml:1-44](file://github/workflows/update.yml#L1-L44)
+- [.github/workflows/update.yml:1-44](file://.github/workflows/update.yml#L1-L44)
 - [fetch_and_build.py:409-487](file://fetch_and_build.py#L409-L487)
 
 ## 详细组件分析
@@ -195,7 +217,7 @@ Block403 --> End
 **更新** 改进了并发控制和错误处理，确保在多实例运行时的数据一致性。
 
 **章节来源**
-- [.github/workflows/update.yml:1-44](file://github/workflows/update.yml#L1-L44)
+- [.github/workflows/update.yml:1-44](file://.github/workflows/update.yml#L1-L44)
 
 ### Python 自动化脚本（fetch_and_build.py）
 - **数据拉取**：
@@ -296,12 +318,12 @@ end
 
 **图表来源**
 - [api/refresh.js:6-60](file://api/refresh.js#L6-L60)
-- [.github/workflows/update.yml:1-44](file://github/workflows/update.yml#L1-L44)
+- [.github/workflows/update.yml:1-44](file://.github/workflows/update.yml#L1-L44)
 - [fetch_and_build.py:126-487](file://fetch_and_build.py#L126-L487)
 
 **章节来源**
 - [api/refresh.js:1-62](file://api/refresh.js#L1-L62)
-- [.github/workflows/update.yml:1-44](file://github/workflows/update.yml#L1-L44)
+- [.github/workflows/update.yml:1-44](file://.github/workflows/update.yml#L1-L44)
 - [fetch_and_build.py:126-487](file://fetch_and_build.py#L126-L487)
 
 ## 性能与可靠性
@@ -357,7 +379,7 @@ end
 **章节来源**
 - [api/refresh.js:6-60](file://api/refresh.js#L6-L60)
 - [fetch_and_build.py:126-487](file://fetch_and_build.py#L126-L487)
-- [.github/workflows/update.yml:16-44](file://github/workflows/update.yml#L16-L44)
+- [.github/workflows/update.yml:16-44](file://.github/workflows/update.yml#L16-L44)
 
 ## 结论
 该刷新 API 服务通过简洁的 Serverless 函数与 GitHub Actions 协作，实现了"一键触发、自动更新"的闭环。Python 脚本承担了数据拉取、智能分类、翻译与排行榜构建的核心逻辑，并通过数据文件保障稳定性与可追溯性。整体架构清晰、扩展性强，适合持续迭代与运维。

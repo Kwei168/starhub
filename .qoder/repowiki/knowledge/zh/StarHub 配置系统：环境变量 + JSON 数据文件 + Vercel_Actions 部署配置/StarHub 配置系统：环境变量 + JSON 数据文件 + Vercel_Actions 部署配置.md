@@ -13,6 +13,13 @@ source_files:
     - known_categories.json
     - descriptions_zh.json
     - trending_snapshot.json
+    - rss_sources.json
+    - rss_history.json
+    - rss_api_snapshot.json
+    - translations.json
+    - build_rss_aggregator.py
+    - api/rss.js
+    - api/article.js
     - dev_render.py
 ---
 
@@ -31,12 +38,16 @@ source_files:
 | `fetch_and_build.py` | 主构建脚本；硬编码分类、颜色、阈值等常量，并读取环境变量 `GITHUB_TOKEN` / `GH_TOKEN` |
 | `api/refresh.js` | Vercel Serverless 函数；从 `process.env` 读取 `REFRESH_KEY`、`GH_TOKEN` |
 | `.github/workflows/update.yml` | GitHub Actions 定时任务与手动触发入口，定义运行环境、Python 版本、并发策略 |
-| `vercel.json` | Vercel 函数路由与超时限制（`maxDuration`） |
+| `vercel.json` | Vercel 7 个函数路由与超时限制（`maxDuration`） |
 | `.vercel/project.json` | Vercel 项目标识（projectId/orgId） |
 | `known_categories.json` | 已知仓库 → 分类映射（构建时读/写） |
 | `descriptions_zh.json` | 中文描述缓存（构建时读/写） |
 | `trending_snapshot.json` | AI 排行榜基线快照（构建时读/写） |
-| `template.html` / `index.html` | 模板与渲染产物；`dev_render.py` 用于本地重新渲染 |
+| `rss_sources.json` / `rss_history.json` / `rss_api_snapshot.json` | RSS 711 源、72 小时历史和快照状态 |
+| `translations.json` | Star/RSS 构建与 API 共享翻译缓存 |
+| `build_rss_aggregator.py` / `api/rss.js` / `api/article.js` | RSS 构建、快照/T1 实时 API 和全文兜底 |
+| `template.html` / `index.html` / `rss-aggregator.html` | Star 模板、Star 产物和 RSS 产物；生成页面不直接编辑 |
+| `dev_render.py` | 本地重新渲染 Star 模板 |
 
 ## 3. 架构与约定
 
@@ -75,13 +86,13 @@ source_files:
 
 ### 3.4 部署与平台配置
 
-- `vercel.json`：声明函数路由 `api/refresh.js`、`api/search.js`、`api/events.js` 及各自最大执行时长（10s / 30s / 60s）。
+- `vercel.json`：声明 refresh、search、events、news、rss、article、agihunt 共 7 个函数及各自最大执行时长（10s / 30s / 60s / 30s / 60s / 15s / 15s）。
 - `.github/workflows/update.yml`：
-  - 触发源：`cron: "10 * * * *"`（每小时 UTC :10 兜底刷新）+ `workflow_dispatch`（手动触发）。
-  - 并发：`concurrency.group: starhub-update`，且 `cancel-in-progress: false`，禁止取消正在运行的更新。
+  - 触发源：UTC 21:00 的 `full`、UTC 2/6/10/14 的 `incremental`，以及 `workflow_dispatch`；普通 push 不触发。
+  - 并发：`concurrency.group: starhub-update`，且 `cancel-in-progress: true`，新触发取消旧排队任务。
   - 权限：`contents: write`，允许推送生成的 HTML 与 JSON。
   - 运行环境：`ubuntu-latest` + Python 3.11。
-  - 步骤：checkout → setup-python → 运行 `python fetch_and_build.py` → diff 检测 → commit/pull-rebase/push → `npx vercel --prod` 部署。
+  - 步骤：checkout → 同步 `origin/main` → 确定模式 → 运行 `python fetch_and_build.py $MODE` → diff 检测 → commit/push → `npx vercel --prod` 部署。
 - `.vercel/project.json`：绑定 Vercel 团队项目 ID，使 `vercel deploy` 能定位到正确项目。
 
 ### 3.5 安全边界
@@ -94,8 +105,10 @@ source_files:
 
 - **Token 来源**：GitHub API 调用必须通过环境变量传入 token；未配置时 `api/refresh.js` 返回 500，`fetch_and_build.py` 降级为无认证访问（受 GitHub 未登录速率限制）。
 - **本地开发**：`dev_render.py` 仅用于本地预览模板改动，不参与 GitHub Actions 构建流程。
-- **数据一致性**：Actions 推送前执行 `git pull --rebase`，避免并发提交冲突。
+- **数据一致性**：构建前同步 `origin/main`；`cancel-in-progress: true` 取消旧排队任务，push 使用 lease 保护远端更新。
 - **构建幂等性**：若 `git diff --cached --quiet` 检测到无变更，跳过 commit/push。
+- **RSS 分层**：`full` 抓取 711 源；`incremental` 跳过 T1 和 4 小时内成功源，T1 由 `/api/rss?refresh=1` 实时补齐。
+- **全文跨域**：`/api/article` 允许 GET/OPTIONS，返回 `Access-Control-Allow-Origin: *`，GitHub Pages 使用 Vercel 绝对 URL。
 - **Trending 降级**：当 Trending 抓取失败时，自动回退到基于 `trending_snapshot.json` 的差值模式；若 AI 池为空则保留旧快照，避免清空基线导致无法自愈。
 - **时间基准**：所有日期计算统一使用北京时间（UTC+8），通过 `datetime.now(timezone(timedelta(hours=8)))` 获取。
 - **JSON 注入安全**：输出到 `<script>` 块的数据会转义 `<` 为 `\u003c`，防止 `</script>` 注入攻击（见 `_safe_json` 注释）。
