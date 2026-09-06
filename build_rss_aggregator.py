@@ -1677,6 +1677,9 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .r2-back { display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--muted); padding:5px 10px 5px 6px; border-radius:999px; border:1px solid transparent; white-space:nowrap; transition:all .15s; }
 .r2-back:hover { color:var(--ink); border-color:var(--line); background:var(--bg); }
 .r2-back svg { width:14px; height:14px; }
+.r2-close { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:999px; border:1px solid transparent; color:var(--muted); transition:all .15s; flex:none; }
+.r2-close:hover { color:var(--read-badge); border-color:var(--line); background:var(--bg); }
+.r2-close svg { width:14px; height:14px; }
 .r2-src { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); min-width:0; }
 .r2-src .src-dot { width:9px; height:9px; }
 .r2-src b { color:var(--ink); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1768,8 +1771,9 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .r2-top { padding:8px 10px; gap:8px; }
   .r2-back span { display:none; }
   /* 移动端工具栏：统一控件高度 28px，防溢出挤压变形 */
-  .r2-back, .r2-bm, .r2-open { height:28px; flex:none; align-items:center; }
+  .r2-back, .r2-close, .r2-bm, .r2-open { height:28px; flex:none; align-items:center; }
   .r2-back { padding:0 9px 0 7px; }
+  .r2-close { width:28px; height:28px; }
   .r2-fs-btn { width:28px; height:28px; }
   .r2-fs-btns { margin-right:0; }
   .r2-src { flex:1; min-width:0; }
@@ -2390,6 +2394,37 @@ def _build_js(sources_with_items, build_ts_ms=0):
     
     var hint=inner.querySelector('.r2-foot-hint');
     if(hint) inner.insertBefore(div,hint); else inner.appendChild(div);
+    /* 正文翻译切换按钮：非中文内容时显示 */
+    var ftText=div.textContent||'';
+    if(ftText&&!isMostlyZh(ftText)){
+      var tog=document.createElement('div');
+      tog.className='r2-lang-toggle';
+      tog.innerHTML='<button class="active" id="btnFtOrig">原文</button><button id="btnFtTrans">翻译</button>';
+      if(hint) inner.insertBefore(tog,hint); else inner.appendChild(tog);
+      document.getElementById('btnFtTrans').onclick=function(){_translateFulltext(div);};
+      document.getElementById('btnFtOrig').onclick=function(){
+        div.innerHTML=div._origHtml||div.innerHTML;
+        var bs=tog.querySelectorAll('button');bs[0].classList.add('active');bs[1].classList.remove('active');
+      };
+    }
+  }
+  /* 正文翻译：提取文本→分块翻译→重建段落 */
+  function _translateFulltext(ftDiv){
+    if(!ftDiv) return;
+    if(!ftDiv._origHtml) ftDiv._origHtml=ftDiv.innerHTML;
+    var tog=ftDiv.nextElementSibling;
+    if(tog&&tog.classList&&tog.classList.contains('r2-lang-toggle')){
+      var bs=tog.querySelectorAll('button');bs[0].classList.remove('active');bs[1].classList.add('active');
+    }
+    ftDiv.innerHTML='<p>翻译中…</p>';
+    var text=ftDiv._origText||(ftDiv._origText=(ftDiv._origHtml||ftDiv.innerHTML).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim());
+    _clientTranslate(text,function(tr){
+      var cur=document.querySelector('.r2-fulltext');
+      if(cur){
+        var lines=tr.split(/。|！|？|\.\s+/).filter(function(s){return s.trim();});
+        cur.innerHTML=lines.map(function(s){return '<p>'+esc(s.trim())+'</p>';}).join('')||'<p>'+esc(tr)+'</p>';
+      }
+    });
   }
   function markRead(a){visited[artKey(a)]=1;try{localStorage.setItem('rss_read_v2',JSON.stringify(visited));}catch(e){}}
   function markAllRead(){
@@ -2511,14 +2546,20 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(_ctCache[k]){cb(_ctCache[k]);return;}
     if(_ctPend[k]){_ctPend[k].push(cb);return;}
     _ctPend[k]=[cb];
-    var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(text.substring(0,500));
-    fetch(url).then(function(r){return r.json();}).then(function(d){
-      var res='';if(d&&d[0])for(var i=0;i<d[0].length;i++)if(d[0][i]&&d[0][i][0])res+=d[0][i][0];
-      var tr=(res&&res.length>text.length*0.3)?res:text;
-      _ctCache[k]=tr;var p=_ctPend[k]||[];delete _ctPend[k];p.forEach(function(f){f(tr);});
-    }).catch(function(){
-      _ctCache[k]=text;var p=_ctPend[k]||[];delete _ctPend[k];p.forEach(function(f){f(text);});
-    });
+    /* 长文本分块翻译：每块 450 字，串行拼接 */
+    var chunks=[],pos=0;
+    while(pos<text.length){var end=Math.min(pos+450,text.length);chunks.push(text.substring(pos,end));pos=end;}
+    var results=[],done=0;
+    function _next(i){
+      if(i>=chunks.length){var tr=results.join('');_ctCache[k]=tr;var p=_ctPend[k]||[];delete _ctPend[k];p.forEach(function(f){f(tr);});return;}
+      var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(chunks[i]);
+      fetch(url).then(function(r){return r.json();}).then(function(d){
+        var res='';if(d&&d[0])for(var j=0;j<d[0].length;j++)if(d[0][j]&&d[0][j][0])res+=d[0][j][0];
+        results.push((res&&res.length>chunks[i].length*0.3)?res:chunks[i]);
+        _next(i+1);
+      }).catch(function(){results.push(chunks[i]);_next(i+1);});
+    }
+    _next(0);
   }
 
   // ── OPML export ──
@@ -3655,7 +3696,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<input id="spSearch" placeholder="搜索信源…" autocomplete="off"></label></div>\n'
         '<div class="sp-list" id="spList"></div></aside>\n'
         '<aside class="reader2" id="reader2" role="dialog" aria-modal="true" aria-label="\u6587\u7ae0\u9605\u8bfb\u5668">\n'
-        '<div class="r2-top"><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
+        '<div class="r2-top"><button class="r2-close" onclick="closeReader()" title="关闭阅读器" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button><button class="r2-back" onclick="closeReader()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span>返回</span></button>\n'
         '<span class="r2-src" id="r2Src"></span>\n'
         '<div class="r2-acts"><div class="r2-fs-btns"><button class="r2-fs-btn" onclick="setFontSize(\'sm\')" title="\u5c0f\u5b57\u53f7">A-</button><button class="r2-fs-btn" onclick="setFontSize(\'md\')" title="\u9ed8\u8ba4\u5b57\u53f7">A</button><button class="r2-fs-btn" onclick="setFontSize(\'lg\')" title="\u5927\u5b57\u53f7">A+</button></div><button class="r2-bm" id="r2Bm" onclick="if(curArt)toggleBookmark(curArt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>\u6536\u85cf</span></button><a class="r2-open" id="r2Open" href="#" target="_blank" rel="noopener">\u539f\u7ad9 \u2197</a></div>\n'
         '<div class="r2-progress" id="r2Progress"></div></div>\n'
