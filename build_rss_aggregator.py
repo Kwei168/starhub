@@ -1878,6 +1878,17 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
 .af-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:40px 16px;color:var(--muted);font-size:13px;}
 .af-spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:bootspin .8s linear infinite;}
 
+/* ── AI Feed 常驻侧栏（桌面 ≥1280px）：面板移入 .wall-wrap 左侧，sticky 常驻、独立滚动；<1280px 保持右侧抽屉 + 按钮切换 ── */
+@media (min-width:1280px) {
+  .wall-wrap { display:flex; align-items:flex-start; gap:14px; }
+  .wall { flex:1; min-width:0; }
+  .ai-feed-panel { position:sticky; top:58px; left:auto; right:auto; bottom:auto; transform:none; width:300px; flex:none; height:calc(100vh - 78px); z-index:auto; border-left:none; border-right:1px solid var(--line); box-shadow:none; }
+  body.ai-open .ai-feed-panel { transform:none; }
+  body.ai-open .scrim { opacity:0; pointer-events:none; }
+  .af-close { display:none; }
+  .ai-feed-btn { display:none; }
+}
+
 @media (max-width:700px) {
   .ai-feed-panel{width:100vw;}
   .af-head{padding:12px 14px 8px;}
@@ -3417,12 +3428,15 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }catch(e){ /* ignore */ }
   }
 
-  /* ── 自动刷新：每 5 分钟（面板打开时） ── */
+  /* ── 自动刷新：每 5 分钟（面板打开时；桌面端 ≥1280px 常驻侧栏始终视为打开） ── */
+  function _aiDesktop(){ return window.matchMedia('(min-width:1280px)').matches; }
   setInterval(function(){
     if(document.hidden || afRefreshing) return;
-    if(!document.body.classList.contains('ai-open')) return;
+    if(!document.body.classList.contains('ai-open') && !_aiDesktop()) return;
     refreshAiFeed();
   }, 5*60*1000);
+  /* 桌面端常驻侧栏：进入页面即加载 AI 动态（移动端保持点击按钮后加载） */
+  if(_aiDesktop() && !afLoaded) _loadAll();
 
 })();
 </script>
@@ -3513,7 +3527,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<select class="sort-select" id="sortSelect" title="\u6392\u5e8f\u65b9\u5f0f"><option value="newest">\u6700\u65b0\u53d1\u5e03</option><option value="oldest">\u6700\u65e9\u53d1\u5e03</option><option value="active">\u6700\u8fd1\u6d3b\u8dc3</option></select>\n'
         '</div>\n'
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
-        '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
+        '<div class="wall-wrap">\n'
         '<aside class="ai-feed-panel" id="aiFeedPanel">\n'
         '<div class="af-head"><h2>AI \u52a8\u6001\u6d41</h2>\n'
         '<button class="af-refresh" id="afRefreshBtn" onclick="refreshAiFeed()" title="\u5237\u65b0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
@@ -3523,6 +3537,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
         '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'
         '<button class="af-more" id="afLoadMore" style="display:none">\u52a0\u8f7d\u66f4\u591a</button></aside>\n'
+        '<div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
         '<div class="scrim" aria-hidden="true" onclick="closeOverlays()"></div>\n'
         '<aside class="src-panel" id="srcPanel" role="dialog" aria-modal="true" aria-label="\u4fe1\u6e90\u9762\u677f">\n'
         '<div class="sp-head"><div class="row"><h2>信源</h2>\n'
