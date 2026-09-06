@@ -1779,6 +1779,11 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
 .af-close{width:26px;height:26px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .15s;flex:none;}
 .af-close:hover{border-color:var(--line-strong);color:var(--ink);}
 .af-close svg{width:12px;height:12px;}
+.af-refresh{width:26px;height:26px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .15s;flex:none;cursor:pointer;background:transparent;}
+.af-refresh:hover{border-color:var(--line-strong);color:var(--ink);}
+.af-refresh.loading{pointer-events:none;opacity:.7;}
+.af-refresh.loading svg{animation:spin 1s linear infinite;}
+.af-refresh svg{width:12px;height:12px;}
 .af-sub{flex:none;padding:6px 16px;font-size:11px;color:var(--faint);font-family:var(--mono);border-bottom:1px solid var(--line);}
 .af-filter{display:flex;flex-wrap:wrap;gap:5px;padding:8px 16px 4px;flex:none;}
 .af-filter .fchip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border:1px solid var(--line);border-radius:999px;background:transparent;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;font-family:inherit;}
@@ -3069,6 +3074,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
   var AIHOT_CATS = {industry:['\u884c\u4e1a','#2f5d8a'],paper:['\u8bba\u6587','#7052c9'],product:['\u4ea7\u54c1','#b06a10'],tip:['\u6280\u5de7','#2e7d5f'],agi:['AGI','#c2434d']};
   var afLoaded = false;
   var afItems = [], afCursor = '', afFilter = 'all';
+  var afAgiSort = 'hot';  // hot | new
+  var afRefreshing = false;
   var AGIHUNT_CHANNELS = [
     ['models','\u6a21\u578b'],['research','\u7814\u7a76'],['coding-agents','\u7f16\u7a0b&Agent'],
     ['products','\u5e94\u7528'],['multimodal','\u591a\u6a21\u6001'],['infra','Infra'],
@@ -3087,14 +3094,40 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
   window.toggleAiFeed = toggleAiFeed;
 
+  /* ── 刷新（参照主页 refreshRss 模式） ── */
+  function refreshAiFeed(){
+    if(afRefreshing) return;
+    if(!afLoaded) { _loadAll(); return; }
+    afRefreshing = true;
+    var btn = document.getElementById('afRefreshBtn');
+    if(btn) btn.classList.add('loading');
+    var settled = false;
+    var timer = setTimeout(function(){
+      if(settled) return; settled = true; afRefreshing = false;
+      if(btn) btn.classList.remove('loading');
+    }, 30000);
+    _loadAll(true).then(function(){
+      if(settled) return; settled = true; afRefreshing = false;
+      clearTimeout(timer);
+      if(btn) btn.classList.remove('loading');
+    }).catch(function(){
+      if(settled) return; settled = true; afRefreshing = false;
+      clearTimeout(timer);
+      if(btn) btn.classList.remove('loading');
+    });
+  }
+  window.refreshAiFeed = refreshAiFeed;
+
 
 
   /* ── 统一加载 AIHOT + AGI Hunt ── */
-  async function _loadAll(){
+  async function _loadAll(isRefresh){
     var list = document.getElementById('afList');
     var upd = document.getElementById('afUpdated');
-    list.innerHTML = '<div class="af-loading"><span class="af-spin"></span> \u52a0\u8f7d\u4e2d\u2026</div>';
-    upd.textContent = '\u52a0\u8f7d\u4e2d\u2026';
+    if(!isRefresh){
+      list.innerHTML = '<div class="af-loading"><span class="af-spin"></span> \u52a0\u8f7d\u4e2d\u2026</div>';
+      upd.textContent = '\u52a0\u8f7d\u4e2d\u2026';
+    }
     var seen = new Set();
     var merged = [];
     // AIHOT 请求
@@ -3111,7 +3144,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     // AGI Hunt 请求（遍历全部频道）
     var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
     var agihuntP = Promise.all(AGIHUNT_CHANNELS.map(function(ch){
-      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort=hot')
+      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort)
         .then(function(r){return r.ok?r.json():null;})
         .then(function(j){return (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch[0]});});})
         .catch(function(){return [];});
@@ -3175,8 +3208,17 @@ def _build_js(sources_with_items, build_ts_ms=0):
       filterBox.innerHTML = chips.map(function(c){
         return '<button class="fchip'+(afFilter===c[0]?' on':'')+'" data-cat="'+c[0]+'">'+c[1]+' <span class="n">'+c[2]+'</span></button>';
       }).join('');
+      // AGI Hunt 排序切换（仅选中频道时显示）
+      if(afFilter.indexOf('ch:')===0){
+        filterBox.innerHTML += '<button class="fchip" data-sort="'+(afAgiSort==='hot'?'new':'hot')+'" style="margin-left:auto">'+(afAgiSort==='hot'?'\u2192 \u6700\u65b0':'\u2192 \u6700\u70ed')+'</button>';
+      }
       filterBox.querySelectorAll('.fchip').forEach(function(chip){
-        chip.addEventListener('click', function(){ afFilter=chip.getAttribute('data-cat'); _renderAll(); });
+        chip.addEventListener('click', function(){
+          var cat = chip.getAttribute('data-cat');
+          if(cat){ afFilter=cat; _renderAll(); }
+          var sort = chip.getAttribute('data-sort');
+          if(sort){ afAgiSort=sort; _refetchAgiChannel(); }
+        });
       });
     } else { filterBox.style.display = 'none'; }
     // 列表
@@ -3219,7 +3261,32 @@ def _build_js(sources_with_items, build_ts_ms=0):
     btn.disabled = false; btn.textContent = '\u52a0\u8f7d\u66f4\u591a';
   });
 
+  /* ── 重取当前 AGI Hunt 频道（排序切换） ── */
+  async function _refetchAgiChannel(){
+    var ch = afFilter.slice(3);
+    var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+    try{
+      var r = await fetch(AGIHUNT_API+'?channel='+ch+'&day='+today+'&sort='+afAgiSort);
+      if(!r.ok) return;
+      var j = await r.json();
+      var newItems = (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch});});
+      afItems = afItems.filter(function(it){return !(it._src==='agihunt'&&it._ch===ch);});
+      var seen = new Set(afItems.map(function(x){return _normT(x.title);}));
+      newItems.forEach(function(it){
+        var k=_normT(it.title);
+        if(!seen.has(k)){seen.add(k); afItems.push(it);}
+      });
+      afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
+      _renderAll();
+    }catch(e){ /* ignore */ }
+  }
 
+  /* ── 自动刷新：每 5 分钟（面板打开时） ── */
+  setInterval(function(){
+    if(document.hidden || afRefreshing) return;
+    if(!document.body.classList.contains('ai-open')) return;
+    refreshAiFeed();
+  }, 5*60*1000);
 
 })();
 </script>
@@ -3313,6 +3380,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
         '<aside class="ai-feed-panel" id="aiFeedPanel">\n'
         '<div class="af-head"><h2>AI \u52a8\u6001\u6d41</h2>\n'
+        '<button class="af-refresh" id="afRefreshBtn" onclick="refreshAiFeed()" title="\u5237\u65b0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
 
         '<div class="af-sub" id="afUpdated"></div>\n'
