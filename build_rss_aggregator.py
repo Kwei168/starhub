@@ -171,28 +171,59 @@ def _accumulate_history(sources_with_items):
             "cat": src["cat"], "color": src["color"],
             "tier": src.get("tier", 3), "items": [],
         }
+    # --- 信源级 pub_date 质量自动审查 ---
+    # 第一遍：按源统计 pub_date 异常比例
+    #   异常模式 A: pub_date ≈ first_seen (|delta|<10min) → pub_date 大概率是抓取时间
+    #   异常模式 B: pub_date > first_seen (delta<-10min) → 日期倒挂
+    #   已知类目 C: cat=="wechat" → 公众号 RSS 源 pub_date 不可信
+    _src_date_stats = {}  # source_key -> {total, anomaly_a, anomaly_b}
+    for item in _rss_history.values():
+        sk = item["source_key"]
+        if sk not in src_map:
+            continue
+        if sk not in _src_date_stats:
+            _src_date_stats[sk] = {"total": 0, "anomaly_a": 0, "anomaly_b": 0}
+        _src_date_stats[sk]["total"] += 1
+        pd_str = item.get("pub_date", "")
+        fs_str = item.get("first_seen", "")
+        if pd_str and fs_str:
+            try:
+                pd = datetime.datetime.fromisoformat(pd_str)
+                if pd.tzinfo:
+                    pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+                fs = datetime.datetime.fromisoformat(fs_str)
+                delta_sec = (fs - pd).total_seconds()
+                if abs(delta_sec) < 600:      # 模式 A: < 10 分钟
+                    _src_date_stats[sk]["anomaly_a"] += 1
+                elif delta_sec < -600:         # 模式 B: 日期倒挂
+                    _src_date_stats[sk]["anomaly_b"] += 1
+            except (ValueError, TypeError):
+                pass
+
+    # 判定不可信源：已知类目 C 或 异常率 > 30%
+    _unreliable_srcs = set()
+    BAD_DATE_ANOMALY_THRESHOLD = 0.3
+    for sk, stats in _src_date_stats.items():
+        if stats["total"] == 0:
+            continue
+        cat = src_map[sk].get("cat", "")
+        anomaly_ratio = (stats["anomaly_a"] + stats["anomaly_b"]) / stats["total"]
+        if cat == "wechat":
+            _unreliable_srcs.add(sk)  # 已知不可信类目
+        elif anomaly_ratio > BAD_DATE_ANOMALY_THRESHOLD:
+            _unreliable_srcs.add(sk)  # 自动检测为不可信
+    if _unreliable_srcs:
+        names = [src_map[sk]["name"] for sk in _unreliable_srcs if sk in src_map][:10]
+        print("[bad_date] 不可信信源 %d 个: %s%s" % (
+            len(_unreliable_srcs), ", ".join(names),
+            " ..." if len(_unreliable_srcs) > 10 else ""))
+
+    # 第二遍：标记 bad_date 并重组
     for item in _rss_history.values():
         sk = item["source_key"]
         if sk in src_map:
             entry = dict(item)
-            pd_str = entry.get("pub_date", "")
-            fs_str = entry.get("first_seen", "")
-            entry["bad_date"] = False
-            # 信源级标记：wechat 类目的 RSS 源 pub_date 不可信（返回 feed 更新时间而非文章发布时间）
-            if src_map[sk].get("cat") == "wechat":
-                entry["bad_date"] = True
-            else:
-                # 通用检测：pub_date 与 first_seen 差距 < 10 分钟 = 大概率是抓取时间
-                if pd_str and fs_str:
-                    try:
-                        pd = datetime.datetime.fromisoformat(pd_str)
-                        if pd.tzinfo:
-                            pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
-                        fs = datetime.datetime.fromisoformat(fs_str)
-                        if abs((fs - pd).total_seconds()) < 600:  # 10 分钟
-                            entry["bad_date"] = True
-                    except (ValueError, TypeError):
-                        pass
+            entry["bad_date"] = sk in _unreliable_srcs
             entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
             src_map[sk]["items"].append(entry)
 
@@ -2481,7 +2512,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ── Dynamic relative time: computed from a.date at render time, never frozen ─ */
   function _dynTime(a) {
     if (!a || !a.date) return a && a.time ? a.time : '';
-    // bad_date: pub_date 不可信（如微信源返回抓取时间），显示绝对日期
+    // bad_date: pub_date 不可信（构建时自动检测：wechat类目/日期倒挂/抓取时间冒充），显示绝对日期
     if (a.bad_date) {
       var d = new Date(a.date);
       if (!isNaN(d.getTime())) {
