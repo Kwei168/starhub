@@ -2020,7 +2020,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       var isOpen=curArt&&artKey(curArt)===k;
       h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
-      h+='<span class="card-time">'+esc(a.time)+'</span>';
+      h+='<span class="card-time" title="'+esc(a.date||'')+'">'+_dynTime(a)+'</span>';
       h+='<button class="bm-btn'+(isBookmarked(k)?' on':'')+'" data-k="'+esc(k)+'" title="\u6536\u85cf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>';
       h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
       h+='<h3 class="card-title">'+highlightEsc(a.t,globalSearch)+'</h3>';
@@ -2140,12 +2140,12 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
   function renderReader(){
     var a=curArt; if(!a) return;
-    document.getElementById('r2Src').innerHTML='<span class="src-dot" style="--sc:'+a.sc+'"></span><b>'+esc(a.src)+'</b><span>\u00b7</span><span>'+esc(a.time)+'</span>';
+    document.getElementById('r2Src').innerHTML='<span class="src-dot" style="--sc:'+a.sc+'"></span><b>'+esc(a.src)+'</b><span>\u00b7</span><span title="'+esc(a.date||'')+'">'+_dynTime(a)+'</span>';
     var openEl=document.getElementById('r2Open'); openEl.href=a.u;
     var h='<h1 class="r2-title">'+esc(a.t)+'</h1>';
     h+='<div class="r2-meta" style="--cc:var(--cat-'+a.c+')"><span class="cat">'+(CAT_LABELS[a.c]||a.c)+'</span>';
     h+='<span class="src-dot" style="--sc:'+a.sc+'"></span><span>'+esc(a.src)+'</span>';
-    h+='<span>\u00b7</span><span>'+esc(a.time)+'</span><span>\u00b7</span><span>'+estRead(a)+'</span></div>';
+    h+='<span>\u00b7</span><span title="'+esc(a.date||'')+'">'+_dynTime(a)+'</span><span>\u00b7</span><span>'+estRead(a)+'</span></div>';
     if(a.s){
       // Auto-format summary into paragraphs
       var formattedSummary = formatSummary(a.s);
@@ -2457,6 +2457,18 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Refresh: 后台增量更新 —— 不整页 reload，避免重新下载18MB 页面导致长时间白屏 ── */
   var _refreshing=false, _lastTotal=ART.length;
+  /* ── Dynamic relative time: computed from a.date at render time, never frozen ─ */
+  function _dynTime(a) {
+    if (!a || !a.date) return a && a.time ? a.time : '';
+    var d = new Date(a.date);
+    if (isNaN(d.getTime())) return a.time || '';
+    var diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (diff < 60) return '\u521a\u521a';
+    if (diff < 3600) return Math.floor(diff / 60) + ' \u5206\u949f\u524d';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' \u5c0f\u65f6\u524d';
+    if (diff < 172800) return '\u6628\u5929';
+    return Math.floor(diff / 86400) + ' \u5929\u524d';
+  }
   function _fmtRel(dstr){
     if(!dstr) return '';
     var d=new Date(dstr); if(isNaN(d.getTime())) return '';
@@ -2770,7 +2782,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     ctx.fillText(srcTxt,PAD+16,y+10);
     ctx.font='12px '+font;
     ctx.fillStyle=col.summary;
-    ctx.fillText('\u00b7 '+(a.time||''),PAD+16+ctx.measureText(srcTxt).width+6,y+10);
+    ctx.fillText('\u00b7 '+_dynTime(a),PAD+16+ctx.measureText(srcTxt).width+6,y+10);
 
     ctx.font='11px '+font;
     ctx.fillStyle=col.brand;
@@ -2908,7 +2920,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       + '<h1>' + esc(a.t) + '</h1>'
       + '<div class="meta"><span class="cat">' + catLabel + '</span>'
       + '<span class="dot"></span><span>' + srcName + '</span>'
-      + '<span>\u00b7</span><span>' + esc(a.time) + '</span></div>';
+      + '<span>\u00b7</span><span title="' + esc(a.date||'') + '">' + _dynTime(a) + '</span></div>';
     if(contentHtml){ fullHtml += '<div class="content">' + contentHtml + '</div>'; }
     else if(a.s){ fullHtml += '<div class="content"><p>' + esc(a.s) + '</p></div>'; }
     fullHtml += '<div class="footer">\u6765\u6e90\uff1a<a href="' + esc(a.u) + '" target="_blank">' + srcName + ' \u2197</a> \u00b7 StarHub RSS \u805a\u5408</div>'
