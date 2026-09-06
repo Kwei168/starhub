@@ -1694,10 +1694,21 @@ async function loadAihot(){
   $('#aihotUpdated').textContent = '加载中…';
   list.innerHTML = '';
   try{
-    // ① 主源 AIHOT 先拉取、先渲染（通常 1-2s），不让新闻源拖慢首屏
-    const aiRes = await fetch(AIHOT_API).then(r => r.ok ? r.json() : null).catch(() => null);
+    // ① 主源 AIHOT 先拉取、先渲染；超时 10s 放弃（移动端弱网兜底）
+    const aiCtrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const aiTimer = aiCtrl ? setTimeout(() => aiCtrl.abort(), 10000) : null;
+    const aiRes = await fetch(AIHOT_API, aiCtrl ? { signal: aiCtrl.signal } : {})
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null);
+    if(aiTimer) clearTimeout(aiTimer);
     let items = (aiRes && aiRes.items) ? aiRes.items.slice() : [];
-    if(!items.length) throw new Error('empty');
+    // 空数据友好提示（凌晨/维护期间 AIHOT 可能返回 0 条，不应视为错误）
+    if(!items.length){
+      aihotLoaded = true;
+      $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
+      list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">近 24 小时暂无新动态</div>';
+      return;
+    }
     aihotItems = items;
     aihotCursor = (aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
     renderAihot();
@@ -1719,7 +1730,7 @@ async function loadAihot(){
     }
   }catch(e){
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
-    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">动态流加载失败，稍后重试</div>';
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">动态流加载失败，请检查网络后点击 AI 动态标签重试</div>';
   }finally{
     aihotLoading = false;
   }
@@ -1736,7 +1747,7 @@ function startFeedPolling(){
   document.addEventListener('visibilitychange', () => {
     if(document.hidden) return;
     refreshFeed();
-    if(state.sideTab === 'aihot') loadAihot();
+    if(state.sideTab === 'aihot'){ aihotLoaded = false; loadAihot(); }
   });
 }
 

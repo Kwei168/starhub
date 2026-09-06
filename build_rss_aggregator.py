@@ -3405,7 +3405,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
 
 
-  /* ── 统一加载 AIHOT + AGI Hunt ── */
+  /* ── 统一加载 AIHOT + AGI Hunt（渐进式渲染：先到先渲染，全部加超时兜底） ── */
   async function _loadAll(isRefresh){
     var list = document.getElementById('afList');
     var upd = document.getElementById('afUpdated');
@@ -3415,40 +3415,70 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }
     var seen = new Set();
     var merged = [];
-    // AIHOT 请求
-    var aihotP = fetch(AIHOT_API).then(function(r){
+    var rendered = false;
+
+    // \u2460 AIHOT \u8bf7\u6c42\uff1a\u8d85\u65f6 10s\uff08\u79fb\u52a8\u7aef\u5f31\u7f51\u5146\u5e95\uff09
+    var aiCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var aiTimer = aiCtrl ? setTimeout(function(){ aiCtrl.abort(); }, 10000) : null;
+    var aihotP = fetch(AIHOT_API, aiCtrl ? { signal: aiCtrl.signal } : {}).then(function(r){
       if(!r.ok) throw new Error('http '+r.status);
       return r.json();
     }).then(function(j){
+      if(aiTimer) clearTimeout(aiTimer);
       afCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
       (j.items||[]).forEach(function(it){
         var k=_normT(it.title);
         if(!seen.has(k)){seen.add(k); merged.push(Object.assign({},it,{_src:'aihot'}));}
       });
-    }).catch(function(){ afCursor=''; });
-    // AGI Hunt 请求（遍历全部频道）
+      // AIHOT \u5148\u5230\u5148\u6e32\u67d3\uff0c\u4e0d\u7b49 AGI Hunt
+      if(!rendered && merged.length){
+        rendered = true;
+        afItems = merged.slice();
+        afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
+        _renderAll();
+        upd.textContent = 'AI \u52a8\u6001\u6d41 \u00b7 ' + afItems.length + ' \u6761 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+      }
+    }).catch(function(){ if(aiTimer) clearTimeout(aiTimer); afCursor=''; });
+
+    // \u2461 AGI Hunt \u8bf7\u6c42\uff0812 \u9891\u9053\u5e76\u884c\uff09\uff1a\u603b\u8d85\u65f6 15s\uff0c\u907f\u514d\u5355\u4e2a\u9891\u9053\u62d6\u4f4f\u5168\u90e8
+    var agiCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var agiTimer = agiCtrl ? setTimeout(function(){ agiCtrl.abort(); }, 15000) : null;
     var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
     var agihuntP = Promise.all(AGIHUNT_CHANNELS.map(function(ch){
-      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort)
+      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort, agiCtrl ? { signal: agiCtrl.signal } : {})
         .then(function(r){return r.ok?r.json():null;})
         .then(function(j){return (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch[0]});});})
         .catch(function(){return [];});
     })).then(function(arrs){
+      if(agiTimer) clearTimeout(agiTimer);
       arrs.forEach(function(arr){
         arr.forEach(function(it){
           var k=_normT(it.title);
           if(!seen.has(k)){seen.add(k); merged.push(it);}
         });
       });
-    }).catch(function(){});
+    }).catch(function(){ if(agiTimer) clearTimeout(agiTimer); });
+
+    // \u7b49\u5f85 AIHOT + AGI Hunt \u5168\u90e8 settle\uff08\u5404\u81ea\u5df2\u6709\u8d85\u65f6\u4fdd\u62a4\uff09
     await Promise.allSettled([aihotP, agihuntP]);
     afItems = merged;
     afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
     afLoaded = true;
     _renderAll();
-    upd.textContent = 'AI \u52a8\u6001\u6d41 \u00b7 ' + afItems.length + ' \u6761 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
-    // 异步追加 /api/news
-    fetch('https://starhub-refresh.vercel.app/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
+    if(!afItems.length){
+      upd.textContent = 'AI \u52a8\u6001\u6d41';
+      list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5</div>';
+    } else {
+      upd.textContent = 'AI \u52a8\u6001\u6d41 \u00b7 ' + afItems.length + ' \u6761 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+    }
+
+    // \u2462 \u5f02\u6b65\u8ffd\u52a0 /api/news\uff1a\u8d85\u65f6 12s
+    var newsCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var newsTimer = newsCtrl ? setTimeout(function(){ newsCtrl.abort(); }, 12000) : null;
+    fetch('https://starhub-refresh.vercel.app/api/news', newsCtrl ? { signal: newsCtrl.signal } : {}).then(function(r){
+      if(newsTimer) clearTimeout(newsTimer);
+      return r.ok?r.json():null;
+    }).then(function(nj){
       if(!nj||!nj.items||!nj.items.length) return;
       var cutoff=Date.now()-24*3600000;
       var seen2=new Set(afItems.map(function(x){return _normT(x.title);}));
@@ -3460,7 +3490,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         });
       afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
       _renderAll();
-    }).catch(function(){});
+    }).catch(function(){ if(newsTimer) clearTimeout(newsTimer); });
   }
 
   /* ── AI 动态条目 → 分享卡片 ART 结构（复用卡片墙分享链路） ── */
