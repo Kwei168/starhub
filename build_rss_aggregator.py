@@ -138,6 +138,7 @@ def _accumulate_history(sources_with_items):
                 "title": it.get("title", ""), "title_zh": it.get("title_zh", ""),
                 "summary": it.get("summary", ""), "summary_zh": it.get("summary_zh", ""),
                 "full_content": it.get("full_content", ""),
+                "image": it.get("image", ""),
                 "pub_date": pd_str,
                 "first_seen": _rss_history.get(link, {}).get("first_seen", now_bj.replace(tzinfo=None).isoformat()),
             }
@@ -271,6 +272,9 @@ def _save_api_snapshot(sources_with_items, meta=None):
             fc = it.get("full_content", "")
             if fc:
                 item["fc"] = fc[:50000]
+            img = it.get("image", "")
+            if img:
+                item["img"] = img
             items.append(item)
         snapshot_sources.append({
             "key": src["key"], "name": src["name"],
@@ -1067,6 +1071,43 @@ def _strip_html(text):
     return text.strip()
 
 
+_IMG_SRC_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*[\"']([^\"'\s>]+)[\"']", re.IGNORECASE)
+
+def _extract_img_from_html(text):
+    """从 HTML 片段提取首个可外链的图片 URL（供卡片封面降级用）"""
+    if not text:
+        return ""
+    m = _IMG_SRC_RE.search(text)
+    if not m:
+        return ""
+    src = html_mod.unescape(m.group(1)).strip()
+    if not re.match(r"^https?://", src, re.IGNORECASE):
+        return ""
+    return src
+
+
+def _pick_item_image(it, desc_raw, content_raw):
+    """RSS item 图片提取优先级：enclosure > media:content > media:thumbnail > 正文首图 > 描述首图"""
+    try:
+        enc = it.find("enclosure")
+        if enc is not None:
+            etype = (enc.get("type") or "").lower()
+            eurl = (enc.get("url") or "").strip()
+            if eurl and (etype.startswith("image") or re.search(r"\.(jpe?g|png|webp|gif)(\?|$)", eurl, re.IGNORECASE)):
+                return eurl
+        mrss = "{http://search.yahoo.com/mrss/}"
+        for tag in ("content", "thumbnail"):
+            m_el = it.find(mrss + tag)
+            if m_el is not None and (m_el.get("url") or "").strip():
+                mtype = (m_el.get("type") or m_el.get("medium") or "").lower()
+                if not mtype or mtype.startswith("image") or mtype == "photo":
+                    return m_el.get("url").strip()
+        img = _extract_img_from_html(content_raw) or _extract_img_from_html(desc_raw)
+        return img
+    except Exception:
+        return ""
+
+
 _SAFE_TAGS = re.compile(
     r"^(/?(p|br|img|a|b|i|em|strong|h[1-6]|ul|ol|li|blockquote|pre|code"
     r"|figure|figcaption|table|tr|td|th|thead|tbody|span|div|hr|sup|sub|dl|dt|dd))$",
@@ -1377,15 +1418,17 @@ def _fetch_rss(source):
             title = _strip_html(e.findtext(ns + "title") or "")
             link_el = e.find(ns + "link")
             link = (link_el.get("href") if link_el is not None else (e.findtext(ns + "id") or "")).strip()
-            desc = _strip_html(e.findtext(ns + "summary") or "")
-            atom_content = _deep_clean_html(_sanitize_html(e.findtext(ns + "content") or ""))
+            summary_raw = e.findtext(ns + "summary") or ""
+            desc = _strip_html(summary_raw)
+            content_raw = e.findtext(ns + "content") or ""
+            atom_content = _deep_clean_html(_sanitize_html(content_raw))
             full_content = atom_content if len(atom_content) > len(desc) else ""
             pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
             if not title or not link:
                 continue
             items.append({
                 "title": title, "link": link, "summary": _truncate(desc),
-                "full_content": full_content,
+                "full_content": full_content, "image": _pick_item_image(e, summary_raw, content_raw),
                 "pub_date": _parse_iso(pub), "source": name, "source_key": source["key"],
                 "cat": source["cat"],
             })
@@ -1410,16 +1453,18 @@ def _fetch_rss(source):
 def _parse_rss_item(it, source_name, source_key, cat, items):
     title = _strip_html(it.findtext("title") or "")
     link = (it.findtext("link") or "").strip()
-    desc = _strip_html(it.findtext("description") or "")
+    desc_raw = it.findtext("description") or ""
+    desc = _strip_html(desc_raw)
     pub = (it.findtext("pubDate") or "").strip()
     dc_content = "{http://purl.org/rss/1.0/modules/content/}"
-    content_encoded = _deep_clean_html(_sanitize_html(it.findtext(dc_content + "encoded") or ""))
+    content_raw = it.findtext(dc_content + "encoded") or ""
+    content_encoded = _deep_clean_html(_sanitize_html(content_raw))
     full_content = content_encoded if len(content_encoded) > len(desc) else ""
     if not title or not link:
         return
     items.append({
         "title": title, "link": link, "summary": _truncate(desc),
-        "full_content": full_content,
+        "full_content": full_content, "image": _pick_item_image(it, desc_raw, content_raw),
         "pub_date": _parse_rss_date(pub), "source": source_name, "source_key": source_key,
         "cat": cat,
     })
@@ -1565,6 +1610,22 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 .empty-hint { text-align:center; color:var(--faint); font-size:13px; padding:60px 0; line-height:2; }
 mark{background:var(--brand-weak);color:var(--brand-strong);padding:0 2px;border-radius:3px;}
 .search-banner{padding:8px 16px;font-size:13px;color:var(--muted);background:var(--brand-weak);border:1px solid var(--brand-line);border-radius:10px;margin-bottom:8px;}
+
+/* ── 封面卡：上图片 / 标题 / 内容介绍（无图降级为分类色渐变 + 首字） ── */
+.card.cover-card { padding:0; overflow:hidden; }
+.cover-card .cover { display:block; position:relative; height:var(--cover-h,150px); background:var(--card-2); border-bottom:1px solid var(--line); }
+.cover-card .cover-img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; transition:transform .25s ease; }
+.cover-card .cover-fallback { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--display); font-size:40px; font-weight:700; color:#fff; background:linear-gradient(135deg, var(--cc), color-mix(in srgb, var(--cc) 45%, #191919)); }
+@supports not (background:color-mix(in srgb, red, blue)) { .cover-card .cover-fallback { background:var(--cc); } }
+.cover-card .card-top { margin:0; padding:10px 13px 0; }
+.cover-card .card-title { margin:8px 13px 0; }
+.cover-card .card-summary { margin:6px 13px 0; }
+.cover-card .card-foot { margin:10px 13px 0; padding:9px 0 12px; }
+.cover-card.visited { border-left:3px solid var(--line-strong); }
+.cover-card.visited .cover-img, .cover-card.visited .cover-fallback { opacity:.55; }
+@media (hover:hover) and (pointer:fine) { .cover-card:hover .cover-img { transform:scale(1.04); } }
+[data-theme="dark"] .cover-card .cover-img { filter:brightness(.88) saturate(.92); }
+@media (max-width:640px) { .cover-card .cover { height:118px; } }
 
 
 /* ── Source panel (left drawer) ── */
@@ -1880,6 +1941,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
           time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||'',
+          img:it.image||it.img||'',
           bad_date:!!it.bad_date, bb:!!s.bb});
       });
     });
@@ -2138,7 +2200,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
     for(var i=0;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
-      h+='<article class="card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
+      h+='<article class="card cover-card'+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" style="--cc:var(--cat-'+a.c+')">';
+      h+='<a class="cover" href="'+esc(a.u)+'" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true" onclick="event.stopPropagation()">';
+      h+='<span class="cover-fallback">'+esc((a.t||'#').charAt(0).toUpperCase())+'</span>';
+      if(a.img) h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">';
+      h+='</a>';
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
       h+='<span class="card-time" title="'+esc(a.date||'')+'">'+_dynTime(a)+'</span>';
       h+='<button class="bm-btn'+(isBookmarked(k)?' on':'')+'" data-k="'+esc(k)+'" title="\u6536\u85cf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>';
@@ -2163,6 +2229,11 @@ def _build_js(sources_with_items, build_ts_ms=0):
       cards[i].classList.toggle('open',isOpen);
     }
   }
+  /* 封面图加载失败：隐藏 img 让分类色 fallback 露出（error 不冒泡，捕获阶段拦截） */
+  document.getElementById('wall').addEventListener('error',function(e){
+    var t=e.target;
+    if(t&&t.classList&&t.classList.contains('cover-img')){ t.style.display='none'; }
+  },true);
   /* 事件委托：一次性绑定，无需重新绑定 */
   document.getElementById('wall').addEventListener('click',function(e){
     var card=e.target.closest('.card'); if(!card)return;
