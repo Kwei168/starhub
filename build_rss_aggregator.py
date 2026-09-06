@@ -452,6 +452,9 @@ RSS_SOURCES = [
     {"key": "雪球热帖_12", "name": "雪球热帖", "cat": "news", "url": "https://xueqiu.com/hots/topic/rss", "color": "#0097a7"},
     {"key": "bbc英语教学_13", "name": "BBC英语教学", "cat": "news", "url": "https://plink.anyfeeder.com/bbc/learningenglish", "color": "#bb1919"},
     {"key": "求是网_14", "name": "求是网", "cat": "news", "url": "https://plink.anyfeeder.com/qstheory", "color": "#6a1b9a"},
+    {"key": "半岛电视台_15", "name": "半岛电视台", "cat": "news", "url": "https://www.aljazeera.com/xml/rss/all.xml", "color": "#c4792b", "tier": 1},
+    {"key": "CNN_16", "name": "CNN", "cat": "news", "url": "https://news.google.com/rss/search?q=site:cnn.com&hl=en-US&gl=US&ceid=US:en", "color": "#cc0000", "tier": 1},
+    {"key": "新华社_17", "name": "新华社", "cat": "news", "url": "https://plink.anyfeeder.com/newscn/whxw", "color": "#d32f2f", "tier": 1},
 
     # ── 播客 (6) ──
     {"key": "42章经_1", "name": "42章经", "cat": "podcast", "url": "https://feed.xyzfm.space/evgg6xle9rdc", "color": "#0891b2"},
