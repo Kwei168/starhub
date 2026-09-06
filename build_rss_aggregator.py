@@ -166,11 +166,14 @@ def _accumulate_history(sources_with_items):
     # 按源重组，更新相对时间
     src_map = {}
     for src in sources_with_items:
+        _bb = 'bestblogs.dev' in (src.get('url') or '')
         src_map[src["key"]] = {
             "key": src["key"], "name": src["name"],
             "cat": src["cat"], "color": src["color"],
             "tier": src.get("tier", 3), "items": [],
         }
+        if _bb:
+            src_map[src["key"]]["bb"] = True
     # --- 信源级 pub_date 质量自动审查 ---
     # 第一遍：按源统计 pub_date 异常比例
     #   异常模式 A: pub_date ≈ first_seen (|delta|<10min) → pub_date 大概率是抓取时间
