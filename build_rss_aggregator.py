@@ -175,20 +175,24 @@ def _accumulate_history(sources_with_items):
         sk = item["source_key"]
         if sk in src_map:
             entry = dict(item)
-            # 检测可疑日期：pub_date 与 first_seen 差距 < 10 分钟 = 大概率是抓取时间而非真实发布时间
             pd_str = entry.get("pub_date", "")
             fs_str = entry.get("first_seen", "")
             entry["bad_date"] = False
-            if pd_str and fs_str:
-                try:
-                    pd = datetime.datetime.fromisoformat(pd_str)
-                    if pd.tzinfo:
-                        pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
-                    fs = datetime.datetime.fromisoformat(fs_str)
-                    if abs((fs - pd).total_seconds()) < 600:  # 10 分钟
-                        entry["bad_date"] = True
-                except (ValueError, TypeError):
-                    pass
+            # 信源级标记：wechat 类目的 RSS 源 pub_date 不可信（返回 feed 更新时间而非文章发布时间）
+            if src_map[sk].get("cat") == "wechat":
+                entry["bad_date"] = True
+            else:
+                # 通用检测：pub_date 与 first_seen 差距 < 10 分钟 = 大概率是抓取时间
+                if pd_str and fs_str:
+                    try:
+                        pd = datetime.datetime.fromisoformat(pd_str)
+                        if pd.tzinfo:
+                            pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+                        fs = datetime.datetime.fromisoformat(fs_str)
+                        if abs((fs - pd).total_seconds()) < 600:  # 10 分钟
+                            entry["bad_date"] = True
+                    except (ValueError, TypeError):
+                        pass
             entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
             src_map[sk]["items"].append(entry)
 
