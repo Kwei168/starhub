@@ -1945,7 +1945,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
         if(_seen[_k])return; _seen[_k]=1;
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-          time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||'',
+          /* fc 兼容两条通道：chunk 通道字段名为 full_content，远程刷新通道为 fc */
+          time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
           img:it.image||it.img||'',
           bad_date:!!it.bad_date, bb:!!s.bb});
       });
@@ -2687,7 +2688,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
         var i=idx[s.key];
         var _have={};
         if(i!==undefined)SOURCES[i].items.forEach(function(_it){if(_it&&_it.link)_have[_it.link]=1;});
-        var fresh=s.items.filter(function(_it){return _it&&_it.link&&!_have[_it.link];});
+        /* 无 link 的 item 保留，只过滤已知重复 link，避免任何丢数据 */
+        var fresh=s.items.filter(function(_it){return _it&&(!_it.link||!_have[_it.link]);});
         if(!fresh.length)return;
         if(i===undefined){s.items=fresh;SOURCES.push(s);idx[s.key]=SOURCES.length-1;added+=fresh.length;return;}
         SOURCES[i].items=SOURCES[i].items.concat(fresh);
