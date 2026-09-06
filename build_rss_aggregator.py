@@ -1798,6 +1798,10 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
 .af-item .t{color:var(--ink);font-weight:500;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .af-item .t:hover{color:var(--brand-strong);}
 .af-item .meta{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);}
+.af-share{flex:none;width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--faint);border:1px solid transparent;background:none;cursor:pointer;padding:0;margin-top:1px;transition:all .15s;}
+.af-share:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
+.af-share.loading{pointer-events:none;opacity:.5;}
+.af-share svg{width:12px;height:12px;}
 .af-more{flex:none;margin:8px 16px;height:32px;border:1px dashed var(--line);border-radius:var(--radius);background:transparent;font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s;font-family:var(--body);}
 .af-more:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
 .af-more:disabled{opacity:.5;cursor:not-allowed;}
@@ -2942,7 +2946,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     // Gather full text from available sources
     var fullText = '';
     var ftEl = document.querySelector('.r2-fulltext');
-    if(ftEl) fullText = stripHtmlForCanvas(ftEl.innerText || ftEl.textContent);
+    if(ftEl && !a._af) fullText = stripHtmlForCanvas(ftEl.innerText || ftEl.textContent);
     if(!fullText && a.fc && a.fc.length > 100) fullText = stripHtmlForCanvas(a.fc);
     if(!fullText && _articleCache[a.u] && _articleCache[a.u].ok) fullText = stripHtmlForCanvas(_articleCache[a.u].content);
 
@@ -3178,6 +3182,20 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }).catch(function(){});
   }
 
+  /* ── AI 动态条目 → 分享卡片 ART 结构（复用卡片墙分享链路） ── */
+  function _afToArt(it){
+    if(!it) return null;
+    if(it._src==='agihunt'){
+      var chInfo = AGIHUNT_CHANNELS.filter(function(c){return c[0]===it._ch;})[0];
+      return {t:it.title||'', s:'', c:chInfo?chInfo[1]:'AGI Hunt', sc:'#6366f1',
+        src:it.author||'AGI Hunt', u:it.url||'', time:_fmtRel(it.published_at), _af:true};
+    }
+    var ci = AIHOT_CATS[it.category] || ['\u52a8\u6001','#8b949e'];
+    return {t:it.title||'', s:'', c:ci[0], sc:ci[1],
+      src:(it.source&&it.source.name)||'AIHOT', u:(it.links&&(it.links.original||it.links.aihot))||'',
+      time:_fmtRel(it.publishedAt), _af:true};
+  }
+
   function _renderAll(){
     var list = document.getElementById('afList');
     var filterBox = document.getElementById('afFilter');
@@ -3240,8 +3258,17 @@ def _build_js(sources_with_items, build_ts_ms=0):
       }
       return '<div class="af-item"><span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+_escH(cat[0])+'</span>'
         +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
-        +'<span class="meta">'+_escH(src)+(src&&tm?' \u00b7 ':'')+_escH(tm)+(it.selected?' \u00b7 \u2605 \u7cbe\u9009':'')+'</span></div></div>';
+        +'<span class="meta">'+_escH(src)+(src&&tm?' \u00b7 ':'')+_escH(tm)+(it.selected?' \u00b7 \u2605 \u7cbe\u9009':'')+'</span></div>'
+        +'<button class="af-share" data-i="'+i+'" title="\u5206\u4eab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button></div>';
     }).join('');
+    // 分享：转为 ART 结构后走统一分享链路（全文 API + 3s 超时降级摘要）
+    list.querySelectorAll('.af-share').forEach(function(btn){
+      btn.addEventListener('click', function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        var art = _afToArt(filtered[parseInt(btn.getAttribute('data-i'),10)]||null);
+        if(art) shareArticle(art, null, btn);
+      });
+    });
     moreBtn.style.display = (afCursor && afFilter==='all') ? '' : 'none';
   }
 
