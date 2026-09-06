@@ -1754,6 +1754,63 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .boot-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:72px 16px;color:var(--muted);font-size:13px;}
 .boot-spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:bootspin .8s linear infinite;}
 @keyframes bootspin{to{transform:rotate(360deg)}}
+
+/* ── AI Feed button (toolbar) ── */
+.ai-feed-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 13px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--brand-line);background:var(--brand-weak);color:var(--brand-strong);transition:all .15s;cursor:pointer;}
+.ai-feed-btn:hover{background:var(--brand-strong);color:#fff;}
+.ai-feed-btn.on{background:var(--brand-strong);color:#fff;}
+.ai-feed-btn svg{width:13px;height:13px;}
+
+/* ── BestBlogs toggle (toolbar) ── */
+.bb-toggle{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--muted);transition:all .15s;cursor:pointer;}
+.bb-toggle:hover{border-color:var(--brand-line);color:var(--brand-strong);background:var(--brand-weak);}
+.bb-toggle.on{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand-strong);}
+.bb-toggle .cnt{font-family:var(--mono);font-size:10px;opacity:.8;}
+.bb-sub-chips{display:none;align-items:center;gap:4px;margin-left:4px;}
+.bb-sub-chips.show{display:inline-flex;}
+.bb-sub{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;transition:all .15s;}
+.bb-sub:hover{border-color:var(--brand-line);color:var(--brand-strong);}
+.bb-sub.on{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand-strong);font-weight:600;}
+
+/* ── AI Feed panel (right side drawer) ── */
+.ai-feed-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--card);border-left:1px solid var(--line);transform:translateX(103%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;box-shadow:-18px 0 50px rgba(0,0,0,.12);}
+body.ai-open .ai-feed-panel{transform:none;}
+body.ai-open .scrim{opacity:1;pointer-events:auto;}
+.af-head{flex:none;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
+.af-head h2{font-family:var(--display);font-size:15px;font-weight:900;flex:1;}
+.af-tabs{display:flex;gap:0;padding:0 16px;border-bottom:1px solid var(--line);}
+.af-tab{padding:8px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:0;border-left:0;border-right:0;font-family:var(--body);}
+.af-tab:hover{color:var(--ink);}
+.af-tab.on{color:var(--brand-strong);border-bottom-color:var(--brand-strong);}
+.af-close{width:26px;height:26px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .15s;flex:none;}
+.af-close:hover{border-color:var(--line-strong);color:var(--ink);}
+.af-close svg{width:12px;height:12px;}
+.af-sub{flex:none;padding:6px 16px;font-size:11px;color:var(--faint);font-family:var(--mono);border-bottom:1px solid var(--line);}
+.af-filter{display:flex;flex-wrap:wrap;gap:5px;padding:8px 16px 4px;flex:none;}
+.af-filter .fchip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border:1px solid var(--line);border-radius:999px;background:transparent;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;font-family:inherit;}
+.af-filter .fchip:hover{border-color:var(--line-strong);color:var(--ink);}
+.af-filter .fchip.on{background:var(--ink);border-color:var(--ink);color:var(--bg);font-weight:600;}
+.af-filter .fchip .n{opacity:.6;font-family:var(--mono);font-size:10px;}
+.af-body{flex:1;overflow-y:auto;padding:4px 16px 16px;-webkit-overflow-scrolling:touch;}
+.af-item{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px;min-width:0;}
+.af-item:last-child{border-bottom:0;}
+.af-item .cat{flex:none;margin-top:1px;height:16px;line-height:16px;padding:0 6px;border-radius:2px;font-size:10.5px;font-weight:600;white-space:nowrap;}
+.af-item .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.af-item .t{color:var(--ink);font-weight:500;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.af-item .t:hover{color:var(--brand-strong);}
+.af-item .meta{color:var(--faint);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);}
+.af-more{flex:none;margin:8px 16px;height:32px;border:1px dashed var(--line);border-radius:var(--radius);background:transparent;font-size:12px;color:var(--muted);cursor:pointer;transition:all .15s;font-family:var(--body);}
+.af-more:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
+.af-more:disabled{opacity:.5;cursor:not-allowed;}
+.af-empty{color:var(--faint);font-size:13px;text-align:center;padding:40px 16px;}
+.af-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:40px 16px;color:var(--muted);font-size:13px;}
+.af-spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:bootspin .8s linear infinite;}
+
+@media (max-width:700px) {
+  .ai-feed-panel{width:100vw;}
+  .af-head{padding:12px 14px 8px;}
+  .af-body{padding:4px 14px 14px;}
+}
 """
 
 
@@ -1812,7 +1869,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
           time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||'',
-          bad_date:!!it.bad_date});
+          bad_date:!!it.bad_date, bb:!!s.bb});
       });
     });
     var nowIso=new Date().toISOString();
@@ -3012,6 +3069,245 @@ def _build_js(sources_with_items, build_ts_ms=0):
   window.copyFullHtml=copyFullHtml;
   window.toast=toast;
 
+  /* ══════ AI 动态流面板（AIHOT + AGI Hunt） ══════ */
+  var AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
+  var AGIHUNT_API = '/api/agihunt';
+  var AIHOT_CATS = {industry:['\u884c\u4e1a','#2f5d8a'],paper:['\u8bba\u6587','#7052c9'],product:['\u4ea7\u54c1','#b06a10'],tip:['\u6280\u5de7','#2e7d5f'],agi:['AGI','#c2434d']};
+  var afTab = 'aihot';   // 当前标签：aihot | agihunt
+  var afLoaded = {aihot:false, agihunt:false};
+  var aihotItems = [], aihotCursor = '', aihotFilter = 'all';
+  var agihuntItems = [], agihuntChannel = 'models', agihuntSort = 'hot';
+  var AGIHUNT_CHANNELS = [
+    ['models','\u6a21\u578b'],['research','\u7814\u7a76'],['coding-agents','\u7f16\u7a0b&Agent'],
+    ['products','\u5e94\u7528'],['multimodal','\u591a\u6a21\u6001'],['infra','Infra'],
+    ['hardware','\u5177\u8eab'],['funding','\u521b\u6295'],['policy','\u5b89\u5168'],
+    ['agi','\u6f2b\u8bddAGI'],['companies','\u516c\u53f8\u548c\u4eba'],['fun','Fun']
+  ];
+
+  function _escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
+  function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '\u521a\u521a'; if(m<60)return m+' \u5206\u949f\u524d'; var h=Math.floor(m/60); if(h<24)return h+' \u5c0f\u65f6\u524d'; return Math.floor(h/24)+' \u5929\u524d'; }catch(e){return '';} }
+
+  function toggleAiFeed(){
+    var open = document.body.classList.toggle('ai-open');
+    document.getElementById('btnAiFeed').classList.toggle('on', open);
+    if(open && !afLoaded[afTab]) _loadAfTab();
+  }
+  window.toggleAiFeed = toggleAiFeed;
+
+  // 标签切换
+  (function(){
+    var tabs = document.querySelectorAll('.af-tab');
+    tabs.forEach(function(tab){
+      tab.addEventListener('click', function(){
+        tabs.forEach(function(t){ t.classList.remove('on'); });
+        tab.classList.add('on');
+        afTab = tab.getAttribute('data-tab');
+        if(!afLoaded[afTab]) _loadAfTab();
+        else _renderAfTab();
+      });
+    });
+  })();
+
+  function _loadAfTab(){
+    if(afTab === 'aihot') _loadAihot();
+    else if(afTab === 'agihunt') _loadAgihunt();
+  }
+  function _renderAfTab(){
+    if(afTab === 'aihot') _renderAihot();
+    else if(afTab === 'agihunt') _renderAgihunt();
+  }
+
+  /* ── AIHOT 标签 ── */
+  async function _loadAihot(){
+    var list = document.getElementById('afList');
+    var upd = document.getElementById('afUpdated');
+    list.innerHTML = '<div class="af-loading"><span class="af-spin"></span> \u52a0\u8f7d\u4e2d\u2026</div>';
+    upd.textContent = '\u52a0\u8f7d\u4e2d\u2026';
+    try{
+      var r = await fetch(AIHOT_API);
+      if(!r.ok) throw new Error('http '+r.status);
+      var j = await r.json();
+      aihotItems = (j.items||[]).slice();
+      aihotCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
+      afLoaded.aihot = true;
+      _renderAihot();
+      upd.textContent = 'AIHOT \u00b7 \u8fd1 24 \u5c0f\u65f6 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+      // 异步追加 /api/news
+      fetch('/api/news').then(function(r){return r.ok?r.json():null;}).then(function(nj){
+        if(!nj||!nj.items||!nj.items.length) return;
+        var cutoff=Date.now()-24*3600000;
+        var seen=new Set(aihotItems.map(function(x){return _normT(x.title);}));
+        nj.items.filter(function(it){return it.title&&it.link&&(!it.publishedAt||new Date(it.publishedAt).getTime()>=cutoff);})
+          .slice(0,15).forEach(function(it){
+            var k=_normT(it.title); if(!seen.has(k)){seen.add(k);
+              aihotItems.push({title:it.title,category:'industry',source:{name:it.source||'36\u6c2a'},links:{original:it.link},publishedAt:it.publishedAt||'',selected:false});
+            }
+          });
+        aihotItems.sort(function(a,b){return (b.publishedAt||'').localeCompare(a.publishedAt||'');});
+        _renderAihot();
+      }).catch(function(){});
+    }catch(e){
+      list.innerHTML = '<div class="af-empty">AIHOT \u52a0\u8f7d\u5931\u8d25\uff0c\u7a0d\u540e\u91cd\u8bd5</div>';
+      upd.textContent = 'AIHOT';
+    }
+  }
+
+  function _renderAihot(){
+    var list = document.getElementById('afList');
+    var filterBox = document.getElementById('afFilter');
+    var moreBtn = document.getElementById('afLoadMore');
+    // 筛选条
+    var items = aihotFilter==='all' ? aihotItems : aihotItems.filter(function(it){return it.category===aihotFilter;});
+    if(aihotItems.length){
+      filterBox.style.display = '';
+      var cats = [['all','\u5168\u90e8']].concat(Object.keys(AIHOT_CATS).map(function(k){return [k,AIHOT_CATS[k][0]];}));
+      filterBox.innerHTML = cats.map(function(c){
+        var n = c[0]==='all' ? aihotItems.length : aihotItems.filter(function(it){return it.category===c[0];}).length;
+        return '<button class="fchip'+(aihotFilter===c[0]?' on':'')+'" data-cat="'+c[0]+'">'+c[1]+' <span class="n">'+n+'</span></button>';
+      }).join('');
+      filterBox.querySelectorAll('.fchip').forEach(function(chip){
+        chip.addEventListener('click', function(){ aihotFilter=chip.getAttribute('data-cat'); _renderAihot(); });
+      });
+    } else { filterBox.style.display = 'none'; }
+    // 列表
+    if(!items.length){ list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001</div>'; moreBtn.style.display='none'; return; }
+    list.innerHTML = items.map(function(it){
+      var cat = AIHOT_CATS[it.category] || ['\u52a8\u6001','#8b949e'];
+      var url = (it.links&&(it.links.original||it.links.aihot)) || '#';
+      var src = (it.source&&it.source.name)||'';
+      var tm = _fmtRel(it.publishedAt);
+      return '<div class="af-item"><span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+_escH(cat[0])+'</span>'
+        +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
+        +'<span class="meta">'+_escH(src)+(src&&tm?' \u00b7 ':'')+_escH(tm)+(it.selected?' \u00b7 \u2605 \u7cbe\u9009':'')+'</span></div></div>';
+    }).join('');
+    moreBtn.style.display = (aihotCursor && aihotFilter==='all') ? '' : 'none';
+  }
+
+  // 加载更多
+  document.getElementById('afLoadMore').addEventListener('click', async function(){
+    var btn = this; if(!aihotCursor) return;
+    btn.disabled = true; btn.textContent = '\u52a0\u8f7d\u4e2d\u2026';
+    try{
+      var r = await fetch(AIHOT_API + '&cursor=' + encodeURIComponent(aihotCursor));
+      if(!r.ok) throw new Error('http '+r.status);
+      var j = await r.json();
+      aihotCursor = (j.page&&j.page.hasMore) ? (j.page.nextCursor||'') : '';
+      var seen = new Set(aihotItems.map(function(x){return _normT(x.title);}));
+      (j.items||[]).forEach(function(it){var k=_normT(it.title);if(!seen.has(k)){seen.add(k);aihotItems.push(it);}});
+      _renderAihot();
+    }catch(e){ /* ignore */ }
+    btn.disabled = false; btn.textContent = '\u52a0\u8f7d\u66f4\u591a';
+  });
+
+  /* ── AGI Hunt 标签 ── */
+  async function _loadAgihunt(){
+    var list = document.getElementById('afList');
+    var upd = document.getElementById('afUpdated');
+    list.innerHTML = '<div class="af-loading"><span class="af-spin"></span> \u52a0\u8f7d\u4e2d\u2026</div>';
+    upd.textContent = '\u52a0\u8f7d\u4e2d\u2026';
+    try{
+      var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
+      var url = AGIHUNT_API + '?channel=' + agihuntChannel + '&day=' + today + '&sort=' + agihuntSort;
+      var r = await fetch(url);
+      if(!r.ok) throw new Error('http '+r.status);
+      var j = await r.json();
+      agihuntItems = (j.items||[]).slice();
+      afLoaded.agihunt = true;
+      _renderAgihunt();
+      var chName = agihuntChannel;
+      AGIHUNT_CHANNELS.forEach(function(c){ if(c[0]===agihuntChannel) chName=c[1]; });
+      upd.textContent = 'AGI Hunt \u00b7 ' + chName + ' \u00b7 ' + (agihuntSort==='hot'?'\u6700\u70ed':'\u6700\u65b0') + ' \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
+    }catch(e){
+      list.innerHTML = '<div class="af-empty">AGI Hunt \u52a0\u8f7d\u5931\u8d25' + (e.message.indexOf('500')>=0?'\uff08API Key \u672a\u914d\u7f6e\uff09':'') + '</div>';
+      upd.textContent = 'AGI Hunt';
+    }
+  }
+
+  function _renderAgihunt(){
+    var list = document.getElementById('afList');
+    var filterBox = document.getElementById('afFilter');
+    var moreBtn = document.getElementById('afLoadMore');
+    moreBtn.style.display = 'none';
+    // 频道筛选条
+    filterBox.style.display = '';
+    filterBox.innerHTML = AGIHUNT_CHANNELS.map(function(c){
+      return '<button class="fchip'+(agihuntChannel===c[0]?' on':'')+'" data-ch="'+c[0]+'">'+c[1]+'</button>';
+    }).join('') + '<button class="fchip" data-sort="' + (agihuntSort==='hot'?'new':'hot') + '" style="margin-left:auto">' + (agihuntSort==='hot'?'\u2192 \u6700\u65b0':'\u2192 \u6700\u70ed') + '</button>';
+    filterBox.querySelectorAll('.fchip[data-ch]').forEach(function(chip){
+      chip.addEventListener('click', function(){ agihuntChannel=chip.getAttribute('data-ch'); afLoaded.agihunt=false; _loadAgihunt(); });
+    });
+    var sortChip = filterBox.querySelector('.fchip[data-sort]');
+    if(sortChip) sortChip.addEventListener('click', function(){ agihuntSort=sortChip.getAttribute('data-sort'); afLoaded.agihunt=false; _loadAgihunt(); });
+    // 列表
+    if(!agihuntItems.length){ list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001</div>'; return; }
+    list.innerHTML = agihuntItems.slice(0,50).map(function(it){
+      var url = it.url || '#';
+      var author = it.author || '';
+      var hot = it.hot ? Math.round(it.hot*10)/10 : '';
+      var tm = _fmtRel(it.published_at);
+      return '<div class="af-item"><div class="body">'
+        +'<a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
+        +'<span class="meta">'+_escH(author)+(hot?' \u00b7 \u2605'+hot:'')+(tm?' \u00b7 '+tm:'')+'</span></div></div>';
+    }).join('');
+  }
+
+  /* ══════ BestBlogs 筛选 ══════ */
+  var bbActive = false;
+  var bbSubFilter = 'all';  // all | wechat | podcast | youtube
+  var _fullArt = null;  // 保存全量 ART 引用
+
+  function toggleBestBlogs(){
+    bbActive = !bbActive;
+    document.getElementById('btnBestBlogs').classList.toggle('on', bbActive);
+    var subChips = document.getElementById('bbSubChips');
+    if(bbActive){
+      // 统计 BestBlogs 文章数
+      var bbAll = ART.filter(function(a){return a.bb;}).length;
+      subChips.innerHTML = '<button class="bb-sub on" data-bb="all">\u5168\u90e8 <span class="n">'+bbAll+'</span></button>'
+        + '<button class="bb-sub" data-bb="wechat">\u516c\u4f17\u53f7</button>'
+        + '<button class="bb-sub" data-bb="podcast">\u64ad\u5ba2</button>'
+        + '<button class="bb-sub" data-bb="youtube">YouTube</button>';
+      subChips.classList.add('show');
+      subChips.querySelectorAll('.bb-sub').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          subChips.querySelectorAll('.bb-sub').forEach(function(b){b.classList.remove('on');});
+          btn.classList.add('on');
+          bbSubFilter = btn.getAttribute('data-bb');
+          _applyBbFilter();
+        });
+      });
+      _applyBbFilter();
+    } else {
+      subChips.classList.remove('show');
+      subChips.innerHTML = '';
+      // 恢复全量
+      if(_fullArt){ ART = _fullArt; }
+      wallLimit = WALL_STEP; curArt = null; renderChips(); renderWall();
+    }
+    _updateBbCnt();
+  }
+  window.toggleBestBlogs = toggleBestBlogs;
+
+  function _applyBbFilter(){
+    if(!bbActive) return;
+    if(!_fullArt) _fullArt = ART;
+    var filtered = _fullArt.filter(function(a){ return a.bb; });
+    if(bbSubFilter === 'wechat') filtered = filtered.filter(function(a){return a.c==='wechat';});
+    else if(bbSubFilter === 'podcast') filtered = filtered.filter(function(a){return a.c==='podcast';});
+    else if(bbSubFilter === 'youtube') filtered = filtered.filter(function(a){return a.c==='youtube';});
+    ART = filtered;
+    wallLimit = WALL_STEP; curArt = null; renderChips(); renderWall();
+    _updateBbCnt();
+  }
+  function _updateBbCnt(){
+    var cnt = document.getElementById('bbCnt');
+    if(cnt){
+      var n = bbActive ? ART.length : _fullArt ? _fullArt.filter(function(a){return a.bb;}).length : 0;
+      cnt.textContent = n ? n : '';
+    }
+  }
+
 })();
 </script>
 """
@@ -3038,14 +3334,19 @@ def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     chunk0, chunk1 = [], []
     for s in sources:
         k = s.get("key")
+        # 标记 BestBlogs 源（URL 含 bestblogs.dev）
+        _is_bb = 'bestblogs.dev' in (s.get('url') or '')
         if k in c0_items:
             c0 = dict(s); c0["items"] = c0_items[k]
+            if _is_bb: c0["bb"] = True
             chunk0.append(c0)
             rest = [it for it in s.get("items", []) if id(it) not in seen]
             if rest:
                 c1 = dict(s); c1["items"] = rest
+                if _is_bb: c1["bb"] = True
                 chunk1.append(c1)
         elif s.get("items"):
+            if _is_bb: s = dict(s); s["bb"] = True
             chunk1.append(s)
     return chunk0, chunk1
 
@@ -3086,6 +3387,9 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<button class="refresh-btn" id="refreshBtn" onclick="refreshRss()" title="后台检查更新，不刷新页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<div class="chips" id="chips"></div>\n'
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
+        '<button class="ai-feed-btn" id="btnAiFeed" onclick="toggleAiFeed()" title="AI \u52a8\u6001\u6d41"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI \u52a8\u6001</button>\n'
+        '<button class="bb-toggle" id="btnBestBlogs" onclick="toggleBestBlogs()" title="BestBlogs \u5185\u5bb9\u7b5b\u9009">BestBlogs <span class="cnt" id="bbCnt"></span></button>\n'
+        '<span class="bb-sub-chips" id="bbSubChips"></span>\n'
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
         '</div>\n'
@@ -3095,6 +3399,16 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '</div>\n'
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         '<div class="wall-wrap"><div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
+        '<aside class="ai-feed-panel" id="aiFeedPanel">\n'
+        '<div class="af-head"><h2>AI \u52a8\u6001\u6d41</h2>\n'
+        '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
+        '<div class="af-tabs" id="afTabs">\n'
+        '<button class="af-tab on" data-tab="aihot">AIHOT</button>\n'
+        '<button class="af-tab" data-tab="agihunt">AGI Hunt</button></div>\n'
+        '<div class="af-sub" id="afUpdated"></div>\n'
+        '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
+        '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'
+        '<button class="af-more" id="afLoadMore" style="display:none">\u52a0\u8f7d\u66f4\u591a</button></aside>\n'
         '<div class="scrim" aria-hidden="true" onclick="closeOverlays()"></div>\n'
         '<aside class="src-panel" id="srcPanel" role="dialog" aria-modal="true" aria-label="\u4fe1\u6e90\u9762\u677f">\n'
         '<div class="sp-head"><div class="row"><h2>信源</h2>\n'
