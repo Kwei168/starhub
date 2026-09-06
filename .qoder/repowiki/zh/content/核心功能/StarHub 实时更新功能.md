@@ -427,7 +427,7 @@ W["update.yml<br/>智能调度"] --> BUILD
 - **已更新** 智能调度配置详情：
   - 活跃时段（北京时间 8:00-20:00）：每30分钟执行一次
   - 非活跃时段（北京时间 20:00-次日8:00）：每小时执行一次
-  - 并发控制：group: starhub-update，cancel-in-progress: false
+  - 并发控制：group: starhub-update，cancel-in-progress: true
 - **新增** 实时数据聚合特性：
   - 滚动窗口：最近24小时的事件过滤
   - 多事件类型：支持repo创建、star、follow、PR、release、public、push等

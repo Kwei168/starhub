@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-21T00:11:40Z"
+exported_at: "2026-09-06T00:00:00Z"
 modules:
     "":
         dir_name: StarHub GitHub Starred 聚合站根编排
@@ -11,11 +11,16 @@ modules:
         scope:
             - .
             - .gitignore
-            - AGENT_HANDOVER.md
             - README.md
+            - HANDOFF.md
             - descriptions_zh.json
             - fetch_and_build.py
+            - build_rss_aggregator.py
             - index.html
+            - rss-aggregator.html
+            - rss_sources.json
+            - rss_history.json
+            - rss_api_snapshot.json
             - known_categories.json
             - template.html
             - trending_snapshot.json

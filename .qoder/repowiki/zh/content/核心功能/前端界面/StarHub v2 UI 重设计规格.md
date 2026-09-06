@@ -366,8 +366,8 @@ SEARCH --> GITHUB["GitHub API"]
 - [template.html:430-440](file://template.html#L430-L440)
 
 **章节来源**
-- [AGENT_HANDOVER.md:33-45](file://AGENT_HANDOVER.md#L33-L45)
-- [AGENT_HANDOVER.md:72-79](file://AGENT_HANDOVER.md#L72-L79)
+- [HANDOFF.md:33-45](file://HANDOFF.md#L33-L45)
+- [HANDOFF.md:72-79](file://HANDOFF.md#L72-L79)
 
 ## 性能与可维护性
 - 性能
@@ -400,7 +400,7 @@ SEARCH --> GITHUB["GitHub API"]
   - **主题检查**：验证明暗主题切换正常，新品牌色显示正确
 
 **章节来源**
-- [AGENT_HANDOVER.md:58-79](file://AGENT_HANDOVER.md#L58-L79)
+- [HANDOFF.md:58-79](file://HANDOFF.md#L58-L79)
 - [fetch_and_build.py:382-459](file://fetch_and_build.py#L382-L459)
 
 ## 结论

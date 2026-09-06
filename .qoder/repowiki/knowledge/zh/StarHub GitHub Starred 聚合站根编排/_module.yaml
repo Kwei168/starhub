@@ -4,11 +4,16 @@ title: StarHub GitHub Starred 聚合站根编排
 scope:
     - .
     - .gitignore
-    - AGENT_HANDOVER.md
     - README.md
+    - HANDOFF.md
     - descriptions_zh.json
     - fetch_and_build.py
+    - build_rss_aggregator.py
     - index.html
+    - rss-aggregator.html
+    - rss_sources.json
+    - rss_history.json
+    - rss_api_snapshot.json
     - known_categories.json
     - template.html
     - trending_snapshot.json

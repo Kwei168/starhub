@@ -1,13 +1,14 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-09-04
+> 最后更新：2026-09-06（同步最近两天 RSS 架构变更）
 
 ## 一、项目一句话
 
-**Kwei168 的 GitHub Star 收藏台**——自动拉取用户 starred repos，智能分类、翻译描述、生成静态单页站，托管在 Vercel + GitHub Pages 双端。
+**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
 
-- 线上地址：https://starhub-refresh.vercel.app （Vercel，主站）
-- 镜像地址：https://kwei168.github.io/starhub/ （GitHub Pages，备用）
+- 用户访问地址：https://kwei168.github.io/starhub/（GitHub Pages，国内可达的静态入口）
+- Vercel 项目：https://starhub-refresh.vercel.app（静态产物 + Serverless API）
+- RSS 页面：https://kwei168.github.io/starhub/rss-aggregator.html
 - 仓库：https://github.com/Kwei168/starhub
 
 ---
@@ -41,7 +42,7 @@
 │  │              Python: fetch_and_build.py              │    │
 │  │   拉取 starred repos → 智能分类 → 翻译描述 →         │    │
 │  │   生成 index.html + ai-daily.html +                  │    │
-│  │   rss-aggregator.html（710 源三层分级构建）            │    │
+│  │   rss-aggregator.html（711 源三层分级构建）            │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 
@@ -69,7 +70,7 @@
 | **主数据区**（Star 项目列表） | GitHub API: `/users/Kwei168/starred` | workflow 触发 `fetch_and_build.py` 静态构建 | `index.html` |
 | **关注动态区**（右侧 Feed） | GitHub API: `/users/{user}/events/public` | `/api/events.js` 实时查询，前端 30min 轮询 | 运行时 API |
 | **AI 晨报** | AIHOT 公开 API v1（降级回退 RSS）+ HN / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis / AtlasNote 多渠道 | `build_ai_daily.py` 每次构建时云端拉取生成 | `ai-daily.html` |
-| **RSS 聚合** | 710 源（GitHub/新闻/公众号/播客/YouTube），三层分级 | `build_rss_aggregator.py` 构建快照 + `api/rss.js` T1 实时抓取 | `rss-aggregator.html` + `rss_api_snapshot.json` |
+| **RSS 聚合** | 711 源（GitHub/新闻/公众号/播客/YouTube），T1/T2/T3 三层分级 | `build_rss_aggregator.py` 构建 72h 快照 + `api/rss.js` T1 实时抓取 | `rss-aggregator.html` + `rss-data-0.js`/`rss-data-1.js` + `rss_api_snapshot.json` |
 
 ---
 
@@ -84,8 +85,8 @@
 | `template.html` | ~1905 | **页面模板**。包含全部 CSS + HTML 结构 + JS 交互逻辑。`fetch_and_build.py` 读取此文件，替换占位符生成 `index.html`。2026-08-29 重设计为纸感编辑风（暖纸底+衬线标题+等宽数字），搜索置顶通栏+340px粘性侧栏 |
 | `index.html` | 自动生成 | 最终部署页面。**不要直接编辑**，每次 workflow 会从 template 重新生成 |
 | `ai-daily.html` | 自动生成 | AI 晨报页面。**不要直接编辑**，每次构建重新生成 |
-| `build_rss_aggregator.py` | ~2500 | **RSS 聚合页生成器**。710 源三层分级（T1=23/T2=19/T3=668），支持 full/incremental 两种构建模式。合并 BestBlogs 559 源（公众号+播客+YouTube），生成 `rss-aggregator.html` + `rss_api_snapshot.json` + `rss_sources.json` + `rss_history.json` + `translations.json` |
-| `rss-aggregator.html` | 自动生成 | RSS 聚合页面。**不要直接编辑**。卡片墙 + 源面板 + 抽屉阅读器，支持分类筛选/搜索/分享/主题切换/实时刷新 |
+| `build_rss_aggregator.py` | ~3700 | **RSS 聚合页生成器**。711 源三层分级（T1=23/T2=20/T3=668），支持 full/incremental 两种构建模式；同时生成卡片墙、AI 动态面板、阅读器、`rss-data-0.js`/`rss-data-1.js`、快照与历史文件 |
+| `rss-aggregator.html` | 自动生成 | RSS 聚合页面。**不要直接编辑**；由 `build_rss_aggregator.py` 生成，包含卡片墙、AI 动态双形态面板、信源面板、reader2 阅读器、筛选/搜索/分享/主题切换/实时刷新 |
 | `bestblogs_sources.json` | 559 条 | BestBlogs 项目导出的 RSS 源列表（375 公众号 + 60 播客 + 124 YouTube），构建时自动合并 |
 
 ### 数据文件（workflow 自动维护）
@@ -96,7 +97,7 @@
 | `descriptions_zh.json` | 项目→中文描述缓存（避免重复翻译） |
 | `trending_snapshot.json` | 趋势分析快照数据 |
 | `rss_api_snapshot.json` | RSS API 快照（72h 累积历史 + meta.last_fetch 增量状态） |
-| `rss_sources.json` | RSS 源元数据（710 条，含 tier 字段） |
+| `rss_sources.json` | RSS 源元数据（711 条，含 tier 字段） |
 | `rss_history.json` | RSS 文章历史累积（跨构建持久化） |
 | `translations.json` | 翻译缓存（MD5 hash → 中文，供构建和 API 共享） |
 
@@ -108,13 +109,15 @@
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
 | `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
-| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：返回构建时生成的 72h 累积快照（710 源）；`?refresh=1` 时仅实时抓取 T1 高频源（23 个），T2/T3 从快照读取；T1 英文源实时翻译 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：返回构建时生成的 72h 累积快照（711 源）；`?refresh=1` 时仅实时抓取 T1 高频源（23 个），T2/T3 从快照读取；T1 英文源实时翻译 |
+| `api/article.js` | `/api/article` | GET/OPTIONS | CORS 允许所有来源（`*`） | 15s（函数配置） | 阅读器全文兜底：快照全文 map → 特殊源提取/GitHub/YouTube → Readability 通用提取；OPTIONS 返回 204 |
+| `api/agihunt.js` | `/api/agihunt` | GET | 公开读取 | 15s | AI 动态侧栏的 AGI Hunt 频道代理 |
 
 ### 配置
 
 | 文件 | 作用 |
 |---|---|
-| `vercel.json` | Vercel 项目配置，声明 4 个 serverless 函数及超时 |
+| `vercel.json` | Vercel 项目配置，声明 7 个 Serverless 函数及超时（refresh/search/events/news/rss/article/agihunt） |
 | `.github/workflows/update.yml` | GitHub Actions 工作流定义。**分层调度**：UTC 21:00（北京 05:00）全量构建，UTC 2/6/10/14（北京 10/14/18/22）增量构建 |
 | `.gitignore` | 忽略 `__pycache__/`、`.deploy-tmp/` 等 |
 
@@ -138,15 +141,15 @@
 | `REFRESH_KEY` | 弱防护密钥，用于 `/api/refresh` 和 `/api/search` 的 header 校验 | Secret |
 | `VERCEL_TOKEN` | Vercel 部署令牌（GitHub Actions 中使用） | Secret（workflow secrets） |
 
-**当前值**（2026-08-28 更新）：
-- `REFRESH_KEY` = `sk_starhub_refresh_20260828`
-- `GH_TOKEN` = 见 Vercel 控制台（Secret，不可查看）
+**当前状态**（2026-09-06）：
+- `REFRESH_KEY`：仅在 Vercel 环境变量、GitHub Actions Secret 与受控触发配置中维护；手册不记录实际值。
+- `GH_TOKEN`：仅在受控 Secret 中维护；不得读取、打印或回显实际值。
 
 ### 外部服务
 
 | 服务 | 用途 | 配置 |
 |---|---|---|
-| **cron-job.org** | 每小时 POST 到 `/api/refresh` 触发构建 | URL: `https://starhub-refresh.vercel.app/api/refresh`，Header: `X-Refresh-Key: sk_starhub_refresh_20260828` |
+| **cron-job.org** | 每小时 POST 到 `/api/refresh` 触发构建 | URL: `https://starhub-refresh.vercel.app/api/refresh`，Header: `X-Refresh-Key: $REFRESH_KEY`（实际值由受控配置注入） |
 | **AIHOT API v1** | AI 晨报主数据源（公开匿名） | `https://aihot.virxact.com/api/v1/items` |
 | **AIHOT RSS** | AI 晨报降级数据源 | `https://aihot.virxact.com/feed.xml` |
 | **RSSHub 镜像链** | 36氪 AI 资讯流中转（官方 RSS 有人机验证） | 4 个镜像按可用性排序，依次尝试 |
@@ -234,25 +237,14 @@ python fetch_and_build.py  # 完整构建（需要 GitHub API 访问）
 
 ### 5.6 Vercel 部署认证（关键）
 
-**VERCEL_TOKEN 要求**：
-- GitHub Secret `VERCEL_TOKEN` 必须是 **guiyingyi2021 团队** 的 token，scope 到 `starhub-refresh` 项目
-- 正确 token 名称：`starhub-ci`（2026-08-31 创建，永不过期，格式：`vcp_...`）
-- **错误 token 会导致**：Vercel CLI 返回 `"The token provided via --token argument is not valid"`
+- 部署依赖 GitHub Actions Secret `VERCEL_TOKEN`；令牌只应保存在 GitHub/Vercel Secret 中，**不得写入 HANDOFF.md、脚本或聊天记录**。
+- `update.yml` 通过 `VERCEL_PROJECT_ID=prj_7gK5d3EOJYTC8AmUxR2cNuHi7arB` 与 `VERCEL_ORG_ID=team_iovvEy0us9KkCNkuMRLQrIeA` 绑定 `starhub-refresh` 项目。
+- 若出现 token 无效或权限错误，应在 GitHub Actions/Vercel 控制台核对 Secret 的项目权限；不要读取、打印或提交令牌值。
+- 部署验证以 Actions 的 Deploy to Vercel 步骤成功、线上响应头/API 行为和页面浏览器验证为准。
 
-**获取正确 token**：
-1. 从用户剪贴板读取：`powershell -command "Get-Clipboard"`
-2. 更新 GitHub Secret：`gh secret set VERCEL_TOKEN -b "<token_value>"`
-3. 触发部署：`gh workflow run update.yml`
-
-**常见错误**：
-- ❌ 使用 kwei168 账户的 token（scope 不匹配，无法部署到 guiyingyi2021 的项目）
-- ❌ 使用过期或格式错误的 token
-- ✅ 必须使用 guiyingyi2021 团队的 starhub-ci token
-
-**验证部署成功**：
 ```bash
-# 查看 workflow 运行日志，确认 "Ready in Xs"
-gh run view <run_id> --log | grep -E "(Ready|Error|Production)"
+# 查看某次 workflow 的公开日志（不要输出 Secret）
+gh run view <run_id> --log
 ```
 
 ---
@@ -275,7 +267,7 @@ GitHub Actions: update.yml
      - 生成 index.html（从 template.html 替换占位符）
      - 调用 build_ai_daily.main() 生成 ai-daily.html
      - 调用 build_rss_aggregator.main(mode) 生成 RSS 聚合页
-       · full 模式：抓取全部 710 源
+       · full 模式：抓取全部 711 源
        · incremental 模式：跳过 T1 源 + 4h 内已抓源
   5. git add + commit + push（仅当有变更时）
   6. npx vercel --prod --yes --token $VERCEL_TOKEN
@@ -395,8 +387,8 @@ const CONCURRENCY = 20;         // 从 10 提高到 20（翻倍并发数）
 
 #### 前端增量更新（`rss-aggregator.html` / `build_rss_aggregator.py`）
 ```javascript
-// localStorage 维护已读文章 URL 列表
-var READ_ARTICLES_KEY = 'starhub_rss_read_urls';
+// localStorage 维护已读文章唯一键（当前 key 为 `rss_read_v2`）
+var READ_ARTICLES_KEY = 'rss_read_v2';
 
 function _getReadUrls() {
   var stored = localStorage.getItem(READ_ARTICLES_KEY);
@@ -412,15 +404,15 @@ function _mergeLiveSources(liveData, silent) {
   var readUrls = _getReadUrls();
   var readSet = {};
   readUrls.forEach(function(url) { readSet[url] = true; });
-  
+
   // ... 遍历 API 返回的文章 ...
   // 跳过已在 ART 数组或 localStorage 中的文章
   if(existingKeys[key]) return;
   if(readSet[url]) return;  // ← 真正的增量判断
-  
+
   newUrls.push(url);
   // ... 添加到 ART 数组 ...
-  
+
   // 保存新 URL 到 localStorage
   if(newUrls.length > 0) {
     _saveReadUrls(readUrls.concat(newUrls));
@@ -450,7 +442,7 @@ function _mergeLiveSources(liveData, silent) {
 
 ### 7.15 RSS 聚合器三层分级架构（2026-09-05）
 
-**背景**：集成 BestBlogs 559 源后总计 710 源，全量抓取超出 GitHub Actions 分钟预算。
+**背景**：集成 BestBlogs 559 源后，源清单达到当前 711；全量抓取超出 GitHub Actions 分钟预算。
 
 **三层分级**：
 
@@ -489,13 +481,108 @@ incremental 模式：
 **源面板排序**：每个分类内按文章数降序排列，用户可快速定位活跃源。
 
 **经验教训**：
-- **源数量增长时必须引入分级** — 710 源全量抓取不可行，T1 实时 + T2/T3 快照是合理分工
+- **源数量增长时必须引入分级** — 大规模源全量抓取不可行，T1 实时 + T2/T3 快照是合理分工
 - **增量状态嵌入快照** — meta.last_fetch 放在 rss_api_snapshot.json 内，不引入额外存储
 - **快照只增不减** — 不主动清理旧条目，72h 窗口自然过期
 
 ---
 
-## 八、技术栈总结
+## 八、最近架构变更与维护指南
+
+本节是当前代码状态的权威补充。若本手册前文与本节冲突，以代码和本节为准。
+
+### 8.1 RSS 页面布局：AI 动态双形态
+
+入口和生成器：`build_rss_aggregator.py` 的 `_build_css()`、`build_html()` 与 `_build_js()`；产物 `rss-aggregator.html` 不要直接编辑。
+
+```text
+桌面 ≥1280px
+.wall-wrap (flex)
+├── aside.ai-feed-panel  ← 左侧 sticky 常驻栏，width:300px，top:58px
+│   └── .af-body         ← 独立 overflow-y:auto，可持续滚动
+└── #wall                 ← 卡片墙，自适应剩余宽度
+
+窄屏 <1280px
+.wall-wrap
+└── #wall                 ← 单列/多列卡片墙
+
+aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
+                           body.ai-open 控制打开；#btnAiFeed 控制显隐
+```
+
+- 桌面端面板在 `.wall-wrap` 内、卡片墙之前；`position:sticky`、`top:58px`、`height:calc(100vh - 78px)`、宽 300px，面板内容独立滚动。
+- 桌面端 `#btnAiFeed` 与 `.af-close` 隐藏，进入页面后通过 `_aiDesktop()` 自动调用 `_loadAll()`；每 5 分钟自动刷新时桌面端视为常驻打开。
+- `<1280px` 保持右侧 fixed 抽屉；`<=700px` 宽度为 `100vw`。移动端默认隐藏，顶部 `#btnAiFeed` 点击后加载并显示，`scrim` 负责遮罩。
+- `#view=ai` 是页面分类视图，不等于 AI 动态面板；验证面板必须查询 `.ai-feed-panel` 作用域，不要用全页 `.cat` 统计。
+- 面板 API 必须使用绝对 Vercel URL：`https://aihot.virxact.com/...`、`https://starhub-refresh.vercel.app/api/agihunt`、`https://starhub-refresh.vercel.app/api/news`；GitHub Pages 上的相对 `/api/...` 会变成 Pages 404。
+
+### 8.2 RSS 数据分块、去重与无图降级
+
+构建链：`fetch_and_build.py` → `build_rss_aggregator.py` → `rss-data-0.js`/`rss-data-1.js` → 前端 `SOURCES` → `buildArt()` → `renderWall()`。
+
+- `rss-data-0.js` 是首屏块（默认 360 篇），`rss-data-1.js` 是剩余文章后台块；页面不再下载/替换约 30MB 的冗余同域快照。
+- `buildArt()` 在渲染前按 `sourceKey|link` 建 `_seen`，唯一键重复时跳过；无 link 时用标题作为兜底键。
+- `_mergeChunk()` 追加块数据前按 link 过滤已有文章，同时保留无 link item；`_mergeRemoteSources()` 兼容远程刷新字段并保留 `img`。
+- `renderWall()` 用 `hasImg=!!a.img` 分流：有图才输出 `.cover-card` 与封面区域；`a.img` 为空时输出原有紧凑纯文字卡，不生成渐变占位。
+- 历史层 `_accumulate_history()` 以 link 维护 72 小时窗口；发现重复时先检查 chunk/远程合并和构建产物，不要直接假设 Python 历史重建是根因。
+- 重要回归根因：旧快照替换 IIFE 与 chunk1 concat 形成竞态；已移除快照替换 IIFE，并保留 buildArt/_mergeChunk 两层防线。
+
+### 8.3 阅读器全文链路与字段契约
+
+全文显示有三个前端来源层级；`api/article.js` 内部还包含快照和实时提取分支：
+
+```text
+文章 item
+  ├─ 1. 构建/刷新内嵌全文：chunk 用 full_content，远程快照/刷新可能用 fc
+  │     buildArt(): fc = it.fc || it.full_content || ''
+  │     a.fc > 100 → fetchFullArticle() 立即插入 .r2-fulltext
+  ├─ 2. 当前页面 _articleCache[url]
+  │     同一页面再次打开直接复用 API 返回结果
+  └─ 3. Vercel https://starhub-refresh.vercel.app/api/article?url=...
+        ├─ 快照 map：rss_api_snapshot.json 的 item.u + item.fc
+        └─ 实时抓取：安全 URL 校验 → JSDOM → GitHub/YouTube 特殊提取
+                          → Readability 通用提取 → meta description 兜底
+```
+
+- `openReader()` 负责设置 `curArt`、标记已读、渲染 reader2；`renderReader()` 输出标题/摘要并调用 `fetchFullArticle()`。
+- `_insertFulltext()` 将 HTML 直接插入 `.r2-fulltext`；无 `<p>` 的纯文本会按空行拆段并自动包裹 `<p>`。
+- `api/article.js` 必须保留：`Access-Control-Allow-Origin: *`、`Access-Control-Allow-Methods: GET, OPTIONS`、`Access-Control-Allow-Headers: Content-Type`；OPTIONS 必须返回 204，否则 GitHub Pages 跨域兜底会被浏览器拦截。
+- API 常量当前为 `FETCH_TIMEOUT=8000ms`、内存缓存最多 500 条、TTL 4 小时；Vercel 函数超时在 `vercel.json` 为 15 秒。
+- 排查全文时必须区分“内嵌全文字段为空”和“跨域/API 提取失败”；不能只在 Vercel 域名上 curl，至少要从真实 GitHub Pages origin 做浏览器 fetch，并检查 `#r2Inner .r2-fulltext`。
+
+### 8.4 部署与验证闭环
+
+代码 push 不会触发 `update.yml`（仅 schedule + `workflow_dispatch`）。涉及 RSS 页面或 `api/` 的改动按以下顺序执行：
+
+1. 修改源文件：页面改 `build_rss_aggregator.py`，API 改 `api/*.js`；不要编辑自动生成的 HTML/chunk。
+2. 本地验证：`python -m py_compile build_rss_aggregator.py`、生成本地产物、`node --check` 主 JS；运行对应 `.deploy-tmp/verify_*.cjs`。
+3. `git fetch origin` 后 rebase 最新 `origin/main`，只提交源文件和必要文档，避免把本地 VERIFY 产物提交。
+4. push 后执行 `node .deploy-tmp/trigger-workflow.cjs`；轮询 `.deploy-tmp/poll-run-dedup.cjs`，注意构建提交可能产生第二个 `dynamic` run。
+5. 必须确认两类 run 都 success：源码 workflow run 与构建提交触发的连锁 run；最近布局改动对应 `34025327944`、`34025453474`，提交 `44b2d60`。
+6. 线上静态验证：`node .deploy-tmp/verify_online_sidebar.cjs`，当前证据为 HTTP 200、13/13 PASS。
+7. 浏览器 E2E：`node .deploy-tmp/verify_ai_sidebar_e2e.cjs`，使用 Playwright 1440×900 与 390×844 两个 context；当前证据为 20/20 PASS、两端无 JS 错误。
+8. 页面交互回归至少覆盖：桌面 AI 左侧 sticky/独立滚动、移动 AI 按钮抽屉、reader2、src-panel、ART 唯一数、全文插入、无图卡片不带 `.cover-card`。
+
+最近相关提交：
+
+| 提交 | 变更 | 关键证据 |
+|---|---|---|
+| `a16b13a` | 去除快照替换竞态；ART/_mergeChunk 去重；无图文章回退纯文字卡 | 去重与卡片墙 E2E：DUP=0 |
+| `a86b04b` | `full_content` → `fc` 前端兼容映射 | `.deploy-tmp/verify_fulltext_fix.cjs`：9/9 |
+| `9f17610` | `/api/article` 补 CORS 头与 OPTIONS 预检 | 线上 OPTIONS 204 + ACAO `*` |
+| `44b2d60` | AI 动态桌面左侧常驻栏 + 移动抽屉分流 | 静态 13/13、双视口 E2E 20/20 |
+
+### 8.5 维护禁忌与快速定位
+
+- 不要直接编辑 `rss-aggregator.html`、`rss-data-0.js`、`rss-data-1.js`；workflow 会重新生成并覆盖。
+- 修改 `buildArt()` 字段时，必须同时检查 Python item 字段、chunk JSON、`api/rss.js` 远程 item 和 `api/article.js` 快照字段。
+- 修改 AI 面板 DOM/CSS 时，同时验证 `reader2`（z-index 70）、`src-panel`（80）、`share-modal`（100）及 `scrim`，不要把桌面常驻栏误当成 `body.ai-open` 浮层。
+- 线上验证不要只看静态字符串；布局必须用真实浏览器 computed style + 双视口交互验证。
+- 任何令牌、密钥、Cookie、GitHub/Vercel Secret 都不写入手册、临时脚本或提交。
+
+---
+
+## 九、技术栈总结
 
 | 层 | 技术 |
 |---|---|
@@ -507,4 +594,4 @@ incremental 模式：
 | 前端 | 原生 HTML/CSS/JS，无框架 |
 | 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源：公众号+播客+YouTube） |
 | 翻译 | Google 翻译非官方端点 → MyMemory → Google-chrome 三端点降级链 |
-| RSS 架构 | 710 源三层分级（T1 实时/T2/T3 快照）+ 增量构建 + 卡片墙 4:1 交织 |
+| RSS 架构 | 711 源三层分级（T1 实时/T2/T3 快照）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 |
