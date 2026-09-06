@@ -3356,7 +3356,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ══════ AI 动态流面板（AIHOT + AGI Hunt） ══════ */
   var AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
   var AGIHUNT_API = 'https://starhub-refresh.vercel.app/api/agihunt';
-  var AIHOT_CATS = {industry:['\u884c\u4e1a','#2f5d8a'],paper:['\u8bba\u6587','#7052c9'],product:['\u4ea7\u54c1','#b06a10'],tip:['\u6280\u5de7','#2e7d5f'],agi:['AGI','#c2434d']};
+  var AIHOT_CATS = {'ai-models':['AI \u6a21\u578b','#2563eb'],'ai-products':['AI \u4ea7\u54c1','#7c3aed'],industry:['\u884c\u4e1a\u52a8\u6001','#0891b2'],paper:['\u8bba\u6587','#d97706'],tip:['\u6280\u5de7\u89c2\u70b9','#dc2626']};
   var afLoaded = false;
   var afItems = [], afCursor = '', afFilter = 'all';
   var afAgiSort = 'hot';  // hot | new
@@ -3370,6 +3370,30 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   function _escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
+  // \u68c0\u6d4b\u6807\u9898\u662f\u5426\u4e3b\u8981\u4e3a\u975e\u4e2d\u6587\uff08\u9700\u8981\u7ffb\u8bd1\uff09
+  function _needsTranslation(t){ if(!t) return false; var cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
+  // \u6279\u91cf\u7ffb\u8bd1 AI \u52a8\u6001\u6d41\u82f1\u6587\u6807\u9898\uff08Google Translate GTX \u7aef\u70b9\uff1b5s \u8d85\u65f6\u5146\u5e95\uff0c\u9632 GFW \u6302\u6b7b\uff09
+  function _translateAfItems(){
+    var toTranslate = afItems.filter(function(it){ return !it._zh && _needsTranslation(it.title); });
+    if(!toTranslate.length) return;
+    var texts = toTranslate.map(function(it){ return it.title; });
+    var chunks = []; for(var i=0;i<texts.length;i+=10) chunks.push(texts.slice(i,i+10));
+    var done = 0;
+    chunks.forEach(function(chunk){
+      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 5000) : null;
+      var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(chunk.join('\n'));
+      fetch(url, ctrl ? { signal: ctrl.signal } : {}).then(function(r){return r.json();}).then(function(j){
+        if(tmr) clearTimeout(tmr);
+        var translated = []; try{ j[0].forEach(function(s){ translated.push(s[0]); }); }catch(e){}
+        var offset = chunks.indexOf(chunk) * 10;
+        translated.forEach(function(zh, idx){
+          if(zh && toTranslate[offset+idx]) toTranslate[offset+idx]._zh = zh;
+        });
+        if(++done >= chunks.length) _renderAll();
+      }).catch(function(){ if(tmr) clearTimeout(tmr); if(++done >= chunks.length) _renderAll(); });
+    });
+  }
   function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '\u521a\u521a'; if(m<60)return m+' \u5206\u949f\u524d'; var h=Math.floor(m/60); if(h<24)return h+' \u5c0f\u65f6\u524d'; return Math.floor(h/24)+' \u5929\u524d'; }catch(e){return '';} }
 
   function toggleAiFeed(){
@@ -3436,6 +3460,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         afItems = merged.slice();
         afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
         _renderAll();
+        _translateAfItems();
         upd.textContent = 'AI \u52a8\u6001\u6d41 \u00b7 ' + afItems.length + ' \u6761 \u00b7 \u66f4\u65b0\u4e8e ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
       }
     }).catch(function(){ if(aiTimer) clearTimeout(aiTimer); afCursor=''; });
@@ -3465,6 +3490,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
     afLoaded = true;
     _renderAll();
+    _translateAfItems();
     if(!afItems.length){
       upd.textContent = 'AI \u52a8\u6001\u6d41';
       list.innerHTML = '<div class="af-empty">\u6682\u65e0\u52a8\u6001\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5</div>';
@@ -3567,8 +3593,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
         src = (it.source&&it.source.name)||'';
         tm = _fmtRel(it.publishedAt);
       }
+      var title = it._zh || it.title || '';
       return '<div class="af-item"><span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+_escH(cat[0])+'</span>'
-        +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
+        +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener" title="'+_escH(it.title||'')+'">'+_escH(title)+'</a>'
         +'<span class="meta">'+_escH(src)+(src&&tm?' \u00b7 ':'')+_escH(tm)+(it.selected?' \u00b7 \u2605 \u7cbe\u9009':'')+'</span></div>'
         +'<button class="af-share" data-i="'+i+'" title="\u5206\u4eab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button></div>';
     }).join('');

@@ -1635,6 +1635,29 @@ function updateAihotMore(){
   if(loadMore) loadMore.style.display = (aihotCursor && aihotFilter === 'all') ? '' : 'none';
 }
 
+// 检测标题是否主要为非中文（需要翻译）
+function _needsTranslation(t){ if(!t) return false; const cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
+// 批量翻译 AI 动态流英文标题（Google Translate GTX 端点；5s 超时兜底，防 GFW 挂死）
+function _translateAihotItems(){
+  const toTranslate = aihotItems.filter(it => !it._zh && _needsTranslation(it.title));
+  if(!toTranslate.length) return;
+  const texts = toTranslate.map(it => it.title);
+  const chunks = []; for(let i=0;i<texts.length;i+=10) chunks.push(texts.slice(i,i+10));
+  let done = 0;
+  chunks.forEach(chunk => {
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const tmr = ctrl ? setTimeout(() => ctrl.abort(), 5000) : null;
+    const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(chunk.join('\n'));
+    fetch(url, ctrl ? { signal: ctrl.signal } : {}).then(r => r.json()).then(j => {
+      if(tmr) clearTimeout(tmr);
+      const translated = []; try{ j[0].forEach(s => translated.push(s[0])); }catch(e){}
+      const offset = chunks.indexOf(chunk) * 10;
+      translated.forEach((zh, idx) => { if(zh && toTranslate[offset+idx]) toTranslate[offset+idx]._zh = zh; });
+      if(++done >= chunks.length) renderAihot();
+    }).catch(() => { if(tmr) clearTimeout(tmr); if(++done >= chunks.length) renderAihot(); });
+  });
+}
+
 function renderAihot(){
   const list = $('#aihotList');
   renderAihotFilter();
@@ -1655,7 +1678,7 @@ function renderAihot(){
     row.innerHTML =
       '<span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+escHtml(cat[0])+'</span>' +
       '<div class="body">' +
-        '<a class="t" href="'+escHtml(url)+'" target="_blank" rel="noopener" title="'+escHtml(it.title||'')+'">'+escHtml(it.title||'')+'</a>' +
+        '<a class="t" href="'+escHtml(url)+'" target="_blank" rel="noopener" title="'+escHtml(it.title||'')+'">'+escHtml(it._zh || it.title||'')+'</a>' +
         '<span class="meta">'+escHtml(src)+(src && tmStr ? ' · ' : '')+escHtml(tmStr)+(it.selected ? ' · ★ 精选' : '')+'</span>' +
       '</div>';
     list.appendChild(row);
@@ -1679,6 +1702,7 @@ async function loadAihotMore(){
     const seen = new Set(aihotItems.map(x => normTitle(x.title)));
     (j.items || []).forEach(it => { const k = normTitle(it.title); if(!seen.has(k)){ seen.add(k); aihotItems.push(it); } });
     renderAihot();
+    _translateAihotItems();
   }catch(e){
     toast('加载更多失败，请稍后重试');
   }finally{
@@ -1712,6 +1736,7 @@ async function loadAihot(){
     aihotItems = items;
     aihotCursor = (aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
     renderAihot();
+    _translateAihotItems();
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     aihotLoaded = true;
 
@@ -1725,6 +1750,7 @@ async function loadAihot(){
       newsItems.forEach(n => { const k = normTitle(n.title); if(!seen.has(k)){ seen.add(k); aihotItems.push(n); } });
       aihotItems.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
       renderAihot();
+      _translateAihotItems();
       const extraSrcs = [...new Set(newsItems.map(n => n.source.name))];
       $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 / ' + extraSrcs.join(' / ') + ' · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     }

@@ -1919,7 +1919,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ══════ AI 动态流面板（AIHOT + AGI Hunt） ══════ */
   var AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
   var AGIHUNT_API = 'https://starhub-refresh.vercel.app/api/agihunt';
-  var AIHOT_CATS = {industry:['行业','#2f5d8a'],paper:['论文','#7052c9'],product:['产品','#b06a10'],tip:['技巧','#2e7d5f'],agi:['AGI','#c2434d']};
+  var AIHOT_CATS = {'ai-models':['AI 模型','#2563eb'],'ai-products':['AI 产品','#7c3aed'],industry:['行业动态','#0891b2'],paper:['论文','#d97706'],tip:['技巧观点','#dc2626']};
   var afLoaded = false;
   var afItems = [], afCursor = '', afFilter = 'all';
   var afAgiSort = 'hot';  // hot | new
@@ -1933,6 +1933,30 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   function _escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
+  // 检测标题是否主要为非中文（需要翻译）
+  function _needsTranslation(t){ if(!t) return false; var cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
+  // 批量翻译 AI 动态流英文标题（Google Translate GTX 端点；5s 超时兜底，防 GFW 挂死）
+  function _translateAfItems(){
+    var toTranslate = afItems.filter(function(it){ return !it._zh && _needsTranslation(it.title); });
+    if(!toTranslate.length) return;
+    var texts = toTranslate.map(function(it){ return it.title; });
+    var chunks = []; for(var i=0;i<texts.length;i+=10) chunks.push(texts.slice(i,i+10));
+    var done = 0;
+    chunks.forEach(function(chunk){
+      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 5000) : null;
+      var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(chunk.join('\n'));
+      fetch(url, ctrl ? { signal: ctrl.signal } : {}).then(function(r){return r.json();}).then(function(j){
+        if(tmr) clearTimeout(tmr);
+        var translated = []; try{ j[0].forEach(function(s){ translated.push(s[0]); }); }catch(e){}
+        var offset = chunks.indexOf(chunk) * 10;
+        translated.forEach(function(zh, idx){
+          if(zh && toTranslate[offset+idx]) toTranslate[offset+idx]._zh = zh;
+        });
+        if(++done >= chunks.length) _renderAll();
+      }).catch(function(){ if(tmr) clearTimeout(tmr); if(++done >= chunks.length) _renderAll(); });
+    });
+  }
   function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '刚刚'; if(m<60)return m+' 分钟前'; var h=Math.floor(m/60); if(h<24)return h+' 小时前'; return Math.floor(h/24)+' 天前'; }catch(e){return '';} }
 
   function toggleAiFeed(){
@@ -1999,6 +2023,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         afItems = merged.slice();
         afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
         _renderAll();
+        _translateAfItems();
         upd.textContent = 'AI 动态流 · ' + afItems.length + ' 条 · 更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
       }
     }).catch(function(){ if(aiTimer) clearTimeout(aiTimer); afCursor=''; });
@@ -2028,6 +2053,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
     afLoaded = true;
     _renderAll();
+    _translateAfItems();
     if(!afItems.length){
       upd.textContent = 'AI 动态流';
       list.innerHTML = '<div class="af-empty">暂无动态，请稍后重试</div>';
@@ -2130,8 +2156,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         src = (it.source&&it.source.name)||'';
         tm = _fmtRel(it.publishedAt);
       }
+      var title = it._zh || it.title || '';
       return '<div class="af-item"><span class="cat" style="color:'+cat[1]+';background:'+cat[1]+'1a">'+_escH(cat[0])+'</span>'
-        +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener">'+_escH(it.title||'')+'</a>'
+        +'<div class="body"><a class="t" href="'+_escH(url)+'" target="_blank" rel="noopener" title="'+_escH(it.title||'')+'">'+_escH(title)+'</a>'
         +'<span class="meta">'+_escH(src)+(src&&tm?' · ':'')+_escH(tm)+(it.selected?' · ★ 精选':'')+'</span></div>'
         +'<button class="af-share" data-i="'+i+'" title="分享"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button></div>';
     }).join('');
