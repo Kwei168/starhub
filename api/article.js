@@ -123,6 +123,14 @@ function extractGeneric(dom) {
 }
 
 module.exports = async (req, res) => {
+  // CORS 头：允许 GitHub Pages 跨域访问（与 api/rss.js 对齐），否则无内嵌全文文章的兜底通道被浏览器拦截
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
   const url = req.query.url;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ ok: false, error: 'missing_url' });
