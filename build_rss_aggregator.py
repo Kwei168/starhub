@@ -1698,10 +1698,17 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .sort-select { flex:1; min-width:0; }
   .wall { columns:1 minmax(0,1fr); }
   .reader2 { width:96vw; max-height:92vh; border-radius:12px; }
-  .r2-top { padding:8px 12px; }
+  .r2-top { padding:8px 10px; gap:8px; }
   .r2-back span { display:none; }
-  .r2-src b { max-width:110px; }
-  .r2-open { padding:4px 9px; }
+  /* 移动端工具栏：统一控件高度 28px，防溢出挤压变形 */
+  .r2-back, .r2-bm, .r2-open { height:28px; flex:none; align-items:center; }
+  .r2-back { padding:0 9px 0 7px; }
+  .r2-fs-btn { width:28px; height:28px; }
+  .r2-fs-btns { margin-right:0; }
+  .r2-src { flex:1; min-width:0; }
+  .r2-src b { max-width:none; flex:0 1 auto; }
+  .r2-src span:not(.src-dot) { display:none; } /* 隐藏 · 与绝对时间（正文中可见），源名弹性收缩 */
+  .r2-open { padding:0 9px; }
   .r2-inner { padding:18px 16px 60px; }
   .r2-title { font-size:19px; }
   .r2-summary { font-size:14px; line-height:1.8; }

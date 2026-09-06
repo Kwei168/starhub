@@ -78,4 +78,15 @@ jobs:
           # 项目链接通过环境变量生效（Vercel CLI 不支持 --project-id 命令行参数）
           VERCEL_PROJECT_ID: prj_7gK5d3EOJYTC8AmUxR2cNuHi7arB
           VERCEL_ORG_ID: team_iovvEy0us9KkCNkuMRLQrIeA
-        run: npx --yes vercel --prod --yes --token "$VERCEL_TOKEN"
+        run: |
+          # Vercel CLI 上传后偶发网络瞬时故障（fetch failed），退避重试 3 次
+          ok=0
+          for i in 1 2 3; do
+            echo "Vercel deploy attempt $i/3..."
+            if npx --yes vercel --prod --yes --token "$VERCEL_TOKEN"; then ok=1; break; fi
+            if [ "$i" != "3" ]; then sleep $((i*20)); fi
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::Vercel deploy failed after 3 attempts"
+            exit 1
+          fi
