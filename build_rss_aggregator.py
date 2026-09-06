@@ -164,9 +164,15 @@ def _accumulate_history(sources_with_items):
         del _rss_history[link]
 
     # 按源重组，更新相对时间
+    # 构建 source_key -> url 映射（用于识别 BestBlogs 源）
+    _src_url_map = {s["key"]: s.get("url", "") for s in sources_with_items}
+    # 补充：从 RSS_SOURCES 查找缺失的 URL（sources_with_items 可能不含 url）
+    for _rs in RSS_SOURCES:
+        if _rs["key"] not in _src_url_map or not _src_url_map[_rs["key"]]:
+            _src_url_map[_rs["key"]] = _rs.get("url", "")
     src_map = {}
     for src in sources_with_items:
-        _bb = 'bestblogs.dev' in (src.get('url') or '')
+        _bb = 'bestblogs.dev' in (_src_url_map.get(src["key"]) or '')
         src_map[src["key"]] = {
             "key": src["key"], "name": src["name"],
             "cat": src["cat"], "color": src["color"],
