@@ -3382,7 +3382,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     chunks.forEach(function(chunk){
       var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
       var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 5000) : null;
-      var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(chunk.join('\n'));
+      var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(chunk.join('\\n'));
       fetch(url, ctrl ? { signal: ctrl.signal } : {}).then(function(r){return r.json();}).then(function(j){
         if(tmr) clearTimeout(tmr);
         var translated = []; try{ j[0].forEach(function(s){ translated.push(s[0]); }); }catch(e){}
