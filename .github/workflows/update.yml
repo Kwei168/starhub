@@ -50,11 +50,33 @@ jobs:
       - name: Fetch stars & build
         run: python fetch_and_build.py $MODE
 
+      - name: Log trigger event
+        run: |
+          python -c "
+          import json, os
+          from datetime import datetime, timezone, timedelta
+          BJT = timezone(timedelta(hours=8))
+          trigger = 'schedule' if os.environ.get('GITHUB_EVENT_NAME') == 'schedule' else 'workflow_dispatch'
+          entry = {
+              'ts': datetime.now(BJT).isoformat(),
+              'type': 'trigger',
+              'trigger': trigger,
+              'mode': os.environ.get('MODE', 'unknown'),
+              'run_id': os.environ.get('GITHUB_RUN_ID', ''),
+              'sha': os.environ.get('GITHUB_SHA', '')[:12],
+          }
+          os.makedirs('build_logs', exist_ok=True)
+          today = datetime.now(BJT).strftime('%Y-%m-%d')
+          with open(f'build_logs/{today}.jsonl', 'a') as f:
+              f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+          print(f'[日志] trigger 事件已记录: {trigger} / {os.environ.get(\"MODE\", \"?\")}')
+          "
+
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_cache.json rss_history.json rss_sources.json rss_api_snapshot.json
+          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_cache.json rss_history.json rss_sources.json rss_api_snapshot.json build_logs/
           if git diff --cached --quiet; then
             echo "No changes, skip commit."
           else
@@ -66,7 +88,7 @@ jobs:
               git fetch origin main
               git reset --hard origin/main
               python fetch_and_build.py $MODE
-              git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_cache.json rss_history.json rss_sources.json rss_api_snapshot.json
+              git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_cache.json rss_history.json rss_sources.json rss_api_snapshot.json build_logs/
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
               git push --force-with-lease
             }
@@ -90,3 +112,37 @@ jobs:
             echo "::error::Vercel deploy failed after 5 attempts"
             exit 1
           fi
+
+      - name: Log deploy result
+        if: always()
+        run: |
+          python -c "
+          import json, os
+          from datetime import datetime, timezone, timedelta
+          BJT = timezone(timedelta(hours=8))
+          entry = {
+              'ts': datetime.now(BJT).isoformat(),
+              'type': 'deploy',
+              'status': 'success' if '${{ job.status }}' == 'success' else 'failed',
+              'run_id': os.environ.get('GITHUB_RUN_ID', ''),
+          }
+          os.makedirs('build_logs', exist_ok=True)
+          today = datetime.now(BJT).strftime('%Y-%m-%d')
+          with open(f'build_logs/{today}.jsonl', 'a') as f:
+              f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+          print(f'[日志] deploy 事件已记录: {entry[\"status\"]}')
+          "
+
+      - name: Generate daily summary
+        run: |
+          python -c "
+          import build_logger
+          from datetime import datetime, timezone, timedelta
+          BJT = timezone(timedelta(hours=8))
+          today = datetime.now(BJT).strftime('%Y-%m-%d')
+          s = build_logger.summary(today)
+          import json
+          with open(f'build_logs/summary_{today}.json', 'w') as f:
+              json.dump(s, f, ensure_ascii=False, indent=2)
+          print(f'[日志] 当日摘要已生成: {s[\"builds\"]} 次构建, {s[\"total_items_latest\"]} 篇')
+          "
