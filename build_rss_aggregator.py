@@ -309,12 +309,9 @@ RSS_SOURCES = [
     {"key": "arxiv_nlp_6", "name": "arXiv NLP", "cat": "ai", "url": "https://rss.arxiv.org/rss/cs.CL", "color": "#d84315", "tier": 1},
     {"key": "hn_ai_7", "name": "Hacker News AI", "cat": "ai", "url": "https://hnrss.org/newest?q=AI", "color": "#ff6600", "tier": 1},
     {"key": "hn_llm_8", "name": "Hacker News LLM", "cat": "ai", "url": "https://hnrss.org/newest?q=LLM", "color": "#ef6c00", "tier": 2},
-    {"key": "hn_openclaw_9", "name": "Hacker News OpenClaw", "cat": "ai", "url": "https://hnrss.org/newest?q=OpenClaw", "color": "#f57c00"},
     {"key": "google_research_10", "name": "Google Research Blog", "cat": "ai", "url": "https://research.google/blog/rss/", "color": "#4285f4"},
     {"key": "huggingface_11", "name": "Hugging Face 博客", "cat": "ai", "url": "https://huggingface.co/blog/feed.xml", "color": "#ffd21e"},
     {"key": "simonwillison_12", "name": "Simon Willison's Blog", "cat": "ai", "url": "https://simonwillison.net/atom/everything/", "color": "#5c6bc0"},
-    {"key": "openclaw_rel_13", "name": "OpenClaw Releases", "cat": "ai", "url": "https://github.com/openclaw/openclaw/releases.atom", "color": "#7e57c2"},
-    {"key": "openclaw_commits_14", "name": "OpenClaw Commits", "cat": "ai", "url": "https://github.com/openclaw/openclaw/commits/main.atom", "color": "#9575cd", "tier": 1},
     {"key": "codex_rel_15", "name": "OpenAI Codex Releases", "cat": "ai", "url": "https://github.com/openai/codex/releases.atom", "color": "#10a37f"},
     {"key": "claude_code_rel_16", "name": "Claude Code Releases", "cat": "ai", "url": "https://github.com/anthropics/claude-code/releases.atom", "color": "#d4a574"},
     {"key": "gemini_cli_rel_17", "name": "Gemini CLI Releases", "cat": "ai", "url": "https://github.com/google-gemini/gemini-cli/releases.atom", "color": "#4285f4"},
@@ -1297,6 +1294,28 @@ def _fmt_rel_time(dt):
 
 # ──────────────────────────── 翻译 ────────────────────────────
 
+def _detect_lang(text):
+    """检测文本主要语言，返回 MyMemory langpair 代码。"""
+    hiragana = sum(1 for c in text if '\u3040' <= c <= '\u309f')
+    katakana = sum(1 for c in text if '\u30a0' <= c <= '\u30ff')
+    hangul = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
+    arabic = sum(1 for c in text if '\u0600' <= c <= '\u06ff')
+    cyrillic = sum(1 for c in text if '\u0400' <= c <= '\u04ff')
+    latin = sum(1 for c in text if 'a' <= c.lower() <= 'z')
+    total = max(len(text), 1)
+    if (hiragana + katakana) / total > 0.1:
+        return 'ja'
+    if hangul / total > 0.1:
+        return 'ko'
+    if arabic / total > 0.1:
+        return 'ar'
+    if cyrillic / total > 0.1:
+        return 'ru'
+    if latin / total > 0.3:
+        return 'en'
+    return 'zh-CN'
+
+
 def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     """四端点降级翻译链：Google → MyMemory → Google dict-chrome（带缓存）。"""
     if not text:
@@ -1305,9 +1324,10 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     text = _strip_html(text)
     if not text:
         return ""
-    # 如果已经是中文为主，跳过
+    # 如果已经是中文为主，跳过（但需排除日文：含平假名/片假名的文本是日文而非中文）
+    has_kana = any('\u3040' <= c <= '\u309f' or '\u30a0' <= c <= '\u30ff' for c in text)
     cn_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
-    if cn_chars > len(text) * 0.3:
+    if not has_kana and cn_chars > len(text) * 0.3:
         _TRANS_STATS["skip"] += 1
         return text
 
@@ -1334,9 +1354,10 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     except Exception:
         pass
 
-    # 2) MyMemory
+    # 2) MyMemory（自动检测源语言，避免硬编码 en 导致非英语源翻译质量差）
     try:
-        url = "https://api.mymemory.translated.net/get?q=" + encoded + "&langpair=en|zh-CN"
+        src_lang = _detect_lang(text)
+        url = "https://api.mymemory.translated.net/get?q=" + encoded + "&langpair=%s|zh-CN" % src_lang
         req = urllib.request.Request(url, headers=UA)
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8", errors="replace"))
