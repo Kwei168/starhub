@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+import build_logger
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -3823,6 +3824,9 @@ def main(mode="full"):
     total_items = 0
     ok_count = 0
     skipped_count = 0
+    failed_count = 0
+    _source_log = []  # 每源抓取结果
+    _build_start = time.time()
 
     # 增量模式：预建历史索引（source_key → items），避免每源遍历全部历史
     _hist_by_key = {}
@@ -3857,6 +3861,7 @@ def main(mode="full"):
                     "color": src["color"], "items": _hist_by_key.get(key, []),
                     "tier": tier,
                 })
+                _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_t1", "items": len(_hist_by_key.get(key, []))})
                 continue
             prev = last_fetch.get(key)
             if prev:
@@ -3871,15 +3876,19 @@ def main(mode="full"):
                             "color": src["color"], "items": _hist_by_key.get(key, []),
                             "tier": tier,
                         })
+                        _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_cached", "items": len(_hist_by_key.get(key, []))})
                         continue
                 except (ValueError, TypeError):
                     pass
 
         items = _fetch_rss(src)
         n = len(items)
-        if n > 0:
+        _fetch_ok = n > 0
+        if _fetch_ok:
             ok_count += 1
             last_fetch[key] = now.isoformat()
+        else:
+            failed_count += 1
 
         # 翻译标题和摘要
         for it in items:
@@ -3899,6 +3908,7 @@ def main(mode="full"):
         sources_with_items.append(src_data)
         total_items += n
         print("[RSS聚合] %s: %d 条" % (src["name"], n))
+        _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "ok" if _fetch_ok else "empty", "items": n})
 
     if mode == "incremental":
         print("[增量模式] 跳过 %d 个源，抓取 %d 个源" % (skipped_count, len(RSS_SOURCES) - skipped_count))
@@ -3907,7 +3917,9 @@ def main(mode="full"):
         print("[RSS聚合] 所有源均失败，尝试使用历史数据", file=sys.stderr)
 
     # 累积到 72 小时历史，用累积数据替换当次抓取
+    _history_before = len(_rss_history)
     sources_with_items, total_items = _accumulate_history(sources_with_items)
+    _history_after = len(_rss_history)
 
     # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
     meta = {"last_fetch": last_fetch}
@@ -3940,6 +3952,32 @@ def main(mode="full"):
     # 保存缓存
     _save_caches()
     _save_history()
+
+    # ── 写入构建日志 ──
+    _build_duration = round(time.time() - _build_start, 1)
+    _snapshot_items = sum(len(s.get("items", [])) for s in sources_with_items)
+    build_logger.append({
+        "type": "build",
+        "mode": mode,
+        "duration_s": _build_duration,
+        "sources_total": len(RSS_SOURCES),
+        "sources_fetched": ok_count,
+        "sources_skipped": skipped_count,
+        "sources_failed": failed_count,
+        "items_fetched": total_items,
+        "items_snapshot": _snapshot_items,
+        "history_before": _history_before,
+        "history_after": _history_after,
+        "history_expired": _history_before - _history_after,
+        "trans_cache_hit": _TRANS_STATS.get("cache_hit", 0),
+        "trans_google": _TRANS_STATS.get("google", 0),
+        "trans_mymemory": _TRANS_STATS.get("mymemory", 0),
+        "trans_dict": _TRANS_STATS.get("dict", 0),
+        "trans_skip": _TRANS_STATS.get("skip", 0),
+        "trans_fail": _TRANS_STATS.get("fail", 0),
+        "per_source": _source_log,
+    })
+    print("[日志] 构建日志已写入 build_logs/")
 
     return True
 

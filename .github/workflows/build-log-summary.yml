@@ -1,0 +1,56 @@
+name: Build Log Summary
+
+on:
+  schedule:
+    # 每小时整点运行（UTC），生成构建日志摘要
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-log-summary
+  cancel-in-progress: true
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Generate summary
+        run: |
+          python -c "
+          import build_logger, json, os
+          from datetime import datetime, timezone, timedelta
+          BJT = timezone(timedelta(hours=8))
+          today = datetime.now(BJT).strftime('%Y-%m-%d')
+          s = build_logger.summary(today)
+          with open(f'build_logs/summary_{today}.json', 'w') as f:
+              json.dump(s, f, ensure_ascii=False, indent=2)
+          print(f'[摘要] {s[\"builds\"]} 次构建, {s[\"triggers\"]} 次触发, {s[\"deploys\"]} 次部署, {s[\"refreshes\"]} 次刷新')
+          print(f'[摘要] 最新快照: {s[\"total_items_latest\"]} 篇, 变化: {s[\"items_delta\"]:+d}')
+          "
+
+      - name: Commit summary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git reset --hard origin/main
+          git add build_logs/summary_*.json
+          if git diff --cached --quiet; then
+            echo "No summary changes, skip."
+          else
+            git commit -m "chore: update build log summary $(TZ=Asia/Shanghai date +%F-%H:%M)"
+            git push --force-with-lease
+          fi

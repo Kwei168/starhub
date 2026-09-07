@@ -7,6 +7,7 @@
     "api/news.js": { "maxDuration": 30 },
     "api/rss.js": { "maxDuration": 60 },
     "api/article.js": { "maxDuration": 15 },
-    "api/agihunt.js": { "maxDuration": 15 }
+    "api/agihunt.js": { "maxDuration": 15 },
+    "api/build_log.js": { "maxDuration": 10 }
   }
 }
