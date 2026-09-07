@@ -51,8 +51,17 @@ def has_cn(s):
     return bool(re.search(r"[\u4e00-\u9fff]", s or ""))
 
 
+# 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
+_TRANS_FAIL_STREAK = 0
+_TRANS_BLOCK_UNTIL = 0.0
+
+
 def translate_to_zh(text):
-    """把英文简介翻译成中文；全部端点失败返回 None（保留原文）。"""
+    """把英文简介翻译成中文；全部端点失败返回 None（保留原文）。
+    熔断保护：连续多次全端点失败后暂停请求，期间直接返回 None（调用方保留原文）。"""
+    global _TRANS_FAIL_STREAK, _TRANS_BLOCK_UNTIL
+    if time.time() < _TRANS_BLOCK_UNTIL:
+        return None
     if not text:
         return None
     # 端点 1：Google 翻译非官方接口
@@ -66,6 +75,7 @@ def translate_to_zh(text):
             data = json.loads(r.read().decode("utf-8"))
         result = "".join(seg[0] for seg in data[0] if seg[0]).strip()
         if result and has_cn(result):
+            _TRANS_FAIL_STREAK = 0
             return result
     except Exception:  # noqa: BLE001
         pass
@@ -80,9 +90,14 @@ def translate_to_zh(text):
             data = json.loads(r.read().decode("utf-8"))
         result = (data.get("responseData", {}).get("translatedText") or "").strip()
         if result and has_cn(result) and "MYMEMORY WARNING" not in result:
+            _TRANS_FAIL_STREAK = 0
             return result
     except Exception:  # noqa: BLE001
         pass
+    _TRANS_FAIL_STREAK += 1
+    if _TRANS_FAIL_STREAK >= 5:
+        _TRANS_BLOCK_UNTIL = time.time() + 300
+        print("[翻译熔断] 连续 %d 次全端点失败，暂停翻译请求 5 分钟" % _TRANS_FAIL_STREAK, file=sys.stderr)
     return None
 
 
@@ -155,6 +170,43 @@ AI_MIN_STARS = 500       # AI 项目池最小星标
 NEW_MIN_STARS = 50       # 新秀榜最小星标
 TREND_TOP = 20           # 每榜展示数量
 TREND_MAX_STARS = 50000  # 涨星榜排除超过此星标的巨头项目（避免 tensorflow/pytorch 霸榜）
+
+BUILD_CONFIG_FILE = "build_config.json"
+
+
+def load_build_config():
+    """读取 build_config.json 覆盖榜单参数；文件缺失/损坏/字段非法时逐项回退内置默认值（零回归）。"""
+    defaults = {
+        "trend_top": TREND_TOP,
+        "ai_min_stars": AI_MIN_STARS,
+        "new_min_stars": NEW_MIN_STARS,
+        "trend_max_stars": TREND_MAX_STARS,
+        "ai_topics": list(AI_TOPICS),
+    }
+    try:
+        cfg = json.load(open(BUILD_CONFIG_FILE, encoding="utf-8"))
+        if not isinstance(cfg, dict):
+            cfg = {}
+    except FileNotFoundError:
+        cfg = {}
+    except Exception as e:  # noqa: BLE001
+        print("[配置] %s 解析失败（%s），使用内置默认值" % (BUILD_CONFIG_FILE, e), file=sys.stderr)
+        cfg = {}
+    merged = {}
+    for key, dv in defaults.items():
+        if key in cfg:
+            v = cfg[key]
+            if key == "ai_topics":
+                ok = isinstance(v, list) and len(v) > 0 and all(isinstance(x, str) and x.strip() for x in v)
+            else:
+                ok = isinstance(v, int) and not isinstance(v, bool) and v > 0
+            if ok:
+                merged[key] = v
+                print("[配置] %s = %r" % (key, v))
+                continue
+            print("[配置] 字段 %s 非法，回退默认值" % key, file=sys.stderr)
+        merged[key] = dv
+    return merged
 
 
 def _api_headers(token):
@@ -568,6 +620,14 @@ def _safe_json(obj):
 
 
 def main(mode="full"):
+    global AI_TOPICS, AI_MIN_STARS, NEW_MIN_STARS, TREND_TOP, TREND_MAX_STARS
+    cfg = load_build_config()
+    AI_TOPICS = cfg["ai_topics"]
+    AI_MIN_STARS = cfg["ai_min_stars"]
+    NEW_MIN_STARS = cfg["new_min_stars"]
+    TREND_TOP = cfg["trend_top"]
+    TREND_MAX_STARS = cfg["trend_max_stars"]
+
     known = {}
     try:
         known = json.load(open("known_categories.json", encoding="utf-8"))

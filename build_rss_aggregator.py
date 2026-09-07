@@ -42,6 +42,9 @@ _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, su
 
 # ── 翻译统计 
 _TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
+# 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
+_TRANS_FAIL_STREAK = 0
+_TRANS_BLOCK_UNTIL = 0.0
 
 
 def _load_caches():
@@ -66,17 +69,22 @@ def _load_caches():
 
 
 def _save_caches():
-    """保存翻译和 RSS 缓存"""
+    """保存翻译和 RSS 缓存（RSS 缓存写盘前裁剪过期条目，防止文件无限膨胀）"""
     try:
         with open(TRANS_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(_trans_cache, f, ensure_ascii=False, indent=2)
         print("[缓存] 保存翻译缓存: %d 条" % len(_trans_cache))
     except Exception as e:
         print("[缓存] 保存翻译缓存失败: %s" % e, file=sys.stderr)
+    # RSS 缓存仅保留 TTL 内条目（跨 run 基本全过期，裁剪+紧凑序列化使文件从几十 MB 降至 MB 级）；
+    # 该文件已移出 git 跟踪（见 .gitignore），仅服务单次运行内的抓取加速
+    pruned = {k: v for k, v in _rss_cache.items()
+              if time.time() - v.get("fetched_at", 0) < RSS_CACHE_TTL}
+    dropped = len(_rss_cache) - len(pruned)
     try:
         with open(RSS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(_rss_cache, f, ensure_ascii=False, indent=2)
-        print("[缓存] 保存 RSS 缓存: %d 个源" % len(_rss_cache))
+            json.dump(pruned, f, ensure_ascii=False, separators=(",", ":"))
+        print("[缓存] 保存 RSS 缓存: %d 个源%s" % (len(pruned), "（裁剪过期 %d 个）" % dropped if dropped else ""))
     except Exception as e:
         print("[缓存] 保存 RSS 缓存失败: %s" % e, file=sys.stderr)
 
@@ -1402,6 +1410,12 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         _TRANS_STATS["cache_hit"] += 1
         return _trans_cache[text_hash]
 
+    # 熔断：连续多次全端点失败后暂停请求，期间未命中缓存的文本直接返回原文
+    global _TRANS_FAIL_STREAK, _TRANS_BLOCK_UNTIL
+    if time.time() < _TRANS_BLOCK_UNTIL:
+        _TRANS_STATS["fail"] += 1
+        return text
+
     encoded = urllib.parse.quote(text[:500])
 
     # 1) Google gtx
@@ -1414,6 +1428,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
             result = "".join(part[0] for part in data[0] if part[0])
             if result and len(result) > len(text) * 0.3:
                 _TRANS_STATS["google"] += 1
+                _TRANS_FAIL_STREAK = 0
                 _trans_cache[text_hash] = result  # 写入缓存
                 return result
     except Exception:
@@ -1429,6 +1444,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         result = data.get("responseData", {}).get("translatedText", "")
         if result and not result.startswith("MYMEMORY"):
             _TRANS_STATS["mymemory"] += 1
+            _TRANS_FAIL_STREAK = 0
             _trans_cache[text_hash] = result  # 写入缓存
             return result
     except Exception:
@@ -1444,12 +1460,17 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
             result = "".join(s.get("trans", "") for s in data["sentences"])
             if result:
                 _TRANS_STATS["dict"] += 1
+                _TRANS_FAIL_STREAK = 0
                 _trans_cache[text_hash] = result  # 写入缓存
                 return result
     except Exception:
         pass
 
     _TRANS_STATS["fail"] += 1
+    _TRANS_FAIL_STREAK += 1
+    if _TRANS_FAIL_STREAK >= 5:
+        _TRANS_BLOCK_UNTIL = time.time() + 300
+        print("[翻译熔断] 连续 %d 次全端点失败，暂停翻译请求 5 分钟" % _TRANS_FAIL_STREAK, file=sys.stderr)
     return text  # 翻译失败保留原文
 
 
