@@ -3824,6 +3824,21 @@ def main(mode="full"):
     ok_count = 0
     skipped_count = 0
 
+    # 增量模式：预建历史索引（source_key → items），避免每源遍历全部历史
+    _hist_by_key = {}
+    if mode == "incremental":
+        for _v in _rss_history.values():
+            _sk = _v.get("source_key", "")
+            if _sk not in _hist_by_key:
+                _hist_by_key[_sk] = []
+            _hist_by_key[_sk].append({
+                "link": _v["link"], "pub_date": _v.get("pub_date", ""),
+                "title": _v.get("title", ""), "title_zh": _v.get("title_zh", ""),
+                "summary": _v.get("summary", ""), "summary_zh": _v.get("summary_zh", ""),
+                "full_content": _v.get("full_content", ""), "image": _v.get("image", ""),
+            })
+        print("[增量模式] 历史索引: %d 源有历史数据" % len(_hist_by_key))
+
     # 串行抓取 RSS（短超时，失败快速跳过）
     for src in RSS_SOURCES:
         key = src["key"]
@@ -3836,10 +3851,10 @@ def main(mode="full"):
         if mode == "incremental":
             if tier == 1:
                 skipped_count += 1
-                # 用历史数据填充 T1 源（避免快照中丢失）
+                # 从历史索引填充 T1 源（增量构建不抓取 T1，但不能传空 items 导致历史数据流失）
                 sources_with_items.append({
                     "key": key, "name": src["name"], "cat": src["cat"],
-                    "color": src["color"], "items": [],
+                    "color": src["color"], "items": _hist_by_key.get(key, []),
                     "tier": tier,
                 })
                 continue
@@ -3850,9 +3865,10 @@ def main(mode="full"):
                     threshold = 1 * 3600 if tier <= 2 else 2 * 3600
                     if (now - prev_time).total_seconds() < threshold:
                         skipped_count += 1
+                        # 从历史索引填充跳过的 T2/T3 源（避免空 items 导致历史数据流失）
                         sources_with_items.append({
                             "key": key, "name": src["name"], "cat": src["cat"],
-                            "color": src["color"], "items": [],
+                            "color": src["color"], "items": _hist_by_key.get(key, []),
                             "tier": tier,
                         })
                         continue
