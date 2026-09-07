@@ -355,5 +355,6 @@
  "experientiallabs/experiential": "一种开源模型网关，提供跨封闭、开源、本地和自定义模型的一个控制平面。",
  "rtk-ai/rtk": "CLI 代理可将常见开发命令的 LLM 令牌消耗减少 60-90%。单个 Rust 二进制文件，零依赖",
  "ahujasid/blender-mcp": "用于通过您选择的任何 LLM 控制 Blender 3D 的社区插件",
- "coreyhaines31/marketingskills": "Claude Code 和 AI 代理的营销技巧。 CRO、文案、SEO、分析和增长工程。"
+ "coreyhaines31/marketingskills": "Claude Code 和 AI 代理的营销技巧。 CRO、文案、SEO、分析和增长工程。",
+ "wzhudev/reverse-linear-sync-engine": "Linear 同步引擎的逆向工程。得到 Linear 首席技术官的认可。"
 }
