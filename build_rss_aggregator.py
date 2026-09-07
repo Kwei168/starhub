@@ -140,6 +140,8 @@ def _accumulate_history(sources_with_items):
                 "summary": it.get("summary", ""), "summary_zh": it.get("summary_zh", ""),
                 "full_content": it.get("full_content", ""),
                 "image": it.get("image", ""),
+                "media_url": it.get("media_url", ""),
+                "media_type": it.get("media_type", ""),
                 "pub_date": pd_str,
                 "first_seen": _rss_history.get(link, {}).get("first_seen", now_bj.replace(tzinfo=None).isoformat()),
             }
@@ -276,6 +278,10 @@ def _save_api_snapshot(sources_with_items, meta=None):
             img = it.get("image", "")
             if img:
                 item["img"] = img
+            mu = it.get("media_url", "")
+            if mu:
+                item["mu"] = mu
+                item["mt"] = it.get("media_type", "")
             items.append(item)
         snapshot_sources.append({
             "key": src["key"], "name": src["name"],
@@ -1116,14 +1122,48 @@ def _pick_item_image(it, desc_raw, content_raw):
 
 _SAFE_TAGS = re.compile(
     r"^(/?(p|br|img|a|b|i|em|strong|h[1-6]|ul|ol|li|blockquote|pre|code"
-    r"|figure|figcaption|table|tr|td|th|thead|tbody|span|div|hr|sup|sub|dl|dt|dd))$",
+    r"|figure|figcaption|table|tr|td|th|thead|tbody|span|div|hr|sup|sub|dl|dt|dd"
+    r"|audio|video|source|iframe))$",
     re.IGNORECASE,
 )
 _EVT_ATTR = re.compile(r"^on[a-z]+$", re.IGNORECASE)
 _TAG_NAME = re.compile(r"^</?(\w[\w-]*)")
 # 仅保留渲染正文结构必需的属性：WeChat 段落带巨型内联 style，全量保留会撑爆快照
-_KEPT_ATTRS = {"img": ("src", "alt"), "a": ("href",)}
+_KEPT_ATTRS = {
+    "img": ("src", "alt"), "a": ("href",),
+    "iframe": ("src", "width", "height", "frameborder", "allowfullscreen"),
+    "audio": ("src", "controls", "preload"),
+    "video": ("src", "controls", "preload", "poster", "width", "height"),
+    "source": ("src", "type"),
+}
+_BOOL_ATTRS = {"controls"}
 _URL_SCHEME = re.compile(r"^\s*(?:https?:|mailto:|/|#|data:image/)", re.IGNORECASE)
+_SAFE_IFRAME_RE = re.compile(
+    r'<iframe\s[^>]*src\s*=\s*"([^"]*(?:youtube\.com|youtu\.be|vimeo\.com)[^"]*)"[^>]*>\s*</iframe>',
+    re.IGNORECASE | re.DOTALL,
+)
+_IFRAME_TAG_RE = re.compile(r'<iframe[^>]*>', re.IGNORECASE | re.DOTALL)
+_MEDIA_ATTRS = re.compile(r'(?:youtube\.com/watch\?.*v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]+)')
+
+
+def _pick_item_media(it):
+    """提取 enclosure / media:content 中的音频视频 URL（跳过图片类型）"""
+    try:
+        enc = it.find("enclosure")
+        if enc is not None:
+            etype = (enc.get("type") or "").lower()
+            eurl = (enc.get("url") or "").strip()
+            if eurl and (etype.startswith("audio") or etype.startswith("video")):
+                return eurl, etype
+        mrss = "{http://search.yahoo.com/mrss/}"
+        m_el = it.find(mrss + "content")
+        if m_el is not None and (m_el.get("url") or "").strip():
+            mtype = (m_el.get("type") or m_el.get("medium") or "").lower()
+            if mtype in ("audio", "video") or mtype.startswith("audio") or mtype.startswith("video"):
+                return m_el.get("url").strip(), mtype
+    except Exception:
+        pass
+    return "", ""
 
 
 def _sanitize_html(text):
@@ -1132,6 +1172,14 @@ def _sanitize_html(text):
     text = html_mod.unescape(text)
     text = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", text, flags=re.IGNORECASE)
+    # 提取安全 iframe（仅 YouTube / Vimeo），替换为占位符，清洗后还原
+    safe_iframes = []
+    def _save_iframe(m):
+        safe_iframes.append(m.group(0))
+        return '\x00IFRAME%d\x00' % (len(safe_iframes) - 1)
+    while _SAFE_IFRAME_RE.search(text):
+        text = _SAFE_IFRAME_RE.sub(_save_iframe, text, count=1)
+    # 移除剩余非安全 iframe
     text = re.sub(r"<iframe[^>]*>[\s\S]*?</iframe>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"<form[^>]*>[\s\S]*?</form>", "", text, flags=re.IGNORECASE)
 
@@ -1149,11 +1197,25 @@ def _sanitize_html(text):
             for k, v in re.findall(r'([\w-]+)\s*=\s*"([^"]*)"', full):
                 if k.lower() not in kept or _EVT_ATTR.match(k):
                     continue
-                if not _URL_SCHEME.match(v):
+                # URL scheme 检查仅对 src/href/poster 等 URL 属性
+                if k.lower() in ("src", "href", "poster") and not _URL_SCHEME.match(v):
                     continue
                 safe_attrs.append('%s="%s"' % (k.lower(), v.replace("&", "&amp;")))
+            # 布尔属性（如 controls）无 ="value"，单独检测
+            for battr in ("controls",):
+                if battr in kept and re.search(r'\b' + battr + r'(?:\s|>|/)', full, re.IGNORECASE):
+                    safe_attrs.append(battr)
         if tag.lower() == "img" and not any(a.startswith("src=") for a in safe_attrs):
             return ""
+        # iframe 二次校验：仅放行 YouTube / Vimeo 域名
+        if tag.lower() == "iframe":
+            src_val = ""
+            for a in safe_attrs:
+                if a.startswith("src="):
+                    src_val = a[5:].replace("&amp;", "&")
+                    break
+            if not re.search(r'youtube\.com|youtu\.be|vimeo\.com', src_val, re.IGNORECASE):
+                return ""
         if safe_attrs:
             return "<%s %s>" % (tag, " ".join(safe_attrs))
         if full.startswith("</"):
@@ -1162,6 +1224,9 @@ def _sanitize_html(text):
 
     text = re.sub(r"<[^>]+>", _clean_tag, text)
     text = re.sub(r"<[^>]*$", "", text)
+    # 还原安全 iframe
+    for i, iframe_tag in enumerate(safe_iframes):
+        text = text.replace('\x00IFRAME%d\x00' % i, iframe_tag)
     return text.strip()
 
 
@@ -1456,11 +1521,13 @@ def _fetch_rss(source):
             pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
             if not title or not link:
                 continue
+            media_url, media_type = _pick_item_media(e)
             items.append({
                 "title": title, "link": link, "summary": _truncate(desc),
                 "full_content": full_content, "image": _pick_item_image(e, summary_raw, content_raw),
                 "pub_date": _parse_iso(pub), "source": name, "source_key": source["key"],
                 "cat": source["cat"],
+                "media_url": media_url, "media_type": media_type,
             })
     else:
         ch = root.find("channel")
@@ -1503,11 +1570,13 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
     full_content = content_encoded if len(content_encoded) > len(desc) else ""
     if not title or not link:
         return
+    media_url, media_type = _pick_item_media(it)
     items.append({
         "title": title, "link": link, "summary": _truncate(desc),
         "full_content": full_content, "image": _pick_item_image(it, desc_raw, content_raw),
         "pub_date": _parse_rss_date(pub) or _parse_iso(pub), "source": source_name, "source_key": source_key,
         "cat": cat,
+        "media_url": media_url, "media_type": media_type,
     })
 
 
@@ -3861,6 +3930,7 @@ def main(mode="full"):
                 "title": _v.get("title", ""), "title_zh": _v.get("title_zh", ""),
                 "summary": _v.get("summary", ""), "summary_zh": _v.get("summary_zh", ""),
                 "full_content": _v.get("full_content", ""), "image": _v.get("image", ""),
+                "media_url": _v.get("media_url", ""), "media_type": _v.get("media_type", ""),
             })
         print("[增量模式] 历史索引: %d 源有历史数据" % len(_hist_by_key))
 

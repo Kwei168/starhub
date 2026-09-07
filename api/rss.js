@@ -86,7 +86,10 @@ function stripHtml(text) {
     .trim();
 }
 
-const SAFE_TAGS = new Set(['p','br','img','a','b','i','em','strong','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','figure','figcaption','table','tr','td','th','thead','tbody','span','div','hr','sup','sub','dl','dt','dd']);
+const SAFE_TAGS = new Set(['p','br','img','a','b','i','em','strong','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','figure','figcaption','table','tr','td','th','thead','tbody','span','div','hr','sup','sub','dl','dt','dd','audio','video','source','iframe']);
+
+// 允许的 iframe 域名（YouTube / Vimeo embed）
+const SAFE_IFRAME_HOSTS = /youtube\.com|youtu\.be|vimeo\.com/i;
 
 function sanitizeHtml(text) {
   if (!text) return '';
@@ -98,6 +101,14 @@ function sanitizeHtml(text) {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
   text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  // 提取安全 iframe（YouTube / Vimeo），替换为占位符，清洗后还原
+  const safeIframes = [];
+  const safeIframeRe = /<iframe\s[^>]*src\s*=\s*"([^"]*(?:youtube\.com|youtu\.be|vimeo\.com)[^"]*)"[^>]*>\s*<\/iframe>/gi;
+  text = text.replace(safeIframeRe, (match) => {
+    safeIframes.push(match);
+    return '\x00IFRAME' + (safeIframes.length - 1) + '\x00';
+  });
+  // 移除剩余非安全 iframe
   text = text.replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '');
   text = text.replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '');
   text = text.replace(/<[^>]+>/g, (match) => {
@@ -105,18 +116,43 @@ function sanitizeHtml(text) {
     if (!m) return '';
     const tag = m[1].toLowerCase();
     if (!SAFE_TAGS.has(tag)) return '';
+    // iframe 二次校验：仅放行 YouTube / Vimeo
+    if (tag === 'iframe') {
+      const srcMatch = match.match(/src\s*=\s*"([^"]*)"/i);
+      if (!srcMatch || !SAFE_IFRAME_HOSTS.test(srcMatch[1])) return '';
+    }
+    const ALLOWED_ATTRS = {
+      img: new Set(['src', 'alt']),
+      a: new Set(['href']),
+      iframe: new Set(['src', 'width', 'height', 'frameborder', 'allowfullscreen']),
+      audio: new Set(['src', 'controls', 'preload']),
+      video: new Set(['src', 'controls', 'preload', 'poster', 'width', 'height']),
+      source: new Set(['src', 'type']),
+    };
+    const allowed = ALLOWED_ATTRS[tag] || null;
     const attrs = [];
     const attrRe = /([\w-]+)\s*=\s*"([^"]*)"/g;
     let am;
     while ((am = attrRe.exec(match)) !== null) {
       if (/^on/i.test(am[1])) continue;
       if (am[1].toLowerCase() === 'href' && am[2].trim().toLowerCase().startsWith('javascript:')) continue;
+      if (allowed && !allowed.has(am[1].toLowerCase())) continue;
       attrs.push(am[1] + '="' + am[2] + '"');
+    }
+    // 布尔属性（如 controls）无 ="value"，单独检测
+    if (tag === 'audio' || tag === 'video') {
+      if (/\bcontrols(?:\s|>|\/)/i.test(match) && (!allowed || allowed.has('controls'))) {
+        attrs.push('controls');
+      }
     }
     const isClose = match.startsWith('</');
     if (attrs.length) return '<' + (isClose ? '/' : '') + tag + ' ' + attrs.join(' ') + '>';
     return isClose ? '</' + tag + '>' : '<' + tag + '>';
   });
+  // 还原安全 iframe
+  for (let i = 0; i < safeIframes.length; i++) {
+    text = text.replace('\x00IFRAME' + i + '\x00', safeIframes[i]);
+  }
   return text.trim();
 }
 
@@ -152,6 +188,31 @@ function truncate(text, maxLen) {
 
 // ── Feed 解析 ──
 
+function extractMediaFromEntry(entry) {
+  // enclosure
+  const encMatch = entry.match(/<enclosure[^>]*>/i);
+  if (encMatch) {
+    const typeM = encMatch[0].match(/type\s*=\s*"([^"]*)"/i);
+    const urlM = encMatch[0].match(/url\s*=\s*"([^"]*)"/i);
+    if (urlM && typeM) {
+      const type = typeM[1].toLowerCase();
+      if (type.startsWith('audio') || type.startsWith('video')) {
+        return { media_url: urlM[1], media_type: type };
+      }
+    }
+  }
+  // media:content
+  const mcMatch = entry.match(/<media:content[^>]*>/i);
+  if (mcMatch) {
+    const urlM = mcMatch[0].match(/url\s*=\s*"([^"]*)"/i);
+    const medM = mcMatch[0].match(/medium\s*=\s*"([^"]*)"/i);
+    if (urlM && medM && (medM[1] === 'audio' || medM[1] === 'video')) {
+      return { media_url: urlM[1], media_type: medM[1] };
+    }
+  }
+  return {};
+}
+
 function parseFeed(xml, sourceKey, maxItems) {
   const items = [];
   // Atom
@@ -163,12 +224,15 @@ function parseFeed(xml, sourceKey, maxItems) {
       const summary = extractTag(entry, 'summary') || extractTag(entry, 'content');
       const pubDate = extractTag(entry, 'published') || extractTag(entry, 'updated');
       if (title) {
-        items.push({
+        const item = {
           title: stripHtml(title),
           link: link || '#',
           summary: truncate(stripHtml(summary), 200),
           pub_date: pubDate || new Date().toISOString(),
-        });
+        };
+        const media = extractMediaFromEntry(entry);
+        if (media.media_url) { item.media_url = media.media_url; item.media_type = media.media_type; }
+        items.push(item);
       }
     }
     return items;
@@ -191,6 +255,18 @@ function parseFeed(xml, sourceKey, maxItems) {
       };
       if (fullContent) {
         result.fullContent = deepCleanHtml(sanitizeHtml(fullContent)).slice(0, 50000);
+      }
+      // 提取 enclosure / media:content 中的音频视频
+      const encMatch = item.match(/<enclosure[^>]*>/i);
+      if (encMatch) {
+        const typeM = encMatch[0].match(/type\s*=\s*"([^"]*)"/i);
+        const urlM = encMatch[0].match(/url\s*=\s*"([^"]*)"/i);
+        if (urlM && typeM) {
+          const t = typeM[1].toLowerCase();
+          if (t.startsWith('audio') || t.startsWith('video')) {
+            result.media_url = urlM[1]; result.media_type = t;
+          }
+        }
       }
       items.push(result);
     }
@@ -226,6 +302,7 @@ async function fetchOne(source) {
           d: it.pub_date,
         };
         if (it.fullContent) obj.fc = it.fullContent;
+        if (it.media_url) { obj.mu = it.media_url; obj.mt = it.media_type; }
         return obj;
       }),
       lastModified: new Date().toUTCString(),
