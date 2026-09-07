@@ -493,8 +493,8 @@ def build_trending(token, desc_zh):
 
 
 def generate_ai_summary(rising_top10):
-    """调用 DeepSeek API 生成 AI 态势一句话摘要。失败返回 None（静默降级）。"""
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    """调用 Agnes AI API 生成 AI 态势一句话摘要。失败返回 None（静默降级）。"""
+    api_key = os.environ.get("AGNES_API_KEY")
     if not api_key:
         return None
     if not rising_top10:
@@ -509,7 +509,7 @@ def generate_ai_summary(rising_top10):
             lines.append(name)
     prompt = "用一句话（30字以内）概括今日 GitHub AI/开源生态态势，基于以下涨星项目：" + "、".join(lines)
     payload = json.dumps({
-        "model": "deepseek-chat",
+        "model": "agnes-2.5-flash",
         "messages": [
             {"role": "system", "content": "你是一个简洁的 AI 开源态势分析师，回答不超过30字。"},
             {"role": "user", "content": prompt}
@@ -519,7 +519,7 @@ def generate_ai_summary(rising_top10):
     }).encode("utf-8")
     try:
         req = urllib.request.Request(
-            "https://api.deepseek.com/v1/chat/completions",
+            "https://apihub.agnes-ai.com/v1/chat/completions",
             data=payload,
             headers={
                 "Content-Type": "application/json",
