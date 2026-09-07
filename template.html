@@ -421,6 +421,13 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
   color:var(--brand);font-size:12px;font-weight:600;font-family:var(--font-mono);
 }
 .cover-card .open:hover{text-decoration:underline;text-underline-offset:3px}
+.copy-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  color:var(--muted);font-size:12px;font-weight:600;font-family:var(--font-mono);
+  background:none;border:none;cursor:pointer;padding:2px 2px;border-radius:4px;white-space:nowrap;
+}
+.copy-btn .icon{width:13px;height:13px}
+.copy-btn:hover{color:var(--brand)}
 .card.cover-card .cat-tag{border-radius:var(--chip-pill);height:22px;padding:0 9px}
 /* 悬停：仅精确指针设备（atlasnote 同款门控 + accent 混色描边） */
 @media (hover:hover) and (pointer:fine){
@@ -508,7 +515,7 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
   display:inline-flex;align-items:center;gap:2px;background:var(--upd-bg);color:var(--upd-color);
   border-radius:2px;padding:1px 7px;font-size:11px;font-weight:700;line-height:17px;white-space:nowrap;font-family:var(--font-mono)
 }
-.trend-item .delta.neg,.trend-item .delta.new{background:var(--hover);color:var(--muted)}
+.trend-item .delta.neg,.trend-item .delta.new,.trend-item .delta.flat{background:var(--hover);color:var(--muted)}
 .trending[data-tab="new"] .reason{color:var(--t-new)}
 .trend-item .lg{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);flex:none}
 .trend-item .lg .c{width:8px;height:8px;border-radius:0;transform:rotate(45deg);flex:none}
@@ -994,7 +1001,8 @@ const $ = s => document.querySelector(s);
 const icon = {
   star: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9 5.8 20.3l1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>',
   starFilled: '<svg class="icon filled" viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9 5.8 20.3l1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>',
-  link: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+  link: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  copy: '<svg class="icon" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
 };
 
 // ---- 主题 ----
@@ -1194,6 +1202,7 @@ function buildCard(d, isFav){
       '<div class="foot-row">' +
         '<a class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f" href="javascript:void 0" data-act="cattag" data-cat="'+d.category+'">' +
           '<span class="dot"></span>'+d.categoryLabel+'</a>' +
+        '<button class="copy-btn" data-act="copy" title="复制名称与链接">'+icon.copy+'复制</button>' +
         '<a class="open" href="'+d.html_url+'" target="_blank" rel="noopener">'+icon.link+'打开</a>' +
       '</div>' +
     '</div>';
@@ -1215,6 +1224,7 @@ function buildRow(d, isFav){
       (d.language ? '<span class="lg"><span class="c" style="background:'+(LANG_COLORS[d.language]||'#8b949e')+'"></span>'+d.language+'</span>' : '') +
       '<span class="st">'+icon.starFilled+''+fmtStars(d.stars)+'</span>' +
       '<span class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f"><span class="dot"></span>'+d.categoryLabel+'</span>' +
+      '<button class="copy-btn" data-act="copy" title="复制名称与链接">'+icon.copy+'复制</button>' +
       '<a class="st" style="color:var(--accent);font-weight:600" href="'+d.html_url+'" target="_blank" rel="noopener">'+icon.link+'打开</a>' +
     '</div>';
   return div;
@@ -1448,7 +1458,9 @@ function buildTrendItem(p, i, full){
     ? (hasDelta
         ? (p.delta > 0
             ? '<span class="delta">▲ +' + p.delta + '</span>'
-            : '<span class="delta' + (p.delta < 0 ? ' neg':'') + '">' + p.delta + '</span>')
+            : (p.delta === 0
+                ? '<span class="delta flat">➖</span>'
+                : '<span class="delta neg">▼ ' + Math.abs(p.delta) + '</span>'))
         : '<span class="delta new">新</span>')
     : '';
   const rank = '<span class="rank">' + (i+1) + '</span>';
@@ -1850,6 +1862,10 @@ function bindEvents(){
     if(act === 'fav') toggleFav(fn);
     if(act === 'cattag'){ state.cat = el.dataset.cat; renderCats(); renderList(); }
     if(act === 'expand'){ const d = card ? card.querySelector('.desc') : null; if(!d) return; const expanded = d.classList.toggle('expand'); el.textContent = expanded ? '收起' : '展开'; }
+    if(act === 'copy'){
+      const nameA = card ? card.querySelector('a.name') : null;
+      if(fn && nameA && nameA.href) copyRepoInfo(fn, nameA.href);
+    }
   });
 
   window.addEventListener('resize', updateCatsMask);
@@ -1932,7 +1948,17 @@ function bindEvents(){
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
     if(e.key === '/' && !typing){
+      if($('#searchModal').classList.contains('open')) return; // 搜索工作台打开时不抢焦点
       e.preventDefault(); $('#q').focus();
+    }
+    if((e.key === 'd' || e.key === 'D') && !typing && !e.ctrlKey && !e.metaKey && !e.altKey){
+      if($('#searchModal').classList.contains('open')) return;
+      $('#btnTheme').click(); // 复用现有切换逻辑（含 localStorage 与重渲染）
+    }
+    if(e.key === '?' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey){
+      if($('#searchModal').classList.contains('open')) return;
+      e.preventDefault();
+      toast('快捷键：/ 聚焦搜索 · d 切换主题 · ? 本说明 · Esc 关闭弹层');
     }
     if(e.key === 'Escape'){
       if($('#trendModal').classList.contains('open')){ closeTrendModal(); return; }
@@ -1994,6 +2020,26 @@ function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2000);
+}
+
+// ---- 复制名称与链接（clipboard API 优先，execCommand 降级） ----
+function copyRepoInfo(fn, url){
+  const text = fn + ' ' + url;
+  const done = () => toast('已复制：' + fn);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(() => copyFallback(text, done));
+  } else copyFallback(text, done);
+}
+function copyFallback(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try{ if(document.execCommand('copy')) done(); else toast('复制失败，请手动复制'); }
+  catch(e){ toast('复制失败，请手动复制'); }
+  document.body.removeChild(ta);
 }
 
 // ---- init ----

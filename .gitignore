@@ -5,3 +5,6 @@ __pycache__/
 .vercel-tmp/
 .deploy-tmp/
 .vercel
+
+# 构建期缓存（TTL 30 分钟，跨 run 基本全过期；仅本地构建加速用，不进 git/Vercel）
+rss_cache.json

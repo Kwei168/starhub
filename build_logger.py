@@ -31,6 +31,29 @@ def append(entry: dict):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def cleanup(keep_days=14):
+    """滚动清理：删除超过 keep_days 天的日志文件（*.jsonl 与 summary_*.json），返回被删文件名列表。
+    文件名非日期格式（如 summary_YYYY-MM-DD.json 之外的文件）一律跳过不动。"""
+    _ensure_dir()
+    cutoff_date = (datetime.now(BJT) - timedelta(days=keep_days)).date()
+    removed = []
+    for name in os.listdir(LOG_DIR):
+        if not (name.endswith(".jsonl") or (name.startswith("summary_") and name.endswith(".json"))):
+            continue
+        date_part = name.replace("summary_", "").rsplit(".", 1)[0]
+        try:
+            file_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if file_date < cutoff_date:
+            try:
+                os.remove(os.path.join(LOG_DIR, name))
+                removed.append(name)
+            except OSError as e:
+                print(f"[日志] 清理失败 {name}: {e}", file=sys.stderr)
+    return removed
+
+
 def read(date_str=None, event_type=None, limit=100, offset=0):
     """读取日志，支持按日期、类型过滤，分页返回"""
     _ensure_dir()
