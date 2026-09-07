@@ -222,5 +222,6 @@
  "Seanium/FeedMe": "agent",
  "xai-org/x-algorithm": "agent",
  "wzhudev/reverse-linear-sync-engine": "agent",
- "sansan0/TrendRadar": "tools"
+ "sansan0/TrendRadar": "tools",
+ "hipcityreg/situation-monitor": "agent"
 }
