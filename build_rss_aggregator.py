@@ -3465,24 +3465,30 @@ def _build_js(sources_with_items, build_ts_ms=0):
       }
     }).catch(function(){ if(aiTimer) clearTimeout(aiTimer); afCursor=''; });
 
-    // \u2461 AGI Hunt \u8bf7\u6c42\uff0812 \u9891\u9053\u5e76\u884c\uff09\uff1a\u603b\u8d85\u65f6 15s\uff0c\u907f\u514d\u5355\u4e2a\u9891\u9053\u62d6\u4f4f\u5168\u90e8
+    // \u2461 AGI Hunt \u8bf7\u6c42\uff08\u987a\u5e8f\u8bf7\u6c42\uff0c\u907f\u514d\u79fb\u52a8\u7aef\u5e76\u53d1\u8fde\u63a5\u69fd\u6392\u961f\uff09\uff1a\u5355\u8bf7\u6c42 5s \u8d85\u65f6 + \u603b\u8d85\u65f6 30s
     var agiCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
-    var agiTimer = agiCtrl ? setTimeout(function(){ agiCtrl.abort(); }, 15000) : null;
+    var agiTimer = agiCtrl ? setTimeout(function(){ agiCtrl.abort(); }, 30000) : null;
     var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
-    var agihuntP = Promise.all(AGIHUNT_CHANNELS.map(function(ch){
-      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort, agiCtrl ? { signal: agiCtrl.signal } : {})
-        .then(function(r){return r.ok?r.json():null;})
-        .then(function(j){return (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch[0]});});})
-        .catch(function(){return [];});
-    })).then(function(arrs){
+    var agihuntP = (async function(){
+      for(var ci=0; ci<AGIHUNT_CHANNELS.length; ci++){
+        if(agiCtrl && agiCtrl.signal.aborted) break;
+        var ch = AGIHUNT_CHANNELS[ci];
+        var chCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+        var chTimer = chCtrl ? setTimeout(function(){ chCtrl.abort(); }, 5000) : null;
+        try{
+          var r = await fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort,
+            chCtrl ? { signal: chCtrl.signal } : (agiCtrl ? { signal: agiCtrl.signal } : {}));
+          if(chTimer) clearTimeout(chTimer);
+          if(!r.ok) continue;
+          var j = await r.json();
+          (j&&j.items||[]).forEach(function(it){
+            var k=_normT(it.title);
+            if(!seen.has(k)){seen.add(k); merged.push(Object.assign({},it,{_src:'agihunt',_ch:ch[0]}));}
+          });
+        }catch(e){ if(chTimer) clearTimeout(chTimer); }
+      }
       if(agiTimer) clearTimeout(agiTimer);
-      arrs.forEach(function(arr){
-        arr.forEach(function(it){
-          var k=_normT(it.title);
-          if(!seen.has(k)){seen.add(k); merged.push(it);}
-        });
-      });
-    }).catch(function(){ if(agiTimer) clearTimeout(agiTimer); });
+    })();
 
     // \u7b49\u5f85 AIHOT + AGI Hunt \u5168\u90e8 settle\uff08\u5404\u81ea\u5df2\u6709\u8d85\u65f6\u4fdd\u62a4\uff09
     await Promise.allSettled([aihotP, agihuntP]);
