@@ -358,5 +358,11 @@
  "coreyhaines31/marketingskills": "Claude Code 和 AI 代理的营销技巧。 CRO、文案、SEO、分析和增长工程。",
  "wzhudev/reverse-linear-sync-engine": "Linear 同步引擎的逆向工程。得到 Linear 首席技术官的认可。",
  "hipcityreg/situation-monitor": "用于监控全球新闻、市场和地缘政治事件的实时仪表板",
- "truespar/paddock": "用于 NVIDIA GPU 上开放模型的本机 Rust 推理服务器。 OpenAI 和 Anthropic 兼容的 API、GGUF + safetensors、FP8/NVFP4/MXFP4/Q8/Q4、内置 Studio"
+ "truespar/paddock": "用于 NVIDIA GPU 上开放模型的本机 Rust 推理服务器。 OpenAI 和 Anthropic 兼容的 API、GGUF + safetensors、FP8/NVFP4/MXFP4/Q8/Q4、内置 Studio",
+ "k2-fsa/OmniVoice": "600多种语言的高质量语音克隆TTS",
+ "The-Swarm-Corporation/AutoHedge": "在几分钟内建立您的自主对冲基金。AutoHedge利用群体智能和人工智能代理的强大功能，实现市场分析、风险管理和交易执行的自动化。",
+ "Anil-matcha/Open-Generative-AI": "人工智能视频平台的无限制开源替代品—免费的人工智能图像和视频生成工作室，拥有600多名模特（ Flux、Midjourney、Kling、Sora、Veo ）。无内容过滤器。自托管，麻省理工学院许可。",
+ "jo-inc/camofox-browser": "适用于AI代理的隐形无头浏览器—绕过Cloudflare、机器人检测和反抓取。代替偶人/剧作家。",
+ "lightpanda-io/browser": "Lightpanda ：专为人工智能和自动化设计的无头浏览器",
+ "Nutlope/logocreator": "由Flux on Together AI提供支持的免费+ OSS徽标生成器"
 }
