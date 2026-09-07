@@ -84,7 +84,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot.json build_logs/
+          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot.json hot_snapshot.json build_logs/
           if git diff --cached --quiet; then
             echo "No changes, skip commit."
           else
@@ -96,7 +96,7 @@ jobs:
               git fetch origin main
               git reset --hard origin/main
               python fetch_and_build.py $MODE
-              git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot.json build_logs/
+              git add index.html ai-daily.html rss-aggregator.html rss-data-0.js rss-data-1.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot.json hot_snapshot.json build_logs/
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
               git push --force-with-lease
             }
