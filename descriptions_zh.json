@@ -364,5 +364,7 @@
  "Anil-matcha/Open-Generative-AI": "人工智能视频平台的无限制开源替代品—免费的人工智能图像和视频生成工作室，拥有600多名模特（ Flux、Midjourney、Kling、Sora、Veo ）。无内容过滤器。自托管，麻省理工学院许可。",
  "jo-inc/camofox-browser": "适用于AI代理的隐形无头浏览器—绕过Cloudflare、机器人检测和反抓取。代替偶人/剧作家。",
  "lightpanda-io/browser": "Lightpanda ：专为人工智能和自动化设计的无头浏览器",
- "Nutlope/logocreator": "由Flux on Together AI提供支持的免费+ OSS徽标生成器"
+ "Nutlope/logocreator": "由Flux on Together AI提供支持的免费+ OSS徽标生成器",
+ "openai/skills": "法典技能目录",
+ "mksglu/context-mode": "AI 编码代理的上下文窗口优化。沙箱工具输出（减少 98%）、保留会话内存，并通过 MCP + 挂钩强制跨 17 个平台进行路由。"
 }
