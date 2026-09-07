@@ -2029,24 +2029,30 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       }
     }).catch(function(){ if(aiTimer) clearTimeout(aiTimer); afCursor=''; });
 
-    // ② AGI Hunt 请求（12 频道并行）：总超时 15s，避免单个频道拖住全部
+    // ② AGI Hunt 请求（顺序请求，避免移动端并发连接槽排队）：单请求 5s 超时 + 总超时 30s
     var agiCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
-    var agiTimer = agiCtrl ? setTimeout(function(){ agiCtrl.abort(); }, 15000) : null;
+    var agiTimer = agiCtrl ? setTimeout(function(){ agiCtrl.abort(); }, 30000) : null;
     var today = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
-    var agihuntP = Promise.all(AGIHUNT_CHANNELS.map(function(ch){
-      return fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort, agiCtrl ? { signal: agiCtrl.signal } : {})
-        .then(function(r){return r.ok?r.json():null;})
-        .then(function(j){return (j&&j.items||[]).map(function(it){return Object.assign({},it,{_src:'agihunt',_ch:ch[0]});});})
-        .catch(function(){return [];});
-    })).then(function(arrs){
+    var agihuntP = (async function(){
+      for(var ci=0; ci<AGIHUNT_CHANNELS.length; ci++){
+        if(agiCtrl && agiCtrl.signal.aborted) break;
+        var ch = AGIHUNT_CHANNELS[ci];
+        var chCtrl = (typeof AbortController === 'function') ? new AbortController() : null;
+        var chTimer = chCtrl ? setTimeout(function(){ chCtrl.abort(); }, 5000) : null;
+        try{
+          var r = await fetch(AGIHUNT_API+'?channel='+ch[0]+'&day='+today+'&sort='+afAgiSort,
+            chCtrl ? { signal: chCtrl.signal } : (agiCtrl ? { signal: agiCtrl.signal } : {}));
+          if(chTimer) clearTimeout(chTimer);
+          if(!r.ok) continue;
+          var j = await r.json();
+          (j&&j.items||[]).forEach(function(it){
+            var k=_normT(it.title);
+            if(!seen.has(k)){seen.add(k); merged.push(Object.assign({},it,{_src:'agihunt',_ch:ch[0]}));}
+          });
+        }catch(e){ if(chTimer) clearTimeout(chTimer); }
+      }
       if(agiTimer) clearTimeout(agiTimer);
-      arrs.forEach(function(arr){
-        arr.forEach(function(it){
-          var k=_normT(it.title);
-          if(!seen.has(k)){seen.add(k); merged.push(it);}
-        });
-      });
-    }).catch(function(){ if(agiTimer) clearTimeout(agiTimer); });
+    })();
 
     // 等待 AIHOT + AGI Hunt 全部 settle（各自已有超时保护）
     await Promise.allSettled([aihotP, agihuntP]);
