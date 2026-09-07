@@ -474,6 +474,9 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
 .trending h2,.main-title,.feed h2{display:flex;align-items:center;gap:8px;margin:0 0 2px;font-size:14px;font-weight:700;font-family:var(--font-display);letter-spacing:.02em}
 .main-title{margin:0 0 14px}
 .trending .trend-sub{font-family:var(--font-mono);font-size:10.5px;color:var(--faint);margin-bottom:12px}
+.ai-summary{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius);background:var(--hover);margin-bottom:12px;font-size:12px;line-height:1.5}
+.ai-summary-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:var(--accent-solid);color:var(--on-strong);font-size:10px;font-weight:700;font-family:var(--font-mono)}
+.ai-summary-text{flex:1;color:var(--text);font-family:var(--font-display);letter-spacing:.01em}
 .trend-tabs{display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .trend-tab{
   flex:1;height:30px;border:0;border-left:1px solid var(--border);border-radius:0;background:var(--card);
@@ -900,6 +903,7 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
     <div class="trending on">
       <h2>每日 AI 排行榜</h2>
       <div class="trend-sub" id="trendUpdated"></div>
+      __AI_SUMMARY__
       <div class="trend-tabs" id="trendTabs">
         <button class="trend-tab on" data-tab="rising">涨星榜</button>
         <button class="trend-tab" data-tab="total">总星标榜</button>
