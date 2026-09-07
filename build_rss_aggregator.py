@@ -31,6 +31,14 @@ TRANS_CACHE_FILE = "translations.json"
 RSS_CACHE_FILE = "rss_cache.json"
 RSS_CACHE_TTL = 1800  # RSS 缓存有效期：30 分钟
 
+# ── newsnow 热榜快照 ──
+# API 格式: /api/s?id={platform}，每平台单独请求
+NEWSNOW_API_TMPL = "https://newsnow.busiyi.world/api/s?id=%s"
+NEWSNOW_TIMEOUT = 10
+HOT_SNAPSHOT_FILE = "hot_snapshot.json"
+# 期望的热榜源（按优先级排序，构建时按此顺序提取）
+NEWSNOW_PLATFORMS = ["weibo", "zhihu", "zhihu-daily", "baidu", "bilibili", "douyin"]
+
 # ── 缓存数据 ──
 _trans_cache = {}  # {text_hash: translated_text}
 _rss_cache = {}    # {source_key: {"items": [...], "fetched_at": timestamp}}
@@ -87,6 +95,43 @@ def _save_caches():
         print("[缓存] 保存 RSS 缓存: %d 个源%s" % (len(pruned), "（裁剪过期 %d 个）" % dropped if dropped else ""))
     except Exception as e:
         print("[缓存] 保存 RSS 缓存失败: %s" % e, file=sys.stderr)
+
+
+def fetch_newsnow_snapshot():
+    """构建时逐平台抓取 newsnow 热榜快照，失败返回空列表（不阻塞构建）。
+    新 API: GET /api/s?id={platform} -> {status, id, items: [{id,title,url,mobileUrl,extra}]}
+    """
+    result = []
+    for plat in NEWSNOW_PLATFORMS:
+        url = NEWSNOW_API_TMPL % plat
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=NEWSNOW_TIMEOUT)
+            ct = resp.headers.get("Content-Type", "")
+            if "json" not in ct.lower():
+                print("[热榜] %s 返回非JSON (%s)，跳过" % (plat, ct), file=sys.stderr)
+                continue
+            data = json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            print("[热榜] %s 拉取失败: %s" % (plat, e), file=sys.stderr)
+            continue
+        # 新格式: {status, id, updatedTime, items: [{id, title, url, mobileUrl, extra}], info}
+        items = data.get("items") if isinstance(data, dict) else None
+        if not items or not isinstance(items, list):
+            print("[热榜] %s 无items，跳过" % plat, file=sys.stderr)
+            continue
+        entries = []
+        for idx, it in enumerate(items[:10]):
+            entries.append({
+                "rank": idx + 1,
+                "title": it.get("title", ""),
+                "url": it.get("url", ""),
+                "hot": "",
+            })
+        if entries:
+            result.append({"platform": plat, "name": plat, "items": entries})
+    print("[热榜] newsnow 快照: %d 个平台" % len(result))
+    return result
 
 def _load_history():
     """加载 72 小时文章历史"""
@@ -1918,6 +1963,9 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .share-btn:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
 .share-btn.loading{pointer-events:none;opacity:.5;}
 .share-btn svg{width:13px;height:13px;}
+.copy-btn{display:inline-flex;align-items:center;gap:4px;color:var(--faint);font-size:11px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;font-family:var(--mono);transition:all .15s;}
+.copy-btn:hover{color:var(--brand-strong);background:var(--brand-weak);}
+.copy-btn svg{width:12px;height:12px;}
 
 /* ── Share action bar (reader body bottom) ── */
 .r2-actions-bottom{display:flex;justify-content:center;padding:22px 0 4px;}
@@ -2030,6 +2078,37 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
   .ai-feed-panel{width:100vw;}
   .af-head{padding:12px 14px 8px;}
   .af-body{padding:4px 14px 14px;}
+}
+
+/* ── Hot panel toolbar button ── */
+.hot-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 13px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid #f59e0b33;background:#f59e0b14;color:#b45309;transition:all .15s;cursor:pointer;}
+.hot-btn:hover{background:#f59e0b;color:#fff;}
+.hot-btn.on{background:#f59e0b;color:#fff;}
+.hot-btn svg{width:13px;height:13px;}
+
+/* ── Hot panel (right side drawer) ── */
+.hot-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--card);border-left:1px solid var(--line);transform:translateX(103%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;box-shadow:-18px 0 50px rgba(0,0,0,.12);}
+body.hot-open .hot-panel{transform:none;}
+body.hot-open .scrim{opacity:1;pointer-events:auto;}
+.hp-head{flex:none;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
+.hp-head h2{margin:0;font-size:15px;font-weight:700;flex:1;}
+.hp-close{background:none;border:none;cursor:pointer;color:var(--faint);padding:4px;border-radius:6px;display:flex;align-items:center;justify-content:center;}
+.hp-close:hover{background:var(--hover);color:var(--ink);}
+.hp-close svg{width:18px;height:18px;}
+.hp-body{flex:1;overflow-y:auto;padding:8px 0;-webkit-overflow-scrolling:touch;}
+.hp-src{padding:10px 16px 4px;font-size:13px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;}
+.hp-src-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+.hp-item{display:flex;align-items:flex-start;gap:8px;padding:8px 16px;cursor:pointer;transition:background .12s;text-decoration:none;color:inherit;}
+.hp-item:hover{background:var(--hover);}
+.hp-rank{flex:none;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);background:var(--bg);color:var(--faint);}
+.hp-rank.top3{background:var(--brand-weak);color:var(--brand-strong);}
+.hp-title{flex:1;font-size:13px;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.hp-hot{flex:none;font-size:11px;color:var(--faint);font-family:var(--mono);margin-top:3px;}
+.hp-empty{padding:40px 16px;text-align:center;color:var(--faint);font-size:13px;}
+@media (max-width:700px) {
+  .hot-panel{width:100vw;}
+  .hp-head{padding:12px 14px 8px;}
+  .hp-body{padding:4px 14px 14px;}
 }
 """
 
@@ -2406,7 +2485,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       h+='<h3 class="card-title">'+highlightEsc(a.t,globalSearch)+'</h3>';
       if(a.s) h+='<p class="card-summary">'+highlightEsc(a.s,globalSearch)+'</p>';
       h+='<div class="card-foot"><span class="src-dot" style="--sc:'+a.sc+'"></span><span class="src-name">'+esc(a.src)+'</span>';
-      h+='<span class="foot-meta"><button class="share-btn" data-k="'+esc(k)+'" title="\u5206\u4eab\u6587\u7ae0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><span>'+estRead(a)+'</span></span></div>';
+      h+='<span class="foot-meta"><button class="copy-btn" data-k="'+esc(k)+'" title="\u590d\u5236\u6807\u9898\u4e0e\u94fe\u63a5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>\u590d\u5236</button><button class="share-btn" data-k="'+esc(k)+'" title="\u5206\u4eab\u6587\u7ae0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><span>'+estRead(a)+'</span></span></div>';
       h+='</article>';
     }
     wall.innerHTML=h;
@@ -2443,6 +2522,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!a) return;
     if(e.target.closest('.ext-btn')){markRead(a);updateCardStates();return;}
     if(e.target.closest('.bm-btn')){toggleBookmark(a);return;}
+    if(e.target.closest('.copy-btn')){copyArticleInfo(k);return;}
     if(e.target.closest('.share-btn')){shareArticle(a,null,e.target.closest('.share-btn'));return;}
     openReader(a);
   });
@@ -2772,7 +2852,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function toggleKbdHelp(){
     var m=document.getElementById('kbdHelp');
     if(!m){m=document.createElement('div');m.id='kbdHelp';m.className='kbd-help';
-    m.innerHTML='<div class="kbd-help-backdrop" onclick="toggleKbdHelp()"></div><div class="kbd-help-panel"><div class="kbd-help-hd"><h3>\u5feb\u6377\u952e</h3><button class="share-close" onclick="toggleKbdHelp()">\u00d7</button></div><div class="kbd-help-body"><table><tr><td><kbd>j</kbd> / <kbd>\u2192</kbd></td><td>\u4e0b\u4e00\u7bc7\u6587\u7ae0</td></tr><tr><td><kbd>k</kbd> / <kbd>\u2190</kbd></td><td>\u4e0a\u4e00\u7bc7\u6587\u7ae0</td></tr><tr><td><kbd>Esc</kbd></td><td>\u5173\u95ed\u9605\u8bfb\u5668/\u9762\u677f</td></tr><tr><td><kbd>?</kbd></td><td>\u663e\u793a\u5feb\u6377\u952e\u5e2e\u52a9</td></tr></table></div></div></div>';
+    m.innerHTML='<div class="kbd-help-backdrop" onclick="toggleKbdHelp()"></div><div class="kbd-help-panel"><div class="kbd-help-hd"><h3>\u5feb\u6377\u952e</h3><button class="share-close" onclick="toggleKbdHelp()">\u00d7</button></div><div class="kbd-help-body"><table><tr><td><kbd>j</kbd> / <kbd>\u2192</kbd></td><td>\u4e0b\u4e00\u7bc7\u6587\u7ae0</td></tr><tr><td><kbd>k</kbd> / <kbd>\u2190</kbd></td><td>\u4e0a\u4e00\u7bc7\u6587\u7ae0</td></tr><tr><td><kbd>/</kbd></td><td>\u805a\u7126\u641c\u7d22\u6846</td></tr><tr><td><kbd>d</kbd></td><td>\u5207\u6362\u4e3b\u9898</td></tr><tr><td><kbd>Esc</kbd></td><td>\u5173\u95ed\u9605\u8bfb\u5668/\u9762\u677f</td></tr><tr><td><kbd>?</kbd></td><td>\u663e\u793a\u5feb\u6377\u952e\u5e2e\u52a9</td></tr></table></div></div></div>';
     document.body.appendChild(m);}
     m.classList.toggle('open');
   }
@@ -2780,7 +2860,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   // ── Window exports ──
   window.ART = ART;
   window.closeReader = function(){ _cleanupMedia(); document.body.classList.remove('reading'); curArt=null; window.curArt=null; updateCardStates(); if(_prevFocusEl){try{_prevFocusEl.focus();}catch(e){}_prevFocusEl=null;} };
-  window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
+  window.closeOverlays = function(){ document.body.classList.remove('src-open','hot-open'); window.closeReader(); };
   window.clearSrcF = function(e){ e.stopPropagation(); var uo=filter.unreadOnly,bm=filter.filterBm; filter={type:'all',unreadOnly:uo,filterBm:bm}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); updateBmChip(); };
   window.toggleSrcPanel = toggleSrcPanel;
   window.selectSrc = selectSrc;
@@ -2847,6 +2927,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       if(document.body.classList.contains('src-open')&&sp){_trapFocus(sp,e);return;}
     }
     if(e.target.tagName==='INPUT') return;
+    if(e.key==='/'){var gs=document.getElementById('globalSearch');if(gs){gs.focus();}return;}
+    if(e.key==='d'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){var bt=document.getElementById('btnTheme');if(bt)bt.click();return;}
     if(e.key==='?'){toggleKbdHelp();return;}
     var order=visibleArts();
     if(!curArt){if(e.key==='j'||e.key==='ArrowRight'){if(order[0])openReader(order[0]);}return;}
@@ -3108,6 +3190,19 @@ def _build_js(sources_with_items, build_ts_ms=0):
      ══════════════════════════════════════════ */
   var _qrLoaded=typeof qrcode==='function', _shareDataURL='', _toastTimer;
   function toast(msg){var t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(_toastTimer);_toastTimer=setTimeout(function(){t.classList.remove('show');},2000);}
+  function copyArticleInfo(k){
+    var a=ART.find(function(x){return artKey(x)===k;});
+    if(!a)return;
+    var text=(a.t||'')+'\\n'+(a.u&&a.u!=='#'?a.u:'');
+    function done(){toast('\u5df2\u590d\u5236\u6807\u9898\u4e0e\u94fe\u63a5');}
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(function(){
+        try{var ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;left:-9999px';document.body.appendChild(ta);ta.select();if(document.execCommand('copy'))done();else toast('\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u590d\u5236');document.body.removeChild(ta);}catch(e){toast('\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u590d\u5236');}
+      });
+    } else {
+      try{var ta2=document.createElement('textarea');ta2.value=text;ta2.style.cssText='position:fixed;left:-9999px';document.body.appendChild(ta2);ta2.select();if(document.execCommand('copy'))done();else toast('\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u590d\u5236');document.body.removeChild(ta2);}catch(e){toast('\u590d\u5236\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u590d\u5236');}
+    }
+  }
 
   /* QR 库已构建时内嵌（typeof qrcode==='function' 即同步可用）；
      此函数仅作为内嵌缺失时的 CDN 兑底，带 8s 超时防止 CDN 挂起 */
@@ -3825,6 +3920,53 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* 桌面端常驻侧栏：进入页面即加载 AI 动态（移动端保持点击按钮后加载） */
   if(_aiDesktop() && !afLoaded) _loadAll();
 
+  /* ══════════════════════════════════════════
+     Hot Panel: 全网热榜（newsnow 快照）
+     ══════════════════════════════════════════ */
+  var _hotLoaded=false, _hotLoading=false;
+  var _hotPlatformNames={weibo:'微博',zhihu:'知乎','zhihu-daily':'知乎日报',baidu:'百度',bilibili:'B站',douyin:'抖音'};
+  var _hotPlatformColors={weibo:'#ff4500',zhihu:'#0066ff','zhihu-daily':'#0066ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#111'};
+  window.toggleHotPanel=function(){
+    var open=document.body.classList.toggle('hot-open');
+    var btn=document.getElementById('btnHot');
+    if(btn) btn.classList.toggle('on',open);
+    if(open && !_hotLoaded) loadHotSnapshot();
+  };
+  function loadHotSnapshot(){
+    if(_hotLoading || _hotLoaded) return;
+    _hotLoading=true;
+    var list=document.getElementById('hotList');
+    if(!list) return;
+    list.innerHTML='<div class="hp-empty">加载中…</div>';
+    fetch('hot_snapshot.json',{cache:'no-cache'}).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(data){
+      _hotLoaded=true;_hotLoading=false;
+      if(!data||!data.length){list.innerHTML='<div class="hp-empty">暂无热榜数据</div>';return;}
+      var h='';
+      for(var s=0;s<data.length;s++){
+        var src=data[s],pn=_hotPlatformNames[src.platform]||src.platform,pc=_hotPlatformColors[src.platform]||'#888';
+        h+='<div class="hp-src"><span class="hp-src-dot" style="background:'+pc+'"></span>'+pn+'</div>';
+        var items=src.items||[];
+        if(!items.length) continue;
+        for(var i=0;i<items.length;i++){
+          var it=items[i],rk=it.rank||(i+1),cls=rk<=3?' top3':'';
+          var hotTxt=it.hot?(''+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+'万';}):'';
+          h+='<a class="hp-item" href="'+(it.url||'#')+'" target="_blank" rel="noopener">';
+          h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
+          h+='<span class="hp-title">'+(it.title||'')+'</span>';
+          if(hotTxt) h+='<span class="hp-hot">'+hotTxt+'</span>';
+          h+='</a>';
+        }
+      }
+      list.innerHTML=h||'<div class="hp-empty">暂无热榜数据</div>';
+    }).catch(function(){
+      _hotLoading=false;
+      list.innerHTML='<div class="hp-empty">加载失败，请稍后重试</div>';
+    });
+  }
+
 })();
 </script>
 """
@@ -3896,6 +4038,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<title>RSS 聚合阅读器 · StarHub</title>\n'
         '<style>' + _build_css() + '</style>\n'
         + '<link rel="preload" href="rss-data-0.js?v=' + str(int(build_ts_ms)) + '" as="script">\n'
+        + '<link rel="preload" href="hot_snapshot.json" as="fetch" crossorigin>\n'
         '</head>\n<body>\n'
         + _build_header() +
         '<div class="toolbar">\n'
@@ -3906,6 +4049,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<button class="unread-toggle" id="unreadToggle" onclick="toggleUnread()" title="\u4ec5\u663e\u793a\u672a\u8bfb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg> \u672a\u8bfb</button>\n'
                 '<button class="unread-toggle" id="markAllReadBtn" onclick="markAllRead()" title="\u5168\u90e8\u6807\u8bb0\u5df2\u8bfb" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> \u5168\u90e8\u5df2\u8bfb</button>\n'
         '<button class="ai-feed-btn" id="btnAiFeed" onclick="toggleAiFeed()" title="AI \u52a8\u6001\u6d41"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI \u52a8\u6001</button>\n'
+        '<button class="hot-btn" id="btnHot" onclick="toggleHotPanel()" title="\u5168\u7f51\u70ed\u699c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2c1 3-2 5-2 8a4 4 0 0 0 8 0c0-3-2-5-2-8"/><path d="M8.5 14.5A5 5 0 0 0 12 22a5 5 0 0 0 3.5-7.5"/></svg> \u70ed\u699c</button>\n'
         
         '<span id="fpillWrap"></span>\n'
         '<span class="tool-meta" id="toolMeta"></span>\n'
@@ -3926,7 +4070,12 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
         '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'
         '<button class="af-more" id="afLoadMore" style="display:none">\u52a0\u8f7d\u66f4\u591a</button></aside>\n'
-        '<div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div></div>\n'
+        '<div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div>\n'
+        '<aside class="hot-panel" id="hotPanel">\n'
+        '<div class="hp-head"><h2>\u5168\u7f51\u70ed\u699c</h2>\n'
+        '<button class="hp-close" onclick="toggleHotPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
+        '<div class="hp-body" id="hotList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u70ed\u699c</div></div></aside>\n'
+        '</div>\n'
         '<div class="scrim" aria-hidden="true" onclick="closeOverlays()"></div>\n'
         '<aside class="src-panel" id="srcPanel" role="dialog" aria-modal="true" aria-label="\u4fe1\u6e90\u9762\u677f">\n'
         '<div class="sp-head"><div class="row"><h2>信源</h2>\n'
@@ -4087,6 +4236,14 @@ def main(mode="full"):
     # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
     meta = {"last_fetch": last_fetch}
     _save_api_snapshot(sources_with_items, meta=meta)
+
+    # 抓取 newsnow 热榜快照（失败不阻塞）
+    hot_snapshot = fetch_newsnow_snapshot()
+    try:
+        with open(HOT_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+            json.dump(hot_snapshot, f, ensure_ascii=False, separators=(",", ":"))
+    except Exception as e:
+        print("[热榜] 快照写入失败: %s" % e, file=sys.stderr)
 
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms)
     with open(OUT, "w", encoding="utf-8") as f:

@@ -12,6 +12,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 
 USER = "Kwei168"
@@ -182,6 +183,7 @@ def load_build_config():
         "new_min_stars": NEW_MIN_STARS,
         "trend_max_stars": TREND_MAX_STARS,
         "ai_topics": list(AI_TOPICS),
+        "ai_summary_enabled": True,
     }
     try:
         cfg = json.load(open(BUILD_CONFIG_FILE, encoding="utf-8"))
@@ -198,6 +200,8 @@ def load_build_config():
             v = cfg[key]
             if key == "ai_topics":
                 ok = isinstance(v, list) and len(v) > 0 and all(isinstance(x, str) and x.strip() for x in v)
+            elif key == "ai_summary_enabled":
+                ok = isinstance(v, bool)
             else:
                 ok = isinstance(v, int) and not isinstance(v, bool) and v > 0
             if ok:
@@ -488,6 +492,54 @@ def build_trending(token, desc_zh):
             "source": "trending" if trend_rows else "snapshot"}
 
 
+def generate_ai_summary(rising_top10):
+    """调用 DeepSeek API 生成 AI 态势一句话摘要。失败返回 None（静默降级）。"""
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        return None
+    if not rising_top10:
+        return None
+    lines = []
+    for p in rising_top10[:10]:
+        name = p.get("full_name", "")
+        delta = p.get("delta")
+        if delta is not None:
+            lines.append("%s (+%d)" % (name, delta))
+        else:
+            lines.append(name)
+    prompt = "用一句话（30字以内）概括今日 GitHub AI/开源生态态势，基于以下涨星项目：" + "、".join(lines)
+    payload = json.dumps({
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "你是一个简洁的 AI 开源态势分析师，回答不超过30字。"},
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 100,
+        "temperature": 0.7,
+    }).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            "https://api.deepseek.com/v1/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + api_key,
+                "User-Agent": "starhub-auto-update",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        if content and len(content) <= 100:
+            print("[AI摘要] %s" % content)
+            return content
+    except urllib.error.HTTPError as e:
+        print("[AI摘要] API 调用失败: HTTP %s" % e.code, file=sys.stderr)
+    except Exception as e:
+        print("[AI摘要] 失败: %s" % e, file=sys.stderr)
+    return None
+
+
 def _today_cn():
     """北京时间今天的日期字符串 YYYY-MM-DD。"""
     return datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
@@ -694,10 +746,23 @@ def main(mode="full"):
         })
 
     trending = build_trending(token, desc_zh)
+
+    # AI 态势一句话：构建时生成，注入涨星榜区域
+    ai_summary = ""
+    if cfg.get("ai_summary_enabled", True):
+        ai_summary = generate_ai_summary(trending.get("rising", [])[:10]) or ""
+
     feed = fetch_following_events(token)
 
     template = open("template.html", encoding="utf-8").read()
     updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    # AI 摘要占位符替换：非空则渲染为带样式的摘要条，空则不显示
+    if ai_summary:
+        ai_summary_html = ('<div class="ai-summary">'
+                           '<span class="ai-summary-icon">AI</span>'
+                           '<span class="ai-summary-text">' + ai_summary + '</span></div>')
+    else:
+        ai_summary_html = ""
     html = (template
             .replace("__DATA__", _safe_json(out))
             .replace("__CATS__", _safe_json(CATS))
@@ -705,7 +770,8 @@ def main(mode="full"):
             .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
             .replace("__TRENDING__", _safe_json(trending))
             .replace("__FEED__", _safe_json(feed))
-            .replace("__UPDATED__", updated))
+            .replace("__UPDATED__", updated)
+            .replace("__AI_SUMMARY__", ai_summary_html))
 
     open("index.html", "w", encoding="utf-8").write(html)
     json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
