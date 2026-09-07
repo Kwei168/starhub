@@ -2074,7 +2074,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
           /* fc 兼容两条通道：chunk 通道字段名为 full_content，远程刷新通道为 fc */
           time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
-          img:it.image||it.img||'',
+          img:it.image||it.img||'', mu:it.mu||'', mt:it.mt||'',
           bad_date:!!it.bad_date, bb:!!s.bb});
       });
     });
@@ -2470,6 +2470,35 @@ def _build_js(sources_with_items, build_ts_ms=0):
       }
     });
   }
+  /* ── 媒体嵌入：YouTube iframe + 播客/音频播放器 ── */
+  function extractYouTubeId(url){
+    if(!url) return null;
+    var m=url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{6,})/);
+    return m?m[1]:null;
+  }
+  function _renderMedia(a,container){
+    if(!a||!container) return;
+    var vid=extractYouTubeId(a.u);
+    var hasIframe=container.querySelector('iframe[src*="youtube.com"],iframe[src*="youtu.be"]');
+    if(vid&&!hasIframe){
+      var ifr=document.createElement('iframe');
+      ifr.src='https://www.youtube.com/embed/'+vid;
+      ifr.setAttribute('loading','lazy');
+      ifr.setAttribute('allowfullscreen','');
+      ifr.style.cssText='width:100%;aspect-ratio:16/9;border:0;border-radius:8px;margin-bottom:12px';
+      container.insertBefore(ifr,container.firstChild);
+    }
+    if(a.mu){
+      var hasAudio=container.querySelector('audio');
+      if(!hasAudio){
+        var isAudio=a.mt&&a.mt.indexOf('audio')===0;
+        var el=document.createElement(isAudio?'audio':'video');
+        el.controls=true;el.preload='none';el.src=a.mu;
+        el.style.cssText='width:100%;margin-bottom:12px;border-radius:8px';
+        container.insertBefore(el,container.firstChild);
+      }
+    }
+  }
   function _insertFulltext(html){
     var inner=document.getElementById('r2Inner');
     if(!inner||inner.querySelector('.r2-fulltext')) return;
@@ -2512,6 +2541,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
         var bs=tog.querySelectorAll('button');bs[0].classList.add('active');bs[1].classList.remove('active');
       };
     }
+    /* 媒体嵌入：YouTube 视频 / 播客音频 */
+    _renderMedia(curArt,div);
   }
   /* 正文翻译：提取文本→分块翻译→重建段落 */
   function _translateFulltext(ftDiv){
@@ -2971,7 +3002,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
         s.items.forEach(function(it){
           if(!it||!it.u||it.u==='#') return;
           var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', bad_date:!!it.bad_date};
+                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date};
           if(!a.t) return;
           var k=artKey(a);
           if(known[k]) return;
