@@ -496,8 +496,10 @@ def generate_ai_summary(rising_top10):
     """调用 Agnes AI API 生成 AI 态势一句话摘要。失败返回 None（静默降级）。"""
     api_key = os.environ.get("AGNES_API_KEY")
     if not api_key:
+        print("[AI摘要] 跳过: 未配置 AGNES_API_KEY", file=sys.stderr)
         return None
     if not rising_top10:
+        print("[AI摘要] 跳过: rising 列表为空", file=sys.stderr)
         return None
     lines = []
     for p in rising_top10[:10]:
@@ -750,7 +752,10 @@ def main(mode="full"):
     # AI 态势一句话：构建时生成，注入涨星榜区域
     ai_summary = ""
     if cfg.get("ai_summary_enabled", True):
+        print("[AI摘要] enabled, rising=%d" % len(trending.get("rising", [])))
         ai_summary = generate_ai_summary(trending.get("rising", [])[:10]) or ""
+    else:
+        print("[AI摘要] 已禁用 (ai_summary_enabled=false)")
 
     feed = fetch_following_events(token)
 
