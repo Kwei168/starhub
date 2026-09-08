@@ -1762,6 +1762,8 @@ header { position:sticky; top:0; z-index:40; background:rgba(250,249,247,.94); b
 .unread-toggle svg{width:13px;height:13px;}
 .back-top{position:fixed;bottom:24px;right:24px;width:40px;height:40px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;pointer-events:none;transition:all .2s;z-index:90;box-shadow:0 2px 8px rgba(0,0,0,.08);}
 .back-top.show{opacity:1;pointer-events:auto;}
+/* 抽屉面板打开时隐藏回到顶部按钮，避免浮在面板内容之上 */
+body.ai-open .back-top{opacity:0;pointer-events:none;}
 .back-top:hover{color:var(--brand-strong);border-color:var(--brand-line);background:var(--brand-weak);}
 .back-top svg{width:18px;height:18px;}
 .bm-btn{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint);border:1px solid transparent;transition:all .15s;cursor:pointer;background:none;padding:0;flex:none;position:relative;}
@@ -2069,11 +2071,20 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .ai-feed-btn svg{width:13px;height:13px;}
 
 /* ── AI Feed panel (right side drawer) ── */
-.ai-feed-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--card);border-left:1px solid var(--line);transform:translateX(103%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;box-shadow:-18px 0 50px rgba(0,0,0,.12);}
+.ai-feed-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:95;background:var(--card);border-left:1px solid var(--line);transform:translateX(103%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;box-shadow:-18px 0 50px rgba(0,0,0,.12);}
 body.ai-open .ai-feed-panel{transform:none;}
 body.ai-open .scrim{opacity:1;pointer-events:auto;}
 .af-head{flex:none;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
-.af-head h2{font-family:var(--display);font-size:15px;font-weight:900;flex:1;}
+/* ── 面板主 Tab：AI 快讯 / 全网热榜（选中态用 --ink/--bg 反转对，明暗主题下文字均保证可读） ── */
+.af-tabs{flex:1;display:flex;gap:5px;min-width:0;}
+.af-tab{flex:1;max-width:132px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.af-tab:hover{border-color:var(--line-strong);color:var(--ink);}
+.af-tab.on{background:var(--ink);border-color:var(--ink);color:var(--bg);}
+/* Tab 内容切换：默认显示 AI 快讯区；body.af-tab-hot 时热榜区接管面板。
+   overflow:hidden 兜底：内容超出时由 hp-body 内部滚动，绝不溢出面板可视区 */
+.hp-wrap{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden;}
+body.af-tab-hot .hp-wrap{display:flex;}
+body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body.af-tab-hot .af-more{display:none!important;}
 .af-close{width:26px;height:26px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .15s;flex:none;}
 .af-close:hover{border-color:var(--line-strong);color:var(--ink);}
 .af-close svg{width:12px;height:12px;}
@@ -2116,6 +2127,7 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
   body.ai-open .scrim { opacity:0; pointer-events:none; }
   .af-close { display:none; }
   .ai-feed-btn { display:none; }
+  .hot-btn { display:none; }
 }
 
 @media (max-width:700px) {
@@ -2124,35 +2136,31 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
   .af-body{padding:4px 14px 14px;}
 }
 
-/* ── Hot panel toolbar button ── */
+/* ── Hot toolbar button（移动端快捷入口：打开 AI 面板并切到热榜 Tab；桌面端面板常驻后隐藏，直接点 Tab） ── */
 .hot-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 13px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid #f59e0b33;background:#f59e0b14;color:#b45309;transition:all .15s;cursor:pointer;}
 .hot-btn:hover{background:#f59e0b;color:#fff;}
 .hot-btn.on{background:#f59e0b;color:#fff;}
 .hot-btn svg{width:13px;height:13px;}
 
-/* ── Hot panel (right side drawer) ── */
-.hot-panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);z-index:80;background:var(--card);border-left:1px solid var(--line);transform:translateX(103%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;box-shadow:-18px 0 50px rgba(0,0,0,.12);}
-body.hot-open .hot-panel{transform:none;}
-body.hot-open .scrim{opacity:1;pointer-events:auto;}
-.hp-head{flex:none;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
-.hp-head h2{margin:0;font-size:15px;font-weight:700;flex:1;}
-.hp-close{background:none;border:none;cursor:pointer;color:var(--faint);padding:4px;border-radius:6px;display:flex;align-items:center;justify-content:center;}
-.hp-close:hover{background:var(--hover);color:var(--ink);}
-.hp-close svg{width:18px;height:18px;}
-.hp-body{flex:1;overflow-y:auto;padding:8px 0;-webkit-overflow-scrolling:touch;}
-.hp-src{padding:10px 16px 4px;font-size:13px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;}
-.hp-src-dot{width:8px;height:8px;border-radius:50%;flex:none;}
-.hp-item{display:flex;align-items:flex-start;gap:8px;padding:8px 16px;cursor:pointer;transition:background .12s;text-decoration:none;color:inherit;}
-.hp-item:hover{background:var(--hover);}
-.hp-rank{flex:none;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);background:var(--bg);color:var(--faint);}
+/* ── 热榜内容区：平台子 Tab + 卡片列表（条目色彩区分靠圆点/选中实底，文字始终用高对比色） ── */
+/* 子 Tab 换行显示（不横向滚动）：窄屏最多两行，任何平台按钮完整可见，杜绝截断/溢出 */
+.hp-tabs{flex:none;display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px 2px;}
+.hp-tab{flex:none;height:24px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+.hp-tab:hover{border-color:var(--line-strong);color:var(--ink);}
+.hp-tab .dot{width:7px;height:7px;border-radius:50%;flex:none;}
+/* 选中态实底色由 JS 注入加深品牌色（白字对比 ≥4.4:1），文字固定 #fff；未选中态文字用 --muted 保证明暗主题可读 */
+.hp-tab.on{color:#fff;border-color:transparent;}
+.hp-body{flex:1;overflow-y:auto;padding:8px 12px 16px;-webkit-overflow-scrolling:touch;}
+.hp-item{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;margin-bottom:6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg);cursor:pointer;transition:all .12s;text-decoration:none;color:inherit;}
+.hp-item:hover{border-color:var(--line-strong);background:var(--hover);}
+.hp-rank{flex:none;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);background:var(--hover);color:var(--faint);}
 .hp-rank.top3{background:var(--brand-weak);color:var(--brand-strong);}
-.hp-title{flex:1;font-size:13px;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.hp-title{flex:1;font-size:13px;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}
 .hp-hot{flex:none;font-size:11px;color:var(--faint);font-family:var(--mono);margin-top:3px;}
 .hp-empty{padding:40px 16px;text-align:center;color:var(--faint);font-size:13px;}
 @media (max-width:700px) {
-  .hot-panel{width:100vw;}
-  .hp-head{padding:12px 14px 8px;}
-  .hp-body{padding:4px 14px 14px;}
+  .hp-tabs{padding:8px 10px 2px;gap:4px;}
+  .hp-body{padding:6px 10px 14px;}
 }
 """
 
@@ -2904,7 +2912,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   // ── Window exports ──
   window.ART = ART;
   window.closeReader = function(){ _cleanupMedia(); document.body.classList.remove('reading'); curArt=null; window.curArt=null; updateCardStates(); if(_prevFocusEl){try{_prevFocusEl.focus();}catch(e){}_prevFocusEl=null;} };
-  window.closeOverlays = function(){ document.body.classList.remove('src-open','hot-open'); window.closeReader(); };
+  window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
   window.clearSrcF = function(e){ e.stopPropagation(); var uo=filter.unreadOnly,bm=filter.filterBm; filter={type:'all',unreadOnly:uo,filterBm:bm}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); updateBmChip(); };
   window.toggleSrcPanel = toggleSrcPanel;
   window.selectSrc = selectSrc;
@@ -3701,6 +3709,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function toggleAiFeed(){
     var open = document.body.classList.toggle('ai-open');
     document.getElementById('btnAiFeed').classList.toggle('on', open);
+    var hb=document.getElementById('btnHot'); if(hb) hb.classList.toggle('on', open && afTab==='hot');
     if(open && !afLoaded) _loadAll();
   }
   window.toggleAiFeed = toggleAiFeed;
@@ -3965,16 +3974,30 @@ def _build_js(sources_with_items, build_ts_ms=0):
   if(_aiDesktop() && !afLoaded) _loadAll();
 
   /* ══════════════════════════════════════════
-     Hot Panel: 全网热榜（newsnow 快照）
+     面板双 Tab：AI 快讯 / 全网热榜（newsnow 快照，首次切到热榜 Tab 才懒加载）
      ══════════════════════════════════════════ */
-  var _hotLoaded=false, _hotLoading=false;
+  var afTab='feed';
+  var _hotLoaded=false,_hotLoading=false,_hotData=null;
+  function switchAfTab(tab){
+    afTab=tab;
+    document.body.classList.toggle('af-tab-hot',tab==='hot');
+    var tf=document.getElementById('afTabFeed'),th=document.getElementById('afTabHot');
+    if(tf){tf.classList.toggle('on',tab==='feed');tf.setAttribute('aria-selected',tab==='feed'?'true':'false');}
+    if(th){th.classList.toggle('on',tab==='hot');th.setAttribute('aria-selected',tab==='hot'?'true':'false');}
+    var rb=document.getElementById('afRefreshBtn'); if(rb) rb.style.display=(tab==='feed')?'':'none';
+    var hb=document.getElementById('btnHot'); if(hb) hb.classList.toggle('on',tab==='hot'&&document.body.classList.contains('ai-open'));
+    if(tab==='hot'&&!_hotLoaded) loadHotSnapshot();
+  }
+  window.switchAfTab=switchAfTab;
   var _hotPlatformNames={weibo:'微博',zhihu:'知乎','zhihu-daily':'知乎日报',baidu:'百度',bilibili:'B站',douyin:'抖音'};
-  var _hotPlatformColors={weibo:'#ff4500',zhihu:'#0066ff','zhihu-daily':'#0066ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#111'};
+  /* dot：平台品牌色（未选中态圆点，提供平台色差区分）；deep：选中态实底色（加深变体，白字对比 ≥4.4:1，明暗主题均可读） */
+  var _hotPlatformColors={weibo:'#ff4400',zhihu:'#0066ff','zhihu-daily':'#0084ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#fe2c55'};
+  var _hotPlatformDeep={weibo:'#d5380f',zhihu:'#0052cc','zhihu-daily':'#0066cc',baidu:'#1f28b8',bilibili:'#c73a6c',douyin:'#d9284a'};
   window.toggleHotPanel=function(){
-    var open=document.body.classList.toggle('hot-open');
-    var btn=document.getElementById('btnHot');
-    if(btn) btn.classList.toggle('on',open);
-    if(open && !_hotLoaded) loadHotSnapshot();
+    var panelOpen=document.body.classList.contains('ai-open');
+    if(panelOpen&&afTab==='hot'){toggleAiFeed();return;} /* 已在热榜 Tab→再次点击关闭抽屉（移动端习惯） */
+    if(!panelOpen) toggleAiFeed();
+    switchAfTab('hot');
   };
   function loadHotSnapshot(){
     if(_hotLoading || _hotLoaded) return;
@@ -3987,28 +4010,45 @@ def _build_js(sources_with_items, build_ts_ms=0):
       return r.json();
     }).then(function(data){
       _hotLoaded=true;_hotLoading=false;
-      if(!data||!data.length){list.innerHTML='<div class="hp-empty">暂无热榜数据</div>';return;}
-      var h='';
-      for(var s=0;s<data.length;s++){
-        var src=data[s],pn=_hotPlatformNames[src.platform]||src.platform,pc=_hotPlatformColors[src.platform]||'#888';
-        h+='<div class="hp-src"><span class="hp-src-dot" style="background:'+pc+'"></span>'+pn+'</div>';
-        var items=src.items||[];
-        if(!items.length) continue;
-        for(var i=0;i<items.length;i++){
-          var it=items[i],rk=it.rank||(i+1),cls=rk<=3?' top3':'';
-          var hotTxt=it.hot?(''+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+'万';}):'';
-          h+='<a class="hp-item" href="'+(it.url||'#')+'" target="_blank" rel="noopener">';
-          h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
-          h+='<span class="hp-title">'+(it.title||'')+'</span>';
-          if(hotTxt) h+='<span class="hp-hot">'+hotTxt+'</span>';
-          h+='</a>';
-        }
-      }
-      list.innerHTML=h||'<div class="hp-empty">暂无热榜数据</div>';
+      _hotData=(data||[]).filter(function(s){return s.items&&s.items.length;});
+      if(!_hotData.length){list.innerHTML='<div class="hp-empty">暂无热榜数据</div>';return;}
+      /* 平台子 Tab：仅渲染有数据的平台 */
+      var tabs=document.getElementById('hpTabs');
+      tabs.innerHTML=_hotData.map(function(s){
+        var p=s.platform;
+        return '<button class="hp-tab" data-p="'+p+'"><span class="dot" style="background:'+(_hotPlatformColors[p]||'#888')+'"></span>'+(_hotPlatformNames[p]||p)+'</button>';
+      }).join('');
+      tabs.querySelectorAll('.hp-tab').forEach(function(b){
+        b.addEventListener('click',function(){renderHotPlat(b.getAttribute('data-p'));});
+      });
+      renderHotPlat(_hotData[0].platform);
     }).catch(function(){
       _hotLoading=false;
       list.innerHTML='<div class="hp-empty">加载失败，请稍后重试</div>';
     });
+  }
+  function renderHotPlat(p){
+    var tabs=document.getElementById('hpTabs');
+    tabs.querySelectorAll('.hp-tab').forEach(function(b){
+      var on=b.getAttribute('data-p')===p;
+      b.classList.toggle('on',on);
+      b.style.background=on?(_hotPlatformDeep[p]||'#555'):'';
+    });
+    var list=document.getElementById('hotList');
+    var src=null;
+    for(var i=0;i<_hotData.length;i++){ if(_hotData[i].platform===p){src=_hotData[i];break;} }
+    if(!src){list.innerHTML='<div class="hp-empty">暂无热榜数据</div>';return;}
+    var h='';
+    for(var j=0;j<src.items.length;j++){
+      var it=src.items[j],rk=it.rank||(j+1),cls=rk<=3?' top3':'';
+      var hotTxt=it.hot?(''+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+'万';}):'';
+      h+='<a class="hp-item" href="'+_escH(it.url||'#')+'" target="_blank" rel="noopener">';
+      h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
+      h+='<span class="hp-title">'+_escH(it.title||'')+'</span>';
+      if(hotTxt) h+='<span class="hp-hot">'+hotTxt+'</span>';
+      h+='</a>';
+    }
+    list.innerHTML=h||'<div class="hp-empty">暂无热榜数据</div>';
   }
 
 })();
@@ -4106,19 +4146,21 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0):
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
         '<div class="wall-wrap">\n'
         '<aside class="ai-feed-panel" id="aiFeedPanel">\n'
-        '<div class="af-head"><h2>AI \u52a8\u6001\u6d41</h2>\n'
+        '<div class="af-head">\n'
+        '<div class="af-tabs" role="tablist">\n'
+        '<button class="af-tab on" id="afTabFeed" role="tab" aria-selected="true" onclick="switchAfTab(\'feed\')">AI \u5feb\u8baf</button>\n'
+        '<button class="af-tab" id="afTabHot" role="tab" aria-selected="false" onclick="switchAfTab(\'hot\')">\u70ed\u699c</button>\n'
+        '</div>\n'
         '<button class="af-refresh" id="afRefreshBtn" onclick="refreshAiFeed()" title="\u5237\u65b0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
-
+        '<div class="hp-wrap" id="hpWrap">\n'
+        '<div class="hp-tabs" id="hpTabs"></div>\n'
+        '<div class="hp-body" id="hotList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u70ed\u699c</div></div></div>\n'
         '<div class="af-sub" id="afUpdated"></div>\n'
         '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
         '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'
         '<button class="af-more" id="afLoadMore" style="display:none">\u52a0\u8f7d\u66f4\u591a</button></aside>\n'
         '<div class="wall" id="wall" role="feed" aria-label="\u6587\u7ae0\u5217\u8868"><div class="boot-loading" id="bootLoading"><span class="boot-spin"></span>\u6b63\u5728\u52a0\u8f7d\u5185\u5bb9\u2026</div></div>\n'
-        '<aside class="hot-panel" id="hotPanel">\n'
-        '<div class="hp-head"><h2>\u5168\u7f51\u70ed\u699c</h2>\n'
-        '<button class="hp-close" onclick="toggleHotPanel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
-        '<div class="hp-body" id="hotList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u70ed\u699c</div></div></aside>\n'
         '</div>\n'
         '<div class="scrim" aria-hidden="true" onclick="closeOverlays()"></div>\n'
         '<aside class="src-panel" id="srcPanel" role="dialog" aria-modal="true" aria-label="\u4fe1\u6e90\u9762\u677f">\n'
