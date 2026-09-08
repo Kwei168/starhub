@@ -49,7 +49,9 @@ RSS_HISTORY_HOURS = 72
 _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, summary, summary_zh, pub_date, time_str}}
 
 # ── 翻译统计 
-_TRANS_STATS = {"google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
+_TRANS_STATS = {"agnes": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
+# GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
+_AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
 # 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
 _TRANS_FAIL_STREAK = 0
 _TRANS_BLOCK_UNTIL = 0.0
@@ -1434,8 +1436,36 @@ def _detect_lang(text):
     return 'zh-CN'
 
 
+def _agnes_translate(text, timeout=20):
+    """Agnes AI 翻译（OpenAI 兼容接口，agnes-2.5-flash）。失败返回 None。"""
+    payload = json.dumps({
+        "model": "agnes-2.5-flash",
+        "messages": [
+            {"role": "system", "content": "你是翻译引擎。把用户输入翻译成简体中文，只输出译文，不要解释。"},
+            {"role": "user", "content": text[:1500]},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.2,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://apihub.agnes-ai.com/v1/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + _AGNES_KEY,
+            "User-Agent": "starhub-auto-update",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+    except Exception:
+        return None
+
+
 def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
-    """四端点降级翻译链：Google → MyMemory → Google dict-chrome（带缓存）。"""
+    """翻译降级链：Agnes AI（首选，无 IP 封锁）→ Google → MyMemory → Google dict-chrome（带缓存）。"""
     if not text:
         return ""
     # 先清理 HTML 标签
@@ -1462,6 +1492,18 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         return text
 
     encoded = urllib.parse.quote(text[:500])
+
+    # 0) Agnes AI（首选：GA 免费端点全被封，付费接口无 IP 限制）
+    if _AGNES_KEY:
+        try:
+            cand = _agnes_translate(text, timeout=timeout)
+            if cand and len(cand) > len(text) * 0.2:
+                _TRANS_STATS["agnes"] += 1
+                _TRANS_FAIL_STREAK = 0
+                _trans_cache[text_hash] = cand  # 写入缓存
+                return cand
+        except Exception:
+            pass
 
     # 1) Google gtx
     try:
@@ -4264,8 +4306,8 @@ def main(mode="full"):
     print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
 
     # 打印翻译统计
-    print("[翻译统计] 缓存命中: %d, Google: %d, MyMemory: %d, Dict: %d, 跳过: %d, 失败: %d" % (
-        _TRANS_STATS["cache_hit"], _TRANS_STATS["google"], _TRANS_STATS["mymemory"],
+    print("[翻译统计] 缓存命中: %d, Agnes: %d, Google: %d, MyMemory: %d, Dict: %d, 跳过: %d, 失败: %d" % (
+        _TRANS_STATS["cache_hit"], _TRANS_STATS["agnes"], _TRANS_STATS["google"], _TRANS_STATS["mymemory"],
         _TRANS_STATS["dict"], _TRANS_STATS["skip"], _TRANS_STATS["fail"]
     ))
 
