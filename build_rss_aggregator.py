@@ -2852,9 +2852,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Client translate ── */
   var _ctCache={},_ctPend={};
-  /* 全文/摘要翻译：首选 Agnes API（服务端代理，密钥不落前端，GFW 友好），
-     失败块由服务端 GTX 兜底（mode:'full'），最终兜底原文。旧版直连 googleapis 必遭 CORS/GFW 拦截，
-     catch 静默回退原文导致「翻译」按钮看似无反应，已废弃。 */
+  /* 全文/摘要翻译：Agnes API 主力（服务端代理，密钥不落前端），失败块由服务端 GTX 兜底（mode:'full'），
+     最终兜底原文。2026-09-08 实证修正：gtx 端点响应带 ACAO:*（浏览器可直连），当年「必遭 CORS」
+     实为 GFW/网络因素误判；但全文按钮仍走服务端（质量优先 Agnes），浏览器直连仅用于批量补翻主力。 */
   function _clientTranslate(text,cb){
     if(!text||isMostlyZh(text)){cb(text);return;}
     var k=text.substring(0,100);
@@ -3696,50 +3696,87 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
   // \u68c0\u6d4b\u6807\u9898\u662f\u5426\u4e3b\u8981\u4e3a\u975e\u4e2d\u6587\uff08\u9700\u8981\u7ffb\u8bd1\uff09
   function _needsTranslation(t){ if(!t) return false; var cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
-  // 批量翻译 AI 动态流英文标题：走服务端 Google GTX 免费端点（api/translate mode:'bulk'，server-to-server 无 CORS）。
-  // 引擎分流策略（用户定版）：Agnes 上游限额极低（实测分钟级 1~2 次），仅留给全文/摘要按钮（mode:'full'，
-  // 低频高价值）+ 服务端兜底；批量补翻高频场景一律 GTX，不消耗 Agnes 额度。
+  // 批量翻译 AI 动态流英文标题：主力 = 浏览器端 GTX 直连（用户本地 IP，端点响应带 ACAO:* 实证开放；
+  // 服务端共享 DC 出口反而会被 Google 频率限流——线上实测 gtx 429）；失败条目再走服务端 API 兜底
+  // （api/translate mode:'bulk'：GTX 尽力 → Agnes 限量）。引擎分流策略（用户定版）：Agnes 仅留
+  // 给全文/摘要按钮（mode:'full'）与兜底，绝不作为批量主力。
   var TR_API = 'https://starhub-refresh.vercel.app/api/translate';
+  /* 浏览器端 GTX 批量直译：并发 3，返回与 texts 等长的译文数组（失败为 ''，由调用方决定服务端兜底） */
+  function _browserGtx(texts){
+    var out=[],i=0,done=0;
+    for(var k=0;k<texts.length;k++) out.push('');
+    return new Promise(function(resolve){
+      if(!texts.length){ resolve(out); return; }
+      function one(){
+        if(i>=texts.length) return;
+        var idx=i++;
+        var ctrl=(typeof AbortController==='function')?new AbortController():null;
+        var tmr=ctrl?setTimeout(function(){ctrl.abort();},8000):null;
+        fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(String(texts[idx]).slice(0,500)),{signal:ctrl?ctrl.signal:undefined})
+        .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('gtx '+r.status)); })
+        .then(function(j){
+          var tr=((j[0]||[]).map(function(x){ return (x&&x[0])||''; }).join('')||'').trim();
+          if(tr) out[idx]=tr;
+        }).catch(function(){ if(tmr)clearTimeout(tmr); })
+        .then(function(){ done++; if(done>=texts.length){ resolve(out); } else { one(); } });
+      }
+      for(var w=0;w<Math.min(3,texts.length);w++) one();
+    });
+  }
   function _translateAfItems(){
     var toTranslate = afItems.filter(function(it){ return !it._zh && _needsTranslation(it.title); });
     if(!toTranslate.length) return;
-    // GTX 批量：每批 15 条（与 api/translate 上限匹配），最多 8 批（120 条，覆盖 AIHOT+AGI 全量），单批 8s 超时
+    // 每批 15 条（与服务端兜底上限匹配），最多 8 批（120 条，覆盖 AIHOT+AGI 全量）
     var batches = []; for(var i=0;i<toTranslate.length && batches.length<8;i+=15) batches.push(toTranslate.slice(i,i+15));
     var applied = 0;
-    function _doBatch(batch){
+    function _apply(trs, batch){
+      batch.forEach(function(it, idx){
+        var zh = (trs[idx]||'').trim();
+        if(zh && !it._zh){ it._zh = zh; applied++; }
+      });
+    }
+    /* 服务端兜底：仅浏览器端 GTX 失败的零星条目（TR_API bulk：GTX 尽力 → Agnes 限量） */
+    function _serverFallback(texts){
       return new Promise(function(resolve){
         var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
-        var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
+        var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 12000) : null;
         fetch(TR_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ texts: batch.map(function(it){ return it.title; }), mode: 'bulk' }),
+          body: JSON.stringify({ texts: texts, mode: 'bulk' }),
           signal: ctrl ? ctrl.signal : undefined
         }).then(function(r){
           if(tmr) clearTimeout(tmr);
           return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status));
         }).then(function(j){
-          if(!j || !j.ok || !j.translations || !j.translations.length) throw new Error('bad payload');
-          batch.forEach(function(it, idx){
-            var zh = j.translations[idx];
-            if(zh && !it._zh){ it._zh = zh; applied++; }
-          });
+          if(!j || !j.ok || !j.translations || j.translations.length !== texts.length) throw new Error('bad payload');
+          resolve(j.translations);
         }).catch(function(){
           if(tmr) clearTimeout(tmr);
-        }).then(resolve);
+          resolve(null);
+        });
       });
     }
-    // 分波推进：每波 2 批 + 波间 1.5s（GTX 为 Vercel 共享出口 IP，服务端并发池仅 2，前端错峰防频率限流）
+    // 逐批推进：浏览器直连主力，批间 300ms 温和节奏（服务端仅承接零星失败）
     (async function(){
-      for(var w=0;w<batches.length;w+=2){
-        await Promise.all(batches.slice(w,w+2).map(_doBatch));
-        if(w+2<batches.length) await new Promise(function(rs){ setTimeout(rs,1500); });
+      for(var b=0;b<batches.length;b++){
+        var batch = batches[b];
+        var trs = await _browserGtx(batch.map(function(it){ return it.title; }));
+        _apply(trs, batch);
+        var failed = [];
+        trs.forEach(function(z, idx){ if(!z) failed.push(idx); });
+        if(failed.length){
+          var fb = await _serverFallback(failed.map(function(k){ return batch[k].title; }));
+          if(fb) failed.forEach(function(k, fi){ var zh=(fb[fi]||'').trim(); if(zh && !batch[k]._zh){ batch[k]._zh = zh; applied++; } });
+        }
+        if(b+1<batches.length) await new Promise(function(rs){ setTimeout(rs,300); });
       }
       if(applied) _renderAll();
     })();
   }
-  /* ── RSS 卡片墙运行时翻译兜底（服务端 GTX 批量 mode:'bulk'）：构建期翻译熔断/漏网的英文条目，
-     挂载于 renderWall 末尾；_zhTried 标记防重复请求，完成后重渲染刷新卡片（终止条件：cands 耗尽）。 */
+  /* ── RSS 卡片墙运行时翻译兜底：构建期翻译熔断/漏网的英文条目，挂载于 renderWall 末尾；
+     主力 = 浏览器端 GTX 直连，失败条目走服务端 API 兜底；_zhTried 标记防重复请求，
+     完成后重渲染刷新卡片（终止条件：cands 耗尽）。 */
   var _wallTrBusy=0,_wallDirty=0;
   function _scheduleWallTranslate(){ setTimeout(_translateWallItems,120); }
   function _translateWallItems(){
@@ -3755,26 +3792,39 @@ def _build_js(sources_with_items, build_ts_ms=0):
       if(a.s&&_needsTranslation(a.s)){ texts.push(a.s); map.push({a:a,f:'s'}); }
     });
     if(!texts.length){ _wallTrBusy=0; return; }
-    var ctrl=(typeof AbortController==='function')?new AbortController():null;
-    var tmr=ctrl?setTimeout(function(){ctrl.abort();},9000):null;
-    fetch(TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:texts,mode:'bulk'}),signal:ctrl?ctrl.signal:undefined})
-    .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('http '+r.status)); })
-    .then(function(j){
-      if(!j||!j.ok||!j.translations||j.translations.length!==texts.length) throw new Error('bad payload');
-      j.translations.forEach(function(zhRaw,idx){
+    (async function(){
+      var trs = await _browserGtx(texts);
+      var failed=[];
+      trs.forEach(function(zhRaw,idx){
         var m=map[idx]; if(!m) return;
-        var zh=(zhRaw||'').trim(); if(!zh) return;
+        var zh=(zhRaw||'').trim(); if(!zh){ failed.push(idx); return; }
         if(m.f==='t'&&_needsTranslation(m.a.t)) m.a.t=zh;
         else if(m.f==='s'&&m.a.s&&_needsTranslation(m.a.s)) m.a.s=zh;
       });
+      if(failed.length){
+        var fbTexts=failed.map(function(k){ return texts[k]; });
+        var ctrl=(typeof AbortController==='function')?new AbortController():null;
+        var tmr=ctrl?setTimeout(function(){ctrl.abort();},12000):null;
+        try{
+          var resp=await fetch(TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:fbTexts,mode:'bulk'}),signal:ctrl?ctrl.signal:undefined});
+          if(tmr)clearTimeout(tmr);
+          var j=(resp&&resp.ok)?(await resp.json().catch(function(){ return null; })):null;
+          if(j&&j.ok&&j.translations&&j.translations.length===fbTexts.length){
+            fbTexts.forEach(function(_,fi){
+              var m=map[failed[fi]]; if(!m) return;
+              var zh=(j.translations[fi]||'').trim(); if(!zh) return;
+              if(m.f==='t'&&_needsTranslation(m.a.t)) m.a.t=zh;
+              else if(m.f==='s'&&m.a.s&&_needsTranslation(m.a.s)) m.a.s=zh;
+            });
+          }
+        }catch(e){ if(tmr)clearTimeout(tmr); }
+      }
       _wallDirty=1;
-    }).catch(function(){ if(tmr)clearTimeout(tmr); })
-    .then(function(){
       _wallTrBusy=0;
       if(_wallDirty){ _wallDirty=0; renderWall(); }
-      // 批间节流：GTX 为 Vercel 共享出口 IP，2.5s/批防频率限流（失败条目保留原文，下批继续）
+      // 批间节流：温和节奏防单 IP 突发高频（失败条目保留原文，下批继续）
       setTimeout(_translateWallItems,2500);
-    });
+    })();
   }
   function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '\u521a\u521a'; if(m<60)return m+' \u5206\u949f\u524d'; var h=Math.floor(m/60); if(h<24)return h+' \u5c0f\u65f6\u524d'; return Math.floor(h/24)+' \u5929\u524d'; }catch(e){return '';} }
 
