@@ -4366,9 +4366,9 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(d.stats||d.generated_at){
       h+='<div class="ib-stats">';
       if(d.stats){
-        h+='<span>\ud83d\udcca \u6587\u7ae0: '+d.stats.total_articles+'</span>';
-        h+='<span>\ud83d\udd14 \u8fd124h: '+d.stats.recent_count+'</span>';
-        h+='<span>\ud83d\udce1 \u4fe1\u6e90: '+d.stats.source_count+'</span>';
+        h+='<span>\U0001f4ca \u6587\u7ae0: '+d.stats.total_articles+'</span>';
+        h+='<span>\U0001f514 \u8fd124h: '+d.stats.recent_count+'</span>';
+        h+='<span>\U0001f4e1 \u4fe1\u6e90: '+d.stats.source_count+'</span>';
       }
       if(d.generated_at) h+='<span>\u23f0 '+(d.generated_at||'').slice(0,16).replace('T',' ')+'</span>';
       h+='</div>';
