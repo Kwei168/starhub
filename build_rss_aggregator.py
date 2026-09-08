@@ -66,7 +66,12 @@ _STOP_WORDS_EN = set(("the a an is are was were be been being have has had do do
     "this that these those there here what which who whom whose when where why how " +
     "and or but not no nor so yet for to of in on at by with from as into about through during before after above below between under " +
     "again further then once also just than very too only same other some such all each every both few more most " +
-    "new old first last long great little own right big high small next early young important public bad able").split())
+    "new old first last long great little own right big high small next early young important public bad able " +
+    # URL / HTML 残留噪声
+    "https http ftp com org net edu gov io co www " +
+    "id item html htm url href src png jpg gif css js xml json nbsp div span class " +
+    "amp lt gt quot mdash ndash laquo raquo " +
+    "aihot ycombinator").split())
 _STOP_WORDS = _STOP_WORDS_ZH | _STOP_WORDS_EN
 
 # ── 分析功能开关（从 build_config.json 读取） ──
