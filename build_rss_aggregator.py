@@ -2853,7 +2853,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   /* ── Client translate ── */
   var _ctCache={},_ctPend={};
   /* 全文/摘要翻译：首选 Agnes API（服务端代理，密钥不落前端，GFW 友好），
-     失败块降级 Google GTX，最终兜底原文。旧版直连 googleapis 必遭 CORS/GFW 拦截，
+     失败块由服务端 GTX 兜底（mode:'full'），最终兜底原文。旧版直连 googleapis 必遭 CORS/GFW 拦截，
      catch 静默回退原文导致「翻译」按钮看似无反应，已废弃。 */
   function _clientTranslate(text,cb){
     if(!text||isMostlyZh(text)){cb(text);return;}
@@ -2866,33 +2866,22 @@ def _build_js(sources_with_items, build_ts_ms=0):
     while(pos<text.length){var end=Math.min(pos+450,text.length);chunks.push(text.substring(pos,end));pos=end;}
     var _finished=0;
     function _finish(tr){ if(_finished) return; _finished=1; _ctCache[k]=tr; var p=_ctPend[k]||[]; delete _ctPend[k]; p.forEach(function(f){f(tr);}); }
-    function _googlePatch(failIdx){
-      if(!failIdx.length){_finish(chunks.join(''));return;}
-      var done=0;
-      failIdx.forEach(function(i){
-        var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(chunks[i]);
-        fetch(url).then(function(r){return r.json();}).then(function(d){
-          var res='';if(d&&d[0])for(var j=0;j<d[0].length;j++)if(d[0][j]&&d[0][j][0])res+=d[0][j][0];
-          chunks[i]=(res&&res.length>chunks[i].length*0.3)?res:chunks[i];
-          if(++done===failIdx.length)_finish(chunks.join(''));
-        }).catch(function(){if(++done===failIdx.length)_finish(chunks.join(''));});
-      });
-    }
-    var anyFail=0,failIdx=[];
     (function _agiBatch(bi){
       if(_finished) return;
       var start=bi*20,end=Math.min(start+20,chunks.length);
-      if(start>=chunks.length){ if(anyFail)_googlePatch(failIdx); else _finish(chunks.join('')); return; }
+      if(start>=chunks.length){ _finish(chunks.join('')); return; }
       var ctrl=(typeof AbortController==='function')?new AbortController():null;
-      var tmr=ctrl?setTimeout(function(){ctrl.abort();},10000):null;
-      fetch(AGNES_TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:chunks.slice(start,end)}),signal:ctrl?ctrl.signal:undefined})
+      /* 服务端 full 最坏路径（非 429 慢挂起情形）= Agnes 12s×2+400ms + GTX 6s×2+600ms ≈ 37s，
+         前端 25s 超时只保证一轮 Agnes+GTX 在用户侧可见；429 快速失败路径 <10s 必然可见，
+         慢路径的 GTX 兜底仍会在服务端完成并写缓存（下次点击命中） */
+      var tmr=ctrl?setTimeout(function(){ctrl.abort();},25000):null;
+      fetch(TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:chunks.slice(start,end),mode:'full'}),signal:ctrl?ctrl.signal:undefined})
       .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('http '+r.status)); })
       .then(function(j){
         if(!j||!j.ok||!j.translations||j.translations.length!==(end-start)) throw new Error('bad payload');
-        for(var i=start;i<end;i++){ var t=(j.translations[i-start]||'').trim(); if(t)chunks[i]=t; else failIdx.push(i); }
-        if(failIdx.length)anyFail=1;
+        for(var i=start;i<end;i++){ var t=(j.translations[i-start]||'').trim(); if(t)chunks[i]=t; }
         _agiBatch(bi+1);
-      }).catch(function(){ if(tmr)clearTimeout(tmr); for(var i=start;i<end;i++)failIdx.push(i); anyFail=1; _agiBatch(bi+1); });
+      }).catch(function(){ if(tmr)clearTimeout(tmr); _agiBatch(bi+1); });
     })(0);
   }
 
@@ -3707,24 +3696,24 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
   // \u68c0\u6d4b\u6807\u9898\u662f\u5426\u4e3b\u8981\u4e3a\u975e\u4e2d\u6587\uff08\u9700\u8981\u7ffb\u8bd1\uff09
   function _needsTranslation(t){ if(!t) return false; var cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
-  // \u6279\u91cf\u7ffb\u8bd1 AI \u52a8\u6001\u6d41\u82f1\u6587\u6807\u9898\uff1a\u9996\u9009 Agnes AI\uff08agnes-2.5-flash\uff0c\u670d\u52a1\u7aef\u4ee3\u7406 api/translate\uff0c\u5bc6\u94a5\u4e0d\u843d\u524d\u7aef\uff09\uff0c
-  // \u5931\u8d25/\u90e8\u5206\u5931\u8d25\u65f6\u5269\u4f59\u6761\u76ee\u964d\u7ea7 Google GTX \u514d\u8d39\u7aef\u70b9\uff085s \u8d85\u65f6\u5146\u5e95\uff0c\u9632 GFW \u6302\u6b7b\uff09
-  var AGNES_TR_API = 'https://starhub-refresh.vercel.app/api/translate';
+  // 批量翻译 AI 动态流英文标题：走服务端 Google GTX 免费端点（api/translate mode:'bulk'，server-to-server 无 CORS）。
+  // 引擎分流策略（用户定版）：Agnes 上游限额极低（实测分钟级 1~2 次），仅留给全文/摘要按钮（mode:'full'，
+  // 低频高价值）+ 服务端兜底；批量补翻高频场景一律 GTX，不消耗 Agnes 额度。
+  var TR_API = 'https://starhub-refresh.vercel.app/api/translate';
   function _translateAfItems(){
     var toTranslate = afItems.filter(function(it){ return !it._zh && _needsTranslation(it.title); });
     if(!toTranslate.length) return;
-    // Agnes 批量并行：每批 15 条（与 api/translate 限制匹配），最多 8 批（120 条，覆盖 AIHOT+AGI 全量），单批 8s 超时
-    // 旧版 3 批上限导致超出 45 条的部分只能走 Google 降级，而 GTX 端点在浏览器端必遭 CORS 拦截 → 永久英文
+    // GTX 批量：每批 15 条（与 api/translate 上限匹配），最多 8 批（120 条，覆盖 AIHOT+AGI 全量），单批 8s 超时
     var batches = []; for(var i=0;i<toTranslate.length && batches.length<8;i+=15) batches.push(toTranslate.slice(i,i+15));
     var applied = 0;
     function _doBatch(batch){
       return new Promise(function(resolve){
         var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
         var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
-        fetch(AGNES_TR_API, {
+        fetch(TR_API, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ texts: batch.map(function(it){ return it.title; }) }),
+          body: JSON.stringify({ texts: batch.map(function(it){ return it.title; }), mode: 'bulk' }),
           signal: ctrl ? ctrl.signal : undefined
         }).then(function(r){
           if(tmr) clearTimeout(tmr);
@@ -3740,37 +3729,16 @@ def _build_js(sources_with_items, build_ts_ms=0):
         }).then(resolve);
       });
     }
-    // 分波推进：每波 2 批，避免与卡片墙补翻叠加后打穿 api 上游并发池（配额 4）造成批量超时
+    // 分波推进：每波 2 批 + 波间 1.5s（GTX 为 Vercel 共享出口 IP，服务端并发池仅 2，前端错峰防频率限流）
     (async function(){
-      for(var w=0;w<batches.length;w+=2){ await Promise.all(batches.slice(w,w+2).map(_doBatch)); }
+      for(var w=0;w<batches.length;w+=2){
+        await Promise.all(batches.slice(w,w+2).map(_doBatch));
+        if(w+2<batches.length) await new Promise(function(rs){ setTimeout(rs,1500); });
+      }
       if(applied) _renderAll();
-      // Agnes 未覆盖到的条目（全失败或部分失败）降级 Google 补翻
-      var rest = toTranslate.filter(function(it){ return !it._zh; });
-      if(rest.length) _translateAfGoogle(rest);
     })();
   }
-  // \u964d\u7ea7\u94fe\u8def\uff1aGoogle Translate GTX \u514d\u8d39\u7aef\u70b9\uff08\u6bcf 10 \u6761\u4e00\u7ec4\uff0c\u5168\u90e8 settle \u540e\u6e32\u67d3\uff09
-  function _translateAfGoogle(toTranslate){
-    if(!toTranslate.length) return;
-    var texts = toTranslate.map(function(it){ return it.title; });
-    var chunks = []; for(var i=0;i<texts.length;i+=10) chunks.push(texts.slice(i,i+10));
-    var done = 0;
-    chunks.forEach(function(chunk){
-      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
-      var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 5000) : null;
-      var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(chunk.join('\\n'));
-      fetch(url, ctrl ? { signal: ctrl.signal } : {}).then(function(r){return r.json();}).then(function(j){
-        if(tmr) clearTimeout(tmr);
-        var translated = []; try{ j[0].forEach(function(s){ translated.push(s[0]); }); }catch(e){}
-        var offset = chunks.indexOf(chunk) * 10;
-        translated.forEach(function(zh, idx){
-          if(zh && toTranslate[offset+idx]) toTranslate[offset+idx]._zh = zh;
-        });
-        if(++done >= chunks.length) _renderAll();
-      }).catch(function(){ if(tmr) clearTimeout(tmr); if(++done >= chunks.length) _renderAll(); });
-    });
-  }
-  /* ── RSS 卡片墙运行时翻译兜底（Agnes 优先 + Google 降级）：构建期翻译熔断/漏网的英文条目，
+  /* ── RSS 卡片墙运行时翻译兜底（服务端 GTX 批量 mode:'bulk'）：构建期翻译熔断/漏网的英文条目，
      挂载于 renderWall 末尾；_zhTried 标记防重复请求，完成后重渲染刷新卡片（终止条件：cands 耗尽）。 */
   var _wallTrBusy=0,_wallDirty=0;
   function _scheduleWallTranslate(){ setTimeout(_translateWallItems,120); }
@@ -3789,7 +3757,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     if(!texts.length){ _wallTrBusy=0; return; }
     var ctrl=(typeof AbortController==='function')?new AbortController():null;
     var tmr=ctrl?setTimeout(function(){ctrl.abort();},9000):null;
-    fetch(AGNES_TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:texts}),signal:ctrl?ctrl.signal:undefined})
+    fetch(TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:texts,mode:'bulk'}),signal:ctrl?ctrl.signal:undefined})
     .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('http '+r.status)); })
     .then(function(j){
       if(!j||!j.ok||!j.translations||j.translations.length!==texts.length) throw new Error('bad payload');
@@ -3804,45 +3772,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
     .then(function(){
       _wallTrBusy=0;
       if(_wallDirty){ _wallDirty=0; renderWall(); }
-      // Agnes 未覆盖条目（全失败或部分失败）降级 Google 补翻，覆盖后重渲染
-      var restBatch=batch.filter(function(a){ return _needsTranslation(a.t)||(a.s&&_needsTranslation(a.s)); });
-      if(restBatch.length) _translateWallGoogle(restBatch);
-      // 批间节流：与 AI 面板首屏 8 批错峰，避免触发 api 限流（120/min）
-      setTimeout(_translateWallItems,500);
+      // 批间节流：GTX 为 Vercel 共享出口 IP，2.5s/批防频率限流（失败条目保留原文，下批继续）
+      setTimeout(_translateWallItems,2500);
     });
-  }
-  /* 卡片墙降级链路：标题 join 批量（与 _translateAfGoogle 同模式）+ 摘要逐条并行，全 settle 后重渲染 */
-  function _translateWallGoogle(list){
-    if(!list.length) return;
-    var pending=1;
-    function _done(){ if(--pending===0 && _wallDirty){ _wallDirty=0; renderWall(); } }
-    var tList=list.filter(function(a){ return _needsTranslation(a.t); });
-    if(tList.length){
-      pending++;
-      var ctrl=(typeof AbortController==='function')?new AbortController():null;
-      var tmr=ctrl?setTimeout(function(){ctrl.abort();},5000):null;
-      var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(tList.map(function(a){return a.t;}).join('\\n'));
-      fetch(url,ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(j){
-        if(tmr)clearTimeout(tmr);
-        var translated=[]; try{ j[0].forEach(function(s){ translated.push(s[0]); }); }catch(e){}
-        translated.forEach(function(zh,idx){ if(zh&&tList[idx]&&_needsTranslation(tList[idx].t)) tList[idx].t=zh; });
-        _wallDirty=1; _done();
-      }).catch(function(){ if(tmr)clearTimeout(tmr); _done(); });
-    }
-    list.forEach(function(a){
-      if(!(a.s&&_needsTranslation(a.s))) return;
-      pending++;
-      var ctrl=(typeof AbortController==='function')?new AbortController():null;
-      var tmr=ctrl?setTimeout(function(){ctrl.abort();},5000):null;
-      var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(a.s.substring(0,1200));
-      fetch(url,ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(j){
-        if(tmr)clearTimeout(tmr);
-        var res=''; try{ j[0].forEach(function(s){ if(s&&s[0])res+=s[0]; }); }catch(e){}
-        if(res&&_needsTranslation(a.s)) a.s=res;
-        _wallDirty=1; _done();
-      }).catch(function(){ if(tmr)clearTimeout(tmr); _done(); });
-    });
-    _done();
   }
   function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '\u521a\u521a'; if(m<60)return m+' \u5206\u949f\u524d'; var h=Math.floor(m/60); if(h<24)return h+' \u5c0f\u65f6\u524d'; return Math.floor(h/24)+' \u5929\u524d'; }catch(e){return '';} }
 

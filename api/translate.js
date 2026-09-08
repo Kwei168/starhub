@@ -1,10 +1,14 @@
 // Vercel Serverless Function：Agnes AI 翻译代理
-// 背景：前端运行时翻译 AI 动态流英文标题。Agnes（agnes-2.5-flash）翻译质量与
-//       可用性远优于免费端点，但 API Key 不能暴露在前端代码中，故经服务端代理。
-//       本代理失败（未配 key / 上游异常 / 限流）时，前端自行降级 Google GTX 免费端点。
-// 用法：POST /api/translate  { "texts": ["...", ...] }
-//        → 200 { ok: true, engine: "agnes", translations: ["...", ...] }（与 texts 等长、按序对应；单条失败为空串）
-// 防护：CORS 白名单；密钥从环境变量 AGNES_API_KEY 读取；实例内存缓存 + 轻量限流
+// 背景：前端运行时翻译。引擎分流（用户定版策略）：
+//       mode:'full' —— 全文/摘要按钮的用户主动点击翻译（低频高价值）：Agnes 主力
+//         （agnes-2.5-flash，质量高但上游限额极低），失败时服务端自动降级 GTX 兜底；
+//       mode:'bulk'（缺省）—— 卡片墙/AI 面板首屏批量补翻（高频）：全部走 Google GTX
+//         免费端点（server-to-server 无 CORS），不消耗 Agnes 额度。
+//       旧版批量补翻也打 Agnes，首屏几十条打爆上游限额（实测分钟级仅 1~2 次，agnes 429），
+//       反把全文翻译拖死；2026-09-08 改为按场景分流。
+// 用法：POST /api/translate  { "texts": ["..."], "mode": "full"|"bulk" }
+//        → 200 { ok: true, engine: "agnes"|"gtx"|"agnes+gtx", translations: ["..."] }（与 texts 等长、按序对应；单条失败为空串）
+// 防护：CORS 白名单；密钥从环境变量 AGNES_API_KEY 读取（仅 full 模式需要）；实例内存缓存 + 轻量限流
 const ALLOWED_ORIGINS = new Set([
   'https://starhub-refresh.vercel.app',
   'https://kwei168.github.io',
@@ -18,8 +22,8 @@ const CACHE_TTL = 24 * 60 * 60 * 1000;
 const RATE_LIMIT = 120;      // 每实例每分钟最多请求数。页面首屏卡片墙+AI面板并发补翻需 20~40 次，
                             // 旧值 30 会把自己限流（首屏 ok=2/24 实证）；120 仍可拦截滥用
 const UPSTREAM_TIMEOUT = 12000;
-const AGNES_CONCURRENCY = 4; // 上游并发上限。实测无限制并发（首屏 100+ 同时调 Agnes）会遭上游批量拒绝（502，
-                            // 单发则 200），收敛到 4 同时保留吐量；translateOne 内含 1 次退避重试
+const AGNES_CONCURRENCY = 4; // Agnes 上游并发上限（仅 full 模式）。实测无限制并发会遭上游批量拒绝（502），收敛到 4
+const GTX_CONCURRENCY = 2;   // GTX 并发上限（bulk 模式 + full 兜底）。Vercel 出口 IP 共享，Google 端点对频率敏感，保守 2
 
 const cacheMap = new Map();  // text 前缀 → { t, zh }
 const rateMap = new Map();   // ip → [windowStart, count]
@@ -75,13 +79,32 @@ async function translateOne(text, apiKey) {
   return out;
 }
 
-// 单条失败退避后重试一次（上游瞬时限流/抖动）
+// 非 429 失败退避后重试一次（网络抖动/上游瞬时故障）。agnes 429 是上游限额极低，
+// 短重试只会放大请求让限流窗口无法恢复 → 直接抛出，由上层 GTX 兜底
 async function translateOneRetry(text, apiKey) {
   try { return await translateOne(text, apiKey); }
   catch (e) {
+    if (((e && e.message) || '').indexOf('agnes 429') !== -1) throw e;
     await new Promise((r) => setTimeout(r, 400));
     return await translateOne(text, apiKey);
   }
+}
+
+// Google GTX 免费端点（server-to-server 无浏览器 CORS 问题；模式参考 api/search.js translateZh）
+async function translateGtx(text) {
+  const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(String(text).slice(0, 1200));
+  const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, signal: AbortSignal.timeout(6000) });
+  if (!r.ok) throw new Error(`gtx ${r.status}`);
+  const j = await r.json();
+  const out = ((j[0] || []).map((x) => (x && x[0]) || '').join('') || '').trim();
+  if (!out) throw new Error('gtx empty');
+  return out;
+}
+
+// GTX 失败退避 600ms 重试一次（共享出口 IP 偶发频率限流）
+async function translateGtxRetry(text) {
+  try { return await translateGtx(text); }
+  catch (e) { await new Promise((r) => setTimeout(r, 600)); return await translateGtx(text); }
 }
 
 // 有限并发池：按序保填充，最多 limit 个 worker 同时执行 fn
@@ -105,8 +128,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return; }
   if (!ALLOWED_ORIGINS.has(origin) && origin !== '') { res.status(403).json({ error: 'Forbidden' }); return; }
 
+  const mode = (req.body && req.body.mode === 'full') ? 'full' : 'bulk'; // 缺省 bulk：批量补翻不消耗 Agnes 额度
   const apiKey = process.env.AGNES_API_KEY;
-  if (!apiKey) { res.status(500).json({ error: 'AGNES_API_KEY not configured' }); return; }
+  if (mode === 'full' && !apiKey) { res.status(500).json({ error: 'AGNES_API_KEY not configured' }); return; }
 
   const ip = (req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'local';
   if (rateLimited(ip)) { res.status(429).json({ error: 'Too Many Requests' }); return; }
@@ -118,7 +142,7 @@ export default async function handler(req, res) {
   if (!texts.length) { res.status(400).json({ error: 'texts must be a non-empty string array' }); return; }
   if (texts.length > MAX_TEXTS) { res.status(400).json({ error: `texts limited to ${MAX_TEXTS} items per request` }); return; }
 
-  // 缓存命中的直接取用；未命中的走并发池调 Agnes（单条失败返回空串，不阻塞整批）
+  // 缓存命中的直接取用；未命中的按 mode 引擎分流（单条失败返回空串，不阻塞整批）
   const diag = []; // 诊断：记录上游失败原因（仅状态码/错误类，不含密钥），502 时回传便于线上定位
   const pending = [];
   const results = await Promise.all(texts.map(async (t, idx) => {
@@ -128,20 +152,55 @@ export default async function handler(req, res) {
     pending.push(idx);
     return null; // 占位，池完成后再回填
   }));
-  const filled = await mapPool(pending, AGNES_CONCURRENCY, async (idx) => {
-    const t = texts[idx];
-    try {
-      const zh = await translateOneRetry(t, apiKey);
-      setCache(t.slice(0, 200), zh);
-      return zh;
-    } catch (e) {
-      const reason = (e && e.message) || 'unknown';
-      if (!diag.includes(reason)) diag.push(reason);
-      return '';
-    }
-  });
-  filled.forEach((zh, k) => { results[pending[k]] = zh; });
+  let gtxSaved = 0; // full 模式下由 Agnes 失败转 GTX 兜底成功的条数（用于 engine 标记）
 
-  if (!results.some(Boolean)) { res.status(502).json({ error: 'All translations failed', diag: diag.slice(0, 5) }); return; }
-  res.status(200).json({ ok: true, engine: 'agnes', translations: results });
+  if (mode === 'full') {
+    // Agnes 主力：全文/摘要按钮（低频高价值）
+    const filled = await mapPool(pending, AGNES_CONCURRENCY, async (idx) => {
+      const t = texts[idx];
+      try {
+        const zh = await translateOneRetry(t, apiKey);
+        setCache(t.slice(0, 200), zh);
+        return zh;
+      } catch (e) {
+        const reason = (e && e.message) || 'unknown';
+        if (!diag.includes(reason)) diag.push(reason);
+        return '';
+      }
+    });
+    filled.forEach((zh, k) => { results[pending[k]] = zh; });
+    // Agnes 失败条目（限流/故障）→ 服务端 GTX 兜底，保证用户点击总有结果
+    const gtxIdx = pending.filter((idx) => !results[idx]);
+    if (gtxIdx.length) {
+      await mapPool(gtxIdx, GTX_CONCURRENCY, async (idx) => {
+        const t = texts[idx];
+        try {
+          const zh = await translateGtxRetry(t);
+          setCache(t.slice(0, 200), zh);
+          results[idx] = zh;
+          gtxSaved += 1;
+        } catch (e) {
+          const reason = (e && e.message) || 'unknown';
+          if (!diag.includes(reason)) diag.push(reason);
+        }
+      });
+    }
+  } else {
+    // GTX 免费端点：卡片墙/AI 面板批量补翻（高频），完全不碰 Agnes
+    await mapPool(pending, GTX_CONCURRENCY, async (idx) => {
+      const t = texts[idx];
+      try {
+        const zh = await translateGtxRetry(t);
+        setCache(t.slice(0, 200), zh);
+        results[idx] = zh;
+      } catch (e) {
+        const reason = (e && e.message) || 'unknown';
+        if (!diag.includes(reason)) diag.push(reason);
+      }
+    });
+  }
+
+  if (!results.some(Boolean)) { res.status(502).json({ error: 'All translations failed', mode, diag: diag.slice(0, 5) }); return; }
+  const engine = mode === 'bulk' ? 'gtx' : (gtxSaved ? 'agnes+gtx' : 'agnes');
+  res.status(200).json({ ok: true, engine, translations: results });
 }
