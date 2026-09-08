@@ -366,5 +366,6 @@
  "lightpanda-io/browser": "Lightpanda ：专为人工智能和自动化设计的无头浏览器",
  "Nutlope/logocreator": "由Flux on Together AI提供支持的免费+ OSS徽标生成器",
  "openai/skills": "法典技能目录",
- "mksglu/context-mode": "AI 编码代理的上下文窗口优化。沙箱工具输出（减少 98%）、保留会话内存，并通过 MCP + 挂钩强制跨 17 个平台进行路由。"
+ "mksglu/context-mode": "AI 编码代理的上下文窗口优化。沙箱工具输出（减少 98%）、保留会话内存，并通过 MCP + 挂钩强制跨 17 个平台进行路由。",
+ "nashsu/llm_wiki": "LLM Wiki 是一个跨平台桌面应用程序，可自动将您的文档转变为有组织的、相互关联的知识库。法学硕士不是传统的 RAG（每次从头开始检索并回答），而是从您的来源逐步构建和维护持久的 wiki。"
 }
