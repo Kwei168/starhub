@@ -516,8 +516,10 @@ def generate_ai_summary(rising_top10):
             {"role": "system", "content": "你是一个简洁的 AI 开源态势分析师，回答不超过30字。"},
             {"role": "user", "content": prompt}
         ],
-        "max_tokens": 100,
+        "max_tokens": 200,
         "temperature": 0.7,
+        # agnes-2.5-flash 是思考型模型：不关闭思考时 max_tokens 会被推理耗尽，content 为空
+        "chat_template_kwargs": {"enable_thinking": False},
     }).encode("utf-8")
     try:
         req = urllib.request.Request(
@@ -529,12 +531,16 @@ def generate_ai_summary(rising_top10):
                 "User-Agent": "starhub-auto-update",
             },
         )
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read().decode("utf-8"))
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        choice = data.get("choices", [{}])[0]
+        content = (choice.get("message", {}).get("content") or "").strip()
         if content and len(content) <= 100:
             print("[AI摘要] %s" % content)
             return content
+        # content 为空/超长：打印诊断，避免静默失败
+        print("[AI摘要] 响应不合格: content_len=%d finish_reason=%r usage=%s"
+              % (len(content), choice.get("finish_reason"), data.get("usage")), file=sys.stderr)
     except urllib.error.HTTPError as e:
         print("[AI摘要] API 调用失败: HTTP %s" % e.code, file=sys.stderr)
     except Exception as e:

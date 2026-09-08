@@ -1446,6 +1446,8 @@ def _agnes_translate(text, timeout=20):
         ],
         "max_tokens": 400,
         "temperature": 0.2,
+        # 思考型模型：关闭思考避免 token 被推理耗尽，也加速响应
+        "chat_template_kwargs": {"enable_thinking": False},
     }).encode("utf-8")
     req = urllib.request.Request(
         "https://apihub.agnes-ai.com/v1/chat/completions",
