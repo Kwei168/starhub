@@ -98,6 +98,7 @@ export default async function handler(req, res) {
   if (texts.length > MAX_TEXTS) { res.status(400).json({ error: `texts limited to ${MAX_TEXTS} items per request` }); return; }
 
   // 缓存命中的直接取用；未命中的并行调用 Agnes（单条失败返回空串，不阻塞整批）
+  const diag = []; // 诊断：记录上游失败原因（仅状态码/错误类，不含密钥），502 时回传便于线上定位
   const results = await Promise.all(texts.map(async (t) => {
     const key = t.slice(0, 200);
     const hit = getCache(key);
@@ -107,10 +108,12 @@ export default async function handler(req, res) {
       setCache(key, zh);
       return zh;
     } catch (e) {
+      const reason = (e && e.message) || 'unknown';
+      if (!diag.includes(reason)) diag.push(reason);
       return '';
     }
   }));
 
-  if (!results.some(Boolean)) { res.status(502).json({ error: 'All translations failed' }); return; }
+  if (!results.some(Boolean)) { res.status(502).json({ error: 'All translations failed', diag: diag.slice(0, 5) }); return; }
   res.status(200).json({ ok: true, engine: 'agnes', translations: results });
 }
