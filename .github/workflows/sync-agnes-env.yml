@@ -11,6 +11,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # 必须 checkout：CLI 从当前目录上传部署，缺 checkout 会用空目录覆盖生产
+      - uses: actions/checkout@v4
       - name: Upsert AGNES_API_KEY on Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
