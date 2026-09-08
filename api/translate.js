@@ -18,6 +18,8 @@ const CACHE_TTL = 24 * 60 * 60 * 1000;
 const RATE_LIMIT = 120;      // 每实例每分钟最多请求数。页面首屏卡片墙+AI面板并发补翻需 20~40 次，
                             // 旧值 30 会把自己限流（首屏 ok=2/24 实证）；120 仍可拦截滥用
 const UPSTREAM_TIMEOUT = 12000;
+const AGNES_CONCURRENCY = 4; // 上游并发上限。实测无限制并发（首屏 100+ 同时调 Agnes）会遭上游批量拒绝（502，
+                            // 单发则 200），收敛到 4 同时保留吐量；translateOne 内含 1 次退避重试
 
 const cacheMap = new Map();  // text 前缀 → { t, zh }
 const rateMap = new Map();   // ip → [windowStart, count]
@@ -73,6 +75,24 @@ async function translateOne(text, apiKey) {
   return out;
 }
 
+// 单条失败退避后重试一次（上游瞬时限流/抖动）
+async function translateOneRetry(text, apiKey) {
+  try { return await translateOne(text, apiKey); }
+  catch (e) {
+    await new Promise((r) => setTimeout(r, 400));
+    return await translateOne(text, apiKey);
+  }
+}
+
+// 有限并发池：按序保填充，最多 limit 个 worker 同时执行 fn
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  async function worker() { while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 export default async function handler(req, res) {
   const origin = (req.headers['origin'] || '').toLowerCase();
   if (ALLOWED_ORIGINS.has(origin)) {
@@ -98,22 +118,29 @@ export default async function handler(req, res) {
   if (!texts.length) { res.status(400).json({ error: 'texts must be a non-empty string array' }); return; }
   if (texts.length > MAX_TEXTS) { res.status(400).json({ error: `texts limited to ${MAX_TEXTS} items per request` }); return; }
 
-  // 缓存命中的直接取用；未命中的并行调用 Agnes（单条失败返回空串，不阻塞整批）
+  // 缓存命中的直接取用；未命中的走并发池调 Agnes（单条失败返回空串，不阻塞整批）
   const diag = []; // 诊断：记录上游失败原因（仅状态码/错误类，不含密钥），502 时回传便于线上定位
-  const results = await Promise.all(texts.map(async (t) => {
+  const pending = [];
+  const results = await Promise.all(texts.map(async (t, idx) => {
     const key = t.slice(0, 200);
     const hit = getCache(key);
     if (hit) return hit;
+    pending.push(idx);
+    return null; // 占位，池完成后再回填
+  }));
+  const filled = await mapPool(pending, AGNES_CONCURRENCY, async (idx) => {
+    const t = texts[idx];
     try {
-      const zh = await translateOne(t, apiKey);
-      setCache(key, zh);
+      const zh = await translateOneRetry(t, apiKey);
+      setCache(t.slice(0, 200), zh);
       return zh;
     } catch (e) {
       const reason = (e && e.message) || 'unknown';
       if (!diag.includes(reason)) diag.push(reason);
       return '';
     }
-  }));
+  });
+  filled.forEach((zh, k) => { results[pending[k]] = zh; });
 
   if (!results.some(Boolean)) { res.status(502).json({ error: 'All translations failed', diag: diag.slice(0, 5) }); return; }
   res.status(200).json({ ok: true, engine: 'agnes', translations: results });

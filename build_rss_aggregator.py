@@ -3716,34 +3716,38 @@ def _build_js(sources_with_items, build_ts_ms=0):
     // Agnes 批量并行：每批 15 条（与 api/translate 限制匹配），最多 8 批（120 条，覆盖 AIHOT+AGI 全量），单批 8s 超时
     // 旧版 3 批上限导致超出 45 条的部分只能走 Google 降级，而 GTX 端点在浏览器端必遭 CORS 拦截 → 永久英文
     var batches = []; for(var i=0;i<toTranslate.length && batches.length<8;i+=15) batches.push(toTranslate.slice(i,i+15));
-    var pending = batches.length, applied = 0;
-    batches.forEach(function(batch){
-      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
-      var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
-      fetch(AGNES_TR_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texts: batch.map(function(it){ return it.title; }) }),
-        signal: ctrl ? ctrl.signal : undefined
-      }).then(function(r){
-        if(tmr) clearTimeout(tmr);
-        return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status));
-      }).then(function(j){
-        if(!j || !j.ok || !j.translations || !j.translations.length) throw new Error('bad payload');
-        batch.forEach(function(it, idx){
-          var zh = j.translations[idx];
-          if(zh && !it._zh){ it._zh = zh; applied++; }
-        });
-      }).catch(function(){
-        if(tmr) clearTimeout(tmr);
-      }).then(function(){
-        if(--pending) return;
-        if(applied) _renderAll();
-        // Agnes \u672a\u8986\u76d6\u5230\u7684\u6761\u76ee\uff08\u5168\u5931\u8d25\u6216\u90e8\u5206\u5931\u8d25\uff09\u964d\u7ea7 Google \u8865\u7ffb
-        var rest = toTranslate.filter(function(it){ return !it._zh; });
-        if(rest.length) _translateAfGoogle(rest);
+    var applied = 0;
+    function _doBatch(batch){
+      return new Promise(function(resolve){
+        var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+        var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
+        fetch(AGNES_TR_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ texts: batch.map(function(it){ return it.title; }) }),
+          signal: ctrl ? ctrl.signal : undefined
+        }).then(function(r){
+          if(tmr) clearTimeout(tmr);
+          return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status));
+        }).then(function(j){
+          if(!j || !j.ok || !j.translations || !j.translations.length) throw new Error('bad payload');
+          batch.forEach(function(it, idx){
+            var zh = j.translations[idx];
+            if(zh && !it._zh){ it._zh = zh; applied++; }
+          });
+        }).catch(function(){
+          if(tmr) clearTimeout(tmr);
+        }).then(resolve);
       });
-    });
+    }
+    // 分波推进：每波 2 批，避免与卡片墙补翻叠加后打穿 api 上游并发池（配额 4）造成批量超时
+    (async function(){
+      for(var w=0;w<batches.length;w+=2){ await Promise.all(batches.slice(w,w+2).map(_doBatch)); }
+      if(applied) _renderAll();
+      // Agnes 未覆盖到的条目（全失败或部分失败）降级 Google 补翻
+      var rest = toTranslate.filter(function(it){ return !it._zh; });
+      if(rest.length) _translateAfGoogle(rest);
+    })();
   }
   // \u964d\u7ea7\u94fe\u8def\uff1aGoogle Translate GTX \u514d\u8d39\u7aef\u70b9\uff08\u6bcf 10 \u6761\u4e00\u7ec4\uff0c\u5168\u90e8 settle \u540e\u6e32\u67d3\uff09
   function _translateAfGoogle(toTranslate){
