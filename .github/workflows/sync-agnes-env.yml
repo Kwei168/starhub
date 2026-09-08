@@ -28,15 +28,10 @@ jobs:
           head -c 300 /tmp/env_resp.json; echo
           if [ "$resp" != "200" ] && [ "$resp" != "201" ]; then exit 1; fi
 
-      - name: Trigger production redeploy
+      - name: Trigger production redeploy (vercel CLI)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          resp=$(curl -s -o /tmp/deploy_resp.json -w "%{http_code}" -X POST \
-            "https://api.vercel.com/v13/deployments" \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d '{"name":"starhub-refresh","target":"production","gitSource":{"type":"github","org":"Kwei168","repo":"starhub","ref":"main"}}')
-          echo "deploy http: $resp"
-          head -c 300 /tmp/deploy_resp.json; echo
-          if [ "$resp" != "200" ]; then exit 1; fi
+          npm i -g vercel@latest --silent
+          # 仓库内 .vercel/project.json 提供项目链接；CLI 部署继承项目级环境变量
+          vercel deploy --prod --yes --token=${VERCEL_TOKEN} 2>&1 | tail -n 5
