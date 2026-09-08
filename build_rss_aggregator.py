@@ -4945,6 +4945,79 @@ def _score_sources(sources_with_items, rss_history):
     return result
 
 
+def _extract_topic_label_from_titles(cluster_articles):
+    """从簇内文章标题中提取语义通顺的话题标签。
+
+    优先级：
+    1. 术语词典精确命中（标题中出现最多的 _TECH_DICT 词条）
+    2. 标题内相邻 2-3 个高质量 token 拼接
+    3. 兜底：截取合格标题的前 12 个字符
+    返回 (label_str, labels_list)。
+    """
+    _LABEL_NOISE_LOCAL = set('的了是在我有和就不人都一个上也这到说们为你会对被把让给用从向')
+
+    # ── 策略 1：术语词典精确匹配 ──
+    dict_term_counter = collections.Counter()
+    for art in cluster_articles:
+        title = art.get('title', '')
+        if not title or _has_repeated_chars(title, min_repeats=2, min_run=2):
+            continue
+        title_lower = title.lower()
+        seen_in_doc = set()
+        for term in _TECH_DICT:
+            tl = term.lower()
+            if tl in title_lower and len(term) >= 2 and tl not in seen_in_doc:
+                dict_term_counter[term] += 1
+                seen_in_doc.add(tl)
+    if dict_term_counter:
+        top_term = dict_term_counter.most_common(1)[0][0]
+        # 尝试找第二个高频术语拼成复合标签
+        second = None
+        for term, _ in dict_term_counter.most_common(5):
+            if term != top_term:
+                second = term
+                break
+        if second and len(second) >= 2:
+            return '%s %s' % (top_term, second), [top_term, second]
+        return top_term, [top_term]
+
+    # ── 策略 2：标题内相邻 token 高频组合 ──
+    ngram_counter = collections.Counter()
+    for art in cluster_articles:
+        title = art.get('title', '')
+        if not title:
+            continue
+        tokens = _tokenize(title)
+        quality_tokens = [t for t in tokens
+                          if len(t) >= 2 and t not in _LABEL_NOISE_LOCAL and _is_valid_ngram(t)]
+        # 连续 2-gram 和 3-gram
+        for span in (2, 3):
+            for j in range(len(quality_tokens) - span + 1):
+                phrase = ' '.join(quality_tokens[j:j + span])
+                # 至少有一个 token 长度 >= 2（避免全单字拼接）
+                if any(len(quality_tokens[j + k]) >= 2 for k in range(span)):
+                    ngram_counter[phrase] += 1
+    if ngram_counter:
+        best_phrase = ngram_counter.most_common(1)[0][0]
+        parts = best_phrase.split()
+        return best_phrase, parts[:3]
+
+    # ── 策略 3：兜底 — 截取合格标题前 12 字符 ──
+    for art in cluster_articles:
+        title = art.get('title', '')
+        if title and len(title) >= 6 and not _has_repeated_chars(title, min_repeats=2, min_run=2):
+            truncated = title[:12].rstrip()
+            # 尝试在标点/空格处截断
+            for sep in ('，', '。', '：', '！', '？', ',', '.', ' ', ' '):
+                idx = truncated.find(sep)
+                if idx > 2:
+                    truncated = truncated[:idx]
+                    break
+            return truncated, [truncated]
+
+    return '', []
+
+
 def _cluster_topics(rss_history, now_bj, max_topics=20, min_cluster=3):
     """基于标题+摘要关键词 Jaccard 相似度的话题聚类。返回话题列表。"""
     cutoff_24h = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=24)
@@ -5022,20 +5095,21 @@ def _cluster_topics(rss_history, now_bj, max_topics=20, min_cluster=3):
     for cl in clusters:
         if len(cl['articles']) < min_cluster:
             continue
-        # 从簇内所有文章的标题 token 提取高频词（标题优先，避免摘要噪音）
-        title_counter = collections.Counter()
-        all_counter = collections.Counter()
-        for a in cl['articles']:
-            title_counter.update(a.get('title_tokens', a['tokens']))
-            all_counter.update(a['tokens'])
-        # 标签：从标题高频词中过滤噪音单字，取 3 个
-        labels = [w for w, _ in title_counter.most_common(10)
-                  if len(w) >= 2 and w not in _LABEL_NOISE and _is_valid_ngram(w)]
-        if len(labels) < 2:
-            labels = [w for w, _ in all_counter.most_common(10)
+        # ── 标题召回机制：优先从标题中提取语义通顺的标签 ──
+        label, labels = _extract_topic_label_from_titles(cl['articles'])
+        # 如果标题召回失败，回退到原始 token 频率逻辑
+        if not label:
+            title_counter = collections.Counter()
+            all_counter = collections.Counter()
+            for a in cl['articles']:
+                title_counter.update(a.get('title_tokens', a['tokens']))
+                all_counter.update(a['tokens'])
+            labels = [w for w, _ in title_counter.most_common(10)
                       if len(w) >= 2 and w not in _LABEL_NOISE and _is_valid_ngram(w)]
-        # 组合可读话题名（label 字段）：取前 2-3 个关键词拼接
-        label = ' '.join(labels[:3]) if labels else ''
+            if len(labels) < 2:
+                labels = [w for w, _ in all_counter.most_common(10)
+                          if len(w) >= 2 and w not in _LABEL_NOISE and _is_valid_ngram(w)]
+            label = ' '.join(labels[:3]) if labels else ''
         # 去重源
         sources = list(set(a['source'] for a in cl['articles'] if a['source']))
         topics.append({
