@@ -54,7 +54,13 @@ RSS_TREND_HISTORY_FILE = "rss_trend_history.json"  # RSS 内容趋势历史（�
 _STOP_WORDS_ZH = set("的了是在我有和就不人都一个上也这到说们为你会对" +
     "他就是那要被她它自己什么没有可以已经还是或者虽然但是因此如果" +
     "而且并且或者以及不过然后所以因为于在与及等和而关于中从把被让给" +
-    "向由按照根据为了因作为以更最非常再又还已经正在才刚各每全部".strip())
+    "向由按照根据为了因作为以更最非常再又还已经正在才刚各每全部" +
+    "表示指出认为透露宣布发布推出上线下线升级更新修复" +  # 新闻动词（过于通用）
+    "据悉据报道消息称知情人士透露" +  # 新闻套话
+    "相关有关涉及方面部门机构组织" +  # 泛化名词
+    "进行开展实施推进落实加强深化" +  # 公文动词
+    "重要重大显著明显突出关键核心" +  # 泛化形容词
+    "发展建设改革完善优化提升推动促进")  # 泛化动词
 _STOP_WORDS_EN = set(("the a an is are was were be been being have has had do does did will would shall should may might can could " +
     "i me my we our you your he him his she her it its they them their " +
     "this that these those there here what which who whom whose when where why how " +
@@ -4693,27 +4699,126 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
 
 # ──────────────────────────── 智能分析模块 ────────────────────────────
 
+# 科技/AI/热点领域术语词典（硬编码，按长度降序排列用于贪心最长匹配）
+_TECH_DICT = sorted({
+    # AI / 大模型
+    '大模型', '人工智能', '机器学习', '深度学习', '自然语言处理', '神经网络',
+    '多模态', '扩散模型', '生成式', 'Transformer', '注意力机制', '预训练',
+    '微调', '提示词', 'Agent', '智能体', 'RAG', '检索增强', '向量数据库',
+    '大语言模型', '通用人工智能', 'AGI', 'LLM', 'GPT',
+    # 芯片 / 硬件
+    '半导体', '芯片', '制程', '光刻机', '先进封装', 'HBM', '存储芯片',
+    'GPU', 'CPU', 'NPU', '算力', '数据中心', '服务器',
+    # 互联网 / 科技
+    '自动驾驶', '机器人', '元宇宙', '数字孪生', '边缘计算', '云计算',
+    '区块链', 'Web3', '去中心化', '开源', '操作系统', '浏览器',
+    '智能手机', '折叠屏', '卫星通信', '低轨卫星', '6G', '5G',
+    # 热点 / 社会
+    '泥石流', '地震', '台风', '洪水', '应急响应', '救援',
+    '高考', '考研', '就业', '裁员', 'IPO', '上市', '融资',
+    '监管', '合规', '反垄断', '数据安全', '隐私保护',
+    # 国际 / 政治
+    '首相', '总统', '大选', '制裁', '关税', '贸易', '地缘政治',
+    # 金融 / 经济
+    '股市', 'A股', '港股', '美股', '比特币', '加密货币', '央行',
+    '降息', '加息', '通胀', 'GDP', 'CPI',
+    # 通用高频词（避免被切散）
+    '审核', '一审', '二审', '判决', '法院', '检察院', '立案',
+    '报道', '据悉', '表示', '指出', '认为', '透露', '宣布',
+    '发布', '推出', '上线', '下线', '升级', '更新', '修复',
+    '漏洞', '安全', '攻击', '黑客', '恶意软件', '病毒',
+    '用户', '开发者', '程序员', '工程师', '科学家', '研究员',
+    '公司', '企业', '机构', '政府', '部门', '组织',
+    '中国', '美国', '日本', '欧洲', '全球', '国内', '海外',
+    '科技', '技术', '创新', '突破', '进展', '成果',
+    '产品', '服务', '平台', '应用', '软件', '硬件', '系统',
+    '数据', '算法', '模型', '训练', '推理', '部署',
+    '网络', '互联网', '移动', '无线', '通信', '信号',
+    '能源', '电池', '电动车', '新能源', '光伏', '风电',
+    '医疗', '健康', '生物', '基因', '疫苗', '药物',
+    '教育', '学校', '大学', '研究', '学术', '论文',
+    '文化', '娱乐', '电影', '音乐', '游戏', '电竞',
+    '体育', '奥运', '足球', '篮球', '赛事',
+    '环境', '气候', '碳排放', '绿色', '可持续',
+    '军事', '国防', '武器', '导弹', '演习',
+    '外交', '谈判', '协议', '条约', '峰会',
+}, key=len, reverse=True)
+
+# 已知无意义双字组合（滑动窗口回退时过滤）
+_NOISE_BIGRAMS = {'军一', '核被', '审一', '已故', '人称', '据报',
+                  '的的', '了了', '是是', '在在', '有有', '和和'}
+
+
+def _has_repeated_chars(text, min_repeats=2, min_run=2):
+    """检测文本中是否有过多连续重复字符（OCR 错误 / 病句信号）。
+    例如 '被被' '审审' '一一' 等。"""
+    count = 0
+    for i in range(len(text) - 1):
+        if text[i] == text[i + 1] and '\u4e00' <= text[i] <= '\u9fff':
+            count += 1
+    return count >= min_repeats
+
+
+def _is_valid_ngram(word):
+    """判断 n-gram 是否有意义（质量过滤）。"""
+    # 排除连续相同字符（被被、一一、审审）
+    if len(set(word)) == 1:
+        return False
+    # 排除停用词
+    if word in _STOP_WORDS:
+        return False
+    # 排除已知无意义组合
+    if word in _NOISE_BIGRAMS:
+        return False
+    return True
+
+
 def _tokenize(text):
-    """分词：中文用 bigram + trigram 混合，英文按空格分词。返回小写 token 列表。"""
+    """分词：术语词典优先 + 贪心最长匹配 + 英文单词。返回小写 token 列表。"""
     if not text:
         return []
     text = text.lower()
-    # 提取中文片段和英文片段
     tokens = []
-    # 英文单词
+
+    # 1. 英文单词（保持原逻辑）
     en_words = re.findall(r'[a-z][a-z0-9_-]{1,}', text)
     tokens.extend(w for w in en_words if w not in _STOP_WORDS and len(w) > 1)
-    # 中文 bigram + trigram
-    cn_chars = re.findall(r'[\u4e00-\u9fff]', text)
-    cn_str = ''.join(cn_chars)
-    if len(cn_str) >= 2:
-        for i in range(len(cn_str) - 1):
-            bg = cn_str[i:i+2]
-            if bg not in _STOP_WORDS:
-                tokens.append(bg)
-        for i in range(len(cn_str) - 2):
-            tg = cn_str[i:i+3]
-            tokens.append(tg)
+
+    # 2. 中文：术语词典优先匹配，剩余用改进的 n-gram
+    cn_text = re.sub(r'[a-z0-9_\-\s]+', ' ', text)  # 去掉英文片段
+    cn_text = re.sub(r'[\u3000-\u303f\uff00-\uffef]', ' ', cn_text)  # 去掉全角标点
+
+    i = 0
+    chars = list(cn_text)
+    while i < len(chars):
+        ch = chars[i]
+        # 跳过非中文字符
+        if not ('\u4e00' <= ch <= '\u9fff'):
+            i += 1
+            continue
+        # 贪心最长匹配：从最长术语开始尝试
+        matched = False
+        for term in _TECH_DICT:
+            if i + len(term) <= len(chars):
+                candidate = ''.join(chars[i:i + len(term)])
+                if candidate == term:
+                    tokens.append(term)
+                    i += len(term)
+                    matched = True
+                    break
+        if not matched:
+            # 未命中词典：尝试 2-3 字 n-gram（仅保留有意义的）
+            found_ngram = False
+            for span in [3, 2]:
+                if i + span <= len(chars):
+                    ngram = ''.join(chars[i:i + span])
+                    if _is_valid_ngram(ngram):
+                        tokens.append(ngram)
+                        i += span
+                        found_ngram = True
+                        break
+            if not found_ngram:
+                i += 1  # 跳过单字
     return tokens
 
 
@@ -4741,6 +4846,8 @@ def _tfidf_keywords(texts, top_n=50, per_doc_top=10):
             continue  # 过滤太短或只出现一次的词
         idf = math.log(1 + n_docs / (1 + df[word]))
         scores[word] = freq * idf
+    # 过滤无意义关键词
+    scores = {w: s for w, s in scores.items() if _is_valid_ngram(w)}
     return sorted(scores.items(), key=lambda x: -x[1])[:top_n]
 
 
@@ -4856,6 +4963,9 @@ def _cluster_topics(rss_history, now_bj, max_topics=20, min_cluster=3):
         title = item.get('title_zh', '') or item.get('title', '')
         if not title:
             continue
+        # 标题质量过滤：跳过明显病句（连续重复字 >= 2 处）
+        if _has_repeated_chars(title, min_repeats=2, min_run=2):
+            continue
         title_tokens = set(_tokenize(title))
         # 摘要 token 仅保留与标题有交集的（避免过长摘要稀释标题信号）
         summary = item.get('summary_zh', '') or item.get('summary', '')
@@ -4915,10 +5025,10 @@ def _cluster_topics(rss_history, now_bj, max_topics=20, min_cluster=3):
             all_counter.update(a['tokens'])
         # 标签：从标题高频词中过滤噪音单字，取 3 个
         labels = [w for w, _ in title_counter.most_common(10)
-                  if len(w) >= 2 and w not in _LABEL_NOISE]
+                  if len(w) >= 2 and w not in _LABEL_NOISE and _is_valid_ngram(w)]
         if len(labels) < 2:
             labels = [w for w, _ in all_counter.most_common(10)
-                      if len(w) >= 2 and w not in _LABEL_NOISE]
+                      if len(w) >= 2 and w not in _LABEL_NOISE and _is_valid_ngram(w)]
         # 组合可读话题名（label 字段）：取前 2-3 个关键词拼接
         label = ' '.join(labels[:3]) if labels else ''
         # 去重源
