@@ -15,7 +15,8 @@ const SYSTEM_PROMPT = '你是翻译引擎。把用户输入翻译成简体中文
 const MAX_TEXTS = 20;        // 与前端分批大小（15）匹配，留余量
 const MAX_TEXT_LEN = 1500;   // 与构建侧 _agnes_translate 截断一致
 const CACHE_TTL = 24 * 60 * 60 * 1000;
-const RATE_LIMIT = 30;       // 每实例每分钟最多请求数（轻量防刷）
+const RATE_LIMIT = 120;      // 每实例每分钟最多请求数。页面首屏卡片墙+AI面板并发补翻需 20~40 次，
+                            // 旧值 30 会把自己限流（首屏 ok=2/24 实证）；120 仍可拦截滥用
 const UPSTREAM_TIMEOUT = 12000;
 
 const cacheMap = new Map();  // text 前缀 → { t, zh }

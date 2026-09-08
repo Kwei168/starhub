@@ -3803,7 +3803,8 @@ def _build_js(sources_with_items, build_ts_ms=0):
       // Agnes 未覆盖条目（全失败或部分失败）降级 Google 补翻，覆盖后重渲染
       var restBatch=batch.filter(function(a){ return _needsTranslation(a.t)||(a.s&&_needsTranslation(a.s)); });
       if(restBatch.length) _translateWallGoogle(restBatch);
-      _translateWallItems();
+      // 批间节流：与 AI 面板首屏 8 批错峰，避免触发 api 限流（120/min）
+      setTimeout(_translateWallItems,500);
     });
   }
   /* 卡片墙降级链路：标题 join 批量（与 _translateAfGoogle 同模式）+ 摘要逐条并行，全 settle 后重渲染 */
