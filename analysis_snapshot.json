@@ -1,623 +1,623 @@
 {
- "generated_at": "2026-09-09T06:04:16.136014+08:00",
+ "generated_at": "2026-09-09T07:04:55.998030+08:00",
  "keywords": {
   "global": [
    [
     "ai",
-    6893.5
+    6878.28
    ],
    [
     "一个",
-    4896.44
+    4894.1
    ],
    [
     "模型",
-    4536.25
+    4532.66
    ],
    [
     "中国",
-    4240.6
-   ],
-   [
-    "月日",
-    3933.56
+    4225.93
    ],
    [
     "香港",
-    3909.78
+    3974.8
+   ],
+   [
+    "月日",
+    3921.24
    ],
    [
     "智能",
-    3854.09
-   ],
-   [
-    "公司",
-    3483.26
-   ],
-   [
-    "com",
-    3471.92
-   ],
-   [
-    "https",
-    3464.46
+    3846.11
    ],
    [
     "评论",
-    3431.38
+    3499.88
+   ],
+   [
+    "https",
+    3496.08
+   ],
+   [
+    "公司",
+    3493.13
+   ],
+   [
+    "com",
+    3476.57
    ],
    [
     "什么",
-    3392.18
+    3360.41
    ],
    [
     "发布",
-    3245.42
+    3264.07
    ],
    [
     "我们",
-    3015.65
-   ],
-   [
-    "产品",
-    3004.28
+    3017.78
    ],
    [
     "美国",
-    2977.26
+    3003.07
+   ],
+   [
+    "产品",
+    2994.16
    ],
    [
     "问题",
-    2734.61
-   ],
-   [
-    "可以",
-    2703.08
+    2765.58
    ],
    [
     "没有",
-    2697.83
+    2718.19
+   ],
+   [
+    "可以",
+    2715.72
    ],
    [
     "数据",
-    2646.97
+    2644.31
    ],
    [
     "了一",
-    2633.38
-   ],
-   [
-    "网址",
-    2571.12
-   ],
-   [
-    "工作",
-    2563.05
+    2625.61
    ],
    [
     "用户",
-    2550.63
+    2584.3
+   ],
+   [
+    "网址",
+    2562.36
+   ],
+   [
+    "工作",
+    2557.22
    ],
    [
     "企业",
-    2526.17
+    2533.94
    ],
    [
     "可能",
-    2489.02
+    2484.98
    ],
    [
     "agent",
-    2446.24
+    2442.95
    ],
    [
     "使用",
-    2396.19
-   ],
-   [
-    "世界",
-    2393.19
-   ],
-   [
-    "技术",
-    2376.22
+    2400.86
    ],
    [
     "自己",
-    2365.82
+    2373.49
+   ],
+   [
+    "技术",
+    2372.65
+   ],
+   [
+    "世界",
+    2367.79
    ],
    [
     "美元",
-    2344.54
+    2336.17
    ],
    [
     "研究",
-    2288.1
+    2295.32
    ],
    [
     "系统",
-    2279.38
+    2272.33
    ],
    [
     "市场",
-    2270.28
-   ],
-   [
-    "机器",
-    2255.18
-   ],
-   [
-    "表示",
-    2243.15
+    2263.52
    ],
    [
     "已经",
-    2242.56
+    2255.44
+   ],
+   [
+    "机器",
+    2252.21
+   ],
+   [
+    "表示",
+    2250.59
    ],
    [
     "openai",
-    2208.48
-   ],
-   [
-    "支持",
-    2196.99
+    2228.36
    ],
    [
     "正在",
-    2181.21
+    2181.42
+   ],
+   [
+    "支持",
+    2181.26
    ],
    [
     "如何",
-    2166.96
+    2174.46
    ],
    [
     "这个",
-    2157.1
+    2148.11
    ],
    [
     "是一",
-    2144.8
-   ],
-   [
-    "时间",
-    2123.55
+    2146.9
    ],
    [
     "视频",
-    2117.19
+    2141.3
    ],
    [
-    "新闻",
-    2101.82
+    "时间",
+    2133.37
    ],
    [
     "全球",
-    2093.84
+    2088.95
+   ],
+   [
+    "新闻",
+    2076.14
    ],
    [
     "人工",
-    2027.67
+    2029.0
    ],
    [
-    "开始",
-    2022.55
+    "news",
+    2022.12
    ]
   ],
   "by_cat": {
    "cn_tech": [
     [
      "ai",
-     1216.54
+     1213.97
     ],
     [
      "模型",
-     732.08
+     730.78
     ],
     [
      "一个",
-     670.94
+     669.53
     ],
     [
      "产品",
-     632.1
+     630.93
     ],
     [
      "月日",
-     604.42
+     603.16
     ],
     [
      "智能",
-     563.08
+     562.07
     ],
     [
      "发布",
-     552.59
+     551.52
     ],
     [
      "公司",
-     544.57
+     543.6
     ],
     [
      "小米",
-     542.45
+     541.78
     ],
     [
      "中国",
-     500.84
+     500.07
     ],
     [
      "市场",
-     496.79
+     495.99
     ],
     [
      "机器",
-     478.1
+     477.47
     ],
     [
      "技术",
-     455.08
+     454.29
     ],
     [
      "用户",
-     447.85
+     447.12
     ],
     [
      "器人",
-     441.57
+     441.02
     ],
     [
      "机器人",
-     441.57
+     441.02
     ],
     [
      "美元",
-     440.82
+     440.2
     ],
     [
      "苹果",
-     428.76
+     428.24
     ],
     [
      "什么",
-     427.99
+     427.28
     ],
     [
      "增长",
-     417.76
+     417.17
     ]
    ],
    "dev": [
     [
      "评论",
-     679.14
+     690.93
     ],
     [
      "https",
-     588.07
+     592.05
     ],
     [
      "网址",
-     503.72
+     506.54
     ],
     [
      "com",
-     489.23
+     493.91
     ],
     [
      "一个",
-     479.04
+     483.67
     ],
     [
      "ai",
-     374.65
+     378.15
     ],
     [
      "news",
-     344.67
-    ],
-    [
-     "item",
-     342.9
-    ],
-    [
-     "ycombinator",
-     341.96
+     350.53
     ],
     [
      "id",
-     341.96
+     350.53
+    ],
+    [
+     "item",
+     348.78
+    ],
+    [
+     "ycombinator",
+     347.85
     ],
     [
      "分评",
-     335.25
+     341.23
     ],
     [
      "分评论",
-     335.25
+     341.23
     ],
     [
      "论网",
-     330.34
-    ],
-    [
-     "评论网",
-     330.34
-    ],
-    [
-     "论网址",
-     330.34
+     333.44
     ],
     [
      "积分",
-     326.34
+     333.44
+    ],
+    [
+     "评论网",
+     333.44
+    ],
+    [
+     "论网址",
+     333.44
     ],
     [
      "积分评",
-     325.34
+     332.45
     ],
     [
      "址积",
-     322.29
+     325.41
     ],
     [
      "网址积",
-     322.29
+     325.41
     ],
     [
      "址积分",
-     322.29
+     325.41
     ]
    ],
    "news": [
     [
      "香港",
-     1108.09
+     1119.58
     ],
     [
      "中国",
-     865.6
+     866.91
     ],
     [
      "美国",
-     769.85
+     777.76
     ],
     [
      "月日",
-     694.26
+     692.12
     ],
     [
      "表示",
-     525.58
-    ],
-    [
-     "公司",
-     478.87
+     527.05
     ],
     [
      "德国",
-     478.41
+     488.75
+    ],
+    [
+     "公司",
+     482.78
     ],
     [
      "罗斯",
-     467.96
+     468.49
     ],
     [
      "新闻",
-     466.23
+     466.87
     ],
     [
      "俄罗",
-     454.14
+     454.65
     ],
     [
      "俄罗斯",
-     454.14
+     454.65
     ],
     [
      "总统",
-     430.69
+     431.18
     ],
     [
      "cnn",
-     424.57
+     425.11
     ],
     [
      "com",
-     412.52
+     413.07
     ],
     [
      "新华",
-     410.25
+     410.83
     ],
     [
      "华社",
-     400.93
+     401.5
     ],
     [
      "新华社",
-     400.93
+     401.5
     ],
     [
      "记者",
-     398.6
-    ],
-    [
-     "企业",
-     389.16
+     399.16
     ],
     [
      "国际",
-     386.56
+     394.02
+    ],
+    [
+     "企业",
+     393.42
     ]
    ],
    "tech": [
     [
      "https",
-     167.88
+     168.55
     ],
     [
      "评论",
-     166.26
+     166.93
     ],
     [
      "网址",
-     153.22
+     153.83
     ],
     [
      "com",
-     127.76
-    ],
-    [
-     "智能",
-     110.71
+     128.27
     ],
     [
      "代理",
-     109.7
+     110.06
+    ],
+    [
+     "智能",
+     109.72
     ],
     [
      "模型",
-     100.67
+     101.03
     ],
     [
      "通过",
-     98.33
+     98.72
     ],
     [
      "公司",
-     89.74
-    ],
-    [
-     "人工",
-     86.84
-    ],
-    [
-     "工智",
-     86.84
-    ],
-    [
-     "人工智",
-     86.84
-    ],
-    [
-     "工智能",
-     86.84
+     91.01
     ],
     [
      "news",
-     86.59
+     86.94
     ],
     [
      "ycombinator",
-     86.59
-    ],
-    [
-     "可以",
-     84.47
+     86.94
     ],
     [
      "ai",
-     83.8
+     85.12
+    ],
+    [
+     "人工",
+     85.12
+    ],
+    [
+     "工智",
+     85.12
+    ],
+    [
+     "人工智",
+     85.12
+    ],
+    [
+     "工智能",
+     85.12
+    ],
+    [
+     "可以",
+     84.79
     ],
     [
      "item",
-     83.06
+     83.39
     ],
     [
      "id",
-     83.06
+     83.39
     ],
     [
      "开发",
-     82.5
+     82.78
     ]
    ],
    "youtube": [
     [
-     "如何",
-     88.17
+     "智能",
+     83.91
     ],
     [
-     "智能",
-     86.31
+     "如何",
+     82.99
     ],
     [
      "ai",
-     82.46
+     81.54
     ],
     [
      "人工",
-     81.07
+     78.67
     ],
     [
      "工智",
-     81.07
+     78.67
     ],
     [
      "人工智",
-     81.07
+     78.67
     ],
     [
      "工智能",
-     81.07
+     78.67
     ],
     [
      "什么",
-     76.53
+     75.67
     ],
     [
      "为什",
-     62.22
+     61.57
     ],
     [
      "为什么",
-     62.22
+     61.57
     ],
     [
      "一个",
-     56.61
+     56.04
     ],
     [
      "gpt-6",
-     55.57
+     53.05
     ],
     [
      "astra",
-     54.65
+     52.13
     ],
     [
      "你的",
-     51.52
+     51.03
     ],
     [
      "设计",
-     49.41
+     42.36
     ],
     [
      "代理",
-     38.95
+     38.63
     ],
     [
      "openai",
-     37.01
+     36.69
     ],
     [
      "使用",
-     37.01
+     36.69
     ],
     [
      "我们",
-     34.49
+     34.19
     ],
     [
      "构建",
-     34.49
+     34.19
     ]
    ],
    "ai": [
     [
      "aihot",
-     524.33
+     528.02
     ],
     [
      "模型",
@@ -625,27 +625,27 @@
     ],
     [
      "https",
-     470.47
+     472.78
     ],
     [
      "ai",
-     441.54
+     441.91
     ],
     [
      "评论",
-     411.71
+     414.15
     ],
     [
      "com",
-     387.94
+     390.53
     ],
     [
      "网址",
-     374.38
+     369.45
     ],
     [
      "openai",
-     343.95
+     349.23
     ],
     [
      "研究",
@@ -669,113 +669,113 @@
     ],
     [
      "原文",
-     270.06
+     271.85
     ],
     [
      "阅读",
-     269.29
-    ],
-    [
-     "news",
-     266.42
+     271.08
     ],
     [
      "astra",
-     264.73
+     271.07
+    ],
+    [
+     "news",
+     269.15
     ],
     [
      "via",
-     263.09
+     264.93
     ],
     [
      "items",
-     262.16
+     264.01
     ],
     [
      "读原",
-     262.16
+     264.01
     ]
    ],
    "wechat": [
     [
      "ai",
-     906.56
+     904.92
     ],
     [
      "中国",
-     657.12
+     656.0
     ],
     [
      "微信",
-     559.95
+     559.0
     ],
     [
      "经济",
-     463.56
+     462.83
     ],
     [
      "一个",
-     456.79
+     456.11
     ],
     [
      "信号",
-     444.66
+     443.97
     ],
     [
      "每日",
-     442.73
+     442.05
     ],
     [
      "新闻",
-     434.06
+     433.39
     ],
     [
      "什么",
-     420.2
+     414.55
     ],
     [
      "日经",
-     411.37
+     410.74
     ],
     [
      "微信号",
-     410.42
+     409.8
     ],
     [
      "nbdnews",
-     408.41
+     407.79
     ],
     [
      "济新",
-     408.41
+     407.79
     ],
     [
      "闻微",
-     408.41
+     407.79
     ],
     [
      "每日经",
-     408.41
+     407.79
     ],
     [
      "日经济",
-     408.41
+     407.79
     ],
     [
      "经济新",
-     408.41
+     407.79
     ],
     [
      "济新闻",
-     408.41
+     407.79
     ],
     [
      "新闻微",
-     408.41
+     407.79
     ],
     [
      "闻微信",
-     408.41
+     407.79
     ]
    ],
    "podcast": [
@@ -864,31 +864,26 @@
  },
  "rising": [
   {
-   "word": "人工",
-   "rise": 950,
-   "current_rank": 49
-  },
-  {
-   "word": "开始",
+   "word": "news",
    "rise": 949,
    "current_rank": 50
   }
  ],
  "topics": [
   {
-   "label": "审被 被判 军一",
+   "label": "军一审 一审被 审被",
    "labels": [
-    "审被",
-    "被判",
-    "军一"
+    "军一审",
+    "一审被",
+    "审被"
    ],
    "count": 10,
    "sources": [
-    "央视网",
-    "央视新闻",
-    "券商中国",
     "人民日报",
-    "央广网"
+    "券商中国",
+    "央视财经",
+    "新华社",
+    "界面新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847243&idx=1&sn=d01fa70ecfad1fa83c155340adaeb275",
@@ -907,11 +902,11 @@
    ]
   },
   {
-   "label": "瞎扯如 何正确 扯如",
+   "label": "何正确 地吐槽 瞎扯",
    "labels": [
-    "瞎扯如",
     "何正确",
-    "扯如"
+    "地吐槽",
+    "瞎扯"
    ],
    "count": 9,
    "sources": [
@@ -933,11 +928,11 @@
    ]
   },
   {
-   "label": "图卦音 频版 卦音",
+   "label": "音频版 卦音 图卦音",
    "labels": [
-    "图卦音",
-    "频版",
-    "卦音"
+    "音频版",
+    "卦音",
+    "图卦音"
    ],
    "count": 9,
    "sources": [
@@ -959,19 +954,19 @@
    ]
   },
   {
-   "label": "报非法 非法 汉通",
+   "label": "法辅 下实 地下",
    "labels": [
-    "报非法",
-    "非法",
-    "汉通"
+    "法辅",
+    "下实",
+    "地下"
    ],
    "count": 8,
    "sources": [
-    "央视新闻",
     "人民日报",
-    "央广网",
+    "半月谈",
     "央视财经",
-    "新华社"
+    "新华社",
+    "界面新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=MjM5NTE0ODc2Nw==&mid=2650978385&idx=1&sn=076d78f12885164f4be1e52be85110b1",
@@ -988,19 +983,19 @@
    ]
   },
   {
-   "label": "近平 通电 伯纳",
+   "label": "英国 首相伯 习近平",
    "labels": [
-    "近平",
-    "通电",
-    "伯纳"
+    "英国",
+    "首相伯",
+    "习近平"
    ],
    "count": 8,
    "sources": [
-    "网信中国",
-    "央视新闻",
-    "求是网",
     "券商中国",
-    "澎湃新闻"
+    "求是网",
+    "财联社",
+    "网信中国",
+    "央视新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847297&idx=1&sn=d94366929671ba6d44acf03cce92305c",
@@ -1013,24 +1008,24 @@
     "https://mp.weixin.qq.com/s?__biz=MzAwMjU0MjIyNw==&mid=2651542025&idx=1&sn=fde5bc1bfd73de6b8913b7ac88210580"
    ],
    "cats": [
-    "wechat",
-    "news"
+    "news",
+    "wechat"
    ]
   },
   {
-   "label": "特朗普 普通 京与特",
+   "label": "与特 普通 普京",
    "labels": [
-    "特朗普",
+    "与特",
     "普通",
-    "京与特"
+    "普京"
    ],
    "count": 7,
    "sources": [
-    "澎湃新闻",
     "新华社",
-    "财联社",
+    "界面新闻",
     "21世纪经济报道",
-    "界面新闻"
+    "财联社",
+    "澎湃新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847369&idx=1&sn=069535eb2b4ec1bb514d3d48a70fe848",
@@ -1042,24 +1037,24 @@
     "http://www.news.cn/20260908/6811d1fa32794b8ca7837a77abba857b/c.html"
    ],
    "cats": [
-    "wechat",
-    "news"
+    "news",
+    "wechat"
    ]
   },
   {
-   "label": "张新当 当选 新当",
+   "label": "中国羽 新当 当选",
    "labels": [
-    "张新当",
-    "当选",
-    "新当"
+    "中国羽",
+    "新当",
+    "当选"
    ],
    "count": 6,
    "sources": [
-    "央视网",
-    "央视新闻",
-    "央广网",
+    "半月谈",
     "新华社",
-    "财联社"
+    "财联社",
+    "央视网",
+    "央视新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847029&idx=1&sn=cd42dee9763fb0bded96e96f4f364f35",
@@ -1074,10 +1069,36 @@
    ]
   },
   {
-   "label": "铂程 铂程的 票圈",
+   "label": "西遂 已致人 泥石流",
    "labels": [
-    "铂程",
+    "西遂",
+    "已致人",
+    "泥石流"
+   ],
+   "count": 6,
+   "sources": [
+    "央广网",
+    "澎湃新闻",
+    "人民网",
+    "新华社"
+   ],
+   "links": [
+    "https://mp.weixin.qq.com/s?__biz=Mzg4NjcwMzI1Mg==&mid=2247934472&idx=1&sn=b79481070ca77d77aa05e4d8c9fe01a6",
+    "https://mp.weixin.qq.com/s?__biz=MzA4NDI3NjcyNA==&mid=2650236547&idx=1&sn=4e43859b7f91aad48b4886e9d4dc4e96",
+    "https://mp.weixin.qq.com/s?__biz=Mzg4NjcwMzI1Mg==&mid=2247934564&idx=1&sn=349b6fc9dc7d92f47133c587f70f6e4a",
+    "https://mp.weixin.qq.com/s?__biz=Mzg4NjcwMzI1Mg==&mid=2247934620&idx=1&sn=9fa667f760302961b67baa60d8b13852",
+    "https://mp.weixin.qq.com/s?__biz=MjM5NzI3NDg4MA==&mid=2659058203&idx=1&sn=4ff4d5c80f11136fe5dc742d661856ea",
+    "https://mp.weixin.qq.com/s?__biz=MjM5MzI5NTU3MQ==&mid=2652567013&idx=1&sn=853020717bb476b2d390fb82a64f0736"
+   ],
+   "cats": [
+    "wechat"
+   ]
+  },
+  {
+   "label": "铂程的 的票 票圈",
+   "labels": [
     "铂程的",
+    "的票",
     "票圈"
    ],
    "count": 5,
@@ -1096,18 +1117,18 @@
    ]
   },
   {
-   "label": "保姆 级教 级教程",
+   "label": "教程 astra gpt-6",
    "labels": [
-    "保姆",
-    "级教",
-    "级教程"
+    "教程",
+    "astra",
+    "gpt-6"
    ],
    "count": 5,
    "sources": [
-    "数字生命卡兹克",
     "硅星人Pro",
+    "人人都是产品经理",
     "AI Hot 精选全文",
-    "人人都是产品经理"
+    "数字生命卡兹克"
    ],
    "links": [
     "https://aihot.virxact.com/items/cmtrxbv5n02etroftlb6u96xt",
@@ -1117,50 +1138,25 @@
     "https://aihot.news/items/cmtrxbv5n02etroftlb6u96xt"
    ],
    "cats": [
-    "ai",
+    "wechat",
     "cn_tech",
-    "wechat"
+    "ai"
    ]
   },
   {
-   "label": "流已 川泥石 遇难",
+   "label": "应急管 王祥喜 理部",
    "labels": [
-    "流已",
-    "川泥石",
-    "遇难"
-   ],
-   "count": 5,
-   "sources": [
-    "新华社",
-    "澎湃新闻",
-    "人民网",
-    "央广网"
-   ],
-   "links": [
-    "https://mp.weixin.qq.com/s?__biz=Mzg4NjcwMzI1Mg==&mid=2247934472&idx=1&sn=b79481070ca77d77aa05e4d8c9fe01a6",
-    "https://mp.weixin.qq.com/s?__biz=MzA4NDI3NjcyNA==&mid=2650236547&idx=1&sn=4e43859b7f91aad48b4886e9d4dc4e96",
-    "https://mp.weixin.qq.com/s?__biz=Mzg4NjcwMzI1Mg==&mid=2247934564&idx=1&sn=349b6fc9dc7d92f47133c587f70f6e4a",
-    "https://mp.weixin.qq.com/s?__biz=MjM5NzI3NDg4MA==&mid=2659058203&idx=1&sn=4ff4d5c80f11136fe5dc742d661856ea",
-    "https://mp.weixin.qq.com/s?__biz=MjM5MzI5NTU3MQ==&mid=2652567013&idx=1&sn=853020717bb476b2d390fb82a64f0736"
-   ],
-   "cats": [
-    "wechat"
-   ]
-  },
-  {
-   "label": "王祥 部长王 被双开",
-   "labels": [
-    "王祥",
-    "部长王",
-    "被双开"
+    "应急管",
+    "王祥喜",
+    "理部"
    ],
    "count": 5,
    "sources": [
     "人民日报",
-    "央广网",
     "新华社",
+    "界面新闻",
     "人民网",
-    "界面新闻"
+    "央广网"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=MjM5NTE0ODc2Nw==&mid=2650978409&idx=2&sn=446da6f710df94a8736cad5b8f9df2ba",
@@ -1174,44 +1170,18 @@
    ]
   },
   {
-   "label": "年大奖 大奖 奖难",
+   "label": "款百万 捐款 称捐",
    "labels": [
-    "年大奖",
-    "大奖",
-    "奖难"
-   ],
-   "count": 5,
-   "sources": [
-    "OpenAI 博客",
-    "Hacker News",
-    "AI Hot 精选全文",
-    "AI Hot 7天公开池"
-   ],
-   "links": [
-    "https://aihot.news/items/cmtsynojw01xqro5wb8n7ysor",
-    "https://aihot.news/items/cmtsynojw01xrro5wz9kjm5mb",
-    "https://openai.com/index/navier-stokes-solution",
-    "https://aihot.news/items/cmtt2ugin022nrowa77wa2y2w",
-    "https://openai.com/index/navier-stokes-solution/"
-   ],
-   "cats": [
-    "ai",
-    "tech"
-   ]
-  },
-  {
-   "label": "图称捐 际只 称捐款",
-   "labels": [
-    "图称捐",
-    "际只",
-    "称捐款"
+    "款百万",
+    "捐款",
+    "称捐"
    ],
    "count": 4,
    "sources": [
-    "第一财经",
-    "人民网",
+    "南风窗",
     "环球时报",
-    "南风窗"
+    "第一财经",
+    "人民网"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=MjM5MTM3NTMwNA==&mid=2661802393&idx=1&sn=e410aa4159da0d530d9c7c668e9d63d2",
@@ -1224,18 +1194,18 @@
    ]
   },
   {
-   "label": "去世 纯去 途纯",
+   "label": "李途纯 途纯去 途纯",
    "labels": [
-    "去世",
-    "纯去",
+    "李途纯",
+    "途纯去",
     "途纯"
    ],
    "count": 4,
    "sources": [
-    "澎湃新闻",
-    "财联社",
+    "每日经济新闻",
     "中国新闻周刊",
-    "每日经济新闻"
+    "财联社",
+    "澎湃新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847215&idx=1&sn=e367f486b69da66064e406652cd7b435",
@@ -1248,18 +1218,18 @@
    ]
   },
   {
-   "label": "频号 微信回 视频号",
+   "label": "号崩 微信回 信回应",
    "labels": [
-    "频号",
+    "号崩",
     "微信回",
-    "视频号"
+    "信回应"
    ],
    "count": 4,
    "sources": [
     "央视财经",
-    "财联社",
+    "每日经济新闻",
     "界面新闻",
-    "每日经济新闻"
+    "财联社"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847210&idx=1&sn=2ad33fd55661e357ff9b7e27936a8e9f",
@@ -1272,18 +1242,18 @@
    ]
   },
   {
-   "label": "李百 李百安 安被",
+   "label": "安被 百安被 百安",
    "labels": [
-    "李百",
-    "李百安",
-    "安被"
+    "安被",
+    "百安被",
+    "百安"
    ],
    "count": 4,
    "sources": [
-    "人民网",
-    "财联社",
+    "央视新闻",
     "人民日报",
-    "央视新闻"
+    "财联社",
+    "人民网"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247847188&idx=1&sn=22fc9c59486fcc3e418a1f3e8a2309fb",
@@ -1296,18 +1266,18 @@
    ]
   },
   {
-   "label": "王祥 被双开 被双",
+   "label": "王祥喜 王祥 被双",
    "labels": [
+    "王祥喜",
     "王祥",
-    "被双开",
     "被双"
    ],
    "count": 4,
    "sources": [
     "央视财经",
     "澎湃新闻",
-    "央视新闻",
-    "央视网"
+    "央视网",
+    "央视新闻"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=MjM5MzI5NTU3MQ==&mid=2652566964&idx=2&sn=919e08e596db134468d36cf38a09e152",
@@ -1320,39 +1290,42 @@
    ]
   },
   {
-   "label": "郑钦 再次大 文再",
+   "label": "纳维 千禧 斯托克",
    "labels": [
-    "郑钦",
-    "再次大",
-    "文再"
+    "纳维",
+    "千禧",
+    "斯托克"
    ],
-   "count": 3,
+   "count": 4,
    "sources": [
-    "新华社",
-    "财联社",
-    "半月谈"
+    "AI Hot 7天公开池",
+    "Hacker News",
+    "r/artificial",
+    "OpenAI 博客"
    ],
    "links": [
-    "https://mp.weixin.qq.com/s?__biz=Mzg5MzEyNzEwNQ==&mid=2247846924&idx=1&sn=7dcb796a6510feb3e6346f6b8618032a",
-    "https://mp.weixin.qq.com/s?__biz=MzA4NDI3NjcyNA==&mid=2650236307&idx=1&sn=66817acbf9cb737e317fdebc242bb5ac",
-    "https://mp.weixin.qq.com/s?__biz=MjM5OTU4Nzc0Mg==&mid=2659048880&idx=1&sn=3475b0cde84a6af3bfd915d9424ba79f"
+    "https://openai.com/index/navier-stokes-solution",
+    "https://www.reddit.com/r/artificial/comments/1waw0vv/navierstokes_millennium_prize_problem_solved/",
+    "https://aihot.news/items/cmtt2pvlb020crowabx49zakb",
+    "https://openai.com/index/navier-stokes-solution/"
    ],
    "cats": [
-    "wechat"
+    "tech",
+    "ai"
    ]
   },
   {
-   "label": "后女演 女演员 我季",
+   "label": "还我 女演员 道歉",
    "labels": [
-    "后女演",
+    "还我",
     "女演员",
-    "我季"
+    "道歉"
    ],
    "count": 3,
    "sources": [
-    "第一财经",
+    "中国新闻周刊",
     "环球时报",
-    "中国新闻周刊"
+    "第一财经"
    ],
    "links": [
     "https://mp.weixin.qq.com/s?__biz=MjM5MDU1Mzg3Mw==&mid=2651752354&idx=1&sn=4e85289418f11a04feaa6ee2642c36ea",
@@ -1364,16 +1337,16 @@
    ]
   },
   {
-   "label": "官方 家取消 生追",
+   "label": "关注 低保引 官方通",
    "labels": [
-    "官方",
-    "家取消",
-    "生追"
+    "关注",
+    "低保引",
+    "官方通"
    ],
    "count": 3,
    "sources": [
-    "半月谈",
     "人民日报",
+    "半月谈",
     "人民网"
    ],
    "links": [
@@ -1384,17 +1357,39 @@
    "cats": [
     "wechat"
    ]
+  },
+  {
+   "label": "郑钦文 郑钦 钦文",
+   "labels": [
+    "郑钦文",
+    "郑钦",
+    "钦文"
+   ],
+   "count": 3,
+   "sources": [
+    "南风窗",
+    "界面新闻",
+    "央视网"
+   ],
+   "links": [
+    "https://mp.weixin.qq.com/s?__biz=MjM5NTE0ODc2Nw==&mid=2650978113&idx=1&sn=6c44b35e01d31ca38ea9d04e85252824",
+    "https://mp.weixin.qq.com/s?__biz=Mzg2Nzc0MDM3Nw==&mid=2248524588&idx=2&sn=46713bca953e4b2696b16b242f972e48",
+    "https://mp.weixin.qq.com/s?__biz=MjM5NzI1MTY0MQ==&mid=2655477334&idx=2&sn=cb9dfbc8203b58e18f1ccb03021322f8"
+   ],
+   "cats": [
+    "wechat"
+   ]
   }
  ],
  "summary": {
-  "core_trends": "近24小时AI技术话题主导舆论场，关键词“AI”“模型”“智能”高频出现。文章总量超6600篇，增量显著，显示科技与产业动态正快速发酵，公众关注度集中于人工智能应用与中国科技主体。",
-  "signals": "“人工”与“开始”两词大幅升温，分别上升950和949位，提示可能涉及“人工智能起步”或“新一轮自动化启动”的重大事件正在被密集讨论，需警惕概念炒作或政策落地前的舆情预热。",
-  "rss_insights": "热点话题中“报非法”“张新当”“铂程”等词出现，暗示可能关联数据合规、企业监管或特定科技从业者争议；“审被”“近平”等词进入视野，反映舆情正从纯技术向治理与伦理层面延伸。",
-  "outlook": "建议关注AI监管政策动向及头部科技公司动态；警惕以“人工+开始”为借口的伪创新营销，同时留意潜在的数据安全与合规风险案例。"
+  "core_trends": "核心态势: 数据噪点极高，缺乏有效内容特征。关键词多为停用词或无关字符，显示信源质量低下或抓取异常，暂无明确宏观主线。",
+  "signals": "异动信号: 关键词news大幅升温(+949)，但缺乏具体事件语境，疑似无效抓取。话题簇命名残缺（如'军一审'、'何正确'），信息可辨识度极低。",
+  "rss_insights": "RSS深度洞察: 716个信源中有效信息占比极低，TF-IDF未能提取实质语义。建议排查信源健康度及分词器配置，当前数据对决策无参考意义。",
+  "outlook": "研判建议: 暂缓分析，优先清洗数据源或更新关键词过滤规则，排除噪声干扰后再行研判。"
  },
  "stats": {
-  "total_articles": 6672,
-  "recent_count": 2382,
+  "total_articles": 6660,
+  "recent_count": 2359,
   "source_count": 716
  },
  "quality": {
@@ -1416,7 +1411,7 @@
   "mcp_spec_rel_18": 0,
   "mcp_servers_rel_19": 0,
   "aihot_summary_20": 0,
-  "aihot_full_21": 89.2,
+  "aihot_full_21": 89.4,
   "aihot_pool_22": 85.0,
   "reddit_ml_103": 80.0,
   "reddit_localllama_104": 80.0,
@@ -1472,7 +1467,7 @@
   "钛媒体_38": 82.6,
   "人人都是产品经理_39": 100.0,
   "cnbeta_41": 85.0,
-  "v2ex技术_44": 75.2,
+  "v2ex技术_44": 75.1,
   "阮一峰的网络日志_0": 60.0,
   "太隐_4": 0,
   "云风的blog_5": 0,
@@ -1507,7 +1502,7 @@
   "王登科dk_43": 0,
   "小胡子哥_44": 98.8,
   "dbanotes_45": 0,
-  "v2ex_all_50": 76.7,
+  "v2ex_all_50": 76.8,
   "v2ex_new_51": 71.3,
   "v2ex_creative_52": 78.9,
   "v2ex_play_53": 75.8,
@@ -1760,7 +1755,7 @@
   "网信中国_202": 80.0,
   "网信北京_203": 70.0,
   "公安部网安局_204": 65.0,
-  "方伟看十年_205": 60.0,
+  "方伟看十年_205": 57.5,
   "写代码的宝哥_206": 65.0,
   "phodal_207": 57.5,
   "毛有话说_208": 0,
@@ -1824,10 +1819,10 @@
   "cctv生活圈_266": 70.0,
   "每晚一卷书_267": 75.0,
   "看理想_268": 60.0,
-  "罗辑思维_269": 73.3,
+  "罗辑思维_269": 70.0,
   "叶檀财经_270": 60.0,
   "张湧说财经_271": 70.0,
-  "wind万得_272": 67.5,
+  "wind万得_272": 65.0,
   "功夫财经_273": 70.0,
   "混知_274": 60.0,
   "科技美学_275": 84.0,
@@ -2023,7 +2018,7 @@
   "runway_30": 0,
   "siraj_raval_31": 0,
   "tao_prompts_32": 42.5,
-  "the_ai_advantage_33": 50.0,
+  "the_ai_advantage_33": 47.5,
   "tina_huang_34": 0,
   "two_minute_papers_35": 42.5,
   "unsupervised_learning:_redpoin_36": 0,
@@ -2036,11 +2031,11 @@
   "all-in_podcast_43": 52.5,
   "better_ideas_44": 0,
   "branch_education_45": 0,
-  "business_insider_46": 62.5,
+  "business_insider_46": 60.0,
   "coldfusion_47": 47.5,
   "core_memory_podcast_48": 50.0,
   "crashcourse_49": 0,
-  "curious_refuge_50": 50.0,
+  "curious_refuge_50": 47.5,
   "dwarkesh_patel_51": 42.5,
   "eo_52": 0,
   "google_53": 55.0,
@@ -2049,7 +2044,7 @@
   "kurzgesagt_-_in_a_nutshell_56": 55.0,
   "lex_fridman_57": 0,
   "luma_58": 42.5,
-  "my_first_million_59": 62.5,
+  "my_first_million_59": 60.0,
   "naval_60": 0,
   "nikhil_kamath_61": 60.0,
   "sabin_civil_engineering_62": 0,
@@ -2067,7 +2062,7 @@
   "companyman_74": 0,
   "mrblock_區塊先生_75": 52.5,
   "struthless_76": 50.0,
-  "patrick_boyle_77": 55.0,
+  "patrick_boyle_77": 52.5,
   "sequoia_capital_78": 45.0,
   "andrew_huberman_79": 42.5,
   "chris_williamson_80": 65.0,
@@ -2084,14 +2079,14 @@
   "designerup_91": 0,
   "figma_92": 55.0,
   "first_of_kind_93": 0,
-  "flux_academy_94": 50.0,
+  "flux_academy_94": 47.5,
   "lenny's_podcast_95": 60.0,
   "mind_the_product_96": 45.0,
   "nngroup_97": 45.0,
-  "product_school_98": 47.5,
+  "product_school_98": 45.0,
   "the_futur_99": 45.0,
-  "yobi321_100": 60.0,
-  "3blue1brown_101": 57.5,
+  "yobi321_100": 57.5,
+  "3blue1brown_101": 55.0,
   "ali_abdaal_102": 42.5,
   "anthony_vicino_103": 42.5,
   "justin_sung_104": 42.5,
@@ -2106,7 +2101,7 @@
   "github_113": 52.5,
   "hussein_nasser_114": 0,
   "modern_software_engineering_115": 42.5,
-  "real_engineering_116": 55.0,
+  "real_engineering_116": 52.5,
   "ryan_peterman_117": 60.0,
   "spring_i_o_118": 42.5,
   "the_pragmatic_engineer_119": 0,
@@ -2138,49 +2133,49 @@
     "rise": 0,
     "duration": 1
    },
-   "意识到婴儿行为不可预测的猫": {
+   "医生眼里让大脑休息最好的方法": {
     "trend": "new",
     "curr_rank": 4,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "医生眼里让大脑休息最好的方法": {
+   "意识到婴儿行为不可预测的猫": {
     "trend": "new",
     "curr_rank": 5,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "萨巴伦卡连续6年进美网四强": {
+   "早春晴朗原版台词 只是睡了6年": {
     "trend": "new",
     "curr_rank": 6,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "郑钦文 冲击美网四强": {
+   "金球奖": {
     "trend": "new",
     "curr_rank": 7,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "吃紧急避孕药时机真的很关键": {
+   "00后现状怎么做到全国统一的": {
     "trend": "new",
     "curr_rank": 8,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "Crisp力挺TheShy": {
+   "萨巴伦卡连续6年进美网四强": {
     "trend": "new",
     "curr_rank": 9,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "金球奖": {
+   "苹果用户换华为": {
     "trend": "new",
     "curr_rank": 10,
     "prev_rank": null,
@@ -2224,14 +2219,14 @@
     "rise": 0,
     "duration": 1
    },
-   "怎么看  OpenAI 在 Navier–Stokes 数学难题上取得的进展反而出现争议？": {
+   "近期不少医院医生挂号页面出现「医保扣分情况」介绍，这是什么意思？": {
     "trend": "new",
     "curr_rank": 6,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "近期不少医院医生挂号页面出现「医保扣分情况」介绍，这是什么意思？": {
+   "怎么看  OpenAI 在 Navier–Stokes 数学难题上取得的进展反而出现争议？": {
     "trend": "new",
     "curr_rank": 7,
     "prev_rank": null,
@@ -2245,14 +2240,14 @@
     "rise": 0,
     "duration": 1
    },
-   "律师称深圳富豪夫妻联手送小三进监狱，致其被判 14 年，指控判决存在程序违规，如何从法律角度解读？": {
+   "《欢迎来龙餐馆》为什么袭击的时候偏偏留了老扎一命？": {
     "trend": "new",
     "curr_rank": 9,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "《欢迎来龙餐馆》为什么袭击的时候偏偏留了老扎一命？": {
+   "律师称深圳富豪夫妻联手送小三进监狱，致其被判 14 年，指控判决存在程序违规，如何从法律角度解读？": {
     "trend": "new",
     "curr_rank": 10,
     "prev_rank": null,
@@ -2333,28 +2328,28 @@
    }
   },
   "bilibili": {
-   "IG面对LCK胜率几何": {
+   "时之笛重制版定档实机": {
     "trend": "new",
     "curr_rank": 1,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "OpenAI或证明数学七大难题之一": {
+   "ChinaGT事故有标准答案吗": {
     "trend": "new",
     "curr_rank": 2,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "ChinaGT事故有标准答案吗": {
+   "美军航母停靠暴露哪些门道": {
     "trend": "new",
     "curr_rank": 3,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "时之笛重制版定档实机": {
+   "IG面对LCK胜率几何": {
     "trend": "new",
     "curr_rank": 4,
     "prev_rank": null,
@@ -2368,28 +2363,28 @@
     "rise": 0,
     "duration": 1
    },
-   "歌剧老师锐评披哥二公": {
+   "英伟达将推出GB203版本5070": {
     "trend": "new",
     "curr_rank": 6,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "英伟达将推出GB203版本5070": {
+   "OpenAI或证明数学七大难题之一": {
     "trend": "new",
     "curr_rank": 7,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "详解德国选择党历史性大胜": {
+   "美国克兰西案审判难在哪": {
     "trend": "new",
     "curr_rank": 8,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "BE手书的专属曲来了": {
+   "歌剧老师锐评披哥二公": {
     "trend": "new",
     "curr_rank": 9,
     "prev_rank": null,
@@ -2405,14 +2400,14 @@
    }
   },
   "douyin": {
-   "送你一口秋天味道": {
+   "日美韩东海开展联合军事演习": {
     "trend": "new",
     "curr_rank": 1,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "跑步可以治愈一切": {
+   "送你一口秋天味道": {
     "trend": "new",
     "curr_rank": 2,
     "prev_rank": null,
@@ -2426,21 +2421,21 @@
     "rise": 0,
     "duration": 1
    },
-   "初代神图全靠手抖出片": {
+   "跑步可以治愈一切": {
     "trend": "new",
     "curr_rank": 4,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "秋一下才对味": {
+   "初代神图全靠手抖出片": {
     "trend": "new",
     "curr_rank": 5,
     "prev_rank": null,
     "rise": 0,
     "duration": 1
    },
-   "写给老师的教师节贺卡": {
+   "秋一下才对味": {
     "trend": "new",
     "curr_rank": 6,
     "prev_rank": null,
@@ -2461,7 +2456,7 @@
     "rise": 0,
     "duration": 1
    },
-   "日美韩东海开展联合军事演习": {
+   "写给老师的教师节贺卡": {
     "trend": "new",
     "curr_rank": 9,
     "prev_rank": null,
@@ -2509,137 +2504,113 @@
  ],
  "rss_trajectories": {
   "keywords": {
-   "问题": {
+   "这个": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 17,
-    "duration": 10
+    "latest_rank": 43,
+    "duration": 11
    },
-   "agent": {
+   "openai": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 27,
-    "duration": 10
-   },
-   "可以": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 18,
-    "duration": 10
-   },
-   "支持": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-09T00:12:34.362836+08:00",
-    "latest_rank": 40,
-    "duration": 2
-   },
-   "月日": {
-    "lifecycle": "peaking",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 5,
-    "duration": 10
-   },
-   "数据": {
-    "lifecycle": "rising",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 20,
-    "duration": 10
+    "latest_rank": 39,
+    "duration": 11
    },
    "https": {
     "lifecycle": "peaking",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 10,
-    "duration": 10
+    "latest_rank": 9,
+    "duration": 11
    },
-   "新闻": {
-    "lifecycle": "declining",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 47,
-    "duration": 10
-   },
-   "市场": {
-    "lifecycle": "rising",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 35,
-    "duration": 5
-   },
-   "技术": {
+   "发布": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 30,
-    "duration": 10
+    "latest_rank": 13,
+    "duration": 11
    },
-   "了一": {
+   "网址": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 21,
-    "duration": 10
-   },
-   "什么": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 12,
-    "duration": 10
+    "latest_rank": 23,
+    "duration": 11
    },
    "已经": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 38,
-    "duration": 10
+    "latest_rank": 36,
+    "duration": 11
    },
-   "表示": {
+   "美元": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 37,
-    "duration": 10
+    "latest_rank": 32,
+    "duration": 11
    },
-   "com": {
-    "lifecycle": "peaking",
+   "正在": {
+    "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 9,
-    "duration": 10
+    "latest_rank": 40,
+    "duration": 11
+   },
+   "市场": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 35,
+    "duration": 6
    },
    "企业": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
     "latest_rank": 25,
-    "duration": 10
+    "duration": 11
    },
-   "这个": {
-    "lifecycle": "declining",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 43,
-    "duration": 10
-   },
-   "不是": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-09T00:12:34.362836+08:00",
-    "latest_rank": null,
-    "duration": 0
-   },
-   "公司": {
+   "智能": {
     "lifecycle": "peaking",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 8,
-    "duration": 10
+    "latest_rank": 7,
+    "duration": 11
+   },
+   "中国": {
+    "lifecycle": "peaking",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 4,
+    "duration": 11
+   },
+   "研究": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 33,
+    "duration": 11
+   },
+   "news": {
+    "lifecycle": "emergent",
+    "first_seen": "2026-09-09T07:04:55.998030+08:00",
+    "latest_rank": 50,
+    "duration": 1
    },
    "世界": {
-    "lifecycle": "stable",
+    "lifecycle": "declining",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 29,
-    "duration": 10
+    "latest_rank": 31,
+    "duration": 11
    },
-   "网址": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 22,
-    "duration": 10
-   },
-   "一个": {
+   "香港": {
     "lifecycle": "peaking",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 2,
-    "duration": 10
+    "latest_rank": 5,
+    "duration": 11
+   },
+   "ai": {
+    "lifecycle": "peaking",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 1,
+    "duration": 11
+   },
+   "了一": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 21,
+    "duration": 11
    },
    "器人": {
     "lifecycle": "stable",
@@ -2647,155 +2618,119 @@
     "latest_rank": null,
     "duration": 0
    },
-   "智能": {
-    "lifecycle": "peaking",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 7,
-    "duration": 10
-   },
-   "产品": {
+   "我们": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 15,
-    "duration": 10
+    "latest_rank": 14,
+    "duration": 11
    },
-   "发布": {
+   "问题": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 13,
-    "duration": 10
+    "latest_rank": 17,
+    "duration": 11
    },
-   "没有": {
+   "工作": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 24,
+    "duration": 11
+   },
+   "新闻": {
     "lifecycle": "declining",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 19,
-    "duration": 10
-   },
-   "美国": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 16,
-    "duration": 10
-   },
-   "评论": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 11,
-    "duration": 10
-   },
-   "使用": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 28,
-    "duration": 10
-   },
-   "自己": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 31,
-    "duration": 10
-   },
-   "全球": {
-    "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
     "latest_rank": 48,
-    "duration": 6
-   },
-   "系统": {
-    "lifecycle": "rising",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 34,
-    "duration": 10
-   },
-   "机器": {
-    "lifecycle": "declining",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 36,
-    "duration": 10
+    "duration": 11
    },
    "用户": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 24,
-    "duration": 10
+    "latest_rank": 22,
+    "duration": 11
    },
-   "研究": {
+   "可以": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 33,
-    "duration": 10
+    "latest_rank": 19,
+    "duration": 11
    },
-   "正在": {
+   "技术": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 41,
-    "duration": 10
+    "latest_rank": 30,
+    "duration": 11
    },
-   "人工": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 49,
-    "duration": 1
-   },
-   "香港": {
+   "公司": {
     "lifecycle": "peaking",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 6,
-    "duration": 10
-   },
-   "如何": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 42,
-    "duration": 10
-   },
-   "可能": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 26,
-    "duration": 10
+    "latest_rank": 10,
+    "duration": 11
    },
    "模型": {
     "lifecycle": "peaking",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
     "latest_rank": 3,
-    "duration": 10
+    "duration": 11
    },
-   "美元": {
+   "如何": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 32,
-    "duration": 10
+    "latest_rank": 42,
+    "duration": 11
    },
-   "是一": {
+   "表示": {
+    "lifecycle": "declining",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 38,
+    "duration": 11
+   },
+   "人工": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 44,
-    "duration": 10
-   },
-   "工作": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 23,
-    "duration": 10
-   },
-   "开始": {
-    "lifecycle": "stable",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 50,
-    "duration": 1
-   },
-   "视频": {
-    "lifecycle": "rising",
-    "first_seen": "2026-09-09T05:15:06.342698+08:00",
-    "latest_rank": 46,
+    "latest_rank": 49,
     "duration": 2
    },
-   "中国": {
-    "lifecycle": "peaking",
+   "美国": {
+    "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 4,
-    "duration": 10
+    "latest_rank": 15,
+    "duration": 11
+   },
+   "自己": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 29,
+    "duration": 11
+   },
+   "agent": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 27,
+    "duration": 11
+   },
+   "com": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 11,
+    "duration": 11
+   },
+   "没有": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 18,
+    "duration": 11
+   },
+   "可能": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 26,
+    "duration": 11
+   },
+   "支持": {
+    "lifecycle": "declining",
+    "first_seen": "2026-09-09T00:12:34.362836+08:00",
+    "latest_rank": 41,
+    "duration": 3
    },
    "机器人": {
     "lifecycle": "stable",
@@ -2803,151 +2738,217 @@
     "latest_rank": null,
     "duration": 0
    },
-   "ai": {
-    "lifecycle": "peaking",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 1,
-    "duration": 10
-   },
-   "openai": {
-    "lifecycle": "rising",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 39,
-    "duration": 10
-   },
    "时间": {
-    "lifecycle": "rising",
-    "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 45,
-    "duration": 10
-   },
-   "我们": {
     "lifecycle": "stable",
     "first_seen": "2026-09-08T22:28:52.211681+08:00",
-    "latest_rank": 14,
-    "duration": 10
+    "latest_rank": 46,
+    "duration": 11
+   },
+   "产品": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 16,
+    "duration": 11
+   },
+   "什么": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 12,
+    "duration": 11
+   },
+   "数据": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 20,
+    "duration": 11
+   },
+   "月日": {
+    "lifecycle": "peaking",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 6,
+    "duration": 11
+   },
+   "不是": {
+    "lifecycle": "gone",
+    "first_seen": "2026-09-09T00:12:34.362836+08:00",
+    "latest_rank": null,
+    "duration": 0
+   },
+   "机器": {
+    "lifecycle": "declining",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 37,
+    "duration": 11
+   },
+   "使用": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 28,
+    "duration": 11
+   },
+   "一个": {
+    "lifecycle": "peaking",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 2,
+    "duration": 11
+   },
+   "全球": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 47,
+    "duration": 7
+   },
+   "开始": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": null,
+    "duration": 0
+   },
+   "视频": {
+    "lifecycle": "rising",
+    "first_seen": "2026-09-09T05:15:06.342698+08:00",
+    "latest_rank": 45,
+    "duration": 3
+   },
+   "评论": {
+    "lifecycle": "peaking",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 8,
+    "duration": 11
+   },
+   "系统": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 34,
+    "duration": 11
+   },
+   "是一": {
+    "lifecycle": "stable",
+    "first_seen": "2026-09-08T22:28:52.211681+08:00",
+    "latest_rank": 44,
+    "duration": 11
    }
   },
   "topics": {
-   "审被 被判 军一": {
+   "军一审 一审被 审被": {
     "lifecycle": "emerging",
     "latest_count": 10,
     "peak_count": 10,
     "duration": 1
    },
-   "瞎扯如 何正确 扯如": {
+   "何正确 地吐槽 瞎扯": {
     "lifecycle": "cooling",
     "latest_count": 9,
     "peak_count": 9,
+    "duration": 3
+   },
+   "音频版 卦音 图卦音": {
+    "lifecycle": "cooling",
+    "latest_count": 9,
+    "peak_count": 9,
+    "duration": 5
+   },
+   "法辅 下实 地下": {
+    "lifecycle": "emerging",
+    "latest_count": 8,
+    "peak_count": 8,
     "duration": 2
    },
-   "图卦音 频版 卦音": {
-    "lifecycle": "cooling",
-    "latest_count": 9,
-    "peak_count": 9,
-    "duration": 9
-   },
-   "报非法 非法 汉通": {
+   "英国 首相伯 习近平": {
     "lifecycle": "emerging",
     "latest_count": 8,
     "peak_count": 8,
     "duration": 1
    },
-   "近平 通电 伯纳": {
-    "lifecycle": "emerging",
-    "latest_count": 8,
-    "peak_count": 8,
-    "duration": 1
-   },
-   "特朗普 普通 京与特": {
+   "与特 普通 普京": {
     "lifecycle": "emerging",
     "latest_count": 7,
     "peak_count": 7,
     "duration": 1
    },
-   "张新当 当选 新当": {
+   "中国羽 新当 当选": {
+    "lifecycle": "cooling",
+    "latest_count": 6,
+    "peak_count": 6,
+    "duration": 4
+   },
+   "西遂 已致人 泥石流": {
     "lifecycle": "cooling",
     "latest_count": 6,
     "peak_count": 6,
     "duration": 2
    },
-   "铂程 铂程的 票圈": {
+   "铂程的 的票 票圈": {
     "lifecycle": "cooling",
     "latest_count": 5,
     "peak_count": 5,
-    "duration": 5
+    "duration": 8
    },
-   "保姆 级教 级教程": {
-    "lifecycle": "cooling",
-    "latest_count": 5,
-    "peak_count": 5,
-    "duration": 3
-   },
-   "流已 川泥石 遇难": {
+   "教程 astra gpt-6": {
     "lifecycle": "emerging",
     "latest_count": 5,
     "peak_count": 5,
     "duration": 1
    },
-   "王祥 部长王 被双开": {
+   "应急管 王祥喜 理部": {
     "lifecycle": "emerging",
     "latest_count": 5,
     "peak_count": 5,
     "duration": 1
    },
-   "年大奖 大奖 奖难": {
+   "款百万 捐款 称捐": {
     "lifecycle": "emerging",
-    "latest_count": 5,
-    "peak_count": 5,
-    "duration": 1
-   },
-   "图称捐 际只 称捐款": {
-    "lifecycle": "cooling",
     "latest_count": 4,
     "peak_count": 4,
-    "duration": 3
+    "duration": 1
    },
-   "去世 纯去 途纯": {
+   "李途纯 途纯去 途纯": {
     "lifecycle": "cooling",
     "latest_count": 4,
     "peak_count": 4,
     "duration": 2
    },
-   "频号 微信回 视频号": {
+   "号崩 微信回 信回应": {
+    "lifecycle": "cooling",
+    "latest_count": 4,
+    "peak_count": 4,
+    "duration": 2
+   },
+   "安被 百安被 百安": {
+    "lifecycle": "cooling",
+    "latest_count": 4,
+    "peak_count": 4,
+    "duration": 2
+   },
+   "王祥喜 王祥 被双": {
+    "lifecycle": "cooling",
+    "latest_count": 4,
+    "peak_count": 4,
+    "duration": 4
+   },
+   "纳维 千禧 斯托克": {
     "lifecycle": "emerging",
     "latest_count": 4,
     "peak_count": 4,
     "duration": 1
    },
-   "李百 李百安 安被": {
-    "lifecycle": "cooling",
-    "latest_count": 4,
-    "peak_count": 4,
-    "duration": 3
+   "还我 女演员 道歉": {
+    "lifecycle": "emerging",
+    "latest_count": 3,
+    "peak_count": 3,
+    "duration": 1
    },
-   "王祥 被双开 被双": {
-    "lifecycle": "cooling",
-    "latest_count": 4,
-    "peak_count": 4,
-    "duration": 3
-   },
-   "郑钦 再次大 文再": {
+   "关注 低保引 官方通": {
     "lifecycle": "cooling",
     "latest_count": 3,
     "peak_count": 3,
     "duration": 2
    },
-   "后女演 女演员 我季": {
+   "郑钦文 郑钦 钦文": {
     "lifecycle": "cooling",
     "latest_count": 3,
     "peak_count": 3,
-    "duration": 3
-   },
-   "官方 家取消 生追": {
-    "lifecycle": "emerging",
-    "latest_count": 3,
-    "peak_count": 3,
-    "duration": 1
+    "duration": 2
    }
   }
  },
@@ -2978,42 +2979,12 @@
    "category_count": 6
   },
   {
-   "keyword": "什么",
-   "categories": [
-    "cn_tech",
-    "podcast",
-    "wechat",
-    "youtube"
-   ],
-   "category_count": 4
-  },
-  {
-   "keyword": "公司",
-   "categories": [
-    "cn_tech",
-    "news",
-    "podcast",
-    "tech"
-   ],
-   "category_count": 4
-  },
-  {
    "keyword": "智能",
    "categories": [
     "ai",
     "cn_tech",
     "tech",
     "youtube"
-   ],
-   "category_count": 4
-  },
-  {
-   "keyword": "模型",
-   "categories": [
-    "ai",
-    "cn_tech",
-    "podcast",
-    "tech"
    ],
    "category_count": 4
   },
@@ -3028,6 +2999,36 @@
    "category_count": 4
   },
   {
+   "keyword": "公司",
+   "categories": [
+    "cn_tech",
+    "news",
+    "podcast",
+    "tech"
+   ],
+   "category_count": 4
+  },
+  {
+   "keyword": "模型",
+   "categories": [
+    "ai",
+    "cn_tech",
+    "podcast",
+    "tech"
+   ],
+   "category_count": 4
+  },
+  {
+   "keyword": "什么",
+   "categories": [
+    "cn_tech",
+    "podcast",
+    "wechat",
+    "youtube"
+   ],
+   "category_count": 4
+  },
+  {
    "keyword": "com",
    "categories": [
     "ai",
@@ -3036,15 +3037,6 @@
     "tech"
    ],
    "category_count": 4
-  },
-  {
-   "keyword": "news",
-   "categories": [
-    "ai",
-    "dev",
-    "tech"
-   ],
-   "category_count": 3
   },
   {
    "keyword": "https",
@@ -3057,6 +3049,15 @@
   },
   {
    "keyword": "网址",
+   "categories": [
+    "ai",
+    "dev",
+    "tech"
+   ],
+   "category_count": 3
+  },
+  {
+   "keyword": "news",
    "categories": [
     "ai",
     "dev",
@@ -3131,7 +3132,7 @@
    "category_count": 2
   },
   {
-   "keyword": "人工智",
+   "keyword": "工智",
    "categories": [
     "tech",
     "youtube"
