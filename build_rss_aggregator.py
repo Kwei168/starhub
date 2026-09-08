@@ -3713,8 +3713,9 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function _translateAfItems(){
     var toTranslate = afItems.filter(function(it){ return !it._zh && _needsTranslation(it.title); });
     if(!toTranslate.length) return;
-    // Agnes \u6279\u91cf\u5e76\u884c\uff1a\u6bcf\u6279 15 \u6761\uff08\u4e0e api/translate \u4e0a\u9650\u5339\u914d\uff09\uff0c\u6700\u591a 3 \u6279\uff0c\u5355\u6279 8s \u8d85\u65f6
-    var batches = []; for(var i=0;i<toTranslate.length && batches.length<3;i+=15) batches.push(toTranslate.slice(i,i+15));
+    // Agnes 批量并行：每批 15 条（与 api/translate 限制匹配），最多 8 批（120 条，覆盖 AIHOT+AGI 全量），单批 8s 超时
+    // 旧版 3 批上限导致超出 45 条的部分只能走 Google 降级，而 GTX 端点在浏览器端必遭 CORS 拦截 → 永久英文
+    var batches = []; for(var i=0;i<toTranslate.length && batches.length<8;i+=15) batches.push(toTranslate.slice(i,i+15));
     var pending = batches.length, applied = 0;
     batches.forEach(function(batch){
       var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
