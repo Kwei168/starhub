@@ -2544,6 +2544,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
     }
     wall.innerHTML=h;
     wallLimit=end;
+    _scheduleWallTranslate();
   }
   /* 轻量更新：仅更新卡片已读/打开状态的 CSS 类，不重建 DOM */
   function updateCardStates(){
@@ -2851,26 +2852,48 @@ def _build_js(sources_with_items, build_ts_ms=0):
 
   /* ── Client translate ── */
   var _ctCache={},_ctPend={};
+  /* 全文/摘要翻译：首选 Agnes API（服务端代理，密钥不落前端，GFW 友好），
+     失败块降级 Google GTX，最终兜底原文。旧版直连 googleapis 必遭 CORS/GFW 拦截，
+     catch 静默回退原文导致「翻译」按钮看似无反应，已废弃。 */
   function _clientTranslate(text,cb){
     if(!text||isMostlyZh(text)){cb(text);return;}
     var k=text.substring(0,100);
     if(_ctCache[k]){cb(_ctCache[k]);return;}
     if(_ctPend[k]){_ctPend[k].push(cb);return;}
     _ctPend[k]=[cb];
-    /* 长文本分块翻译：每块 450 字，串行拼接 */
+    /* 长文本分块翻译：每块 450 字，Agnes 每请求 ≤20 块，批间串行 */
     var chunks=[],pos=0;
     while(pos<text.length){var end=Math.min(pos+450,text.length);chunks.push(text.substring(pos,end));pos=end;}
-    var results=[],done=0;
-    function _next(i){
-      if(i>=chunks.length){var tr=results.join('');_ctCache[k]=tr;var p=_ctPend[k]||[];delete _ctPend[k];p.forEach(function(f){f(tr);});return;}
-      var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(chunks[i]);
-      fetch(url).then(function(r){return r.json();}).then(function(d){
-        var res='';if(d&&d[0])for(var j=0;j<d[0].length;j++)if(d[0][j]&&d[0][j][0])res+=d[0][j][0];
-        results.push((res&&res.length>chunks[i].length*0.3)?res:chunks[i]);
-        _next(i+1);
-      }).catch(function(){results.push(chunks[i]);_next(i+1);});
+    var _finished=0;
+    function _finish(tr){ if(_finished) return; _finished=1; _ctCache[k]=tr; var p=_ctPend[k]||[]; delete _ctPend[k]; p.forEach(function(f){f(tr);}); }
+    function _googlePatch(failIdx){
+      if(!failIdx.length){_finish(chunks.join(''));return;}
+      var done=0;
+      failIdx.forEach(function(i){
+        var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(chunks[i]);
+        fetch(url).then(function(r){return r.json();}).then(function(d){
+          var res='';if(d&&d[0])for(var j=0;j<d[0].length;j++)if(d[0][j]&&d[0][j][0])res+=d[0][j][0];
+          chunks[i]=(res&&res.length>chunks[i].length*0.3)?res:chunks[i];
+          if(++done===failIdx.length)_finish(chunks.join(''));
+        }).catch(function(){if(++done===failIdx.length)_finish(chunks.join(''));});
+      });
     }
-    _next(0);
+    var anyFail=0,failIdx=[];
+    (function _agiBatch(bi){
+      if(_finished) return;
+      var start=bi*20,end=Math.min(start+20,chunks.length);
+      if(start>=chunks.length){ if(anyFail)_googlePatch(failIdx); else _finish(chunks.join('')); return; }
+      var ctrl=(typeof AbortController==='function')?new AbortController():null;
+      var tmr=ctrl?setTimeout(function(){ctrl.abort();},10000):null;
+      fetch(AGNES_TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:chunks.slice(start,end)}),signal:ctrl?ctrl.signal:undefined})
+      .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('http '+r.status)); })
+      .then(function(j){
+        if(!j||!j.ok||!j.translations||j.translations.length!==(end-start)) throw new Error('bad payload');
+        for(var i=start;i<end;i++){ var t=(j.translations[i-start]||'').trim(); if(t)chunks[i]=t; else failIdx.push(i); }
+        if(failIdx.length)anyFail=1;
+        _agiBatch(bi+1);
+      }).catch(function(){ if(tmr)clearTimeout(tmr); for(var i=start;i<end;i++)failIdx.push(i); anyFail=1; _agiBatch(bi+1); });
+    })(0);
   }
 
   // ── OPML export ──
@@ -3259,7 +3282,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
   }
 
   /* QR 库已构建时内嵌（typeof qrcode==='function' 即同步可用）；
-     此函数仅作为内嵌缺失时的 CDN 兑底，带 8s 超时防止 CDN 挂起 */
+     此函数仅作为内嵌缺失时的 CDN 兜底，带 8s 超时防止 CDN 挂起 */
   function loadQRLib(){
     if(_qrLoaded) return Promise.resolve();
     return new Promise(function(resolve,reject){
@@ -3742,6 +3765,79 @@ def _build_js(sources_with_items, build_ts_ms=0):
       }).catch(function(){ if(tmr) clearTimeout(tmr); if(++done >= chunks.length) _renderAll(); });
     });
   }
+  /* ── RSS 卡片墙运行时翻译兜底（Agnes 优先 + Google 降级）：构建期翻译熔断/漏网的英文条目，
+     挂载于 renderWall 末尾；_zhTried 标记防重复请求，完成后重渲染刷新卡片（终止条件：cands 耗尽）。 */
+  var _wallTrBusy=0,_wallDirty=0;
+  function _scheduleWallTranslate(){ setTimeout(_translateWallItems,120); }
+  function _translateWallItems(){
+    if(_wallTrBusy) return;
+    var cands=ART.filter(function(a){ return !a._zhTried && (_needsTranslation(a.t)||(a.s&&_needsTranslation(a.s))); });
+    if(!cands.length) return;
+    var batch=cands.slice(0,10);
+    batch.forEach(function(a){ a._zhTried=1; });
+    _wallTrBusy=1;
+    var texts=[],map=[];
+    batch.forEach(function(a){
+      if(_needsTranslation(a.t)){ texts.push(a.t); map.push({a:a,f:'t'}); }
+      if(a.s&&_needsTranslation(a.s)){ texts.push(a.s); map.push({a:a,f:'s'}); }
+    });
+    if(!texts.length){ _wallTrBusy=0; return; }
+    var ctrl=(typeof AbortController==='function')?new AbortController():null;
+    var tmr=ctrl?setTimeout(function(){ctrl.abort();},9000):null;
+    fetch(AGNES_TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:texts}),signal:ctrl?ctrl.signal:undefined})
+    .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('http '+r.status)); })
+    .then(function(j){
+      if(!j||!j.ok||!j.translations||j.translations.length!==texts.length) throw new Error('bad payload');
+      j.translations.forEach(function(zhRaw,idx){
+        var m=map[idx]; if(!m) return;
+        var zh=(zhRaw||'').trim(); if(!zh) return;
+        if(m.f==='t'&&_needsTranslation(m.a.t)) m.a.t=zh;
+        else if(m.f==='s'&&m.a.s&&_needsTranslation(m.a.s)) m.a.s=zh;
+      });
+      _wallDirty=1;
+    }).catch(function(){ if(tmr)clearTimeout(tmr); })
+    .then(function(){
+      _wallTrBusy=0;
+      if(_wallDirty){ _wallDirty=0; renderWall(); }
+      // Agnes 未覆盖条目（全失败或部分失败）降级 Google 补翻，覆盖后重渲染
+      var restBatch=batch.filter(function(a){ return _needsTranslation(a.t)||(a.s&&_needsTranslation(a.s)); });
+      if(restBatch.length) _translateWallGoogle(restBatch);
+      _translateWallItems();
+    });
+  }
+  /* 卡片墙降级链路：标题 join 批量（与 _translateAfGoogle 同模式）+ 摘要逐条并行，全 settle 后重渲染 */
+  function _translateWallGoogle(list){
+    if(!list.length) return;
+    var pending=1;
+    function _done(){ if(--pending===0 && _wallDirty){ _wallDirty=0; renderWall(); } }
+    var tList=list.filter(function(a){ return _needsTranslation(a.t); });
+    if(tList.length){
+      pending++;
+      var ctrl=(typeof AbortController==='function')?new AbortController():null;
+      var tmr=ctrl?setTimeout(function(){ctrl.abort();},5000):null;
+      var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(tList.map(function(a){return a.t;}).join('\\n'));
+      fetch(url,ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(j){
+        if(tmr)clearTimeout(tmr);
+        var translated=[]; try{ j[0].forEach(function(s){ translated.push(s[0]); }); }catch(e){}
+        translated.forEach(function(zh,idx){ if(zh&&tList[idx]&&_needsTranslation(tList[idx].t)) tList[idx].t=zh; });
+        _wallDirty=1; _done();
+      }).catch(function(){ if(tmr)clearTimeout(tmr); _done(); });
+    }
+    list.forEach(function(a){
+      if(!(a.s&&_needsTranslation(a.s))) return;
+      pending++;
+      var ctrl=(typeof AbortController==='function')?new AbortController():null;
+      var tmr=ctrl?setTimeout(function(){ctrl.abort();},5000):null;
+      var url='https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(a.s.substring(0,1200));
+      fetch(url,ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(j){
+        if(tmr)clearTimeout(tmr);
+        var res=''; try{ j[0].forEach(function(s){ if(s&&s[0])res+=s[0]; }); }catch(e){}
+        if(res&&_needsTranslation(a.s)) a.s=res;
+        _wallDirty=1; _done();
+      }).catch(function(){ if(tmr)clearTimeout(tmr); _done(); });
+    });
+    _done();
+  }
   function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '\u521a\u521a'; if(m<60)return m+' \u5206\u949f\u524d'; var h=Math.floor(m/60); if(h<24)return h+' \u5c0f\u65f6\u524d'; return Math.floor(h/24)+' \u5929\u524d'; }catch(e){return '';} }
 
   function toggleAiFeed(){
@@ -3977,6 +4073,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       var seen = new Set(afItems.map(function(x){return _normT(x.title);}));
       (j.items||[]).forEach(function(it){var k=_normT(it.title);if(!seen.has(k)){seen.add(k);afItems.push(Object.assign({},it,{_src:'aihot'}));}});
       _renderAll();
+      _translateAfItems();
     }catch(e){ /* ignore */ }
     btn.disabled = false; btn.textContent = '\u52a0\u8f7d\u66f4\u591a';
   });
@@ -3998,6 +4095,7 @@ def _build_js(sources_with_items, build_ts_ms=0):
       });
       afItems.sort(function(a,b){return (b.publishedAt||b.published_at||'').localeCompare(a.publishedAt||a.published_at||'');});
       _renderAll();
+      _translateAfItems();
     }catch(e){ /* ignore */ }
   }
 
