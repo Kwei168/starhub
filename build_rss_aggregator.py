@@ -4421,7 +4421,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         else if(lc==='declining') cls+=' kw-declining kw-tag';
         else if(lc==='gone') cls+=' kw-gone kw-tag';
         else if(isRising) cls+=' rising';
-        h+='<span class="'+cls+'" title="'+tip+'" onclick="insightSearch(\''+esc(w).replace(/'/g,"\\'")+'\')">'+esc(w)+'</span>';
+        h+='<span class="'+cls+'" data-kw="'+esc(w)+'" title="'+tip+'" onclick="insightSearch(this.dataset.kw)">'+esc(w)+'</span>';
       });
       h+='</div></div>';
     }
@@ -4429,7 +4429,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(d.rising&&d.rising.length){
       h+='<div class="ib-section"><div class="ib-label">\u2b06\ufe0f 升温词</div><div class="ib-kw-list">';
       d.rising.forEach(function(r){
-        h+='<span class="ib-kw rising" onclick="insightSearch(\''+esc(r.word).replace(/'/g,"\\'")+'\')" title="排名上升 '+r.rise+' 位">'+esc(r.word)+'</span>';
+        h+='<span class="ib-kw rising" data-kw="'+esc(r.word)+'" onclick="insightSearch(this.dataset.kw)" title="排名上升 '+r.rise+' 位">'+esc(r.word)+'</span>';
       });
       h+='</div></div>';
     }
@@ -4440,7 +4440,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         var rk=i+1, cls=rk<=3?' top3':'';
         var tl=(t.label||(t.labels&&t.labels.length?t.labels.join(' '):''));
         var src=t.sources?(Array.isArray(t.sources)?t.sources.length:t.sources):0;
-        h+='<div class="ib-topic" onclick="insightSearch(\''+esc(tl).replace(/'/g,"\\'")+'\')">';
+        h+='<div class="ib-topic" data-kw="'+esc(tl)+'" onclick="insightSearch(this.dataset.kw)">';
         h+='<span class="ib-topic-rank'+cls+'">'+rk+'</span>';
         h+='<span class="ib-topic-title">'+esc(tl)+'</span>';
         h+='<span class="ib-topic-meta">'+t.count+' 篇 · '+src+' 源</span>';
@@ -4463,7 +4463,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         else if(lc==='cooling'){arrow='\u2b07';arrowCls='t-down';}
         else if(lc==='cold'){arrow='\u2744';arrowCls='t-down';}
         var lcLabel={emerging:'\u65b0\u5174',hot:'\u706b\u7206',cooling:'\u964d\u6e29',cold:'\u51b7\u5374'}[lc]||lc;
-        h+='<div class="ib-trend-item" onclick="insightSearch(\''+esc(tl).replace(/'/g,"\\'")+'\')">';
+        h+='<div class="ib-trend-item" data-kw="'+esc(tl)+'" onclick="insightSearch(this.dataset.kw)">';
         h+='<span class="ib-trend-label">'+esc(tl)+'</span>';
         h+='<span class="ib-trend-count">'+cnt+'\u7bc7</span>';
         if(arrow) h+='<span class="ib-trend-arrow '+arrowCls+'">'+arrow+'</span>';
@@ -4490,7 +4490,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(d.cross_category&&d.cross_category.length){
       h+='<div class="ib-section ib-ccat"><div class="ib-label">\U0001f310 \u8de8\u5206\u7c7b\u70ed\u70b9</div><div class="ib-ccat-list">';
       d.cross_category.slice(0,12).forEach(function(cc){
-        h+='<div class="ib-ccat-item" onclick="insightSearch(\''+esc(cc.keyword).replace(/'/g,"\\'")+'\')">';
+        h+='<div class="ib-ccat-item" data-kw="'+esc(cc.keyword)+'" onclick="insightSearch(this.dataset.kw)">';
         h+='<span class="ib-ccat-kw">'+esc(cc.keyword)+'</span>';
         h+='<span class="ib-ccat-cats">';
         cc.categories.forEach(function(c){
