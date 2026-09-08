@@ -31,7 +31,9 @@ jobs:
       - name: Trigger production redeploy (vercel CLI)
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # CLI 必需：scope 与项目定位（缺失时 scoped token 报 User not found）
+          VERCEL_ORG_ID: team_iovvEy0us9KkCNkuMRLQrIeA
+          VERCEL_PROJECT_ID: prj_7gK5d3EOJYTC8AmUxR2cNuHi7arB
         run: |
-          npm i -g vercel@latest --silent
-          # 仓库内 .vercel/project.json 提供项目链接；CLI 部署继承项目级环境变量
-          vercel deploy --prod --yes --token=${VERCEL_TOKEN} 2>&1 | tail -n 5
+          set -o pipefail
+          npx --yes vercel --prod --yes --token "$VERCEL_TOKEN" 2>&1 | tail -n 5
