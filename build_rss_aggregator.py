@@ -2021,19 +2021,21 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 .r2-share-btn svg{width:15px;height:15px;}
 
 /* ── Share modal ── */
-.share-modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;}
+.share-modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:16px;}
 .share-modal.open{display:flex;}
 .share-backdrop{position:absolute;inset:0;background:rgba(28,25,23,.55);}
-.share-panel{position:relative;z-index:1;width:min(400px,90vw);background:var(--bg);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.25);padding:20px;text-align:center;}
-.share-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+/* 面板高度自适应内容且封顶视口（vh→dvh 双写兜底旧浏览器）：
+   超出时图片区内部滚动（overflow-y:auto），头部/提示/按钮区 flex:none 恒定可见，长文分享不再截断操作按钮 */
+.share-panel{position:relative;z-index:1;width:min(400px,90vw);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;overflow:hidden;background:var(--bg);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.25);padding:20px;text-align:center;}
+.share-hd{flex:none;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
 .share-hd h3{font-family:var(--display);font-size:15px;font-weight:900;margin:0;}
 .share-close{width:28px;height:28px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
 .share-close:hover{border-color:var(--line-strong);color:var(--ink);}
-.share-img-wrap{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--card);}
-.share-textcard{display:none;text-align:left;white-space:pre-wrap;word-break:break-word;background:var(--card);border:1px dashed var(--line-strong);border-radius:10px;padding:16px;font-size:13px;line-height:1.7;color:var(--ink);max-height:340px;overflow:auto;font-family:var(--body);}
+.share-img-wrap{flex:0 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:10px;border:1px solid var(--line);background:var(--card);}
+.share-textcard{display:none;text-align:left;white-space:pre-wrap;word-break:break-word;background:var(--card);border:1px dashed var(--line-strong);border-radius:10px;padding:16px;font-size:13px;line-height:1.7;color:var(--ink);flex:0 1 auto;min-height:0;max-height:340px;overflow:auto;font-family:var(--body);}
 .share-img-wrap img{width:100%;display:block;}
-.share-hint{font-size:12px;color:var(--faint);margin:12px 0 14px;}
-.share-actions{display:flex;gap:10px;justify-content:center;}
+.share-hint{flex:none;font-size:12px;color:var(--faint);margin:12px 0 14px;}
+.share-actions{flex:none;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;}
 .btn-share-save,.btn-share-copy{padding:8px 22px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--brand-line);transition:all .15s;cursor:pointer;font-family:var(--body);}
 .btn-share-save{background:var(--brand-strong);color:#fff;}
 .btn-share-save:hover{opacity:.9;}
@@ -3682,9 +3684,45 @@ def _build_js(sources_with_items, build_ts_ms=0):
   function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
   // \u68c0\u6d4b\u6807\u9898\u662f\u5426\u4e3b\u8981\u4e3a\u975e\u4e2d\u6587\uff08\u9700\u8981\u7ffb\u8bd1\uff09
   function _needsTranslation(t){ if(!t) return false; var cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
-  // \u6279\u91cf\u7ffb\u8bd1 AI \u52a8\u6001\u6d41\u82f1\u6587\u6807\u9898\uff08Google Translate GTX \u7aef\u70b9\uff1b5s \u8d85\u65f6\u5146\u5e95\uff0c\u9632 GFW \u6302\u6b7b\uff09
+  // \u6279\u91cf\u7ffb\u8bd1 AI \u52a8\u6001\u6d41\u82f1\u6587\u6807\u9898\uff1a\u9996\u9009 Agnes AI\uff08agnes-2.5-flash\uff0c\u670d\u52a1\u7aef\u4ee3\u7406 api/translate\uff0c\u5bc6\u94a5\u4e0d\u843d\u524d\u7aef\uff09\uff0c
+  // \u5931\u8d25/\u90e8\u5206\u5931\u8d25\u65f6\u5269\u4f59\u6761\u76ee\u964d\u7ea7 Google GTX \u514d\u8d39\u7aef\u70b9\uff085s \u8d85\u65f6\u5146\u5e95\uff0c\u9632 GFW \u6302\u6b7b\uff09
+  var AGNES_TR_API = 'https://starhub-refresh.vercel.app/api/translate';
   function _translateAfItems(){
     var toTranslate = afItems.filter(function(it){ return !it._zh && _needsTranslation(it.title); });
+    if(!toTranslate.length) return;
+    // Agnes \u6279\u91cf\u5e76\u884c\uff1a\u6bcf\u6279 15 \u6761\uff08\u4e0e api/translate \u4e0a\u9650\u5339\u914d\uff09\uff0c\u6700\u591a 3 \u6279\uff0c\u5355\u6279 8s \u8d85\u65f6
+    var batches = []; for(var i=0;i<toTranslate.length && batches.length<3;i+=15) batches.push(toTranslate.slice(i,i+15));
+    var pending = batches.length, applied = 0;
+    batches.forEach(function(batch){
+      var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+      var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 8000) : null;
+      fetch(AGNES_TR_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texts: batch.map(function(it){ return it.title; }) }),
+        signal: ctrl ? ctrl.signal : undefined
+      }).then(function(r){
+        if(tmr) clearTimeout(tmr);
+        return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status));
+      }).then(function(j){
+        if(!j || !j.ok || !j.translations || !j.translations.length) throw new Error('bad payload');
+        batch.forEach(function(it, idx){
+          var zh = j.translations[idx];
+          if(zh && !it._zh){ it._zh = zh; applied++; }
+        });
+      }).catch(function(){
+        if(tmr) clearTimeout(tmr);
+      }).then(function(){
+        if(--pending) return;
+        if(applied) _renderAll();
+        // Agnes \u672a\u8986\u76d6\u5230\u7684\u6761\u76ee\uff08\u5168\u5931\u8d25\u6216\u90e8\u5206\u5931\u8d25\uff09\u964d\u7ea7 Google \u8865\u7ffb
+        var rest = toTranslate.filter(function(it){ return !it._zh; });
+        if(rest.length) _translateAfGoogle(rest);
+      });
+    });
+  }
+  // \u964d\u7ea7\u94fe\u8def\uff1aGoogle Translate GTX \u514d\u8d39\u7aef\u70b9\uff08\u6bcf 10 \u6761\u4e00\u7ec4\uff0c\u5168\u90e8 settle \u540e\u6e32\u67d3\uff09
+  function _translateAfGoogle(toTranslate){
     if(!toTranslate.length) return;
     var texts = toTranslate.map(function(it){ return it.title; });
     var chunks = []; for(var i=0;i<texts.length;i+=10) chunks.push(texts.slice(i,i+10));
