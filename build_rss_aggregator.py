@@ -5142,11 +5142,9 @@ def _extract_topic_label_from_titles(cluster_articles):
     if best_substr and len(best_substr) >= 2:
         cn_chars_in_substr = re.sub(r'[^\u4e00-\u9fff]', '', best_substr)
         if len(cn_chars_in_substr) == len(best_substr):
-            # 纯中文子串，检查数值单位过滤
+            # 纯中文子串，仅检查数值单位过滤
             if len(cn_chars_in_substr) <= 2 and _is_numeric_unit_phrase(best_substr):
-                pass  # 纯数值单位，跳过，进入策略 1
-            elif len(best_substr) == 2 and best_substr_cnt < len(good_titles):
-                pass  # 2字子串非全覆盖，跳过，进入策略 1
+                pass  # 纯数值单位（如 '美元'），跳过，进入策略 1
             else:
                 return best_substr, [best_substr]
 
@@ -5173,14 +5171,11 @@ def _extract_topic_label_from_titles(cluster_articles):
                 return '%s %s' % (top_term, second), [top_term, second]
             return top_term, [top_term]
 
-    # 公共子串有效则返回（已经过边界延伸处理；过滤纯数值单位短语）
+    # 公共子串有效则返回（纯中文已在上方提前返回；此处处理含数字/拉丁的混合子串）
     if best_substr and len(best_substr) >= 2:
-        # 仅过滤纯数值单位短语（如 '美元'、'英镑'）；'亿欧元'（3+中文字）是有意义的话题标签
         cn_chars_in_substr = re.sub(r'[^\u4e00-\u9fff]', '', best_substr)
         if len(cn_chars_in_substr) <= 2 and _is_numeric_unit_phrase(best_substr):
-            pass  # 跳过，进入策略 3
-        elif len(best_substr) == 2 and best_substr_cnt < len(good_titles):
-            pass  # 2字子串仅在全覆盖时接受，否则进入策略 3
+            pass  # 纯数值单位，跳过，进入策略 3
         else:
             return best_substr, [best_substr]
 
