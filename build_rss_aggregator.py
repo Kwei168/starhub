@@ -4945,14 +4945,84 @@ def _score_sources(sources_with_items, rss_history):
     return result
 
 
+def _is_numeric_unit_phrase(s):
+    """判断字符串是否为纯数值单位短语（如 '亿欧元'、'万美元'、'千亿元'）。
+    这类短语不适合作为话题标签。
+    """
+    # 匹配模式：可选数字 + 单位词（亿/万/千/百）+ 货币/量词
+    if re.match(r'^[\d零一二三四五六七八九十百千万]*[亿万万千百]?[元美元欧元英镑日元份项笔台架艘辆匹头只条块片张本座栋层等级场次局盘局]+$', s):
+        return True
+    # 纯数字 + 单位
+    if re.match(r'^[\d零一二三四五六七八九十百千万]+[个只条台架艘辆匹头元美元欧元英镑日元份项笔]+$', s):
+        return True
+    return False
+
+
+def _is_ascii_alpha(ch):
+    """判断字符是否为 ASCII 字母（a-z, A-Z）。"""
+    return 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
+
+
+def _find_cn_boundary(text, pos):
+    """从 pos 位置开始，找到下一个中文语义边界的位置。
+
+    边界定义：标点符号、空格、数字、ASCII 字母、或字符串末尾。
+    用于确保截取的标签片段在语义上完整，不会在词组中间断开。
+    返回边界位置的索引（即边界字符的位置），若 pos 已在边界则返回 pos。
+    """
+    if pos >= len(text):
+        return pos
+    ch = text[pos]
+    # 当前字符本身就是边界
+    if ch in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
+        return pos
+    if ch.isdigit() or _is_ascii_alpha(ch):
+        return pos
+    # 从 pos 开始向后找第一个边界
+    for i in range(pos, len(text)):
+        c = text[i]
+        if c in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
+            return i
+        if c.isdigit() or _is_ascii_alpha(c):
+            return i
+    return len(text)
+
+
+def _extract_meaningful_phrase(title, max_len=14):
+    """从单个标题中提取一个语义完整的短语（不超过 max_len 字符）。
+
+    优先在标点/空格/数字/拉丁字母处截断，确保不会出现半截词组。
+    """
+    if not title or len(title) <= max_len:
+        return title
+    # 在 max_len 附近找最近的语义边界
+    # 先检查 max_len 位置是否已经是边界
+    boundary = _find_cn_boundary(title, max_len)
+    if boundary == max_len:
+        return title[:max_len]
+    # 如果边界在 max_len 之后不远（<= 3 字符），延伸到边界
+    if boundary > max_len and boundary - max_len <= 3:
+        return title[:boundary]
+    # 否则在 max_len 之前找最近的边界（往回找最多 5 字符）
+    for i in range(max_len - 1, max(0, max_len - 6), -1):
+        c = title[i]
+        if c in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
+            return title[:i]
+        if c.isdigit() or _is_ascii_alpha(c):
+            return title[:i]
+    # 找不到好边界，就截取到 max_len
+    return title[:max_len]
+
+
 def _extract_topic_label_from_titles(cluster_articles):
     """从簇内文章标题中提取语义通顺的话题标签。
 
     优先级：
+    0. 短标题直取（标题 <= 15 字且簇内高度相似时直接复用）
     1. 术语词典精确命中（标题中出现最多的 _TECH_DICT 词条）
-    2. 最长公共子串（跨标题重复出现的连续中文片段，>= 3 字）
-    3. 标题内相邻 2-3 个高质量 token 拼接
-    4. 兜底：截取合格标题的前 12 个字符
+    2. 最长公共子串 + 边界延伸（跨标题重复的连续中文片段，延伸到语义边界）
+    3. 标题内相邻 2-3 个高质量 token 拼接（边界感知过滤）
+    4. 兜底：从代表性标题中智能截取语义完整片段
     返回 (label_str, labels_list)。
     """
     _LABEL_NOISE_LOCAL = set('的了是在我有和就不人都一个上也这到说们为你对被把让给用从向')
@@ -4970,9 +5040,28 @@ def _extract_topic_label_from_titles(cluster_articles):
         seen_titles.add(t_key)
         good_titles.append(t)
 
-    # ── 策略 1+2 联合决策：先算公共子串，再与词典术语比较覆盖度 ──
+    if not good_titles:
+        return '', []
 
-    # 策略 2：最长公共子串（跨标题重复的连续中文片段）
+    # ── 策略 0：短标题直取 ──
+    # 当簇内标题都很短（<= 15 字）且彼此相似时，直接复用代表性标题作为标签
+    short_titles = [t for t in good_titles if len(t) <= 15]
+    if len(short_titles) >= 2 and len(short_titles) >= len(good_titles) * 0.6:
+        # 检查标题间相似度（简单字符重叠比）
+        ref = short_titles[0]
+        similar_count = 0
+        for t in short_titles[1:]:
+            overlap = len(set(ref) & set(t)) / max(len(set(ref) | set(t)), 1)
+            if overlap >= 0.3:
+                similar_count += 1
+        if similar_count >= len(short_titles) * 0.5:
+            # 选最短的合格标题作为标签
+            best = min(short_titles, key=lambda t: (abs(len(t) - 8), len(t)))
+            return best, [best]
+
+    # ── 策略 1+2 联合决策：先算公共子串（带边界延伸），再与词典术语比较覆盖度 ──
+
+    # 策略 2：最长公共子串 + 边界延伸
     best_substr = None
     best_substr_cnt = 0
     if len(good_titles) >= 2:
@@ -4982,7 +5071,7 @@ def _extract_topic_label_from_titles(cluster_articles):
             cn_fragments.extend(p for p in cn.split() if len(p) >= 3)
         substr_score = collections.Counter()
         for frag in cn_fragments:
-            max_len = min(len(frag), 10)
+            max_len = min(len(frag), 12)
             for slen in range(3, max_len + 1):
                 for start in range(len(frag) - slen + 1):
                     sub = frag[start:start + slen]
@@ -4992,14 +5081,61 @@ def _extract_topic_label_from_titles(cluster_articles):
                     if cnt >= 2:
                         substr_score[sub] = cnt * cnt * slen
         if substr_score:
-            # 按 (覆盖度, 长度) 降序找最优子串：优先覆盖更多标题，其次更长
-            best_substr = None
-            best_substr_cnt = 0
+            # 按 (覆盖度, 长度) 降序找最优子串，并尝试边界延伸
             for candidate, _ in substr_score.most_common(30):
                 cand_cnt = sum(1 for t in good_titles if candidate in t)
-                if cand_cnt > best_substr_cnt or (cand_cnt == best_substr_cnt and len(candidate) > len(best_substr or '')):
-                    best_substr = candidate
-                    best_substr_cnt = cand_cnt
+                # 尝试延伸子串到语义边界
+                extended = candidate
+                extended_cnt = cand_cnt
+                # 在覆盖的标题中找到 candidate，尝试向后延伸到边界
+                for t in good_titles:
+                    idx = t.find(candidate)
+                    if idx < 0:
+                        continue
+                    end_pos = idx + len(candidate)
+                    if end_pos >= len(t):
+                        continue  # 已在标题末尾
+                    next_ch = t[end_pos]
+                    # 如果下一个字符是语义边界（标点/空格/数字/拉丁字母），自然终止
+                    if next_ch in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
+                        continue  # 已经在边界，无需延伸
+                    if next_ch.isdigit() or _is_ascii_alpha(next_ch):
+                        # 延伸到数字/拉丁字母边界：取到边界字符之前
+                        boundary_pos = _find_cn_boundary(t, end_pos)
+                        if boundary_pos > end_pos and boundary_pos - end_pos <= 4:
+                            ext = t[idx:boundary_pos]
+                            ext_cnt = sum(1 for tt in good_titles if ext in tt)
+                            if ext_cnt >= max(2, cand_cnt - 1) and len(ext) > len(extended):
+                                extended = ext
+                                extended_cnt = ext_cnt
+                        break  # 只用第一个匹配标题来延伸
+                    # 下一个是中文字符：尝试延伸 1-3 个字符到最近的边界
+                    for ext_len in range(1, 4):
+                        if end_pos + ext_len > len(t):
+                            break
+                        ext = t[idx:end_pos + ext_len]
+                        ext_cnt = sum(1 for tt in good_titles if ext in tt)
+                        # 延伸后覆盖度不能下降太多（允许降 1）
+                        if ext_cnt >= max(2, cand_cnt - 1):
+                            extended = ext
+                            extended_cnt = ext_cnt
+                            # 检查延伸后的末尾是否是边界
+                            if end_pos + ext_len >= len(t):
+                                break
+                            next_ch2 = t[end_pos + ext_len]
+                            if next_ch2 in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
+                                break
+                            if next_ch2.isdigit() or _is_ascii_alpha(next_ch2):
+                                break
+                        else:
+                            break
+
+                # 用延伸后的结果与当前最优比较
+                if extended_cnt > best_substr_cnt or (
+                    extended_cnt == best_substr_cnt and len(extended) > len(best_substr or '')
+                ):
+                    best_substr = extended
+                    best_substr_cnt = extended_cnt
 
     # 策略 1：术语词典精确匹配
     dict_term_counter = collections.Counter()
@@ -5024,11 +5160,11 @@ def _extract_topic_label_from_titles(cluster_articles):
                 return '%s %s' % (top_term, second), [top_term, second]
             return top_term, [top_term]
 
-    # 公共子串有效则返回
-    if best_substr:
+    # 公共子串有效则返回（已经过边界延伸处理，最低 3 字；数值单位短语已在评分阶段过滤）
+    if best_substr and len(best_substr) >= 3:
         return best_substr, [best_substr]
 
-    # ── 策略 3：标题内相邻 token 高频组合 ──
+    # ─ 策略 3：标题内相邻 token 高频组合（边界感知） ──
     ngram_counter = collections.Counter()
     for title in good_titles:
         tokens = _tokenize(title)
@@ -5038,19 +5174,36 @@ def _extract_topic_label_from_titles(cluster_articles):
         for span in (2, 3):
             for j in range(len(quality_tokens) - span + 1):
                 phrase = ' '.join(quality_tokens[j:j + span])
-                # 至少有一个 token 长度 >= 2（避免全单字拼接）
-                if any(len(quality_tokens[j + k]) >= 2 for k in range(span)):
-                    ngram_counter[phrase] += 1
+                # 至少有一个 token 长度 >= 3（避免两个短 token 拼出碎片）
+                if any(len(quality_tokens[j + k]) >= 3 for k in range(span)):
+                    # 额外检查：拼接后的总中文字符数 >= 4（避免 "多模态 发布" 这种松散组合）
+                    cn_chars = re.sub(r'[^\u4e00-\u9fff]', '', phrase)
+                    if len(cn_chars) >= 4:
+                        # 质量过滤：如果短语含空格且空格两侧都是纯中文，可能是分词错误
+                        if ' ' in phrase:
+                            parts_check = phrase.split()
+                            if len(parts_check) == 2:
+                                left_cn = all('\u4e00' <= c <= '\u9fff' for c in parts_check[0])
+                                right_cn = all('\u4e00' <= c <= '\u9fff' for c in parts_check[1])
+                                if left_cn and right_cn:
+                                    continue  # 跳过疑似分词错误的组合
+                        ngram_counter[phrase] += 1
     if ngram_counter:
         best_phrase = ngram_counter.most_common(1)[0][0]
         parts = best_phrase.split()
         return best_phrase, parts[:3]
 
-    # ── 策略 4：兜底 — 截取合格标题前 12 字符 ──
+    # ── 策略 4：兜底 — 从代表性标题中智能截取语义完整片段 ──
+    # 选最长的合格标题作为代表性标题（信息量最大）
+    representative = max(good_titles, key=len)
+    phrase = _extract_meaningful_phrase(representative, max_len=14)
+    if phrase and len(phrase) >= 4:
+        return phrase, [phrase]
+
+    # 最终兜底：直接取第一个合格标题的前 12 字
     for title in good_titles:
         if len(title) >= 6:
             truncated = title[:12].rstrip()
-            # 尝试在标点/空格处截断
             for sep in ('，', '。', '：', '！', '？', ',', '.', ' ', ' '):
                 idx = truncated.find(sep)
                 if idx > 2:
