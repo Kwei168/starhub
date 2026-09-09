@@ -6106,18 +6106,24 @@ def main(mode="full"):
 
     # ── 智能分析流水线（关键词 / 话题 / AI 摘要 / 信源评分 / 热榜轨迹 / 跨平台） ──
     analysis_data = None
+    hot_snapshot = None
+    hot_history = {}
     if ANALYSIS_ENABLED:
         try:
             now_bj = _now_bj()
             # 抓取热榜快照（在分析前获取，以便轨迹累积和跨平台关联）
-            hot_snapshot = fetch_newsnow_snapshot()
             try:
-                with open(HOT_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-                    json.dump(hot_snapshot, f, ensure_ascii=False, separators=(",", ":"))
+                hot_snapshot = fetch_newsnow_snapshot()
+                try:
+                    with open(HOT_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+                        json.dump(hot_snapshot, f, ensure_ascii=False, separators=(",", ":"))
+                except Exception as e:
+                    print("[热榜] 快照写入失败: %s" % e, file=sys.stderr)
             except Exception as e:
-                print("[热榜] 快照写入失败: %s" % e, file=sys.stderr)
-            # 累积热榜历史轨迹
-            hot_history = _accumulate_hot_history(hot_snapshot, now_bj)
+                print("[热榜] 快照抓取失败: %s" % e, file=sys.stderr)
+                hot_snapshot = []
+            # 累积热榜历史轨迹（始终执行，确保 hot_history.json 被创建）
+            hot_history = _accumulate_hot_history(hot_snapshot or [], now_bj)
             analysis_data = _run_analysis(sources_with_items, now_bj,
                                           hot_snapshot=hot_snapshot, hot_history=hot_history)
         except Exception as e:
