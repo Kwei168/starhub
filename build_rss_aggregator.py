@@ -5018,14 +5018,13 @@ def _extract_topic_label_from_titles(cluster_articles):
     """从簇内文章标题中提取语义通顺的话题标签。
 
     优先级：
-    0. 短标题直取（标题 <= 15 字且簇内高度相似时直接复用）
     1. 术语词典精确命中（标题中出现最多的 _TECH_DICT 词条）
-    2. 最长公共子串 + 边界延伸（跨标题重复的连续中文片段，延伸到语义边界）
-    3. 标题内相邻 2-3 个高质量 token 拼接（边界感知过滤）
+    2. 最长公共子串 + 边界延伸（跨标题重复的连续中文片段，合并相邻 token 保留邻接关系）
+    3. 标题内相邻 2-3 个高质量 token 拼接（分词错误检测 + 边界感知过滤）
     4. 兜底：从代表性标题中智能截取语义完整片段
     返回 (label_str, labels_list)。
     """
-    _LABEL_NOISE_LOCAL = set('的了是在我有和就不人都一个上也这到说们为你对被把让给用从向')
+    _LABEL_NOISE_LOCAL = set('的了是在我有和就不都一个上也这到说们为你对被把让给用从向')
 
     # 收集合格标题（去重、去病句）
     good_titles = []
@@ -5043,41 +5042,31 @@ def _extract_topic_label_from_titles(cluster_articles):
     if not good_titles:
         return '', []
 
-    # ── 策略 0：短标题直取 ──
-    # 当簇内标题都很短（<= 15 字）且彼此相似时，直接复用代表性标题作为标签
-    short_titles = [t for t in good_titles if len(t) <= 15]
-    if len(short_titles) >= 2 and len(short_titles) >= len(good_titles) * 0.6:
-        # 检查标题间相似度（简单字符重叠比）
-        ref = short_titles[0]
-        similar_count = 0
-        for t in short_titles[1:]:
-            overlap = len(set(ref) & set(t)) / max(len(set(ref) | set(t)), 1)
-            if overlap >= 0.3:
-                similar_count += 1
-        if similar_count >= len(short_titles) * 0.5:
-            # 选最短的合格标题作为标签
-            best = min(short_titles, key=lambda t: (abs(len(t) - 8), len(t)))
-            return best, [best]
-
     # ── 策略 1+2 联合决策：先算公共子串（带边界延伸），再与词典术语比较覆盖度 ──
 
     # 策略 2：最长公共子串 + 边界延伸
     best_substr = None
     best_substr_cnt = 0
     if len(good_titles) >= 2:
+        # 预计算去空格标题：用于子串匹配和延伸，确保标签不含空格
+        titles_stripped = [t.replace(' ', '').replace('\u3000', '') for t in good_titles]
         cn_fragments = []
-        for t in good_titles:
-            cn = re.sub(r'[^\u4e00-\u9fff]', ' ', t)
-            cn_fragments.extend(p for p in cn.split() if len(p) >= 3)
+        for ts in titles_stripped:
+            # 逐 token 提取中文部分，再合并相邻 token 的中文片段
+            # 这样 '多模态 发布全新' → 去空格 '多模态发布全新' → 单一片段
+            # 保留跨空格的邻接关系，避免 '多模态' 和 '发布' 被拆成独立片段
+            cn_only = re.sub(r'[^\u4e00-\u9fff]', '', ts)
+            if len(cn_only) >= 3:
+                cn_fragments.append(cn_only)
         substr_score = collections.Counter()
         for frag in cn_fragments:
             max_len = min(len(frag), 12)
-            for slen in range(3, max_len + 1):
+            for slen in range(2, max_len + 1):
                 for start in range(len(frag) - slen + 1):
                     sub = frag[start:start + slen]
                     if sub[0] in _LABEL_NOISE_LOCAL or sub[-1] in _LABEL_NOISE_LOCAL:
                         continue
-                    cnt = sum(1 for t in good_titles if sub in t)
+                    cnt = sum(1 for ts in titles_stripped if sub in ts)
                     if cnt >= 2:
                         # 评分改为覆盖度优先：cnt × len，避免短子串因位置多而得分虚高
                         substr_score[sub] = cnt * slen
@@ -5085,12 +5074,12 @@ def _extract_topic_label_from_titles(cluster_articles):
             # 覆盖度优先 + 同覆盖度选最长：先找最高覆盖度，再在同等覆盖度中选最长子串
             max_cnt = 0
             for sub in substr_score:
-                cnt = sum(1 for t in good_titles if sub in t)
+                cnt = sum(1 for ts in titles_stripped if sub in ts)
                 if cnt > max_cnt:
                     max_cnt = cnt
             # 在最高覆盖度的子串中选最长的
             best_candidates = [(sub, len(sub)) for sub, score in substr_score.items()
-                               if sum(1 for t in good_titles if sub in t) == max_cnt]
+                               if sum(1 for ts in titles_stripped if sub in ts) == max_cnt]
             best_candidates.sort(key=lambda x: x[1], reverse=True)
             # 对每个候选尝试边界延伸，然后选最优
             for candidate, cand_len in best_candidates[:20]:  # 最多处理前20个最长候选
@@ -5098,55 +5087,68 @@ def _extract_topic_label_from_titles(cluster_articles):
                 # 尝试延伸子串到语义边界
                 extended = candidate
                 extended_cnt = cand_cnt
-                # 在覆盖的标题中找到 candidate，尝试向后延伸到边界
-                for t in good_titles:
-                    idx = t.find(candidate)
+                # 在去空格标题中找到 candidate，尝试向后延伸到边界
+                for ts in titles_stripped:
+                    idx = ts.find(candidate)
                     if idx < 0:
                         continue
                     end_pos = idx + len(candidate)
-                    if end_pos >= len(t):
+                    if end_pos >= len(ts):
                         continue  # 已在标题末尾
-                    next_ch = t[end_pos]
-                    # 如果下一个字符是语义边界（标点/空格/数字/拉丁字母），自然终止
-                    if next_ch in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
-                        continue  # 已经在边界，无需延伸
+                    next_ch = ts[end_pos]
+                    # 如果下一个字符是数字/拉丁字母，延伸到边界
                     if next_ch.isdigit() or _is_ascii_alpha(next_ch):
-                        # 延伸到数字/拉丁字母边界：取到边界字符之前
-                        boundary_pos = _find_cn_boundary(t, end_pos)
+                        boundary_pos = _find_cn_boundary(ts, end_pos)
                         if boundary_pos > end_pos and boundary_pos - end_pos <= 4:
-                            ext = t[idx:boundary_pos]
-                            ext_cnt = sum(1 for tt in good_titles if ext in tt)
+                            ext = ts[idx:boundary_pos]
+                            ext_cnt = sum(1 for tt in titles_stripped if ext in tt)
                             if ext_cnt >= max(2, cand_cnt - 1) and len(ext) > len(extended):
                                 extended = ext
                                 extended_cnt = ext_cnt
                         break  # 只用第一个匹配标题来延伸
-                    # 下一个是中文字符：尝试延伸 1-10 个字符到最近的边界
-                    for ext_len in range(1, 11):
-                        if end_pos + ext_len > len(t):
-                            break
-                        ext = t[idx:end_pos + ext_len]
-                        ext_cnt = sum(1 for tt in good_titles if ext in tt)
-                        # 延伸后覆盖度不能下降太多（允许降 1）
-                        if ext_cnt >= max(2, cand_cnt - 1):
-                            extended = ext
-                            extended_cnt = ext_cnt
-                            # 检查延伸后的末尾是否是边界
-                            if end_pos + ext_len >= len(t):
+                    # 下一个是中文字符：尝试延伸 1-10 个字符
+                    if '\u4e00' <= next_ch <= '\u9fff':
+                        for ext_len in range(1, 11):
+                            if end_pos + ext_len > len(ts):
                                 break
-                            next_ch2 = t[end_pos + ext_len]
-                            if next_ch2 in '，。：！？、；""''（）()【】[]《》<>,. \t\n\r':
+                            ext = ts[idx:end_pos + ext_len]
+                            ext_cnt = sum(1 for tt in titles_stripped if ext in tt)
+                            # 延伸后覆盖度不能下降太多（允许降 1）
+                            if ext_cnt >= max(2, cand_cnt - 1):
+                                extended = ext
+                                extended_cnt = ext_cnt
+                                # 检查延伸后的末尾是否是边界
+                                if end_pos + ext_len >= len(ts):
+                                    break
+                                next_ch2 = ts[end_pos + ext_len]
+                                if next_ch2.isdigit() or _is_ascii_alpha(next_ch2):
+                                    break
+                                if not ('\u4e00' <= next_ch2 <= '\u9fff'):
+                                    break
+                            else:
                                 break
-                            if next_ch2.isdigit() or _is_ascii_alpha(next_ch2):
-                                break
-                        else:
-                            break
-
+                    else:
+                        # 下一个是标点等，自然边界
+                        pass
+    
                 # 用延伸后的结果与当前最优比较
                 if extended_cnt > best_substr_cnt or (
                     extended_cnt == best_substr_cnt and len(extended) > len(best_substr or '')
                 ):
                     best_substr = extended
                     best_substr_cnt = extended_cnt
+
+    # 策略 2 纯中文结果优先：如果公共子串是纯中文且 >= 2 字，直接返回（避免策略 1 产生混合语言标签）
+    if best_substr and len(best_substr) >= 2:
+        cn_chars_in_substr = re.sub(r'[^\u4e00-\u9fff]', '', best_substr)
+        if len(cn_chars_in_substr) == len(best_substr):
+            # 纯中文子串，检查数值单位过滤
+            if len(cn_chars_in_substr) <= 2 and _is_numeric_unit_phrase(best_substr):
+                pass  # 纯数值单位，跳过，进入策略 1
+            elif len(best_substr) == 2 and best_substr_cnt < len(good_titles):
+                pass  # 2字子串非全覆盖，跳过，进入策略 1
+            else:
+                return best_substr, [best_substr]
 
     # 策略 1：术语词典精确匹配
     dict_term_counter = collections.Counter()
@@ -5171,11 +5173,14 @@ def _extract_topic_label_from_titles(cluster_articles):
                 return '%s %s' % (top_term, second), [top_term, second]
             return top_term, [top_term]
 
-    # 公共子串有效则返回（已经过边界延伸处理，最低 3 字；过滤过短数值单位）
-    if best_substr and len(best_substr) >= 3:
-        # 过滤过短的数值单位短语（如 '亿欧元'、'万美元'）
-        if len(best_substr) <= 4 and _is_numeric_unit_phrase(best_substr):
+    # 公共子串有效则返回（已经过边界延伸处理；过滤纯数值单位短语）
+    if best_substr and len(best_substr) >= 2:
+        # 仅过滤纯数值单位短语（如 '美元'、'英镑'）；'亿欧元'（3+中文字）是有意义的话题标签
+        cn_chars_in_substr = re.sub(r'[^\u4e00-\u9fff]', '', best_substr)
+        if len(cn_chars_in_substr) <= 2 and _is_numeric_unit_phrase(best_substr):
             pass  # 跳过，进入策略 3
+        elif len(best_substr) == 2 and best_substr_cnt < len(good_titles):
+            pass  # 2字子串仅在全覆盖时接受，否则进入策略 3
         else:
             return best_substr, [best_substr]
 
@@ -5194,15 +5199,16 @@ def _extract_topic_label_from_titles(cluster_articles):
                     # 额外检查：拼接后的总中文字符数 >= 4（避免 "多模态 发布" 这种松散组合）
                     cn_chars = re.sub(r'[^\u4e00-\u9fff]', '', phrase)
                     if len(cn_chars) >= 4:
-                        # 质量过滤：如果短语含空格且所有 token 都是纯中文，可能是分词错误
+                        # 质量过滤：含空格的短语需要额外验证
                         if ' ' in phrase:
+                            no_space = phrase.replace(' ', '')
+                            # 如果去空格后的组合在源标题中出现，说明空格是分词错误
+                            if any(no_space in t for t in good_titles):
+                                continue  # 跳过：分词错误，应为一个完整词组
+                            # 所有 token 都是纯中文 → 松散拼接，跳过
                             parts_check = phrase.split()
-                            all_pure_cn = all(
-                                all('\u4e00' <= c <= '\u9fff' for c in part)
-                                for part in parts_check
-                            )
-                            if all_pure_cn:
-                                continue  # 跳过疑似分词错误的组合
+                            if all(all('\u4e00' <= c <= '\u9fff' for c in part) for part in parts_check):
+                                continue  # 跳过：纯中文 token 松散拼接
                         ngram_counter[phrase] += 1
     if ngram_counter:
         best_phrase = ngram_counter.most_common(1)[0][0]
