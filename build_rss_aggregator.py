@@ -2130,7 +2130,6 @@ body.ai-open .scrim{opacity:1;pointer-events:auto;}
 .hp-wrap{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden;}
 body.af-tab-hot .hp-wrap{display:flex;}
 body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body.af-tab-hot .af-more{display:none!important;}
-body.af-tab-brief .af-sub,body.af-tab-brief .af-filter,body.af-tab-brief .af-body,body.af-tab-brief .af-more{display:none!important;}
 .af-close{width:26px;height:26px;border-radius:999px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .15s;flex:none;}
 .af-close:hover{border-color:var(--line-strong);color:var(--ink);}
 .af-close svg{width:12px;height:12px;}
@@ -2279,10 +2278,6 @@ body.af-tab-brief .af-sub,body.af-tab-brief .af-filter,body.af-tab-brief .af-bod
 .hp-trend.t-up{color:#dc2626;background:#dc26260e;}
 .hp-trend.t-down{color:#6b7280;background:#6b72800e;}
 .hp-trend.t-new{color:#059669;background:#0596690e;}
-/* ── BestBlogs 早报条目摘要与提示 ── */
-.brief-summary{font-size:11.5px;line-height:1.55;color:var(--muted);padding:0 10px 8px 40px;margin-top:-4px;word-break:break-word;}
-.brief-note{font-size:10.5px;color:var(--faint);padding:10px 4px 2px;text-align:center;}
-
 /* ── Cross Platform（跨平台共振） ── */
 .ib-cross{margin-top:10px;}
 .ib-cross-list{display:flex;flex-direction:column;gap:5px;}
@@ -2590,7 +2585,6 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       if(filter.type==='cat' && !filter.cats[a.c]) return false;
       if(filter.type==='src' && a.sk!==filter.src) return false;
       if(filter.filterBm && !_bookmarks[artKey(a)]) return false;
-      /* F2 修复：BestBlogs UI 已移除，清除残留引用 */
       if(filter.unreadOnly && visited[artKey(a)]) return false;
       if(q) {
         if(_searchSrcMatch) return a.sk === _searchSrcMatch;
@@ -4279,27 +4273,21 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   if(_aiDesktop() && !afLoaded) _loadAll();
 
   /* ══════════════════════════════════════════
-     面板三 Tab：AI 快讯 / 全网热榜 / BestBlogs 早报（懒加载）
+     面板 Tab：AI 快讯 / 全网热榜
      ══════════════════════════════════════════ */
   var afTab='feed';
   var _hotLoaded=false,_hotLoading=false,_hotData=null;
-  var _briefLoaded=false,_briefLoading=false;
   function switchAfTab(tab){
     afTab=tab;
     document.body.classList.toggle('af-tab-hot',tab==='hot');
-    document.body.classList.toggle('af-tab-brief',tab==='brief');
-    var tf=document.getElementById('afTabFeed'),th=document.getElementById('afTabHot'),tb=document.getElementById('afTabBrief');
+    var tf=document.getElementById('afTabFeed'),th=document.getElementById('afTabHot');
     if(tf){tf.classList.toggle('on',tab==='feed');tf.setAttribute('aria-selected',tab==='feed'?'true':'false');}
     if(th){th.classList.toggle('on',tab==='hot');th.setAttribute('aria-selected',tab==='hot'?'true':'false');}
-    if(tb){tb.classList.toggle('on',tab==='brief');tb.setAttribute('aria-selected',tab==='brief'?'true':'false');}
-    /* 早报 Tab 复用热榜的 hp-wrap 全屏接管样式（body.af-tab-hot 时 hp-wrap 接管面板） */
-    var hw=document.getElementById('hpWrap'),bw=document.getElementById('briefWrap');
+    var hw=document.getElementById('hpWrap');
     if(hw) hw.style.display=(tab==='hot')?'flex':'none';
-    if(bw) bw.style.display=(tab==='brief')?'flex':'none';
     var rb=document.getElementById('afRefreshBtn'); if(rb) rb.style.display=(tab==='feed')?'':'none';
     var hb=document.getElementById('btnHot'); if(hb) hb.classList.toggle('on',tab==='hot'&&document.body.classList.contains('ai-open'));
     if(tab==='hot'&&!_hotLoaded) loadHotSnapshot();
-    if(tab==='brief'&&!_briefLoaded) loadBestBlogsBrief();
   }
   window.switchAfTab=switchAfTab;
   var _hotPlatformNames={weibo:'微博',zhihu:'知乎','zhihu-daily':'知乎日报',baidu:'百度',bilibili:'B站',douyin:'抖音'};
@@ -4368,40 +4356,6 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     }
     list.innerHTML=h||'<div class="hp-empty">暂无热榜数据</div>';
   }
-
-  /* ── BestBlogs 早报（api/bestblogs.js 代理，服务端持有密钥，30min 缓存） ── */
-  var BESTBLOGS_API = 'https://starhub-refresh.vercel.app/api/bestblogs';
-  function loadBestBlogsBrief(){
-    if(_briefLoading) return;
-    _briefLoading=true;
-    var list=document.getElementById('briefList');
-    if(!list) return;
-    list.innerHTML='<div class="hp-empty">加载中…</div>';
-    fetch(BESTBLOGS_API+'?type=brief&language=zh&limit=20').then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    }).then(function(data){
-      _briefLoaded=true;_briefLoading=false;
-      var items=data.items||[];
-      if(!items.length){list.innerHTML='<div class="hp-empty">今日暂无早报内容</div>';return;}
-      var h='';
-      for(var j=0;j<items.length;j++){
-        var it=items[j],rk=j+1,cls=rk<=3?' top3':'';
-        var url=it.url||('#');
-        h+='<a class="hp-item" href="'+_escH(url)+'" target="_blank" rel="noopener">';
-        h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
-        h+='<span class="hp-title">'+_escH(it.title||'')+'</span>';
-        h+='</a>';
-        if(it.summary) h+='<div class="brief-summary">'+_escH(it.summary)+'</div>';
-      }
-      if(data.fallback) h+='<div class="brief-note">早报端点暂未开放，已展示近 24h 精选内容</div>';
-      list.innerHTML=h;
-    }).catch(function(){
-      _briefLoading=false;
-      list.innerHTML='<div class="hp-empty">加载失败，请稍后重试</div>';
-    });
-  }
-  window.loadBestBlogsBrief=loadBestBlogsBrief;
 
   /* ── Insight Panel（每日洞察） ── */
   function toggleInsight(){
@@ -4699,15 +4653,12 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
         '<div class="af-tabs" role="tablist">\n'
         '<button class="af-tab on" id="afTabFeed" role="tab" aria-selected="true" onclick="switchAfTab(\'feed\')">AI \u5feb\u8baf</button>\n'
         '<button class="af-tab" id="afTabHot" role="tab" aria-selected="false" onclick="switchAfTab(\'hot\')">\u70ed\u699c</button>\n'
-        '<button class="af-tab" id="afTabBrief" role="tab" aria-selected="false" onclick="switchAfTab(\'brief\')">\u65e9\u62a5</button>\n'
         '</div>\n'
         '<button class="af-refresh" id="afRefreshBtn" onclick="refreshAiFeed()" title="\u5237\u65b0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
         '<div class="hp-wrap" id="hpWrap">\n'
         '<div class="hp-tabs" id="hpTabs"></div>\n'
         '<div class="hp-body" id="hotList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u70ed\u699c</div></div></div>\n'
-        '<div class="hp-wrap" id="briefWrap" style="display:none">\n'
-        '<div class="hp-body" id="briefList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u65e9\u62a5</div></div></div>\n'
         '<div class="af-sub" id="afUpdated"></div>\n'
         '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
         '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'
