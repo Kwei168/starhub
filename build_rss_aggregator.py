@@ -4344,7 +4344,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     for(var j=0;j<src.items.length;j++){
       var it=src.items[j],rk=it.rank||(j+1),cls=rk<=3?' top3':'';
       var hotTxt=it.hot?(''+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+'\u4e07';}):'';
-      h+='<a class="hpitem" href="'+_escH(it.url||'#')+'" target="_blank" rel="noopener">';
+      h+='<a class="hp-item" href="'+_escH(it.url||'#')+'" target="_blank" rel="noopener">';
       h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
       h+='<span class="hp-title">'+_escH(it.title||'')+'</span>';
       if(hotTxt) h+='<span class="hp-hot">'+hotTxt+'</span>';
