@@ -83,7 +83,8 @@ export default async function handler(req, res) {
     // resources：精选内容列表
     const timeRange = '24h';
     const qualifiedParam = qualified === 'true' ? '&qualified=true' : '';
-    url = `${BESTBLOGS_BASE}/resources?type=article&language=${reqLang}&time=${timeRange}&limit=${reqLimit}${qualifiedParam}`;
+    // BestBlogs 当前接口不接受 type=article；省略 type 才能返回资源
+    url = `${BESTBLOGS_BASE}/resources?language=${reqLang}&time=${timeRange}&limit=${reqLimit}${qualifiedParam}`;
   }
 
   try {
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
     if (!r.ok) {
       // brief 端点 404 时 fallback 到 resources
       if (reqType === 'brief' && r.status === 404) {
-        const fallbackUrl = `${BESTBLOGS_BASE}/resources?type=article&language=${reqLang}&time=24h&limit=${reqLimit}&qualified=true`;
+        const fallbackUrl = `${BESTBLOGS_BASE}/resources?language=${reqLang}&time=24h&limit=${reqLimit}&qualified=true`;
         const r2 = await fetch(fallbackUrl, {
           headers: {
             'X-API-KEY': apiKey,
