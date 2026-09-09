@@ -2681,7 +2681,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     for(var j=0;j<src.items.length;j++){
       var it=src.items[j],rk=it.rank||(j+1),cls=rk<=3?' top3':'';
       var hotTxt=it.hot?(''+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+'万';}):'';
-      h+='<a class="hpitem" href="'+_escH(it.url||'#')+'" target="_blank" rel="noopener">';
+      h+='<a class="hp-item" href="'+_escH(it.url||'#')+'" target="_blank" rel="noopener">';
       h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
       h+='<span class="hp-title">'+_escH(it.title||'')+'</span>';
       if(hotTxt) h+='<span class="hp-hot">'+hotTxt+'</span>';
