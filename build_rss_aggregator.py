@@ -5120,8 +5120,8 @@ def _extract_topic_label_from_titles(cluster_articles):
                                 extended = ext
                                 extended_cnt = ext_cnt
                         break  # 只用第一个匹配标题来延伸
-                    # 下一个是中文字符：尝试延伸 1-3 个字符到最近的边界
-                    for ext_len in range(1, 4):
+                    # 下一个是中文字符：尝试延伸 1-10 个字符到最近的边界
+                    for ext_len in range(1, 11):
                         if end_pos + ext_len > len(t):
                             break
                         ext = t[idx:end_pos + ext_len]
@@ -5171,9 +5171,13 @@ def _extract_topic_label_from_titles(cluster_articles):
                 return '%s %s' % (top_term, second), [top_term, second]
             return top_term, [top_term]
 
-    # 公共子串有效则返回（已经过边界延伸处理，最低 3 字；数值单位短语已在评分阶段过滤）
+    # 公共子串有效则返回（已经过边界延伸处理，最低 3 字；过滤过短数值单位）
     if best_substr and len(best_substr) >= 3:
-        return best_substr, [best_substr]
+        # 过滤过短的数值单位短语（如 '亿欧元'、'万美元'）
+        if len(best_substr) <= 4 and _is_numeric_unit_phrase(best_substr):
+            pass  # 跳过，进入策略 3
+        else:
+            return best_substr, [best_substr]
 
     # ─ 策略 3：标题内相邻 token 高频组合（边界感知） ──
     ngram_counter = collections.Counter()
@@ -5190,19 +5194,25 @@ def _extract_topic_label_from_titles(cluster_articles):
                     # 额外检查：拼接后的总中文字符数 >= 4（避免 "多模态 发布" 这种松散组合）
                     cn_chars = re.sub(r'[^\u4e00-\u9fff]', '', phrase)
                     if len(cn_chars) >= 4:
-                        # 质量过滤：如果短语含空格且空格两侧都是纯中文，可能是分词错误
+                        # 质量过滤：如果短语含空格且所有 token 都是纯中文，可能是分词错误
                         if ' ' in phrase:
                             parts_check = phrase.split()
-                            if len(parts_check) == 2:
-                                left_cn = all('\u4e00' <= c <= '\u9fff' for c in parts_check[0])
-                                right_cn = all('\u4e00' <= c <= '\u9fff' for c in parts_check[1])
-                                if left_cn and right_cn:
-                                    continue  # 跳过疑似分词错误的组合
+                            all_pure_cn = all(
+                                all('\u4e00' <= c <= '\u9fff' for c in part)
+                                for part in parts_check
+                            )
+                            if all_pure_cn:
+                                continue  # 跳过疑似分词错误的组合
                         ngram_counter[phrase] += 1
     if ngram_counter:
         best_phrase = ngram_counter.most_common(1)[0][0]
-        parts = best_phrase.split()
-        return best_phrase, parts[:3]
+        # 过滤数值单位短语
+        cn_only = re.sub(r'[^\u4e00-\u9fff]', '', best_phrase)
+        if len(cn_only) <= 4 and _is_numeric_unit_phrase(cn_only):
+            pass  # 跳过，进入策略 4
+        else:
+            parts = best_phrase.split()
+            return best_phrase, parts[:3]
 
     # ── 策略 4：兜底 — 从代表性标题中智能截取语义完整片段 ──
     # 选最长的合格标题作为代表性标题（信息量最大）
