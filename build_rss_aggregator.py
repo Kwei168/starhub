@@ -5079,11 +5079,22 @@ def _extract_topic_label_from_titles(cluster_articles):
                         continue
                     cnt = sum(1 for t in good_titles if sub in t)
                     if cnt >= 2:
-                        substr_score[sub] = cnt * cnt * slen
+                        # 评分改为覆盖度优先：cnt × len，避免短子串因位置多而得分虚高
+                        substr_score[sub] = cnt * slen
         if substr_score:
-            # 按 (覆盖度, 长度) 降序找最优子串，并尝试边界延伸
-            for candidate, _ in substr_score.most_common(30):
-                cand_cnt = sum(1 for t in good_titles if candidate in t)
+            # 覆盖度优先 + 同覆盖度选最长：先找最高覆盖度，再在同等覆盖度中选最长子串
+            max_cnt = 0
+            for sub in substr_score:
+                cnt = sum(1 for t in good_titles if sub in t)
+                if cnt > max_cnt:
+                    max_cnt = cnt
+            # 在最高覆盖度的子串中选最长的
+            best_candidates = [(sub, len(sub)) for sub, score in substr_score.items()
+                               if sum(1 for t in good_titles if sub in t) == max_cnt]
+            best_candidates.sort(key=lambda x: x[1], reverse=True)
+            # 对每个候选尝试边界延伸，然后选最优
+            for candidate, cand_len in best_candidates[:20]:  # 最多处理前20个最长候选
+                cand_cnt = max_cnt
                 # 尝试延伸子串到语义边界
                 extended = candidate
                 extended_cnt = cand_cnt
