@@ -4950,18 +4950,60 @@ def _extract_topic_label_from_titles(cluster_articles):
 
     优先级：
     1. 术语词典精确命中（标题中出现最多的 _TECH_DICT 词条）
-    2. 标题内相邻 2-3 个高质量 token 拼接
-    3. 兜底：截取合格标题的前 12 个字符
+    2. 最长公共子串（跨标题重复出现的连续中文片段，>= 3 字）
+    3. 标题内相邻 2-3 个高质量 token 拼接
+    4. 兜底：截取合格标题的前 12 个字符
     返回 (label_str, labels_list)。
     """
-    _LABEL_NOISE_LOCAL = set('的了是在我有和就不人都一个上也这到说们为你会对被把让给用从向')
+    _LABEL_NOISE_LOCAL = set('的了是在我有和就不人都一个上也这到说们为你对被把让给用从向')
 
-    # ── 策略 1：术语词典精确匹配 ──
-    dict_term_counter = collections.Counter()
+    # 收集合格标题（去重、去病句）
+    good_titles = []
+    seen_titles = set()
     for art in cluster_articles:
-        title = art.get('title', '')
-        if not title or _has_repeated_chars(title, min_repeats=2, min_run=2):
+        t = art.get('title', '')
+        if not t or len(t) < 4 or _has_repeated_chars(t, min_repeats=2, min_run=2):
             continue
+        t_key = t[:30]  # 前 30 字去重
+        if t_key in seen_titles:
+            continue
+        seen_titles.add(t_key)
+        good_titles.append(t)
+
+    # ── 策略 1+2 联合决策：先算公共子串，再与词典术语比较覆盖度 ──
+
+    # 策略 2：最长公共子串（跨标题重复的连续中文片段）
+    best_substr = None
+    best_substr_cnt = 0
+    if len(good_titles) >= 2:
+        cn_fragments = []
+        for t in good_titles:
+            cn = re.sub(r'[^\u4e00-\u9fff]', ' ', t)
+            cn_fragments.extend(p for p in cn.split() if len(p) >= 3)
+        substr_score = collections.Counter()
+        for frag in cn_fragments:
+            max_len = min(len(frag), 10)
+            for slen in range(3, max_len + 1):
+                for start in range(len(frag) - slen + 1):
+                    sub = frag[start:start + slen]
+                    if sub[0] in _LABEL_NOISE_LOCAL or sub[-1] in _LABEL_NOISE_LOCAL:
+                        continue
+                    cnt = sum(1 for t in good_titles if sub in t)
+                    if cnt >= 2:
+                        substr_score[sub] = cnt * cnt * slen
+        if substr_score:
+            # 按 (覆盖度, 长度) 降序找最优子串：优先覆盖更多标题，其次更长
+            best_substr = None
+            best_substr_cnt = 0
+            for candidate, _ in substr_score.most_common(30):
+                cand_cnt = sum(1 for t in good_titles if candidate in t)
+                if cand_cnt > best_substr_cnt or (cand_cnt == best_substr_cnt and len(candidate) > len(best_substr or '')):
+                    best_substr = candidate
+                    best_substr_cnt = cand_cnt
+
+    # 策略 1：术语词典精确匹配
+    dict_term_counter = collections.Counter()
+    for title in good_titles:
         title_lower = title.lower()
         seen_in_doc = set()
         for term in _TECH_DICT:
@@ -4970,23 +5012,25 @@ def _extract_topic_label_from_titles(cluster_articles):
                 dict_term_counter[term] += 1
                 seen_in_doc.add(tl)
     if dict_term_counter:
-        top_term = dict_term_counter.most_common(1)[0][0]
-        # 尝试找第二个高频术语拼成复合标签
-        second = None
-        for term, _ in dict_term_counter.most_common(5):
-            if term != top_term:
-                second = term
-                break
-        if second and len(second) >= 2:
-            return '%s %s' % (top_term, second), [top_term, second]
-        return top_term, [top_term]
+        top_term, top_cnt = dict_term_counter.most_common(1)[0]
+        # 仅当词典术语的标题覆盖度严格优于公共子串，或覆盖度相同但术语更长时才优先返回
+        if top_cnt > best_substr_cnt or (top_cnt == best_substr_cnt and len(top_term) >= len(best_substr or '')):
+            second = None
+            for term, _ in dict_term_counter.most_common(5):
+                if term != top_term:
+                    second = term
+                    break
+            if second and len(second) >= 2:
+                return '%s %s' % (top_term, second), [top_term, second]
+            return top_term, [top_term]
 
-    # ── 策略 2：标题内相邻 token 高频组合 ──
+    # 公共子串有效则返回
+    if best_substr:
+        return best_substr, [best_substr]
+
+    # ── 策略 3：标题内相邻 token 高频组合 ──
     ngram_counter = collections.Counter()
-    for art in cluster_articles:
-        title = art.get('title', '')
-        if not title:
-            continue
+    for title in good_titles:
         tokens = _tokenize(title)
         quality_tokens = [t for t in tokens
                           if len(t) >= 2 and t not in _LABEL_NOISE_LOCAL and _is_valid_ngram(t)]
@@ -5002,10 +5046,9 @@ def _extract_topic_label_from_titles(cluster_articles):
         parts = best_phrase.split()
         return best_phrase, parts[:3]
 
-    # ── 策略 3：兜底 — 截取合格标题前 12 字符 ──
-    for art in cluster_articles:
-        title = art.get('title', '')
-        if title and len(title) >= 6 and not _has_repeated_chars(title, min_repeats=2, min_run=2):
+    # ── 策略 4：兜底 — 截取合格标题前 12 字符 ──
+    for title in good_titles:
+        if len(title) >= 6:
             truncated = title[:12].rstrip()
             # 尝试在标点/空格处截断
             for sep in ('，', '。', '：', '！', '？', ',', '.', ' ', ' '):
@@ -5022,7 +5065,7 @@ def _cluster_topics(rss_history, now_bj, max_topics=20, min_cluster=3):
     """基于标题+摘要关键词 Jaccard 相似度的话题聚类。返回话题列表。"""
     cutoff_24h = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=24)
     # 通用单字过滤表（比 _STOP_WORDS 更严格，用于标签过滤）
-    _LABEL_NOISE = set('的了是在我有和就不人都一个上也这到说们为你会对被把让给用从向')
+    _LABEL_NOISE = set('的了是在我有和就不人都一个上也这到说们为你对被把让给用从向')
     # 收集近 24h 文章（标题 + 摘要关键词集合）
     articles = []
     for link, item in rss_history.items():
