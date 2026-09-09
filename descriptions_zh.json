@@ -369,5 +369,6 @@
  "mksglu/context-mode": "AI 编码代理的上下文窗口优化。沙箱工具输出（减少 98%）、保留会话内存，并通过 MCP + 挂钩强制跨 17 个平台进行路由。",
  "nashsu/llm_wiki": "LLM Wiki 是一个跨平台桌面应用程序，可自动将您的文档转变为有组织的、相互关联的知识库。法学硕士不是传统的 RAG（每次从头开始检索并回答），而是从您的来源逐步构建和维护持久的 wiki。",
  "Tencent/teamai-cli": "让每个团队的 AI 都原生化",
- "newsnext/newsnow": "优雅阅读实时最热新闻"
+ "newsnext/newsnow": "优雅阅读实时最热新闻",
+ "paveldevyatov/refund-anything-ai-prompt": "人工智能提示可让您退款——订阅、数字购买、预订。礼貌的信件第一，法律升级第二。 30 多个司法管辖区。"
 }
