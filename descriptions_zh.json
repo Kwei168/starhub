@@ -376,5 +376,6 @@
  "deepseek-ai/awesome-deepseek-integration": "将 DeepSeek API 集成到流行软件中",
  "vastsa/PI-Desktop": "本地优先的 AI 编码代理桌面：Electron + Rust 主机核心 + pi Agent Harness + 用户可安装的插件",
  "openai/plugins": "OpenAI 插件",
- "aimeoa/hanshuang-codex": "针对GPT 5.6,V4flash的破甲实验项目"
+ "aimeoa/hanshuang-codex": "针对GPT 5.6,V4flash的破甲实验项目",
+ "crwdla/tokentab": "一个 CLI，可以读取 Claude Code、Codex 和 Gemini CLI 会话日志，并按模型、项目和日期计算出它们的成本。"
 }
