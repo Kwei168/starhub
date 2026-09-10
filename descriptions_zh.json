@@ -379,5 +379,6 @@
  "aimeoa/hanshuang-codex": "针对GPT 5.6,V4flash的破甲实验项目",
  "crwdla/tokentab": "一个 CLI，可以读取 Claude Code、Codex 和 Gemini CLI 会话日志，并按模型、项目和日期计算出它们的成本。",
  "kunchenguid/firstmate": "与一位代理人交谈。与船员一起航行。",
- "yudaprasetya007/routeVSCODE": "⚡ 零重载动态 AI 模型切换器和通过 9Router 进行 VSCode Copilot 聊天的本地代理"
+ "yudaprasetya007/routeVSCODE": "⚡ 零重载动态 AI 模型切换器和通过 9Router 进行 VSCode Copilot 聊天的本地代理",
+ "alsk1992/CloddsBot": "开源AI交易代理，在1000多个市场（ Polymarket、Kalshi、Binance、Hyperliquid、Solana DEXs、5条EVM链）自主运营。扫描边缘，即时执行，在您睡觉时管理风险。机器对机器支付的代理商务协议。自托管。建立在Claude之上。"
 }
