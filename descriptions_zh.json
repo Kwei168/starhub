@@ -386,5 +386,6 @@
  "shareAI-lab/learn-claude-code": "Bash 就是你所需要的 - 一个 Nano claude 代码——类似“代理工具”，从 0 到 1 构建",
  "hiyouga/LlamaFactory": "100多个LLM和VLM的统一高效微调（ACL 2024）",
  "headroomlabs-ai/headroom": "在工具输出、日志、文件和 RAG 块到达 LLM 之前对其进行压缩。编码代理的标记减少了 20%，JSON 的标记减少了 60-95%，答案相同。库、代理、MCP 服务器。",
- "FoundationAgents/MetaGPT": "🌟 多代理框架：第一家人工智能软件公司，迈向自然语言编程"
+ "FoundationAgents/MetaGPT": "🌟 多代理框架：第一家人工智能软件公司，迈向自然语言编程",
+ "Loopera-ai/loopera": "面向基本面因子研究的智能体-A hypothesis-driven AI agent for fundamental factor research, with evidence-gated validation and research memory."
 }
