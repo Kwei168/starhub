@@ -39,8 +39,12 @@ NEWSNOW_API_TMPL = "https://newsnow.busiyi.world/api/s?id=%s"
 NEWSNOW_TIMEOUT = 10
 HOT_SNAPSHOT_FILE = "hot_snapshot.json"
 HOT_HISTORY_FILE = "hot_history.json"  # 热榜轨迹历史（保留 7 天）
-# 期望的热榜源（按优先级排序，构建时按此顺序提取）
-NEWSNOW_PLATFORMS = ["weibo", "zhihu", "zhihu-daily", "baidu", "bilibili", "douyin"]
+# 期望的热榜源（综合热搜 + 科技/AI/开发者 + 国际社区，zhihu-daily 因 API 500 故障已移除 2026-09）
+NEWSNOW_PLATFORMS = [
+    "weibo", "zhihu", "baidu", "bilibili", "douyin",       # 综合热搜
+    "ithome", "hackernews", "github", "solidot", "sspai",   # 科技/开发者
+    "juejin", "v2ex", "producthunt", "aihot",               # 开发者/产品/AI
+]
 
 # ── 缓存数据 ──
 _trans_cache = {}  # {text_hash: translated_text}
@@ -4314,10 +4318,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(tab==='hot'&&!_hotLoaded) loadHotSnapshot();
   }
   window.switchAfTab=switchAfTab;
-  var _hotPlatformNames={weibo:'微博',zhihu:'知乎','zhihu-daily':'知乎日报',baidu:'百度',bilibili:'B站',douyin:'抖音'};
+  var _hotPlatformNames={weibo:'微博',zhihu:'知乎',baidu:'百度',bilibili:'B站',douyin:'抖音',ithome:'IT之家',hackernews:'Hacker News',github:'GitHub',solidot:'Solidot',sspai:'少数派',juejin:'掘金',v2ex:'V2EX',producthunt:'Product Hunt',aihot:'AIHOT'};
   /* dot：平台品牌色（未选中态圆点，提供平台色差区分）；deep：选中态实底色（加深变体，白字对比 ≥4.4:1，明暗主题均可读） */
-  var _hotPlatformColors={weibo:'#ff4400',zhihu:'#0066ff','zhihu-daily':'#0084ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#fe2c55'};
-  var _hotPlatformDeep={weibo:'#d5380f',zhihu:'#0052cc','zhihu-daily':'#0066cc',baidu:'#1f28b8',bilibili:'#c73a6c',douyin:'#d9284a'};
+  var _hotPlatformColors={weibo:'#ff4400',zhihu:'#0066ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#fe2c55',ithome:'#d32f2f',hackernews:'#ff6600',github:'#6e5491',solidot:'#4caf50',sspai:'#da3325',juejin:'#1e80ff',v2ex:'#778087',producthunt:'#da552f',aihot:'#0891b2'};
+  var _hotPlatformDeep={weibo:'#d5380f',zhihu:'#0052cc',baidu:'#1f28b8',bilibili:'#c73a6c',douyin:'#d9284a',ithome:'#b71c1c',hackernews:'#cc5200',github:'#4a3769',solidot:'#2e7d32',sspai:'#b71c1c',juejin:'#1565c0',v2ex:'#5a5f66',producthunt:'#b5441f',aihot:'#067090'};
   window.toggleHotPanel=function(){
     var panelOpen=document.body.classList.contains('ai-open');
     if(panelOpen&&afTab==='hot'){toggleAiFeed();return;} /* 已在热榜 Tab→再次点击关闭抽屉（移动端习惯） */
