@@ -387,5 +387,6 @@
  "hiyouga/LlamaFactory": "100多个LLM和VLM的统一高效微调（ACL 2024）",
  "headroomlabs-ai/headroom": "在工具输出、日志、文件和 RAG 块到达 LLM 之前对其进行压缩。编码代理的标记减少了 20%，JSON 的标记减少了 60-95%，答案相同。库、代理、MCP 服务器。",
  "FoundationAgents/MetaGPT": "🌟 多代理框架：第一家人工智能软件公司，迈向自然语言编程",
- "Loopera-ai/loopera": "面向基本面因子研究的智能体-A hypothesis-driven AI agent for fundamental factor research, with evidence-gated validation and research memory."
+ "Loopera-ai/loopera": "面向基本面因子研究的智能体-A hypothesis-driven AI agent for fundamental factor research, with evidence-gated validation and research memory.",
+ "JustVugg/colibri": "在您已经拥有的硬件上运行前沿 MoE 模型 - 纯 C、零依赖、从磁盘流式传输的专家。微小的发动机，巨大的模型。 🐦"
 }
