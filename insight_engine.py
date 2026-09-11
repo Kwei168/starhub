@@ -173,8 +173,11 @@ def configure_llm(config):
 
 # ────────────────── Task 3: load_documents ───────────────────
 def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
-    """Convert raw data dicts into a list of LlamaIndex Document objects."""
-    docs = []
+    """Convert raw data dicts into a list of LlamaIndex Document objects.
+    使用配额制确保热榜/Trending/RSS 各类别均有代表，避免高优先级源挤占全部名额。
+    """
+    hot_docs, trend_docs, rss_docs = [], [], []
+
     # --- Hot items (highest priority) ---
     if hot_snapshot:
         for platform in hot_snapshot:
@@ -183,7 +186,7 @@ def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
                 title = item.get("title", "")
                 if title:
                     text = f"[热榜/{plat}] {title}"
-                    docs.append({"text": text, "priority": 0})
+                    hot_docs.append(text)
 
     # --- Trending (second priority) ---
     if trending_data:
@@ -191,7 +194,7 @@ def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
         for repo, stars in items:
             desc = repo  # repo name as description fallback
             text = f"[Trending] {repo} (+{stars} stars): {desc}"
-            docs.append({"text": text, "priority": 1})
+            trend_docs.append(text)
 
     # --- RSS items (lowest priority) ---
     if rss_history:
@@ -203,18 +206,42 @@ def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
                 cat = item.get("cat", item.get("category", "rss"))
                 text = f"[RSS/{cat}] {title} {summary}".strip()[:500]
                 if text.strip():
-                    docs.append({"text": text, "priority": 2})
+                    rss_docs.append(text)
 
-    # Sort by priority (lower = higher priority), then truncate
-    docs.sort(key=lambda d: d["priority"])
-    docs = docs[:max_documents]
+    # 配额制：每类分配固定名额，确保话题聚类有 RSS 数据
+    # 默认 max_documents=500 时：RSS 350 + 热榜 100 + Trending 50
+    # 先按配额截取，未用完的配额回退给其他类别
+    rss_quota = max(int(max_documents * 0.7), 10)
+    hot_quota = max(int(max_documents * 0.2), 2)
+    trend_quota = max(max_documents - rss_quota - hot_quota, 0)
+
+    hot_sel = hot_docs[:hot_quota]
+    trend_sel = trend_docs[:trend_quota]
+    rss_sel = rss_docs[:rss_quota]
+
+    # 回退：未用完的配额分配给有数据的类别
+    remaining = max_documents - len(hot_sel) - len(trend_sel) - len(rss_sel)
+    if remaining > 0:
+        # 优先补 RSS（话题聚类依赖它）
+        extra_rss = rss_docs[len(rss_sel):len(rss_sel) + remaining]
+        rss_sel.extend(extra_rss)
+        remaining -= len(extra_rss)
+    if remaining > 0:
+        extra_hot = hot_docs[len(hot_sel):len(hot_sel) + remaining]
+        hot_sel.extend(extra_hot)
+        remaining -= len(extra_hot)
+    if remaining > 0:
+        extra_trend = trend_docs[len(trend_sel):len(trend_sel) + remaining]
+        trend_sel.extend(extra_trend)
+
+    selected = hot_sel + trend_sel + rss_sel
 
     if not LLAMA_INDEX_AVAILABLE:
         # Return lightweight stand-in objects
-        return [_SimpleDoc(d["text"]) for d in docs]
+        return [_SimpleDoc(t) for t in selected]
 
     from llama_index.core import Document as LiDocument
-    return [LiDocument(text=d["text"]) for d in docs]
+    return [LiDocument(text=t) for t in selected]
 
 
 class _SimpleDoc:

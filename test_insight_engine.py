@@ -154,7 +154,7 @@ class TestConfigAndFactory(unittest.TestCase):
         """_DEFAULTS has all required keys."""
         self.assertTrue(_DEFAULTS["insight_engine_enabled"])
         self.assertEqual(_DEFAULTS["insight_llm_provider"], "agnes")
-        self.assertEqual(_DEFAULTS["insight_max_documents"], 200)
+        self.assertEqual(_DEFAULTS["insight_max_documents"], 500)
         self.assertEqual(_DEFAULTS["insight_top_keywords"], 30)
         self.assertEqual(_DEFAULTS["insight_top_topics"], 15)
 
