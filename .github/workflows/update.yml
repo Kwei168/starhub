@@ -47,6 +47,9 @@ jobs:
             echo "构建模式: 增量 (incremental)"
           fi
 
+      - name: Install insight engine dependencies
+        run: pip install llama-index-core llama-index-embeddings-fastembed fastembed
+
       - name: Fetch stars & build
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
