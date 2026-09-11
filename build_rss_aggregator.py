@@ -5912,7 +5912,44 @@ def _compute_cross_category_topics(kw_data):
 
 
 def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=None):
-    """执行完整的智能分析流水线。返回分析数据字典。"""
+    """执行智能分析流水线。优先使用 insight_engine (LlamaIndex)，失败回退统计方法。"""
+    # ── 尝试 insight_engine (LlamaIndex) ──
+    try:
+        import insight_engine
+        ie_config = insight_engine.load_config()
+        if ie_config.get("insight_engine_enabled", True):
+            prev_analysis = _load_prev_analysis()
+            prev_keywords = []
+            if prev_analysis and prev_analysis.get("keywords", {}).get("global"):
+                prev_keywords = [w for w, _ in prev_analysis["keywords"]["global"][:50]]
+            ie_result = insight_engine.run_analysis(
+                hot_snapshot=hot_snapshot,
+                rss_history=_rss_history,
+                trending_data=[],
+                config=ie_config,
+                prev_keywords=prev_keywords,
+                hot_history=hot_history,
+            )
+            if ie_result is not None:
+                # 合并原有需要保留的字段（热榜趋势、RSS轨迹等仍由旧方法计算）
+                ie_result["hot_trends"] = _compute_hot_trends(hot_history) if hot_history else {}
+                trend_history = _accumulate_rss_trend_history(ie_result, now_bj)
+                ie_result["rss_trajectories"] = _compute_rss_trajectories(trend_history)
+                if not ie_result.get("cross_category"):
+                    ie_result["cross_category"] = _compute_cross_category_topics(
+                        ie_result.get("keywords", {}))
+                quality = _score_sources(sources_with_items, _rss_history)
+                _save_source_quality(quality)
+                ie_result["quality"] = {sk: v["score"] for sk, v in quality.items()}
+                _save_analysis_snapshot(ie_result)
+                print("[分析] insight_engine (LlamaIndex) 分析完成")
+                return ie_result
+    except ImportError:
+        print("[分析] insight_engine 未安装，回退统计方法")
+    except Exception as e:
+        print("[分析] insight_engine 失败: %s，回退统计方法" % e, file=sys.stderr)
+        import traceback; traceback.print_exc()
+    # ── 回退：原有统计方法 ──
     t0 = time.time()
     print("[分析] 开始智能分析...")
     # 1. 信源质量评分
