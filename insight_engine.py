@@ -350,8 +350,11 @@ def _extract_cluster_label(texts, all_doc_texts=None):
         t = re.sub(r'^\u3010[^\u3011]*\u3011\s*', '', t)
         # 去除工具/平台后缀（如 -notebooklm）
         t = re.sub(r'\s*-\s*[a-z]+(?:lm|ai|bot|app)$', '', t, flags=re.IGNORECASE)
+        # 去除知乎/阅读模板文本
+        t = re.sub(r'^[\u67e5\u770b\u70b9\u51fb]*\u77e5\u4e4e[\u539f\u6587]*\s*', '', t)
         t = re.sub(r'[\u67e5\u770b\u70b9\u51fb]?\u77e5\u4e4e[\u539f\u6587]?\u00b7?\s*$', '', t)
         t = re.sub(r'\u9605\u8bfb[\u539f\u6587]+.*$', '', t)
+        t = re.sub(r'^\u67e5\u770b\u539f\u6587\s*', '', t)
         if len(t) >= 4:
             cleaned.append(t)
     if not cleaned:
@@ -373,7 +376,7 @@ def _extract_cluster_label(texts, all_doc_texts=None):
     total_docs = max(len(all_doc_texts), n) if all_doc_texts else n
 
     # Step 3: 停用词/字
-    _STOP_CHARS = set('\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
+    _STOP_CHARS = set('\u7684\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
     _STOP_NGRAMS = {
         '需要','应该','可能','可以','这个','那个','什么','怎么','为什么',
         '因为','所以','但是','虽然','如果','已经','还是','或者','而且',
@@ -388,13 +391,10 @@ def _extract_cluster_label(texts, all_doc_texts=None):
         '搜索','登录','注册','首页','频道','专栏','话题','标签',
         '看知','乎原','事情','音频','声音','内容','感觉','意思',
         '正式','发布','开源','团队','技术','分享','系列','博客',
+        '查看','原文','任务','工作','中的','中最','中最',
     }
 
-    # ── Tier 1: 最长公共子串（Longest Common Substring）──
-    # 从原始标题中提取完整片段，保证语义完整可读
-    cn_titles = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
-    cn_titles = [c for c in cn_titles if len(c) >= 3]
-    # 额外提取 【...】 括号内的中文内容作为 LCS 候选（保留栏目名等关键信息）
+    # 提取 【...】 括号内的中文内容（栏目名等关键信息）
     bracket_names = []
     for t in texts:
         m = re.match(r'(?:\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*)?\u3010([^\u3011]+)\u3011', t)
@@ -402,6 +402,19 @@ def _extract_cluster_label(texts, all_doc_texts=None):
             cn_name = re.sub(r'[^\u4e00-\u9fff]', '', m.group(1))
             if len(cn_name) >= 3:
                 bracket_names.append(cn_name)
+
+    # ── Tier 0: 括号名直接匹配（栏目名是最佳标签）──
+    if bracket_names:
+        from collections import Counter
+        bn_count = Counter(bracket_names)
+        for bn, bn_cnt in bn_count.most_common():
+            if bn_cnt >= max(2, n * 0.3):
+                return bn
+
+    # ── Tier 1: 最长公共子串（Longest Common Substring）──
+    # 从原始标题中提取完整片段，保证语义完整可读
+    cn_titles = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
+    cn_titles = [c for c in cn_titles if len(c) >= 3]
     # LCS 候选池 = 原始标题 + 括号名（去重）
     lcs_pool = list(dict.fromkeys(cn_titles + bracket_names))
     # 覆盖率检查池（包含括号名，确保栏目名能被正确匹配）
@@ -492,8 +505,8 @@ def _extract_cluster_label(texts, all_doc_texts=None):
             if word_score[best_word] >= max(2, n * 0.2):
                 return best_word
 
-    # ── Tier 4: 回退（最短标题截断）──
-    return max(cleaned, key=len)[:40]
+    # ── Tier 4: 回退（最短标题截断，最多10字）──
+    return max(cleaned, key=len)[:10]
 
 
 def _fallback_cluster(texts, max_topics=15, threshold=0.5, all_doc_texts=None):
@@ -726,16 +739,22 @@ def _build_topics_with_meta(topic_clusters, rss_history):
         return [{"label": c["label"], "count": c["count"],
                  "sources": [], "links": [], "cats": []}
                 for c in topic_clusters]
-    # 建立标题→元数据索引（用前30字做key）
+    # 建立标题→元数据索引（多种key策略提高匹配率）
     title_meta = {}
     for link, item in rss_history.items():
         title = item.get("title", "") or item.get("title_zh", "")
         if title:
-            title_meta[title[:30]] = {
+            meta = {
                 "link": link,
                 "source": item.get("source", ""),
                 "cat": item.get("cat", item.get("category", "rss")),
             }
+            # 多种 key 策略
+            title_meta[title[:30]] = meta
+            # 纯中文 key（去标点英文）
+            cn_key = re.sub(r'[^\u4e00-\u9fff]', '', title)[:20]
+            if len(cn_key) >= 4:
+                title_meta[cn_key] = meta
     topics = []
     for c in topic_clusters:
         sources_set = set()
@@ -743,10 +762,14 @@ def _build_topics_with_meta(topic_clusters, rss_history):
         cats_set = set()
         items = c.get("items", [])
         for item_text in items:
-            # 去前缀后取前30字匹配
+            # 去前缀后多种策略匹配
             clean = re.sub(r'^\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*', '', item_text)
-            key = clean[:30]
-            meta = title_meta.get(key)
+            meta = title_meta.get(clean[:30])
+            # 回退：纯中文匹配
+            if not meta:
+                cn_key = re.sub(r'[^\u4e00-\u9fff]', '', clean)[:20]
+                if len(cn_key) >= 4:
+                    meta = title_meta.get(cn_key)
             if meta:
                 if meta["source"]:
                     sources_set.add(meta["source"])
