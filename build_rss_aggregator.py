@@ -2595,6 +2595,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   /* ── Card wall ── */
   var globalSearch = '';
   var _searchSrcMatch = null; // 搜索匹配到的信源 key
+  var _topicBigrams = null;   // 话题标签二元组（insightSearch 设置）
   function visibleArts(){
     var q = globalSearch;
     return ART.filter(function(a){
@@ -2604,6 +2605,11 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       if(filter.unreadOnly && visited[artKey(a)]) return false;
       if(q) {
         if(_searchSrcMatch) return a.sk === _searchSrcMatch;
+        if(_topicBigrams&&_topicBigrams.length>=2){
+          var tl=(a.t||'').toLowerCase(),hits=0;
+          for(var i=0;i<_topicBigrams.length;i++){if(tl.indexOf(_topicBigrams[i])>=0)hits++;}
+          return hits>=2&&hits/_topicBigrams.length>=0.15;
+        }
         var ql=q.toLowerCase(); return (a.t||'').toLowerCase().indexOf(ql)>=0 || (a.s||'').toLowerCase().indexOf(ql)>=0 || (a.src||'').toLowerCase().indexOf(ql)>=0;
       }
       return true;
@@ -3138,6 +3144,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     gsInput.addEventListener('input', function(){
       globalSearch = this.value.trim();
       _searchSrcMatch = null;
+      _topicBigrams = null;
       if(globalSearch.length >= 1) {
         var ql = globalSearch.toLowerCase();
         var matched = SOURCES.filter(function(s){ return s.name.toLowerCase().indexOf(ql) >= 0; });
@@ -3159,6 +3166,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     gsClear.addEventListener('click', function(){
       gsInput.value = ''; globalSearch = '';
       _searchSrcMatch = null;
+      _topicBigrams = null;
       gsWrap.classList.remove('has-q', 'src-hit');
       curArt = null; wallLimit = WALL_STEP;
       renderWall(); updateMeta(); gsInput.focus();
@@ -4589,10 +4597,24 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   }
 
   function insightSearch(keyword){
+    var bg=null;
+    // 长标签（话题/趋势）→ 提取字符二元组做模糊匹配
+    var clean=keyword.replace(/^\[RSS\/\w+\]\s*/,'');
+    if(clean.length>15){
+      var low=clean.toLowerCase(),arr=[];
+      for(var i=0;i<low.length-1;i++){
+        var c=low[i],n=low[i+1];
+        if(c.trim()&&n.trim()&&c!==n) arr.push(c+n);
+      }
+      var seen={},uniq=[];
+      arr.forEach(function(b){if(!seen[b]){seen[b]=1;uniq.push(b);}});
+      if(uniq.length>=2) bg=uniq;
+    }
     var si=document.getElementById('globalSearch');
     if(si){si.value=keyword;si.dispatchEvent(new Event('input'));}
+    // input handler 会重置 _topicBigrams=null，所以在 dispatch 之后赋值
+    _topicBigrams=bg;
     window.scrollTo({top:0,behavior:'smooth'});
-    // 延迟滚动到首篇匹配卡片（等待渲染完成）
     setTimeout(function(){
       var first=document.querySelector('.wall .card');
       if(first) first.scrollIntoView({behavior:'smooth',block:'center'});
