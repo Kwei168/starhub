@@ -33954,5 +33954,19 @@
   "48ed98061574cd2c38d60a93938da641": "如何面对人工智能攻击的安全风险并构建零信任设置",
   "f24d70405c0c651b16734cc75ba704e1": "6 台服务器，6 个面板。巩固为一。健全性检查？",
   "1cfb0b141e1b9d9267f438bbad19026c": "## Fixing Self-Hosted Apps Behind a Reverse Proxy\n\nCommon issues and fixes:\n\n### 1. WebSocket Connections\nMany apps (Real-Dev, Dashy, etc.) need:\n```caddyfile\nreverse_proxy /ws* localhost:3000\nreverse_proxy /socket.io* localhost:3000\n```\n\n### 2. Missing Headers\n```caddyfile\nheader {\n    X-Forwarded-For {remote}\n    X-Forwarded-Proto {scheme}\n    Access-Control-Allow-Origin *\n}\n```\n\n### 3. Path Rewrites\n```caddyfile\nreverse_proxy localhost:8080 {\n    header_up X-Real-IP {remote}\n    header_up X-Forwarded-For {remote}\n    header_up X-Forwarded-Proto {scheme}\n}\n```\n\n### 4. App-Specific Fixes\n- **Portainer**: Add `PORTAINER_URL` env var\n- **Grafana**: Set `ROOT_URL` and `PROXY_BUFFER_SIZE`\n- **Appsmith**: Configure `WEBSOCKET_TIMEOUT` \n- **OnlyOffice**: Set document server URL\n\n### 5. Timeout Issues\n```caddyfile\ntimeout 60s\nread_timeout 60s\nwrite_timeout 60s\n```\n\n### 6. Large File Uploads\n```caddyfile\n@maxBody size > 100MB\nhandle_response @maxBody {\n    body md.body\n}\n```\n\nWhat specific app are you struggling with?",
-  "5191bceb60485e5ad5e2586135781e49": "Fireshare v1.8.0 - 用户、权限和配置文件更新"
+  "5191bceb60485e5ad5e2586135781e49": "Fireshare v1.8.0 - 用户、权限和配置文件更新",
+  "ff6b0f9ff2e8f285929f76cbcad5c564": "7900 XTX + 32/64GB 内存，用于运行 Qwen 3.8 Flash Next？",
+  "fb4d4bca9d06b59c6293dafb2873a227": "Here's a brief explanation of the concept:\n\n**Granular diff versioning** refers to tracking changes at a fine-grained level in a version control system, as opposed to just recording file-level changes. It involves comparing and recording differences at the smallest meaningful units—typically individual lines, characters, or tokens—rather than treating entire files as atomic change units.\n\nKey aspects:\n\n- **Line-level diffs**: The most common form, showing exactly which lines were added, removed, or modified\n- **Character-level diffs**: Even finer granularity, showing precise insertions/deletions within a single line\n- **Token-level diffs**: Used in programming, tracking changes to individual code tokens (variables, operators, keywords)\n- **Semantic diffs**: Modern approaches that understand the meaning of changes rather than just syntactic differences\n\nBenefits of granular diffing:\n- Precise code review (knowing exactly what changed)\n- Better merge conflict resolution\n- Accurate change attribution\n- Detailed audit trails\n\nWould you like me to dive deeper into any specific aspect of granular diff versioning?",
+  "c8b469a5fdf66f0bd73845df52b9da5d": "我在没有平面设计师的情况下赚取了 38,000 美元的收入",
+  "d6c1e8f9f87160db2d318a681fb66576": "如何在 Claude 和 ChatGPT 中自动设计您的文档",
+  "b596157051e026e0c4b9b8fda8c3d89b": "企业AI在治理上失败，而不是模式",
+  "1975324f9d6fe7ff83defeaf3376c733": "羊驼爱上海盗——汤姆·麦格拉斯",
+  "53c46bdb61466048ff90f6218a151ade": "ThePrimeagen如何发音",
+  "b28e7f8d538cba18e8929a0c03dbec7b": "“9·11真实故事 | 25周年纪念巨献特别篇 | 国家地理”",
+  "1f8c8c957ee1f2a0eb8ea3a62a997397": "90后高学历情侣，租350㎡毛坯房45天改造完成：比买房更值得",
+  "30e791a449fa35541c131e61f885fdef": "AI的差距是产品设计失败",
+  "4694f4e7eb9a6107963131d1e9e9a44f": "Meta的Muse：你会交出多少控制权？",
+  "293de3d3044487628110c3eb900a4ca7": "人工智能是让发行变得更难还是更简单？｜柯尔斯滕·曼",
+  "5dbdae2fa17cd249aa9ab544a35d66c6": "克劳德还需要多久才能完成所有事情",
+  "83fdb75e5bcea998db04cd4946bfbe22": "TypeScript 的创建者：为什么我们选择 Go 进行重写 |安德斯·海尔斯伯格"
 }
