@@ -35,7 +35,14 @@ except ImportError:
 BJT = timezone(timedelta(hours=8))
 
 # ────────────────── Embedding model ──────────────────
-# 多语言模型：同时支持中英文文本（bge-small-en-v1.5 仅支持英文，中文会产生垃圾向量）
+# 硅基流动 BAAI/bge-m3 API（主力）：8192 token 上下文，1024 维，中英双语
+# 本地 fastembed 作为无 API key 时的回退
+_SF_EMBED_MODEL = "BAAI/bge-m3"
+_SF_EMBED_URL = "https://api.siliconflow.cn/v1/embeddings"
+_SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
+_SF_BATCH = 32  # 每批最多处理文本数
+
+# 本地回退模型（bge-small-en-v1.5 仅英文，bge-small-zh-en-v1.5 中英双语）
 _EMBED_MODEL = "BAAI/bge-small-zh-en-v1.5"
 _EMBED_MODEL_FALLBACK = "BAAI/bge-small-en-v1.5"
 
@@ -221,12 +228,70 @@ def build_index(documents):
     if not LLAMA_INDEX_AVAILABLE or not FASTEMBED_AVAILABLE:
         return None
     try:
-        Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
+        model_name = _EMBED_MODEL
+        if _SF_KEY:
+            # SiliconFlow API 可用时仍用本地模型建索引（API 向量由调用方单独获取）
+            model_name = _EMBED_MODEL
+        Settings.embed_model = FastEmbedEmbedding(model_name=model_name)
         index = VectorStoreIndex.from_documents(documents, show_progress=False)
         return index
     except Exception as exc:
         print(f"[insight_engine] build_index error: {exc}", file=sys.stderr)
         return None
+
+
+def _get_embeddings(texts):
+    """获取 embedding 向量：硅基流动 API → 本地 fastembed → None。
+    返回 (vectors, model_name) 元组。
+    """
+    if not texts:
+        return None, None
+
+    # 1) 硅基流动 BAAI/bge-m3 API（8192 token，1024 维，中英双语）
+    if _SF_KEY:
+        all_vecs = []
+        ok = True
+        for i in range(0, len(texts), _SF_BATCH):
+            batch = texts[i:i + _SF_BATCH]
+            payload = json.dumps({
+                "model": _SF_EMBED_MODEL,
+                "input": batch,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                _SF_EMBED_URL,
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {_SF_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                batch_vecs = [d["embedding"] for d in data.get("data", [])]
+                all_vecs.extend(batch_vecs)
+            except Exception as exc:
+                print(f"[insight_engine] SiliconFlow embed batch error: {exc}", file=sys.stderr)
+                ok = False
+                break
+        if ok and len(all_vecs) == len(texts):
+            print(f"[insight_engine] embeddings via SiliconFlow {_SF_EMBED_MODEL} ({len(texts)} texts)", file=sys.stderr)
+            return all_vecs, f"siliconflow/{_SF_EMBED_MODEL}"
+        if not ok:
+            print(f"[insight_engine] SiliconFlow API failed, falling back to local fastembed", file=sys.stderr)
+
+    # 2) 本地 fastembed 回退
+    if FASTEMBED_AVAILABLE:
+        try:
+            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
+            vecs = Settings.embed_model.get_text_embedding_batch(texts)
+            if vecs and len(vecs) == len(texts):
+                print(f"[insight_engine] embeddings via local {_EMBED_MODEL} ({len(texts)} texts)", file=sys.stderr)
+                return vecs, _EMBED_MODEL
+        except Exception as exc:
+            print(f"[insight_engine] local embed error: {exc}", file=sys.stderr)
+
+    return None, None
 
 
 # ────────────────── Task 4: Helpers ──────────────────────────
@@ -431,32 +496,14 @@ def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7, 
     """Embedding-based greedy clustering. Falls back to char-overlap."""
     if not articles:
         return []
-    # Try to get embeddings (使用多语言模型)
-    embeddings = None
-    embed_model_name = None
-    try:
-        if FASTEMBED_AVAILABLE:
-            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
-            texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
-            embeddings = Settings.embed_model.get_text_embedding_batch(texts)
-            embed_model_name = _EMBED_MODEL
-    except Exception:
-        # 多语言模型不可用，尝试英文回退
-        try:
-            if FASTEMBED_AVAILABLE:
-                Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL_FALLBACK)
-                texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
-                embeddings = Settings.embed_model.get_text_embedding_batch(texts)
-                embed_model_name = _EMBED_MODEL_FALLBACK
-        except Exception:
-            embeddings = None
+    texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
+    embeddings, embed_model_name = _get_embeddings(texts)
 
     if embeddings and len(embeddings) == len(articles):
         print(f"[insight_engine] clustering with embeddings: {embed_model_name}", file=sys.stderr)
         return _cluster_with_embeddings(articles, embeddings, max_topics, similarity_threshold, all_doc_texts)
     # fallback
     print(f"[insight_engine] clustering with char-overlap fallback (embeddings unavailable)", file=sys.stderr)
-    texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
     return _fallback_cluster(texts, max_topics, all_doc_texts=all_doc_texts)
 
 
@@ -496,14 +543,9 @@ def cross_platform_semantic(hot_snapshot, similarity_threshold=0.75):
     """Embedding-based cross-platform topic matching.
     Returns [] if embeddings unavailable (caller falls back to Jaccard).
     """
-    if not hot_snapshot or not LLAMA_INDEX_AVAILABLE:
+    if not hot_snapshot:
         return []
     try:
-        # Ensure embed_model is set (build_index should have done this already)
-        if FASTEMBED_AVAILABLE:
-            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
-        else:
-            return []
         # Collect titles per platform
         platform_titles = {}
         for platform in hot_snapshot:
@@ -516,7 +558,7 @@ def cross_platform_semantic(hot_snapshot, similarity_threshold=0.75):
         if len(platforms) < 2:
             return []
 
-        # Get all embeddings
+        # Get all embeddings via unified helper
         all_titles = []
         title_platform = []
         for plat in platforms:
@@ -524,8 +566,7 @@ def cross_platform_semantic(hot_snapshot, similarity_threshold=0.75):
                 all_titles.append(t)
                 title_platform.append(plat)
 
-        embed_model = Settings.embed_model
-        vecs = embed_model.get_text_embedding_batch(all_titles)
+        vecs, _ = _get_embeddings(all_titles)
         if not vecs or len(vecs) != len(all_titles):
             return []
 

@@ -53,6 +53,7 @@ jobs:
       - name: Fetch stars & build
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
         run: python fetch_and_build.py $MODE
 
       - name: Cleanup old build logs
