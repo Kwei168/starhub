@@ -4437,8 +4437,12 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         h+='<div class="ib-section"><div class="ib-label">\u26a1 \u56e0\u679c\u94fe</div><div class="ib-chain-grid">';
         di.causal_chains.forEach(function(c){
           h+='<div class="ib-chain-card">';
-          h+='<div class="ib-chain-title">'+esc(c.title||c.name||'\u56e0\u679c\u5173\u7cfb')+'</div>';
-          h+='<div class="ib-chain-steps">'+esc(c.chain||c.description||'')+'</div>';
+          if(typeof c==='string'){
+            h+='<div class="ib-chain-steps">'+esc(c)+'</div>';
+          } else {
+            h+='<div class="ib-chain-title">'+esc(c.title||c.name||'\u56e0\u679c\u5173\u7cfb')+'</div>';
+            h+='<div class="ib-chain-steps">'+esc(c.chain||c.description||'')+'</div>';
+          }
           h+='</div>';
         });
         h+='</div></div>';
@@ -4446,7 +4450,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       if(di.signals&&di.signals.length){
         h+='<div class="ib-section"><div class="ib-label">\U0001f4e1 \u4fe1\u53f7\u770b\u677f</div><div class="ib-signal-grid">';
         di.signals.forEach(function(s){
-          h+='<div class="ib-signal-card">'+esc(s.label||s.name||s.text||'')+'</div>';
+          h+='<div class="ib-signal-card">'+esc(s.label||s.name||s.text||s.signal||'')+'</div>';
         });
         h+='</div></div>';
       }
@@ -4548,12 +4552,21 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       h+='<div class="ib-section ib-cross"><div class="ib-label">\u8de8\u5e73\u53f0\u5171\u632f</div><div class="ib-cross-list">';
       d.cross_platform.slice(0,8).forEach(function(m){
         h+='<div class="ib-cross-item">';
-        h+='<span class="ib-cross-label">'+esc(m.label)+'</span>';
-        h+='<span class="ib-cross-plats">';
-        m.platforms.forEach(function(p){
-          h+='<span class="ib-cross-plat">'+esc(p.name)+'</span>';
-        });
-        h+='</span></div>';
+        if(m.platforms&&m.platforms.length){
+          h+='<span class="ib-cross-label">'+esc(m.label)+'</span>';
+          h+='<span class="ib-cross-plats">';
+          m.platforms.forEach(function(p){
+            h+='<span class="ib-cross-plat">'+esc(p.name)+'</span>';
+          });
+          h+='</span>';
+        } else {
+          h+='<span class="ib-cross-label">'+esc(m.title_a||m.label||'')+'</span>';
+          h+='<span class="ib-cross-plats">';
+          h+='<span class="ib-cross-plat">'+esc(m.platform_a||'')+'</span>';
+          h+='<span class="ib-cross-plat">'+esc(m.platform_b||'')+'</span>';
+          h+='</span>';
+        }
+        h+='</div>';
       });
       h+='</div></div>';
     }
