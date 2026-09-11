@@ -230,5 +230,7 @@
  "AlibabaCloudDocs/aliyun_acp_learning": "learning",
  "huggingface/transformers": "learning",
  "deepseek-ai/awesome-deepseek-integration": "agent",
- "xzc0524/HttpCatcher": "agent"
+ "xzc0524/HttpCatcher": "agent",
+ "Tencent/weui": "content",
+ "Tencent/teamai-cli": "agent"
 }
