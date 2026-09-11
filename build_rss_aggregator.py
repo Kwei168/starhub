@@ -2205,7 +2205,12 @@ body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body
 
 /* ── 热榜内容区：平台子 Tab + 卡片列表（条目色彩区分靠圆点/选中实底，文字始终用高对比色） ── */
 /* 子 Tab 换行显示（不横向滚动）：窄屏最多两行，任何平台按钮完整可见，杜绝截断/溢出 */
-.hp-tabs{flex:none;display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px 2px;}
+/* 分类筛选行：紧凑药丸，选中态用 --ink 反转；与平台 Tab 视觉分层（更小、更淡） */
+.hp-cats{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px 0;}
+.hp-cat{flex:none;height:20px;padding:0 8px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--faint);font-size:10.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.hp-cat:hover{border-color:var(--line-strong);color:var(--muted);}
+.hp-cat.on{background:var(--ink);border-color:var(--ink);color:var(--bg);}
+.hp-tabs{flex:none;display:flex;flex-wrap:wrap;gap:5px;padding:4px 12px 2px;}
 .hp-tab{flex:none;height:24px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
 .hp-tab:hover{border-color:var(--line-strong);color:var(--ink);}
 .hp-tab .dot{width:7px;height:7px;border-radius:50%;flex:none;}
@@ -4334,6 +4339,16 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   /* dot：平台品牌色（未选中态圆点，提供平台色差区分）；deep：选中态实底色（加深变体，白字对比 ≥4.4:1，明暗主题均可读） */
   var _hotPlatformColors={weibo:'#ff4400',zhihu:'#0066ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#fe2c55',ithome:'#d32f2f',hackernews:'#ff6600',github:'#6e5491',solidot:'#4caf50',sspai:'#da3325',juejin:'#1e80ff',v2ex:'#778087',producthunt:'#da552f',aihot:'#0891b2',chongbuluo:'#558b2f',pcbeta:'#1565c0',nowcoder:'#0097a7',coolapk:'#10b981',xueqiu:'#1e88e5',zaobao:'#c62828',wallstreetcn:'#1565c0',cls:'#0277bd',jin10:'#ef6c00',gelonghui:'#00897b',fastbull:'#f57c00',toutiao:'#d32f2f',tencent:'#1976d2',thepaper:'#c62828',ifeng:'#e64a19',cankaoxiaoxi:'#ad1457',sputniknewscn:'#283593',kaopu:'#2e7d32',mktnews:'#4e342e',douban:'#007722',tieba:'#4caf50',hupu:'#d32f2f',steam:'#1b2838',iqiyi:'#00be07',qqvideo:'#ff6900',dongqiudi:'#2e7d32'};
   var _hotPlatformDeep={weibo:'#d5380f',zhihu:'#0052cc',baidu:'#1f28b8',bilibili:'#c73a6c',douyin:'#d9284a',ithome:'#b71c1c',hackernews:'#cc5200',github:'#4a3769',solidot:'#2e7d32',sspai:'#b71c1c',juejin:'#1565c0',v2ex:'#5a5f66',producthunt:'#b5441f',aihot:'#067090',chongbuluo:'#33691e',pcbeta:'#0d47a1',nowcoder:'#006064',coolapk:'#047857',xueqiu:'#1565c0',zaobao:'#8e0000',wallstreetcn:'#0d47a1',cls:'#01579b',jin10:'#e65100',gelonghui:'#00695c',fastbull:'#ef6c00',toutiao:'#b71c1c',tencent:'#0d47a1',thepaper:'#8e0000',ifeng:'#bf360c',cankaoxiaoxi:'#78002e',sputniknewscn:'#1a237e',kaopu:'#1b5e20',mktnews:'#3e2723',douban:'#004400',tieba:'#2e7d32',hupu:'#b71c1c',steam:'#0d1117',iqiyi:'#007a07',qqvideo:'#cc5400',dongqiudi:'#1b5e20'};
+  /* 分类筛选：key→中文名，members 为平台 ID 数组 */
+  var _hotCats=[
+    {key:'all',name:'\u5168\u90e8',members:[]},
+    {key:'hot',name:'\u70ed\u641c',members:['weibo','zhihu','baidu','bilibili','douyin']},
+    {key:'tech',name:'\u79d1\u6280',members:['ithome','hackernews','github','solidot','sspai','juejin','v2ex','producthunt','aihot','chongbuluo','pcbeta','nowcoder','coolapk']},
+    {key:'biz',name:'\u8d22\u7ecf',members:['xueqiu','zaobao','wallstreetcn','cls','jin10','gelonghui','fastbull']},
+    {key:'news',name:'\u8d44\u8baf',members:['toutiao','tencent','thepaper','ifeng','cankaoxiaoxi','sputniknewscn','kaopu','mktnews']},
+    {key:'life',name:'\u751f\u6d3b',members:['douban','tieba','hupu','steam','iqiyi','qqvideo','dongqiudi']}
+  ];
+  var _hotCatKey='all';
   window.toggleHotPanel=function(){
     var panelOpen=document.body.classList.contains('ai-open');
     if(panelOpen&&afTab==='hot'){toggleAiFeed();return;} /* 已在热榜 Tab→再次点击关闭抽屉（移动端习惯） */
@@ -4352,12 +4367,22 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     }).then(function(data){
       _hotLoaded=true;_hotLoading=false;
       _hotData=(data||[]).filter(function(s){return s.items&&s.items.length;});
-      if(!_hotData.length){list.innerHTML='<div class="hp-empty">暂无热榜数据</div>';return;}
-      /* 平台子 Tab：仅渲染有数据的平台 */
+      if(!_hotData.length){list.innerHTML='<div class="hp-empty">\u6682\u65e0\u70ed\u699c\u6570\u636e</div>';return;}
+      /* 分类筛选行 */
+      var catsEl=document.getElementById('hpCats');
+      if(catsEl){
+        catsEl.innerHTML=_hotCats.map(function(c){
+          return '<button class="hp-cat'+(c.key==='all'?' on':'')+'" data-cat="'+c.key+'">'+c.name+'</button>';
+        }).join('');
+        catsEl.querySelectorAll('.hp-cat').forEach(function(b){
+          b.addEventListener('click',function(){_filterHotCat(b.getAttribute('data-cat'));});
+        });
+      }
+      /* 平台子 Tab：带 data-cat 属性，便于分类筛选 */
       var tabs=document.getElementById('hpTabs');
       tabs.innerHTML=_hotData.map(function(s){
-        var p=s.platform;
-        return '<button class="hp-tab" data-p="'+p+'"><span class="dot" style="background:'+(_hotPlatformColors[p]||'#888')+'"></span>'+(_hotPlatformNames[p]||p)+'</button>';
+        var p=s.platform,cat=_platCat(p);
+        return '<button class="hp-tab" data-p="'+p+'" data-cat="'+cat+'"><span class="dot" style="background:'+(_hotPlatformColors[p]||'#888')+'"></span>'+(_hotPlatformNames[p]||p)+'</button>';
       }).join('');
       tabs.querySelectorAll('.hp-tab').forEach(function(b){
         b.addEventListener('click',function(){renderHotPlat(b.getAttribute('data-p'));});
@@ -4367,6 +4392,29 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       _hotLoading=false;
       list.innerHTML='<div class="hp-empty">加载失败，请稍后重试</div>';
     });
+  }
+  /* 查找平台所属分类 key */
+  function _platCat(p){
+    for(var i=1;i<_hotCats.length;i++){if(_hotCats[i].members.indexOf(p)>=0) return _hotCats[i].key;}
+    return 'other';
+  }
+  /* 分类筛选：切换平台 Tab 可见性 */
+  function _filterHotCat(cat){
+    _hotCatKey=cat;
+    var catsEl=document.getElementById('hpCats');
+    if(catsEl) catsEl.querySelectorAll('.hp-cat').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-cat')===cat);});
+    var tabs=document.getElementById('hpTabs');
+    var firstVisible=null;
+    tabs.querySelectorAll('.hp-tab').forEach(function(b){
+      var show=(cat==='all'||b.getAttribute('data-cat')===cat);
+      b.style.display=show?'':'none';
+      if(show&&!firstVisible) firstVisible=b;
+    });
+    /* 如果当前选中的平台被隐藏，自动切到第一个可见平台 */
+    var curTab=tabs.querySelector('.hp-tab.on');
+    if(curTab&&curTab.style.display==='none'&&firstVisible){
+      renderHotPlat(firstVisible.getAttribute('data-p'));
+    }
   }
   function renderHotPlat(p){
     var tabs=document.getElementById('hpTabs');
@@ -4768,6 +4816,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
         '<button class="af-refresh" id="afRefreshBtn" onclick="refreshAiFeed()" title="\u5237\u65b0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
         '<div class="hp-wrap" id="hpWrap">\n'
+        '<div class="hp-cats" id="hpCats"></div>\n'
         '<div class="hp-tabs" id="hpTabs"></div>\n'
         '<div class="hp-body" id="hotList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u70ed\u699c</div></div></div>\n'
         '<div class="af-sub" id="afUpdated"></div>\n'
