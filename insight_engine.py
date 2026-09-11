@@ -338,14 +338,18 @@ def _average_vector(vecs):
 
 def _extract_cluster_label(texts, all_doc_texts=None):
     """从簇内文本中提取语义标签。
-    策略：去前缀 → 中文 3-4 gram（IDF 加权）/ 英文高频词。
-    3-4 gram 比 2-gram 更有语义辨识度（"杰出论" vs "出论"）。
+    策略：去前缀 → 最长公共子串（保证标签是标题中的完整片段）→ n-gram 回退。
+    标签必须从原始标题中完整召回，确保语义清晰。
     """
-    # 去 [RSS/xxx] / [热榜/xxx] 前缀 + 常见 RSS 模板尾部
+    # Step 1: 去前缀 + RSS 模板尾部 + 结构化括号 + 工具后缀
     cleaned = []
     for t in texts:
         t = t.strip()
         t = re.sub(r'^\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*', '', t)
+        # 去除 【xxx】 结构化括号前缀（如【喷嚏图卦20260901】）
+        t = re.sub(r'^\u3010[^\u3011]*\u3011\s*', '', t)
+        # 去除工具/平台后缀（如 -notebooklm）
+        t = re.sub(r'\s*-\s*[a-z]+(?:lm|ai|bot|app)$', '', t, flags=re.IGNORECASE)
         t = re.sub(r'[\u67e5\u770b\u70b9\u51fb]?\u77e5\u4e4e[\u539f\u6587]?\u00b7?\s*$', '', t)
         t = re.sub(r'\u9605\u8bfb[\u539f\u6587]+.*$', '', t)
         if len(t) >= 4:
@@ -353,8 +357,23 @@ def _extract_cluster_label(texts, all_doc_texts=None):
     if not cleaned:
         return max(texts, key=len)[:60] if texts else ''
     n = len(cleaned)
-    # ── 中文：3-4 gram 优先（比 2-gram 更有辨识度） ──
-    _STOP_CHARS = set('\u7684\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
+
+    # Step 2: 构建全局 IDF（用于过滤通用词）
+    global_df = {}
+    if all_doc_texts:
+        for doc in all_doc_texts:
+            doc_cn = re.sub(r'[^\u4e00-\u9fff]', '', doc)
+            seen = set()
+            for ng_len in (4, 3, 2):
+                for start in range(len(doc_cn) - ng_len + 1):
+                    ng = doc_cn[start:start + ng_len]
+                    if ng not in seen:
+                        global_df[ng] = global_df.get(ng, 0) + 1
+                        seen.add(ng)
+    total_docs = max(len(all_doc_texts), n) if all_doc_texts else n
+
+    # Step 3: 停用词/字
+    _STOP_CHARS = set('\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
     _STOP_NGRAMS = {
         '需要','应该','可能','可以','这个','那个','什么','怎么','为什么',
         '因为','所以','但是','虽然','如果','已经','还是','或者','而且',
@@ -368,26 +387,64 @@ def _extract_cluster_label(texts, all_doc_texts=None):
         '订阅','评论','回复','转载','编辑','推荐','更多','相关',
         '搜索','登录','注册','首页','频道','专栏','话题','标签',
         '看知','乎原','事情','音频','声音','内容','感觉','意思',
+        '正式','发布','开源','团队','技术','分享','系列','博客',
     }
-    cn_items = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
-    cn_items = [c for c in cn_items if len(c) >= 2]
+
+    # ── Tier 1: 最长公共子串（Longest Common Substring）──
+    # 从原始标题中提取完整片段，保证语义完整可读
+    cn_titles = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
+    cn_titles = [c for c in cn_titles if len(c) >= 3]
+    # 额外提取 【...】 括号内的中文内容作为 LCS 候选（保留栏目名等关键信息）
+    bracket_names = []
+    for t in texts:
+        m = re.match(r'(?:\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*)?\u3010([^\u3011]+)\u3011', t)
+        if m:
+            cn_name = re.sub(r'[^\u4e00-\u9fff]', '', m.group(1))
+            if len(cn_name) >= 3:
+                bracket_names.append(cn_name)
+    # LCS 候选池 = 原始标题 + 括号名（去重）
+    lcs_pool = list(dict.fromkeys(cn_titles + bracket_names))
+    # 覆盖率检查池（包含括号名，确保栏目名能被正确匹配）
+    cov_pool = cn_titles + bracket_names
+    if len(cn_titles) >= 2:
+        best_lcs = ''
+        min_cov = max(2, int(n * 0.3))  # 至少 30% 标题包含
+        # 尝试多个基准标题（不只第一个），找到最优 LCS
+        bases = sorted(set(lcs_pool), key=len, reverse=True)[:5]
+        for base in bases:
+            for sub_len in range(min(10, len(base)), 2, -1):  # 最长10字，从长到短
+                if sub_len <= len(best_lcs):
+                    break  # 不可能找到更长的
+                found = False
+                for start in range(len(base) - sub_len + 1):
+                    sub = base[start:start + sub_len]
+                    # 跳过含停用字的
+                    if any(c in _STOP_CHARS for c in sub):
+                        continue
+                    if sub in _STOP_NGRAMS:
+                        continue
+                    # 检查覆盖率（对原始标题 + 括号名计算）
+                    cov = sum(1 for ct in cov_pool if sub in ct)
+                    if cov >= min_cov:
+                        # 检查 IDF（过滤太常见的子串）
+                        df = global_df.get(sub, 0)
+                        idf = math.log((total_docs + 1) / (df + 1)) + 1
+                        if idf > 1.5:  # 有一定区分度
+                            if len(sub) > len(best_lcs):
+                                best_lcs = sub
+                                found = True
+                if found and len(best_lcs) >= 4:
+                    break  # 找到足够长的公共子串，停止
+            if len(best_lcs) >= 4:
+                break  # 已找到好标签
+        if len(best_lcs) >= 3:
+            return best_lcs
+
+    # ── Tier 2: 中文 n-gram（3-4 gram IDF 加权）──
+    cn_items = [c for c in cn_titles if len(c) >= 2]
     if cn_items:
-        # 计算全局 n-gram DF（用于 IDF 加权）
-        global_df = {}
-        if all_doc_texts:
-            for doc in all_doc_texts:
-                doc_cn = re.sub(r'[^\u4e00-\u9fff]', '', doc)
-                seen = set()
-                for ng_len in (3, 4, 2):
-                    for start in range(len(doc_cn) - ng_len + 1):
-                        ng = doc_cn[start:start + ng_len]
-                        if ng not in seen:
-                            global_df[ng] = global_df.get(ng, 0) + 1
-                            seen.add(ng)
-        total_docs = max(len(all_doc_texts), n) if all_doc_texts else n
         best_label = ''
         best_score = 0.0
-        # 尝试 3-gram 和 4-gram（优先更长更有意义的标签）
         for ng_len in (4, 3):
             for t in cn_items:
                 for start in range(len(t) - ng_len + 1):
@@ -396,34 +453,18 @@ def _extract_cluster_label(texts, all_doc_texts=None):
                         continue
                     if sub in _STOP_NGRAMS:
                         continue
-                    cnt = sum(1 for ct in cn_items if sub in ct)
+                    cnt = sum(1 for ct in cov_pool if sub in ct)
                     if cnt >= max(2, n * 0.3):
                         tf = cnt / n
                         df = global_df.get(sub, 0)
                         idf = math.log((total_docs + 1) / (df + 1)) + 1
-                        score = tf * idf * (1 + 0.2 * (ng_len - 2))  # 长度奖励
-                        if score > best_score:
-                            best_label, best_score = sub, score
-        # 回退到 2-gram（如果没有好的 3-4 gram）
-        if not best_label:
-            for t in cn_items:
-                for start in range(len(t) - 1):
-                    sub = t[start:start + 2]
-                    if sub[0] in _STOP_CHARS or sub[1] in _STOP_CHARS:
-                        continue
-                    if sub in _STOP_NGRAMS:
-                        continue
-                    cnt = sum(1 for ct in cn_items if sub in ct)
-                    if cnt >= max(2, n * 0.3):
-                        tf = cnt / n
-                        df = global_df.get(sub, 0)
-                        idf = math.log((total_docs + 1) / (df + 1)) + 1
-                        score = tf * idf
+                        score = tf * idf * (1 + 0.2 * (ng_len - 2))
                         if score > best_score:
                             best_label, best_score = sub, score
         if best_label:
             return best_label
-    # ── 英文/混合：高频词 ──
+
+    # ── Tier 3: 英文高频词 ──
     _STOP_WORDS = {'the','a','an','is','are','was','were','be','been','being',
                    'have','has','had','do','does','did','will','would','could',
                    'should','may','might','can','shall','to','of','in','for',
@@ -450,7 +491,8 @@ def _extract_cluster_label(texts, all_doc_texts=None):
             best_word = max(word_score, key=lambda w: (word_score[w], len(w)))
             if word_score[best_word] >= max(2, n * 0.2):
                 return best_word
-    # ── 回退：最长文本截断 ──
+
+    # ── Tier 4: 回退（最短标题截断）──
     return max(cleaned, key=len)[:40]
 
 
