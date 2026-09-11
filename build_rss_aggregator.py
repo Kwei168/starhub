@@ -5469,13 +5469,12 @@ def _extract_json_from_text(text):
 
 
 def _load_prev_analysis():
-    """加载前一天的分析快照（用于趋势对比）。"""
+    """加载前一天的分析快照（用于趋势对比）。返回完整 analysis dict。"""
     if not os.path.exists(ANALYSIS_SNAPSHOT_FILE):
         return None
     try:
         with open(ANALYSIS_SNAPSHOT_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("keywords", {}).get("global", [])
+            return json.load(f)
     except Exception:
         return None
 
@@ -5959,7 +5958,8 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
     kw_data = _extract_keywords(_rss_history, now_bj)
     global_kw = kw_data["global"]
     # 3. 趋势检测（与上次构建对比）
-    prev_kw = _load_prev_analysis()
+    prev_analysis = _load_prev_analysis()
+    prev_kw = prev_analysis.get("keywords", {}).get("global", []) if prev_analysis else []
     rising = []
     if prev_kw:
         prev_freq = {w: i + 1 for i, (w, _) in enumerate(prev_kw[:50])}
