@@ -419,6 +419,16 @@ def _extract_cluster_label(texts, all_doc_texts=None):
     lcs_pool = list(dict.fromkeys(cn_titles + bracket_names))
     # 覆盖率检查池（包含括号名，确保栏目名能被正确匹配）
     cov_pool = cn_titles + bracket_names
+
+    def _has_stop_ngram(s):
+        """检查子串是否包含任意停用 n-gram（2字起）。"""
+        if s in _STOP_NGRAMS:
+            return True
+        for i in range(len(s) - 1):
+            if s[i:i+2] in _STOP_NGRAMS:
+                return True
+        return False
+
     if len(cn_titles) >= 2:
         best_lcs = ''
         min_cov = max(2, int(n * 0.3))  # 至少 30% 标题包含
@@ -431,10 +441,10 @@ def _extract_cluster_label(texts, all_doc_texts=None):
                 found = False
                 for start in range(len(base) - sub_len + 1):
                     sub = base[start:start + sub_len]
-                    # 跳过含停用字的
+                    # 跳过含停用字的或含停用ngram的
                     if any(c in _STOP_CHARS for c in sub):
                         continue
-                    if sub in _STOP_NGRAMS:
+                    if _has_stop_ngram(sub):
                         continue
                     # 检查覆盖率（对原始标题 + 括号名计算）
                     cov = sum(1 for ct in cov_pool if sub in ct)
@@ -464,7 +474,7 @@ def _extract_cluster_label(texts, all_doc_texts=None):
                     sub = t[start:start + ng_len]
                     if any(c in _STOP_CHARS for c in sub):
                         continue
-                    if sub in _STOP_NGRAMS:
+                    if _has_stop_ngram(sub):
                         continue
                     cnt = sum(1 for ct in cov_pool if sub in ct)
                     if cnt >= max(2, n * 0.3):
