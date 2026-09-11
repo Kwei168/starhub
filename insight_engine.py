@@ -263,10 +263,10 @@ def _average_vector(vecs):
     return [sum(v[i] for v in vecs) / n for i in range(dim)]
 
 
-def _extract_cluster_label(texts):
+def _extract_cluster_label(texts, all_doc_texts=None):
     """从簇内文本中提取语义标签。
-    策略：去前缀 → 提取跨文本高频 3-4 字子串 → 选覆盖度最高的。
-    仅当 3+ 字无结果时才回退到 2 字。失败时回退到最长文本截断。
+    策略：去前缀 → 中文高频 2-gram（用全局 IDF 加权）/ 英文高频词。
+    all_doc_texts: 所有文档文本列表，用于计算全局 IDF。若为 None 则仅用簇内频率。
     """
     # 去 [RSS/xxx] / [热榜/xxx] 前缀
     cleaned = []
@@ -277,45 +277,87 @@ def _extract_cluster_label(texts):
             cleaned.append(t)
     if not cleaned:
         return max(texts, key=len)[:60] if texts else ''
-    # 停用字（单字）
-    _STOP_CHARS = set('\u7684\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
-    # 常见无意义 2 字词
-    _STOP_2GRAMS = set(['如何','可以','这个','那个','什么','怎么','为什么','因为','所以','但是','虽然','如果','已经','还是','或者','而且','不仅','只是','可能','需要','应该','必须','通过','进行','发现','认为','表示','显示','说明','提供','支持','包括','使用','实现','开发','设计','创建','建立','完成','开始','结束','继续','保持','增加','减少','提高','降低','改善','优化','改变','影响','导致','产生','存在','出现','发生','存在','存在','需要','想要','希望','觉得','感觉','知道','理解','认识','学习','研究','分析','评估','测试','验证','检查','查看','观察','注意','关注','重视','考虑','思考','讨论','交流','沟通','协调','合作','配合','支持','帮助','服务','管理','控制','监督','指导','引导','推动','促进','加强','强化','深化','拓展','扩大','缩小','调整','改革','创新','发展','进步','提升','升级','转型','转变','转化','变化','变动','改变','更新','升级','迭代','演进','演化','演变','发展','增长','增长','增长'])
     n = len(cleaned)
-    best_label = ''
-    best_score = 0
-    # 优先 3-4 字子串
-    for slen in (4, 3, 2):
-        score = {}
-        for t in cleaned:
-            cn = re.sub(r'[^\u4e00-\u9fff]', '', t)
-            for start in range(len(cn) - slen + 1):
-                sub = cn[start:start + slen]
-                if sub[0] in _STOP_CHARS or sub[-1] in _STOP_CHARS:
+    # ── 中文：高频 2 字子串（最简洁的有意义标签） ──
+    _STOP_CHARS = set('\u7684\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
+    # 常见无意义 2 字词（高频但无话题意义）
+    _STOP_2GRAMS = {
+        '需要','应该','可能','可以','这个','那个','什么','怎么','为什么',
+        '因为','所以','但是','虽然','如果','已经','还是','或者','而且',
+        '不是','没有','一个','知道','觉得','感觉','希望','想要','开始',
+        '进行','通过','使用','实现','问题','情况','方面','部分','结果',
+        '分钟','时间','时候','地方','东西','样子','方法','方式','系统',
+        '技术','世界','国家','社会','公司','学校','企业','市场','用户',
+        '数据','网络','平台','工作','生活','文化','历史','未来','现在',
+        '今天','昨天','明天','今年','去年','自己','别人','人们','社会',
+    }
+    cn_items = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
+    cn_items = [c for c in cn_items if len(c) >= 2]
+    if cn_items:
+        # 计算全局 2-gram DF（用于 IDF 加权）
+        global_df = {}
+        if all_doc_texts:
+            for doc in all_doc_texts:
+                doc_cn = re.sub(r'[^\u4e00-\u9fff]', '', doc)
+                seen = set()
+                for start in range(len(doc_cn) - 1):
+                    bg = doc_cn[start:start + 2]
+                    if bg not in seen:
+                        global_df[bg] = global_df.get(bg, 0) + 1
+                        seen.add(bg)
+        total_docs = max(len(all_doc_texts), n) if all_doc_texts else n
+        best_label = ''
+        best_score = 0.0
+        for t in cn_items:
+            for start in range(len(t) - 1):
+                sub = t[start:start + 2]
+                if sub[0] in _STOP_CHARS or sub[1] in _STOP_CHARS:
                     continue
-                if slen == 2 and sub in _STOP_2GRAMS:
+                if sub in _STOP_2GRAMS:
                     continue
-                cnt = sum(1 for ct in cleaned if sub in ct)
-                # 覆盖度要求：至少 20% 的文本包含
+                cnt = sum(1 for ct in cn_items if sub in ct)
                 if cnt >= max(2, n * 0.2):
-                    score[sub] = max(score.get(sub, 0), cnt * slen)
-        if score:
-            candidate = max(score, key=lambda k: score[k])
-            cand_score = score[candidate]
-            # 3+ 字子串直接返回；2 字子串需要更高分
-            if slen >= 3 or cand_score > best_score:
-                if cand_score > best_score:
-                    best_label = candidate
-                    best_score = cand_score
-                if slen >= 3:
-                    return best_label
-    if best_label:
-        return best_label
-    # 回退：最长文本截断
+                    # TF-IDF: 簇内频率 * 全局 IDF
+                    tf = cnt / n
+                    df = global_df.get(sub, 0)
+                    idf = math.log((total_docs + 1) / (df + 1)) + 1  # smoothed IDF
+                    score = tf * idf
+                    if score > best_score:
+                        best_label, best_score = sub, score
+        if best_label:
+            return best_label
+    # ── 英文/混合：高频词 ──
+    _STOP_WORDS = {'the','a','an','is','are','was','were','be','been','being',
+                   'have','has','had','do','does','did','will','would','could',
+                   'should','may','might','can','shall','to','of','in','for',
+                   'on','with','at','by','from','as','into','through','during',
+                   'before','after','above','below','between','out','off','over',
+                   'under','again','further','then','once','here','there','when',
+                   'where','why','how','all','both','each','few','more','most',
+                   'other','some','such','no','nor','not','only','own','same',
+                   'so','than','too','very','just','because','but','and','or',
+                   'if','while','about','up','it','its','i','me','my','we','our',
+                   'you','your','he','him','his','she','her','they','them','this','that','these'}
+    words_list = [re.findall(r'[a-zA-Z]{3,}', t) for t in cleaned]
+    if words_list and any(words_list):
+        word_score = {}
+        for wl in words_list:
+            seen = set()
+            for w in wl:
+                wl_lower = w.lower()
+                if wl_lower in _STOP_WORDS or wl_lower in seen:
+                    continue
+                seen.add(wl_lower)
+                word_score[wl_lower] = word_score.get(wl_lower, 0) + 1
+        if word_score:
+            best_word = max(word_score, key=lambda w: (word_score[w], len(w)))
+            if word_score[best_word] >= max(2, n * 0.2):
+                return best_word
+    # ── 回退：最长文本截断 ──
     return max(cleaned, key=len)[:40]
 
 
-def _fallback_cluster(texts, max_topics=15, threshold=0.5):
+def _fallback_cluster(texts, max_topics=15, threshold=0.5, all_doc_texts=None):
     """Character-overlap based clustering when embeddings are unavailable.
     阈值从 0.3 提升到 0.5，避免中文常用字导致误聚类。
     """
@@ -336,7 +378,7 @@ def _fallback_cluster(texts, max_topics=15, threshold=0.5):
                 cluster.append(texts[j])
                 used.add(j)
         if len(cluster) >= 2:
-            label = _extract_cluster_label(cluster)
+            label = _extract_cluster_label(cluster, all_doc_texts)
             clusters.append({"label": label, "count": len(cluster), "items": cluster})
     clusters.sort(key=lambda c: -c["count"])
     return clusters[:max_topics]
@@ -368,7 +410,7 @@ def extract_keywords_llm(llm, texts, top_n=30):
 
 
 # ────────────────── Task 4: cluster_topics_embedding ─────────
-def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7):
+def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7, all_doc_texts=None):
     """Embedding-based greedy clustering. Falls back to char-overlap."""
     if not articles:
         return []
@@ -383,13 +425,13 @@ def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7):
         embeddings = None
 
     if embeddings and len(embeddings) == len(articles):
-        return _cluster_with_embeddings(articles, embeddings, max_topics, similarity_threshold)
+        return _cluster_with_embeddings(articles, embeddings, max_topics, similarity_threshold, all_doc_texts)
     # fallback
     texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
-    return _fallback_cluster(texts, max_topics)
+    return _fallback_cluster(texts, max_topics, all_doc_texts=all_doc_texts)
 
 
-def _cluster_with_embeddings(articles, embeddings, max_topics, threshold):
+def _cluster_with_embeddings(articles, embeddings, max_topics, threshold, all_doc_texts=None):
     """Greedy clustering by cosine similarity on embeddings."""
     n = len(articles)
     used = [False] * n
@@ -409,7 +451,7 @@ def _cluster_with_embeddings(articles, embeddings, max_topics, threshold):
                 used[j] = True
         if len(cluster_indices) >= 2:
             texts = [articles[k] if isinstance(articles[k], str) else articles[k].get("text", "") for k in cluster_indices]
-            label = _extract_cluster_label(texts)
+            label = _extract_cluster_label(texts, all_doc_texts)
             clusters.append({"label": label, "count": len(texts), "items": texts})
     clusters.sort(key=lambda c: -c["count"])
     return clusters[:max_topics]
@@ -599,7 +641,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
 
     # 4. Cluster topics — 分离热榜和RSS，仅对RSS文章聚类
     rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
-    topic_clusters = cluster_topics_embedding(rss_texts, max_topics=top_topics) if rss_texts else []
+    topic_clusters = cluster_topics_embedding(rss_texts, max_topics=top_topics, all_doc_texts=doc_texts) if rss_texts else []
 
     # 5. Cross-platform semantic
     cross_platform = cross_platform_semantic(hot_snapshot)

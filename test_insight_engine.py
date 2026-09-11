@@ -334,8 +334,8 @@ class TestHelpers(unittest.TestCase):
         ]
         clusters = _fallback_cluster(texts, max_topics=5, threshold=0.3)
         self.assertTrue(len(clusters) >= 1)
-        # AI texts should cluster together
-        ai_cluster = [c for c in clusters if "AI" in c["label"] or "machine" in c["label"]]
+        # AI texts should cluster together (label contains topic-related words)
+        ai_cluster = [c for c in clusters if any(kw in c["label"].lower() for kw in ["ai", "machine", "learning"])]
         self.assertTrue(len(ai_cluster) >= 1)
 
 
