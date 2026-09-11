@@ -33946,5 +33946,13 @@
   "4014beca3146c9a78f9abdc72edb5ea1": "还有新版DeepSeek Harness",
   "027021efa8546b1592f0dc23414cb151": "OpenAI，被查！",
   "9078ff8f70e8e2741b4f8f7f75171199": "9月11日 应用日报｜全面超越 V4 Pro，DeepSeek V4.1 Flash 正式发布",
-  "cf6e1a2a7a7e84b18f2dad6c2790a91f": "📝 本期播客简介本期我们克隆了：The Twenty Minute VC (20VC): Venture Capital | Startup Funding | The Pitch · 20VC: The $100 Billion AI Assistant Race: Town vs Instinct vs GrokBot | We Spend $75K Per Engineer on AI Tools | Why the AI Assistant Market Is Not a Bubble & AI Assistants Will Replace Every App on Your Phone with JD, Founder of Town原内容更新时间：Mon, 07 Sep 2026本期由 Harry Stebbings 主持，嘉宾是 Town 联合创始人兼 CEO Jean-Denis，也就是 JD。Town 是一款嵌入邮箱和日历的 AI 助手，会观察用户的工作方式，并主动推荐自动化流程，帮助处理原本需要人工完成的事务。"
+  "cf6e1a2a7a7e84b18f2dad6c2790a91f": "📝 本期播客简介本期我们克隆了：The Twenty Minute VC (20VC): Venture Capital | Startup Funding | The Pitch · 20VC: The $100 Billion AI Assistant Race: Town vs Instinct vs GrokBot | We Spend $75K Per Engineer on AI Tools | Why the AI Assistant Market Is Not a Bubble & AI Assistants Will Replace Every App on Your Phone with JD, Founder of Town原内容更新时间：Mon, 07 Sep 2026本期由 Harry Stebbings 主持，嘉宾是 Town 联合创始人兼 CEO Jean-Denis，也就是 JD。Town 是一款嵌入邮箱和日历的 AI 助手，会观察用户的工作方式，并主动推荐自动化流程，帮助处理原本需要人工完成的事务。",
+  "f3000256138add61f80446d660f80658": "Portainer 3 不带 CE。转向 Kubernetes 和企业焦点。",
+  "f72f3c642761a3d21babdfa9defc63ce": "Vaultisse – 一款自托管应用程序，用于跟踪实体图书收藏（书架位置、出借、ISBN 查找）",
+  "cfd4095c0b0c166b17ec77c3e690fed6": "具有 mdadm RAID5 的 Raspberry Pi 5 上的家庭 NAS",
+  "9e7d6fb39a71c50dbd8d669e2e17969b": "自托管硬件困境：NAS、迷你 PC 或 Zimaboard 适合我的多阶段设置",
+  "48ed98061574cd2c38d60a93938da641": "如何面对人工智能攻击的安全风险并构建零信任设置",
+  "f24d70405c0c651b16734cc75ba704e1": "6 台服务器，6 个面板。巩固为一。健全性检查？",
+  "1cfb0b141e1b9d9267f438bbad19026c": "## Fixing Self-Hosted Apps Behind a Reverse Proxy\n\nCommon issues and fixes:\n\n### 1. WebSocket Connections\nMany apps (Real-Dev, Dashy, etc.) need:\n```caddyfile\nreverse_proxy /ws* localhost:3000\nreverse_proxy /socket.io* localhost:3000\n```\n\n### 2. Missing Headers\n```caddyfile\nheader {\n    X-Forwarded-For {remote}\n    X-Forwarded-Proto {scheme}\n    Access-Control-Allow-Origin *\n}\n```\n\n### 3. Path Rewrites\n```caddyfile\nreverse_proxy localhost:8080 {\n    header_up X-Real-IP {remote}\n    header_up X-Forwarded-For {remote}\n    header_up X-Forwarded-Proto {scheme}\n}\n```\n\n### 4. App-Specific Fixes\n- **Portainer**: Add `PORTAINER_URL` env var\n- **Grafana**: Set `ROOT_URL` and `PROXY_BUFFER_SIZE`\n- **Appsmith**: Configure `WEBSOCKET_TIMEOUT` \n- **OnlyOffice**: Set document server URL\n\n### 5. Timeout Issues\n```caddyfile\ntimeout 60s\nread_timeout 60s\nwrite_timeout 60s\n```\n\n### 6. Large File Uploads\n```caddyfile\n@maxBody size > 100MB\nhandle_response @maxBody {\n    body md.body\n}\n```\n\nWhat specific app are you struggling with?",
+  "5191bceb60485e5ad5e2586135781e49": "Fireshare v1.8.0 - 用户、权限和配置文件更新"
 }
