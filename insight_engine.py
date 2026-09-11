@@ -51,7 +51,7 @@ _EMBED_MODEL_FALLBACK = "BAAI/bge-small-en-v1.5"
 _DEFAULTS = {
     "insight_engine_enabled": True,
     "insight_llm_provider": "agnes",
-    "insight_max_documents": 200,
+    "insight_max_documents": 500,
     "insight_top_keywords": 30,
     "insight_top_topics": 15,
 }
@@ -172,7 +172,7 @@ def configure_llm(config):
 
 
 # ────────────────── Task 3: load_documents ───────────────────
-def load_documents(hot_snapshot, rss_history, trending_data, max_documents=200):
+def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
     """Convert raw data dicts into a list of LlamaIndex Document objects."""
     docs = []
     # --- Hot items (highest priority) ---
