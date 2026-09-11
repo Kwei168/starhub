@@ -34,6 +34,11 @@ except ImportError:
 
 BJT = timezone(timedelta(hours=8))
 
+# ────────────────── Embedding model ──────────────────
+# 多语言模型：同时支持中英文文本（bge-small-en-v1.5 仅支持英文，中文会产生垃圾向量）
+_EMBED_MODEL = "BAAI/bge-small-zh-en-v1.5"
+_EMBED_MODEL_FALLBACK = "BAAI/bge-small-en-v1.5"
+
 # ────────────────── Task 2: Defaults / Config ──────────────────
 _DEFAULTS = {
     "insight_engine_enabled": True,
@@ -216,8 +221,7 @@ def build_index(documents):
     if not LLAMA_INDEX_AVAILABLE or not FASTEMBED_AVAILABLE:
         return None
     try:
-        # Always force fastembed (avoid default OpenAI dependency)
-        Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
         index = VectorStoreIndex.from_documents(documents, show_progress=False)
         return index
     except Exception as exc:
@@ -290,6 +294,10 @@ def _extract_cluster_label(texts, all_doc_texts=None):
         '技术','世界','国家','社会','公司','学校','企业','市场','用户',
         '数据','网络','平台','工作','生活','文化','历史','未来','现在',
         '今天','昨天','明天','今年','去年','自己','别人','人们','社会',
+        # RSS/网页常见导航短语（无话题意义）
+        '查看','知乎','阅读','原文','点击','链接','分享','关注',
+        '订阅','评论','回复','转载','编辑','推荐','更多','相关',
+        '搜索','登录','注册','首页','频道','专栏','话题','标签',
     }
     cn_items = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
     cn_items = [c for c in cn_items if len(c) >= 2]
@@ -360,7 +368,9 @@ def _extract_cluster_label(texts, all_doc_texts=None):
 def _fallback_cluster(texts, max_topics=15, threshold=0.5, all_doc_texts=None):
     """Character-overlap based clustering when embeddings are unavailable.
     阈值从 0.3 提升到 0.5，避免中文常用字导致误聚类。
+    使用锚点比较（而非贪婪链接）防止链式聚类。
     """
+    _MAX_CLUSTER = max(5, len(texts) // 8)  # 单簇上限，防止巨型簇
     clusters = []
     used = set()
     for i, t in enumerate(texts):
@@ -368,12 +378,15 @@ def _fallback_cluster(texts, max_topics=15, threshold=0.5, all_doc_texts=None):
             continue
         cluster = [t]
         used.add(i)
-        ti = set(t.lower())
+        anchor_chars = set(t.lower())  # 锚点：种子文本的字符集
         for j in range(i + 1, len(texts)):
             if j in used:
                 continue
+            if len(cluster) >= _MAX_CLUSTER:
+                break
             tj = set(texts[j].lower())
-            overlap = len(ti & tj) / max(len(ti | tj), 1)
+            # 与锚点比较（而非最后一个簇成员），防止链式聚类
+            overlap = len(anchor_chars & tj) / max(len(anchor_chars | tj), 1)
             if overlap >= threshold:
                 cluster.append(texts[j])
                 used.add(j)
@@ -414,37 +427,54 @@ def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7, 
     """Embedding-based greedy clustering. Falls back to char-overlap."""
     if not articles:
         return []
-    # Try to get embeddings
+    # Try to get embeddings (使用多语言模型)
     embeddings = None
+    embed_model_name = None
     try:
         if FASTEMBED_AVAILABLE:
-            Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
+            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
             texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
             embeddings = Settings.embed_model.get_text_embedding_batch(texts)
+            embed_model_name = _EMBED_MODEL
     except Exception:
-        embeddings = None
+        # 多语言模型不可用，尝试英文回退
+        try:
+            if FASTEMBED_AVAILABLE:
+                Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL_FALLBACK)
+                texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
+                embeddings = Settings.embed_model.get_text_embedding_batch(texts)
+                embed_model_name = _EMBED_MODEL_FALLBACK
+        except Exception:
+            embeddings = None
 
     if embeddings and len(embeddings) == len(articles):
+        print(f"[insight_engine] clustering with embeddings: {embed_model_name}", file=sys.stderr)
         return _cluster_with_embeddings(articles, embeddings, max_topics, similarity_threshold, all_doc_texts)
     # fallback
+    print(f"[insight_engine] clustering with char-overlap fallback (embeddings unavailable)", file=sys.stderr)
     texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
     return _fallback_cluster(texts, max_topics, all_doc_texts=all_doc_texts)
 
 
 def _cluster_with_embeddings(articles, embeddings, max_topics, threshold, all_doc_texts=None):
-    """Greedy clustering by cosine similarity on embeddings."""
+    """Greedy clustering by cosine similarity on embeddings.
+    使用锚点比较 + 单簇上限防止巨型簇。
+    """
     n = len(articles)
     used = [False] * n
+    _MAX_CLUSTER = max(5, n // 8)  # 单簇上限
     clusters = []
     for i in range(n):
         if used[i]:
             continue
         cluster_indices = [i]
         used[i] = True
-        vec_i = embeddings[i]
+        vec_i = embeddings[i]  # 锚点向量
         for j in range(i + 1, n):
             if used[j]:
                 continue
+            if len(cluster_indices) >= _MAX_CLUSTER:
+                break
             sim = _cosine_similarity(vec_i, embeddings[j])
             if sim >= threshold:
                 cluster_indices.append(j)
@@ -467,7 +497,7 @@ def cross_platform_semantic(hot_snapshot, similarity_threshold=0.75):
     try:
         # Ensure embed_model is set (build_index should have done this already)
         if FASTEMBED_AVAILABLE:
-            Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
+            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
         else:
             return []
         # Collect titles per platform
