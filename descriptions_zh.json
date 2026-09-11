@@ -382,5 +382,9 @@
  "yudaprasetya007/routeVSCODE": "⚡ 零重载动态 AI 模型切换器和通过 9Router 进行 VSCode Copilot 聊天的本地代理",
  "alsk1992/CloddsBot": "开源AI交易代理，在1000多个市场（ Polymarket、Kalshi、Binance、Hyperliquid、Solana DEXs、5条EVM链）自主运营。扫描边缘，即时执行，在您睡觉时管理风险。机器对机器支付的代理商务协议。自托管。建立在Claude之上。",
  "tshemsedinov/reslop": "交互式终端代码审查 git diff 和行内突出显示",
- "Evil0ctal/Douyin_TikTok_Download_API": "🚀 自托管抖音和 TikTok 数据 API — 异步抓取器、无水印视频下载器、REST API、MCP 服务器和 Web 控制台。自愈身份池、PostgreSQL 存档、一个 docker 组成。"
+ "Evil0ctal/Douyin_TikTok_Download_API": "🚀 自托管抖音和 TikTok 数据 API — 异步抓取器、无水印视频下载器、REST API、MCP 服务器和 Web 控制台。自愈身份池、PostgreSQL 存档、一个 docker 组成。",
+ "shareAI-lab/learn-claude-code": "Bash 就是你所需要的 - 一个 Nano claude 代码——类似“代理工具”，从 0 到 1 构建",
+ "hiyouga/LlamaFactory": "100多个LLM和VLM的统一高效微调（ACL 2024）",
+ "headroomlabs-ai/headroom": "在工具输出、日志、文件和 RAG 块到达 LLM 之前对其进行压缩。编码代理的标记减少了 20%，JSON 的标记减少了 60-95%，答案相同。库、代理、MCP 服务器。",
+ "FoundationAgents/MetaGPT": "🌟 多代理框架：第一家人工智能软件公司，迈向自然语言编程"
 }
