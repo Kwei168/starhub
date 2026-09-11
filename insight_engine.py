@@ -298,6 +298,7 @@ def _extract_cluster_label(texts, all_doc_texts=None):
         '查看','知乎','阅读','原文','点击','链接','分享','关注',
         '订阅','评论','回复','转载','编辑','推荐','更多','相关',
         '搜索','登录','注册','首页','频道','专栏','话题','标签',
+        '看知','事情','音频','声音','内容','感觉','意思',
     }
     cn_items = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
     cn_items = [c for c in cn_items if len(c) >= 2]
