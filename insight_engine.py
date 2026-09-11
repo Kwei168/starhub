@@ -41,6 +41,7 @@ _SF_EMBED_MODEL = "BAAI/bge-m3"
 _SF_EMBED_URL = "https://api.siliconflow.cn/v1/embeddings"
 _SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 _SF_BATCH = 32  # 每批最多处理文本数
+_last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 
 # 本地回退模型（bge-small-en-v1.5 仅英文，bge-small-zh-en-v1.5 中英双语）
 _EMBED_MODEL = "BAAI/bge-small-zh-en-v1.5"
@@ -244,6 +245,7 @@ def _get_embeddings(texts):
     """获取 embedding 向量：硅基流动 API → 本地 fastembed → None。
     返回 (vectors, model_name) 元组。
     """
+    global _last_embed_model
     if not texts:
         return None, None
 
@@ -275,8 +277,9 @@ def _get_embeddings(texts):
                 ok = False
                 break
         if ok and len(all_vecs) == len(texts):
+            _last_embed_model = f"siliconflow/{_SF_EMBED_MODEL}"
             print(f"[insight_engine] embeddings via SiliconFlow {_SF_EMBED_MODEL} ({len(texts)} texts)", file=sys.stderr)
-            return all_vecs, f"siliconflow/{_SF_EMBED_MODEL}"
+            return all_vecs, _last_embed_model
         if not ok:
             print(f"[insight_engine] SiliconFlow API failed, falling back to local fastembed", file=sys.stderr)
 
@@ -286,8 +289,9 @@ def _get_embeddings(texts):
             Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
             vecs = Settings.embed_model.get_text_embedding_batch(texts)
             if vecs and len(vecs) == len(texts):
+                _last_embed_model = _EMBED_MODEL
                 print(f"[insight_engine] embeddings via local {_EMBED_MODEL} ({len(texts)} texts)", file=sys.stderr)
-                return vecs, _EMBED_MODEL
+                return vecs, _last_embed_model
         except Exception as exc:
             print(f"[insight_engine] local embed error: {exc}", file=sys.stderr)
 
@@ -784,6 +788,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
             "llm_provider": config.get("insight_llm_provider", "agnes"),
             "llm_available": not isinstance(llm, MockLLM),
             "index_built": index is not None,
+            "embed_model": _last_embed_model or ("siliconflow/" + _SF_EMBED_MODEL if _SF_KEY else _EMBED_MODEL),
             "elapsed_seconds": round((datetime.now(BJT) - t0).total_seconds(), 2),
         },
     }
