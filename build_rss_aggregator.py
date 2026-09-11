@@ -39,11 +39,23 @@ NEWSNOW_API_TMPL = "https://newsnow.busiyi.world/api/s?id=%s"
 NEWSNOW_TIMEOUT = 10
 HOT_SNAPSHOT_FILE = "hot_snapshot.json"
 HOT_HISTORY_FILE = "hot_history.json"  # 热榜轨迹历史（保留 7 天）
-# 期望的热榜源（综合热搜 + 科技/AI/开发者 + 国际社区，zhihu-daily 因 API 500 故障已移除 2026-09）
+# 期望的热榜源（全量接入 newsnow 可用源，故障源 zhihu-daily/36kr/linuxdo/ghxi/kuaishou/smzdm/freebuf 不纳入）
 NEWSNOW_PLATFORMS = [
-    "weibo", "zhihu", "baidu", "bilibili", "douyin",       # 综合热搜
-    "ithome", "hackernews", "github", "solidot", "sspai",   # 科技/开发者
-    "juejin", "v2ex", "producthunt", "aihot",               # 开发者/产品/AI
+    # ── 综合热搜 ──
+    "weibo", "zhihu", "baidu", "bilibili", "douyin",
+    # ── 科技/开发者/AI ──
+    "ithome", "hackernews", "github", "solidot", "sspai",
+    "juejin", "v2ex", "producthunt", "aihot",
+    "chongbuluo", "pcbeta", "nowcoder", "coolapk",
+    # ── 商业/财经 ──
+    "xueqiu", "zaobao", "wallstreetcn", "cls", "jin10",
+    "gelonghui", "fastbull",
+    # ── 综合资讯 ──
+    "toutiao", "tencent", "thepaper", "ifeng",
+    "cankaoxiaoxi", "sputniknewscn", "kaopu", "mktnews",
+    # ── 生活/娱乐/体育 ──
+    "douban", "tieba", "hupu", "steam",
+    "iqiyi", "qqvideo", "dongqiudi",
 ]
 
 # ── 缓存数据 ──
@@ -4318,10 +4330,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(tab==='hot'&&!_hotLoaded) loadHotSnapshot();
   }
   window.switchAfTab=switchAfTab;
-  var _hotPlatformNames={weibo:'微博',zhihu:'知乎',baidu:'百度',bilibili:'B站',douyin:'抖音',ithome:'IT之家',hackernews:'Hacker News',github:'GitHub',solidot:'Solidot',sspai:'少数派',juejin:'掘金',v2ex:'V2EX',producthunt:'Product Hunt',aihot:'AIHOT'};
+  var _hotPlatformNames={weibo:'微博',zhihu:'知乎',baidu:'百度',bilibili:'B站',douyin:'抖音',ithome:'IT之家',hackernews:'Hacker News',github:'GitHub',solidot:'Solidot',sspai:'少数派',juejin:'掘金',v2ex:'V2EX',producthunt:'Product Hunt',aihot:'AIHOT',chongbuluo:'虫部落',pcbeta:'远景论坛',nowcoder:'牛客',coolapk:'酷安',xueqiu:'雪球',zaobao:'联合早报',wallstreetcn:'华尔街见闻',cls:'财联社',jin10:'金十数据',gelonghui:'格隆汇',fastbull:'法布财经',toutiao:'今日头条',tencent:'腾讯新闻',thepaper:'澎湃新闻',ifeng:'凤凰网',cankaoxiaoxi:'参考消息',sputniknewscn:'卫星通讯社',kaopu:'靠谱',mktnews:'市场资讯',douban:'豆瓣',tieba:'贴吧',hupu:'虎扑',steam:'Steam',iqiyi:'爱奇艺',qqvideo:'腾讯视频',dongqiudi:'懂球帝'};
   /* dot：平台品牌色（未选中态圆点，提供平台色差区分）；deep：选中态实底色（加深变体，白字对比 ≥4.4:1，明暗主题均可读） */
-  var _hotPlatformColors={weibo:'#ff4400',zhihu:'#0066ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#fe2c55',ithome:'#d32f2f',hackernews:'#ff6600',github:'#6e5491',solidot:'#4caf50',sspai:'#da3325',juejin:'#1e80ff',v2ex:'#778087',producthunt:'#da552f',aihot:'#0891b2'};
-  var _hotPlatformDeep={weibo:'#d5380f',zhihu:'#0052cc',baidu:'#1f28b8',bilibili:'#c73a6c',douyin:'#d9284a',ithome:'#b71c1c',hackernews:'#cc5200',github:'#4a3769',solidot:'#2e7d32',sspai:'#b71c1c',juejin:'#1565c0',v2ex:'#5a5f66',producthunt:'#b5441f',aihot:'#067090'};
+  var _hotPlatformColors={weibo:'#ff4400',zhihu:'#0066ff',baidu:'#2932e1',bilibili:'#fb7299',douyin:'#fe2c55',ithome:'#d32f2f',hackernews:'#ff6600',github:'#6e5491',solidot:'#4caf50',sspai:'#da3325',juejin:'#1e80ff',v2ex:'#778087',producthunt:'#da552f',aihot:'#0891b2',chongbuluo:'#558b2f',pcbeta:'#1565c0',nowcoder:'#0097a7',coolapk:'#10b981',xueqiu:'#1e88e5',zaobao:'#c62828',wallstreetcn:'#1565c0',cls:'#0277bd',jin10:'#ef6c00',gelonghui:'#00897b',fastbull:'#f57c00',toutiao:'#d32f2f',tencent:'#1976d2',thepaper:'#c62828',ifeng:'#e64a19',cankaoxiaoxi:'#ad1457',sputniknewscn:'#283593',kaopu:'#2e7d32',mktnews:'#4e342e',douban:'#007722',tieba:'#4caf50',hupu:'#d32f2f',steam:'#1b2838',iqiyi:'#00be07',qqvideo:'#ff6900',dongqiudi:'#2e7d32'};
+  var _hotPlatformDeep={weibo:'#d5380f',zhihu:'#0052cc',baidu:'#1f28b8',bilibili:'#c73a6c',douyin:'#d9284a',ithome:'#b71c1c',hackernews:'#cc5200',github:'#4a3769',solidot:'#2e7d32',sspai:'#b71c1c',juejin:'#1565c0',v2ex:'#5a5f66',producthunt:'#b5441f',aihot:'#067090',chongbuluo:'#33691e',pcbeta:'#0d47a1',nowcoder:'#006064',coolapk:'#047857',xueqiu:'#1565c0',zaobao:'#8e0000',wallstreetcn:'#0d47a1',cls:'#01579b',jin10:'#e65100',gelonghui:'#00695c',fastbull:'#ef6c00',toutiao:'#b71c1c',tencent:'#0d47a1',thepaper:'#8e0000',ifeng:'#bf360c',cankaoxiaoxi:'#78002e',sputniknewscn:'#1a237e',kaopu:'#1b5e20',mktnews:'#3e2723',douban:'#004400',tieba:'#2e7d32',hupu:'#b71c1c',steam:'#0d1117',iqiyi:'#007a07',qqvideo:'#cc5400',dongqiudi:'#1b5e20'};
   window.toggleHotPanel=function(){
     var panelOpen=document.body.classList.contains('ai-open');
     if(panelOpen&&afTab==='hot'){toggleAiFeed();return;} /* 已在热榜 Tab→再次点击关闭抽屉（移动端习惯） */
