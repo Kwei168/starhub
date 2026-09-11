@@ -272,11 +272,14 @@ def _extract_cluster_label(texts, all_doc_texts=None):
     策略：去前缀 → 中文高频 2-gram（用全局 IDF 加权）/ 英文高频词。
     all_doc_texts: 所有文档文本列表，用于计算全局 IDF。若为 None 则仅用簇内频率。
     """
-    # 去 [RSS/xxx] / [热榜/xxx] 前缀
+    # 去 [RSS/xxx] / [热榜/xxx] 前缀 + 常见 RSS 模板尾部
     cleaned = []
     for t in texts:
         t = t.strip()
         t = re.sub(r'^\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*', '', t)
+        # 去常见 RSS 模板尾部（"点击查看知乎原文" 等）
+        t = re.sub(r'[\u67e5\u770b\u70b9\u51fb]?\u77e5\u4e4e[\u539f\u6587]?\u00b7?\s*$', '', t)
+        t = re.sub(r'\u9605\u8bfb[\u539f\u6587]+.*$', '', t)
         if len(t) >= 4:
             cleaned.append(t)
     if not cleaned:
@@ -298,7 +301,7 @@ def _extract_cluster_label(texts, all_doc_texts=None):
         '查看','知乎','阅读','原文','点击','链接','分享','关注',
         '订阅','评论','回复','转载','编辑','推荐','更多','相关',
         '搜索','登录','注册','首页','频道','专栏','话题','标签',
-        '看知','事情','音频','声音','内容','感觉','意思',
+        '看知','乎原','事情','音频','声音','内容','感觉','意思',
     }
     cn_items = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
     cn_items = [c for c in cn_items if len(c) >= 2]
