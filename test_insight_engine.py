@@ -521,6 +521,13 @@ class TestRunAnalysis(unittest.TestCase):
         result = run_analysis(hot, rss, trending, config, prev_keywords=prev_kw)
         self.assertIsInstance(result["rising"], list)
 
+    def test_run_analysis_has_cross_category(self):
+        """Output includes cross_category field (even if empty)."""
+        hot, rss, trending, config = self._make_data()
+        result = run_analysis(hot, rss, trending, config)
+        self.assertIn("cross_category", result)
+        self.assertIsInstance(result["cross_category"], list)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -521,10 +521,13 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     deep_insights = generate_deep_insights(llm, context)
 
     # 8. Stats
+    rss_items = list((rss_history or {}).values()) if isinstance(rss_history, dict) else []
+    recent_count = sum(1 for item in rss_items if _is_recent(item))
+    source_count = len(set(item.get("source_key", "") for item in rss_items if item.get("source_key")))
     stats = {
-        "total_articles": len(doc_texts),
-        "recent_count": len(doc_texts),
-        "source_count": len(hot_snapshot) if hot_snapshot else 0,
+        "total_articles": len(documents) if documents else 0,
+        "recent_count": recent_count if rss_items else len(doc_texts),
+        "source_count": source_count if source_count else (len(hot_snapshot) if hot_snapshot else 0),
     }
 
     # 9. Build old-format summary for frontend compatibility
@@ -551,8 +554,9 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         "summary": summary,
         "stats": stats,
         "quality": {},
-        "hot_trends": {},
+        "hot_trends": {},  # filled by integration layer in build_rss_aggregator.py
         "cross_platform": cross_platform if cross_platform else [],
+        "cross_category": [],  # filled by integration layer in build_rss_aggregator.py
         # New fields
         "deep_insights": deep_insights,
         "topic_clusters": topic_clusters,
