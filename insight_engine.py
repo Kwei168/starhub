@@ -215,8 +215,8 @@ def build_index(documents):
     if not LLAMA_INDEX_AVAILABLE or not FASTEMBED_AVAILABLE:
         return None
     try:
-        if getattr(Settings, "embed_model", None) is None:
-            Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        # Always force fastembed (avoid default OpenAI dependency)
+        Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
         index = VectorStoreIndex.from_documents(documents, show_progress=False)
         return index
     except Exception as exc:
@@ -321,7 +321,8 @@ def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7):
     # Try to get embeddings
     embeddings = None
     try:
-        if LLAMA_INDEX_AVAILABLE and getattr(Settings, "embed_model", None) is not None:
+        if FASTEMBED_AVAILABLE:
+            Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
             texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
             embeddings = Settings.embed_model.get_text_embedding_batch(texts)
     except Exception:
@@ -368,7 +369,10 @@ def cross_platform_semantic(hot_snapshot, similarity_threshold=0.75):
     if not hot_snapshot or not LLAMA_INDEX_AVAILABLE:
         return []
     try:
-        if getattr(Settings, "embed_model", None) is None:
+        # Ensure embed_model is set (build_index should have done this already)
+        if FASTEMBED_AVAILABLE:
+            Settings.embed_model = FastEmbedEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        else:
             return []
         # Collect titles per platform
         platform_titles = {}
