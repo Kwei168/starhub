@@ -338,15 +338,14 @@ def _average_vector(vecs):
 
 def _extract_cluster_label(texts, all_doc_texts=None):
     """从簇内文本中提取语义标签。
-    策略：去前缀 → 中文高频 2-gram（用全局 IDF 加权）/ 英文高频词。
-    all_doc_texts: 所有文档文本列表，用于计算全局 IDF。若为 None 则仅用簇内频率。
+    策略：去前缀 → 中文 3-4 gram（IDF 加权）/ 英文高频词。
+    3-4 gram 比 2-gram 更有语义辨识度（"杰出论" vs "出论"）。
     """
     # 去 [RSS/xxx] / [热榜/xxx] 前缀 + 常见 RSS 模板尾部
     cleaned = []
     for t in texts:
         t = t.strip()
         t = re.sub(r'^\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*', '', t)
-        # 去常见 RSS 模板尾部（"点击查看知乎原文" 等）
         t = re.sub(r'[\u67e5\u770b\u70b9\u51fb]?\u77e5\u4e4e[\u539f\u6587]?\u00b7?\s*$', '', t)
         t = re.sub(r'\u9605\u8bfb[\u539f\u6587]+.*$', '', t)
         if len(t) >= 4:
@@ -354,19 +353,17 @@ def _extract_cluster_label(texts, all_doc_texts=None):
     if not cleaned:
         return max(texts, key=len)[:60] if texts else ''
     n = len(cleaned)
-    # ── 中文：高频 2 字子串（最简洁的有意义标签） ──
+    # ── 中文：3-4 gram 优先（比 2-gram 更有辨识度） ──
     _STOP_CHARS = set('\u7684\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
-    # 常见无意义 2 字词（高频但无话题意义）
-    _STOP_2GRAMS = {
+    _STOP_NGRAMS = {
         '需要','应该','可能','可以','这个','那个','什么','怎么','为什么',
         '因为','所以','但是','虽然','如果','已经','还是','或者','而且',
-        '不是','没有','一个','知道','觉得','感觉','希望','想要','开始',
+        '不是','没有','知道','觉得','感觉','希望','想要','开始',
         '进行','通过','使用','实现','问题','情况','方面','部分','结果',
         '分钟','时间','时候','地方','东西','样子','方法','方式','系统',
         '技术','世界','国家','社会','公司','学校','企业','市场','用户',
         '数据','网络','平台','工作','生活','文化','历史','未来','现在',
-        '今天','昨天','明天','今年','去年','自己','别人','人们','社会',
-        # RSS/网页常见导航短语（无话题意义）
+        '今天','昨天','明天','今年','去年','自己','别人','人们',
         '查看','知乎','阅读','原文','点击','链接','分享','关注',
         '订阅','评论','回复','转载','编辑','推荐','更多','相关',
         '搜索','登录','注册','首页','频道','专栏','话题','标签',
@@ -375,36 +372,55 @@ def _extract_cluster_label(texts, all_doc_texts=None):
     cn_items = [re.sub(r'[^\u4e00-\u9fff]', '', t) for t in cleaned]
     cn_items = [c for c in cn_items if len(c) >= 2]
     if cn_items:
-        # 计算全局 2-gram DF（用于 IDF 加权）
+        # 计算全局 n-gram DF（用于 IDF 加权）
         global_df = {}
         if all_doc_texts:
             for doc in all_doc_texts:
                 doc_cn = re.sub(r'[^\u4e00-\u9fff]', '', doc)
                 seen = set()
-                for start in range(len(doc_cn) - 1):
-                    bg = doc_cn[start:start + 2]
-                    if bg not in seen:
-                        global_df[bg] = global_df.get(bg, 0) + 1
-                        seen.add(bg)
+                for ng_len in (3, 4, 2):
+                    for start in range(len(doc_cn) - ng_len + 1):
+                        ng = doc_cn[start:start + ng_len]
+                        if ng not in seen:
+                            global_df[ng] = global_df.get(ng, 0) + 1
+                            seen.add(ng)
         total_docs = max(len(all_doc_texts), n) if all_doc_texts else n
         best_label = ''
         best_score = 0.0
-        for t in cn_items:
-            for start in range(len(t) - 1):
-                sub = t[start:start + 2]
-                if sub[0] in _STOP_CHARS or sub[1] in _STOP_CHARS:
-                    continue
-                if sub in _STOP_2GRAMS:
-                    continue
-                cnt = sum(1 for ct in cn_items if sub in ct)
-                if cnt >= max(2, n * 0.2):
-                    # TF-IDF: 簇内频率 * 全局 IDF
-                    tf = cnt / n
-                    df = global_df.get(sub, 0)
-                    idf = math.log((total_docs + 1) / (df + 1)) + 1  # smoothed IDF
-                    score = tf * idf
-                    if score > best_score:
-                        best_label, best_score = sub, score
+        # 尝试 3-gram 和 4-gram（优先更长更有意义的标签）
+        for ng_len in (4, 3):
+            for t in cn_items:
+                for start in range(len(t) - ng_len + 1):
+                    sub = t[start:start + ng_len]
+                    if any(c in _STOP_CHARS for c in sub):
+                        continue
+                    if sub in _STOP_NGRAMS:
+                        continue
+                    cnt = sum(1 for ct in cn_items if sub in ct)
+                    if cnt >= max(2, n * 0.3):
+                        tf = cnt / n
+                        df = global_df.get(sub, 0)
+                        idf = math.log((total_docs + 1) / (df + 1)) + 1
+                        score = tf * idf * (1 + 0.2 * (ng_len - 2))  # 长度奖励
+                        if score > best_score:
+                            best_label, best_score = sub, score
+        # 回退到 2-gram（如果没有好的 3-4 gram）
+        if not best_label:
+            for t in cn_items:
+                for start in range(len(t) - 1):
+                    sub = t[start:start + 2]
+                    if sub[0] in _STOP_CHARS or sub[1] in _STOP_CHARS:
+                        continue
+                    if sub in _STOP_NGRAMS:
+                        continue
+                    cnt = sum(1 for ct in cn_items if sub in ct)
+                    if cnt >= max(2, n * 0.3):
+                        tf = cnt / n
+                        df = global_df.get(sub, 0)
+                        idf = math.log((total_docs + 1) / (df + 1)) + 1
+                        score = tf * idf
+                        if score > best_score:
+                            best_label, best_score = sub, score
         if best_label:
             return best_label
     # ── 英文/混合：高频词 ──
@@ -496,7 +512,7 @@ def extract_keywords_llm(llm, texts, top_n=30):
 
 
 # ────────────────── Task 4: cluster_topics_embedding ─────────
-def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.7, all_doc_texts=None):
+def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.55, all_doc_texts=None):
     """Embedding-based greedy clustering. Falls back to char-overlap."""
     if not articles:
         return []
@@ -539,6 +555,16 @@ def _cluster_with_embeddings(articles, embeddings, max_topics, threshold, all_do
             label = _extract_cluster_label(texts, all_doc_texts)
             clusters.append({"label": label, "count": len(texts), "items": texts})
     clusters.sort(key=lambda c: -c["count"])
+    # 标签去重：合并相同标签的簇
+    merged = {}
+    for c in clusters:
+        lbl = c["label"]
+        if lbl in merged:
+            merged[lbl]["items"].extend(c["items"])
+            merged[lbl]["count"] = len(merged[lbl]["items"])
+        else:
+            merged[lbl] = {"label": lbl, "count": c["count"], "items": list(c["items"])}
+    clusters = sorted(merged.values(), key=lambda c: -c["count"])
     return clusters[:max_topics]
 
 
