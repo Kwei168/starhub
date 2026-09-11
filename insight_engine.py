@@ -9,6 +9,7 @@ when llama-index / fastembed are not installed.
 import json
 import math
 import os
+import re
 import sys
 import urllib.request
 import urllib.error
@@ -262,8 +263,62 @@ def _average_vector(vecs):
     return [sum(v[i] for v in vecs) / n for i in range(dim)]
 
 
-def _fallback_cluster(texts, max_topics=15, threshold=0.3):
-    """Character-overlap based clustering when embeddings are unavailable."""
+def _extract_cluster_label(texts):
+    """从簇内文本中提取语义标签。
+    策略：去前缀 → 提取跨文本高频 3-4 字子串 → 选覆盖度最高的。
+    仅当 3+ 字无结果时才回退到 2 字。失败时回退到最长文本截断。
+    """
+    # 去 [RSS/xxx] / [热榜/xxx] 前缀
+    cleaned = []
+    for t in texts:
+        t = t.strip()
+        t = re.sub(r'^\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*', '', t)
+        if len(t) >= 4:
+            cleaned.append(t)
+    if not cleaned:
+        return max(texts, key=len)[:60] if texts else ''
+    # 停用字（单字）
+    _STOP_CHARS = set('\u7684\u4e86\u662f\u5728\u6211\u6709\u548c\u5c31\u4e0d\u90fd\u4e00\u4e2a\u4e5f\u4e0a\u8fd9\u5230\u8bf4\u4eec\u4e3a\u5bf9\u88ab\u628a\u8ba9\u7ed9\u7528\u4ece\u5411\u5982\u53ef\u4ee5\u80fd\u4f1a\u5df2\u7ecf\u8fd8\u5f88\u592a\u90a3\u4ed6\u5979\u5b83\u4e48\u5427\u5417\u5462\u554a\u54c8\u54df\u5566\u5457\u561b\u563f\u561f\u561c\u5616\u5618\u561a\u5619\u561b\u55d2\u55d3\u55d4\u55d5\u55d6\u55d7\u55d8\u55d9\u55da\u55db\u55dc\u55dd\u55de\u55df\u55e0\u55e1\u55e2\u55e3\u55e4\u55e5\u55e6\u55e7\u55e8\u55e9\u55ea\u55eb\u55ec\u55ed\u55ee\u55ef\u55f0\u55f1\u55f2\u55f3\u55f4\u55f5\u55f6\u55f7\u55f8\u55f9\u55fa\u55fb\u55fc\u55fd\u55fe\u55ff')
+    # 常见无意义 2 字词
+    _STOP_2GRAMS = set(['如何','可以','这个','那个','什么','怎么','为什么','因为','所以','但是','虽然','如果','已经','还是','或者','而且','不仅','只是','可能','需要','应该','必须','通过','进行','发现','认为','表示','显示','说明','提供','支持','包括','使用','实现','开发','设计','创建','建立','完成','开始','结束','继续','保持','增加','减少','提高','降低','改善','优化','改变','影响','导致','产生','存在','出现','发生','存在','存在','需要','想要','希望','觉得','感觉','知道','理解','认识','学习','研究','分析','评估','测试','验证','检查','查看','观察','注意','关注','重视','考虑','思考','讨论','交流','沟通','协调','合作','配合','支持','帮助','服务','管理','控制','监督','指导','引导','推动','促进','加强','强化','深化','拓展','扩大','缩小','调整','改革','创新','发展','进步','提升','升级','转型','转变','转化','变化','变动','改变','更新','升级','迭代','演进','演化','演变','发展','增长','增长','增长'])
+    n = len(cleaned)
+    best_label = ''
+    best_score = 0
+    # 优先 3-4 字子串
+    for slen in (4, 3, 2):
+        score = {}
+        for t in cleaned:
+            cn = re.sub(r'[^\u4e00-\u9fff]', '', t)
+            for start in range(len(cn) - slen + 1):
+                sub = cn[start:start + slen]
+                if sub[0] in _STOP_CHARS or sub[-1] in _STOP_CHARS:
+                    continue
+                if slen == 2 and sub in _STOP_2GRAMS:
+                    continue
+                cnt = sum(1 for ct in cleaned if sub in ct)
+                # 覆盖度要求：至少 20% 的文本包含
+                if cnt >= max(2, n * 0.2):
+                    score[sub] = max(score.get(sub, 0), cnt * slen)
+        if score:
+            candidate = max(score, key=lambda k: score[k])
+            cand_score = score[candidate]
+            # 3+ 字子串直接返回；2 字子串需要更高分
+            if slen >= 3 or cand_score > best_score:
+                if cand_score > best_score:
+                    best_label = candidate
+                    best_score = cand_score
+                if slen >= 3:
+                    return best_label
+    if best_label:
+        return best_label
+    # 回退：最长文本截断
+    return max(cleaned, key=len)[:40]
+
+
+def _fallback_cluster(texts, max_topics=15, threshold=0.5):
+    """Character-overlap based clustering when embeddings are unavailable.
+    阈值从 0.3 提升到 0.5，避免中文常用字导致误聚类。
+    """
     clusters = []
     used = set()
     for i, t in enumerate(texts):
@@ -281,8 +336,7 @@ def _fallback_cluster(texts, max_topics=15, threshold=0.3):
                 cluster.append(texts[j])
                 used.add(j)
         if len(cluster) >= 2:
-            # derive label from longest text
-            label = max(cluster, key=len)[:60]
+            label = _extract_cluster_label(cluster)
             clusters.append({"label": label, "count": len(cluster), "items": cluster})
     clusters.sort(key=lambda c: -c["count"])
     return clusters[:max_topics]
@@ -355,7 +409,7 @@ def _cluster_with_embeddings(articles, embeddings, max_topics, threshold):
                 used[j] = True
         if len(cluster_indices) >= 2:
             texts = [articles[k] if isinstance(articles[k], str) else articles[k].get("text", "") for k in cluster_indices]
-            label = max(texts, key=len)[:60]
+            label = _extract_cluster_label(texts)
             clusters.append({"label": label, "count": len(texts), "items": texts})
     clusters.sort(key=lambda c: -c["count"])
     return clusters[:max_topics]
@@ -474,6 +528,52 @@ def generate_deep_insights(llm, context):
     }
 
 
+# ────────────────── Topic metadata builder ──────────────────
+def _build_topics_with_meta(topic_clusters, rss_history):
+    """从 topic_clusters 构建带 sources/links/cats 的话题列表。
+    通过匹配 rss_history 中的文章元数据填充话题属性。
+    """
+    if not rss_history or not isinstance(rss_history, dict):
+        return [{"label": c["label"], "count": c["count"],
+                 "sources": [], "links": [], "cats": []}
+                for c in topic_clusters]
+    # 建立标题→元数据索引（用前30字做key）
+    title_meta = {}
+    for link, item in rss_history.items():
+        title = item.get("title", "") or item.get("title_zh", "")
+        if title:
+            title_meta[title[:30]] = {
+                "link": link,
+                "source": item.get("source", ""),
+                "cat": item.get("cat", item.get("category", "rss")),
+            }
+    topics = []
+    for c in topic_clusters:
+        sources_set = set()
+        links_list = []
+        cats_set = set()
+        items = c.get("items", [])
+        for item_text in items:
+            # 去前缀后取前30字匹配
+            clean = re.sub(r'^\[(?:RSS|\u70ed\u699c|Trending)/[^\]]*\]\s*', '', item_text)
+            key = clean[:30]
+            meta = title_meta.get(key)
+            if meta:
+                if meta["source"]:
+                    sources_set.add(meta["source"])
+                links_list.append(meta["link"])
+                if meta["cat"]:
+                    cats_set.add(meta["cat"])
+        topics.append({
+            "label": c["label"],
+            "count": c["count"],
+            "sources": sorted(sources_set)[:5],
+            "links": links_list[:10],
+            "cats": sorted(cats_set),
+        })
+    return topics
+
+
 # ────────────────── Task 5: run_analysis (main entry) ────────
 def run_analysis(hot_snapshot, rss_history, trending_data, config,
                  prev_keywords=None, hot_history=None):
@@ -497,8 +597,9 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     doc_texts = [d.text for d in documents] if documents else []
     keywords = extract_keywords_llm(llm, doc_texts, top_n=top_kw)
 
-    # 4. Cluster topics
-    topic_clusters = cluster_topics_embedding(doc_texts, max_topics=top_topics)
+    # 4. Cluster topics — 分离热榜和RSS，仅对RSS文章聚类
+    rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
+    topic_clusters = cluster_topics_embedding(rss_texts, max_topics=top_topics) if rss_texts else []
 
     # 5. Cross-platform semantic
     cross_platform = cross_platform_semantic(hot_snapshot)
@@ -551,10 +652,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
             "by_cat": {},
         },
         "rising": rising,
-        "topics": [
-            {"label": c["label"], "count": c["count"], "sources": [], "links": [], "cats": []}
-            for c in topic_clusters
-        ],
+        "topics": _build_topics_with_meta(topic_clusters, rss_history),
         "summary": summary,
         "stats": stats,
         "quality": {},
