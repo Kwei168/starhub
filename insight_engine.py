@@ -82,19 +82,25 @@ def load_config(build_config_path="build_config.json"):
 
 # ────────────────── Task 1: AgnesLLM ──────────────────────────
 class AgnesLLM:
-    """Thin wrapper around the Agnes AI chat-completions API."""
+    """Thin wrapper around the Agnes AI chat-completions API.
+    支持多 API key 轮询，遇到 429 限流自动切换到下一个 key。
+    """
 
     API_URL = "https://apihub.agnes-ai.com/v1/chat/completions"
 
-    def __init__(self, api_key, model="agnes-2.5-flash", timeout=60):
+    def __init__(self, api_key, model="agnes-2.5-flash", timeout=60, extra_keys=None):
         if not api_key:
             raise ValueError("api_key is required")
-        self.api_key = api_key
+        self.api_keys = [api_key]
+        if extra_keys:
+            self.api_keys.extend(k for k in extra_keys if k)
+        self._key_idx = 0
         self.model = model
         self.timeout = timeout
+        print(f"[AgnesLLM] initialized with {len(self.api_keys)} key(s)", file=sys.stderr)
 
-    # -- core completion --
-    def complete(self, prompt, system_prompt=None, temperature=0.3, max_tokens=600):
+    def _try_complete(self, prompt, system_prompt, temperature, max_tokens):
+        """Single attempt with current key. Returns (result, is_429)."""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -108,22 +114,53 @@ class AgnesLLM:
             "chat_template_kwargs": {"enable_thinking": False},
         }
         data = json.dumps(payload).encode("utf-8")
+        key = self.api_keys[self._key_idx]
         req = urllib.request.Request(
             self.API_URL,
             data=data,
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {key}",
             },
             method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-            return body["choices"][0]["message"]["content"]
+            return body["choices"][0]["message"]["content"], False
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                print(f"[AgnesLLM] 429 rate-limited on key #{self._key_idx + 1}, rotating...",
+                      file=sys.stderr)
+                return None, True
+            print(f"[AgnesLLM] complete error: {exc}", file=sys.stderr)
+            return None, False
         except Exception as exc:
             print(f"[AgnesLLM] complete error: {exc}", file=sys.stderr)
-            return ""
+            return None, False
+
+    # -- core completion --
+    def complete(self, prompt, system_prompt=None, temperature=0.3, max_tokens=600):
+        """Try each key on 429; on timeout/other errors retry same key up to 2x."""
+        n_keys = len(self.api_keys)
+        for key_attempt in range(n_keys):
+            result, is_429 = self._try_complete(prompt, system_prompt, temperature, max_tokens)
+            if result:
+                return result
+            if is_429:
+                self._key_idx = (self._key_idx + 1) % n_keys
+                continue
+            # Non-429 error (timeout etc.) — retry with current key up to 2 more times
+            for retry in range(2):
+                result, is_429 = self._try_complete(prompt, system_prompt, temperature, max_tokens)
+                if result:
+                    return result
+                if is_429:
+                    self._key_idx = (self._key_idx + 1) % n_keys
+                    break  # break inner retry, outer loop will try next key
+            else:
+                break  # exhausted retries on this key without 429
+        return ""
 
     def stream_complete(self, prompt, **kwargs):
         """Yield the full result (non-streaming fallback)."""
@@ -172,7 +209,13 @@ def configure_llm(config):
     if provider == "agnes":
         api_key = os.environ.get("AGNES_API_KEY", "")
         if api_key:
-            return AgnesLLM(api_key=api_key)
+            # 读取备用 key（支持多 key 轮询抗 429 限流）
+            extra_keys = []
+            for suffix in ["_2", "_3"]:
+                k = os.environ.get(f"AGNES_API_KEY{suffix}", "")
+                if k:
+                    extra_keys.append(k)
+            return AgnesLLM(api_key=api_key, extra_keys=extra_keys or None)
         print("[insight_engine] AGNES_API_KEY not set, using MockLLM", file=sys.stderr)
     elif provider != "mock":
         print(f"[insight_engine] Unknown provider '{provider}', using MockLLM", file=sys.stderr)
