@@ -43,6 +43,11 @@ _SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 _SF_BATCH = 32  # 每批最多处理文本数
 _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 
+# ────────────────── Hierarchical chunking (小索引大窗口) ──────────────────
+_CHUNK_TOKEN_TARGET = 150    # 子块目标 token 数（约100词/句）
+_RETRIEVE_TOP_K = 10         # 检索返回 top-K 子块
+_CONTEXT_RADIUS = 3          # 命中块前后各取 N 个句子组（大窗口）
+
 # 本地回退模型（中英文兼容，fastembed 0.8+ / llama-index-embeddings-fastembed 0.7 支持）
 _EMBED_MODEL = "intfloat/multilingual-e5-small"          # 多语言，中英双语兼容
 _EMBED_MODEL_FALLBACK = "BAAI/bge-small-zh-v1.5"           # 中文回退
@@ -293,6 +298,177 @@ def build_index(documents, embeddings=None, embed_model_name=None):
         print(f"[insight_engine] build_index error: {type(exc).__name__}: {exc}", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
+        return None
+
+
+# ────────────────── Hierarchical chunking (小索引大窗口) ──────────────────
+def _group_sentences(text, token_target=150):
+    """将文本按句子切分，再组合为 ~token_target 大小的语义块。
+    返回句子组列表，每组是完整句子的拼接。
+    """
+    # 中英文句子切分
+    sentences = re.split(r'(?<=[。！？.!?\n])\s*', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if not sentences:
+        return []
+
+    groups = []
+    current = []
+    current_len = 0
+    for sent in sentences:
+        est = max(len(sent) // 2, 1)  # 粗略 token 估算
+        if current_len + est > token_target and current:
+            groups.append(' '.join(current))
+            current = [sent]
+            current_len = est
+        else:
+            current.append(sent)
+            current_len += est
+    if current:
+        groups.append(' '.join(current))
+    return groups
+
+
+def _build_hierarchical_index(documents, pre_embeddings=None):
+    """构建层级向量索引：精细切片(子块) + 父文档映射。
+
+    每个文档被切分为 ~150 token 的子块（小索引），
+    子块 metadata 中保存父文档引用，检索时可扩展上下文（大窗口）。
+
+    Args:
+        documents: 文档列表
+        pre_embeddings: 预计算的文档级 embedding（用于回退）
+
+    Returns:
+        (index, parent_docs_map) 或 (None, {})
+    """
+    if not LLAMA_INDEX_AVAILABLE or not documents:
+        return None, {}
+
+    try:
+        from llama_index.core.schema import TextNode
+
+        # 1) 切分文档为子块，建立 parent→children 映射
+        parent_docs = {}   # parent_id → original text
+        child_nodes = []   # 子块 TextNode 列表
+        child_texts = []   # 子块文本（用于 embedding）
+
+        for doc_idx, doc in enumerate(documents):
+            doc_text = doc.text if hasattr(doc, 'text') else str(doc)
+            parent_id = f"doc_{doc_idx}"
+            parent_docs[parent_id] = doc_text
+
+            groups = _group_sentences(doc_text, _CHUNK_TOKEN_TARGET)
+            if not groups:
+                continue
+
+            for child_idx, chunk_text in enumerate(groups):
+                node = TextNode(
+                    text=chunk_text,
+                    metadata={"parent_doc_id": parent_id, "child_idx": child_idx},
+                )
+                child_nodes.append(node)
+                child_texts.append(chunk_text)
+
+        if not child_nodes:
+            print("[insight_engine] hierarchical index: no child chunks generated", file=sys.stderr)
+            return None, {}
+
+        print(f"[insight_engine] hierarchical index: {len(documents)} docs → "
+              f"{len(child_nodes)} child chunks", file=sys.stderr)
+
+        # 2) 获取子块 embedding（精细切片的关键：每个子块独立向量）
+        child_vecs = None
+        if pre_embeddings and len(pre_embeddings) == len(documents):
+            # 尝试为子块计算独立 embedding（提高检索精度）
+            child_vecs, _ = _get_embeddings(child_texts)
+            if not child_vecs or len(child_vecs) != len(child_nodes):
+                # 回退：复用父文档 embedding（同父块子节点共享向量）
+                print("[insight_engine] child embed failed, falling back to parent embeddings", file=sys.stderr)
+                child_vecs = []
+                for node in child_nodes:
+                    pidx = int(node.metadata["parent_doc_id"].split("_")[1])
+                    child_vecs.append(pre_embeddings[pidx])
+
+        # 3) 赋值 embedding 并建索引
+        if child_vecs and len(child_vecs) == len(child_nodes):
+            for node, vec in zip(child_nodes, child_vecs):
+                node.embedding = vec
+
+        # 确保 Settings.embed_model 可用（VectorStoreIndex 需要默认模型）
+        if FASTEMBED_AVAILABLE:
+            for mn in (_EMBED_MODEL, _EMBED_MODEL_FALLBACK):
+                try:
+                    Settings.embed_model = FastEmbedEmbedding(model_name=mn)
+                    break
+                except Exception:
+                    continue
+
+        index = VectorStoreIndex(child_nodes, show_progress=False)
+        print(f"[insight_engine] hierarchical index built: {len(child_nodes)} child nodes, "
+              f"{len(parent_docs)} parents", file=sys.stderr)
+        return index, parent_docs
+
+    except Exception as exc:
+        print(f"[insight_engine] _build_hierarchical_index error: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return None, {}
+
+
+def _retrieve_with_context(index, parent_docs, query, top_k=10, context_radius=3):
+    """从层级索引检索并扩展上下文窗口（大窗口）。
+
+    当某个子块被命中时，通过 parent→children 映射拉取完整语境：
+    包含命中块前后各 context_radius 个句子组。
+
+    Args:
+        index: 层级 VectorStoreIndex
+        parent_docs: {parent_id: original_text} 映射
+        query: 查询文本
+        top_k: 返回子块数
+        context_radius: 命中块前后各取 N 个邻居
+
+    Returns:
+        扩展后的上下文文本，或 None
+    """
+    if not index or not parent_docs:
+        return None
+
+    try:
+        retriever = index.as_retriever(similarity_top_k=top_k)
+        results = retriever.retrieve(query)
+        if not results:
+            return None
+
+        # 按父文档分组，扩展上下文窗口
+        context_parts = []
+        seen_parents = set()
+
+        for node_with_score in results:
+            node = node_with_score.node
+            parent_id = node.metadata.get("parent_doc_id")
+            child_idx = node.metadata.get("child_idx", 0)
+
+            if parent_id not in parent_docs:
+                continue
+
+            parent_text = parent_docs[parent_id]
+            groups = _group_sentences(parent_text, _CHUNK_TOKEN_TARGET)
+
+            # 构建上下文窗口：命中块 + 前后各 N 个邻居
+            start = max(0, child_idx - context_radius)
+            end = min(len(groups), child_idx + context_radius + 1)
+
+            if parent_id not in seen_parents:
+                context_parts.append("\n".join(groups[start:end]))
+                seen_parents.add(parent_id)
+
+        return "\n---\n".join(context_parts) if context_parts else None
+
+    except Exception as exc:
+        print(f"[insight_engine] _retrieve_with_context error: {exc}", file=sys.stderr)
         return None
 
 
@@ -779,15 +955,44 @@ def _is_recent(item, hours=24):
 
 
 # ────────────────── Task 5: generate_deep_insights ───────────
-def generate_deep_insights(llm, context):
-    """Use LLM to generate narrative insights from analysis context."""
+def generate_deep_insights(llm, topic_clusters, index=None, parent_docs=None, keywords=None):
+    """Use LLM to generate narrative insights from analysis context.
+    小索引大窗口：通过层级索引检索相关子块，扩展上下文后提供给 LLM。
+    """
+    # 为每个话题检索相关上下文（大窗口）
+    topic_contexts = []
+    if topic_clusters:
+        for cluster in topic_clusters[:5]:  # 最多 5 个话题
+            label = cluster.get("label", "")
+            items = cluster.get("items", [])
+
+            # 优先从层级索引检索（小索引 → 大窗口扩展）
+            ctx = None
+            if index and parent_docs and items:
+                # 用簇内最典型的条目作为查询
+                query = items[0] if items else label
+                ctx = _retrieve_with_context(index, parent_docs, query,
+                                             top_k=_RETRIEVE_TOP_K,
+                                             context_radius=_CONTEXT_RADIUS)
+
+            # 回退：直接使用簇内条目
+            if not ctx and items:
+                ctx = "\n".join(items[:5])
+
+            if ctx:
+                topic_contexts.append(f"【{label}】\n{ctx[:1500]}")
+
+    combined_context = "\n\n".join(topic_contexts) if topic_contexts else "无检索上下文"
+
     prompt = (
         "基于以下分析上下文，生成深度洞察。请以 JSON 格式返回，包含以下字段：\n"
         "- narrative: 一段200字以内的核心叙事分析\n"
         "- causal_chains: 因果链条数组，如 [\"A→B→C\"]\n"
         "- signals: 异动信号数组，每项含 signal 和 confidence\n"
         "- outlook: 一段100字以内的前瞻研判\n\n"
-        f"分析上下文：\n{json.dumps(context, ensure_ascii=False)[:3000]}"
+        f"关键词：{', '.join(keywords[:15]) if keywords else '无'}\n"
+        f"话题数：{len(topic_clusters)}\n\n"
+        f"检索上下文（小索引大窗口检索结果）：\n{combined_context[:4000]}"
     )
     system_prompt = "你是科技情报分析师，擅长从多源数据中提取深层洞察。只返回 JSON，不要其他文字。"
     result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.4, max_tokens=800)
@@ -795,7 +1000,6 @@ def generate_deep_insights(llm, context):
     if isinstance(parsed, dict) and "narrative" in parsed:
         return _normalize_deep_insights(parsed)
     # fallback: simple keyword-based narrative
-    keywords = context.get("keywords", [])
     kw_str = "、".join(keywords[:10]) if keywords else "无"
     return {
         "narrative": f"当前信息场核心关键词为：{kw_str}。",
@@ -903,23 +1107,17 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
 
     # 3. 统一 embedding：一次计算，index + 聚类共享
     rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
+    documents_rss = [d for d in documents if d.text.startswith('[RSS/')]
     rss_embeddings, rss_embed_model = _get_embeddings(rss_texts) if rss_texts else (None, None)
 
-    # 4. Build index — 用 RSS 子集建索引（更有意义）
+    # 4. Build hierarchical index — 小索引大窗口（精细切片 + 上下文扩展）
     index = None
-    if rss_texts and rss_embeddings and LLAMA_INDEX_AVAILABLE and FASTEMBED_AVAILABLE:
-        from llama_index.core.schema import TextNode
-        for model_name in (_EMBED_MODEL, _EMBED_MODEL_FALLBACK):
-            try:
-                Settings.embed_model = FastEmbedEmbedding(model_name=model_name)
-                nodes = [TextNode(text=t, embedding=rss_embeddings[i])
-                         for i, t in enumerate(rss_texts)]
-                index = VectorStoreIndex(nodes, show_progress=False)
-                print(f"[insight_engine] RSS index built: {len(nodes)} nodes ({rss_embed_model}), "
-                      f"embed_model={model_name}", file=sys.stderr)
-                break
-            except Exception as exc:
-                print(f"[insight_engine] RSS index build error ({model_name}): {type(exc).__name__}: {exc}", file=sys.stderr)
+    parent_docs = {}
+    if rss_texts and LLAMA_INDEX_AVAILABLE:
+        index, parent_docs = _build_hierarchical_index(
+            documents_rss,  # 用 Document 对象列表
+            pre_embeddings=rss_embeddings
+        )
     elif not LLAMA_INDEX_AVAILABLE:
         print("[insight_engine] index skipped: llama-index not available", file=sys.stderr)
 
@@ -944,14 +1142,12 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         rising.sort(key=lambda x: -x["rise"])
         rising = rising[:15]
 
-    # 7. Deep insights
-    context = {
-        "keywords": keywords,
-        "topic_count": len(topic_clusters),
-        "doc_count": len(documents),
-        "cross_platform_count": len(cross_platform),
-    }
-    deep_insights = generate_deep_insights(llm, context)
+    # 7. Deep insights — 使用层级索引检索 + 大窗口上下文
+    deep_insights = generate_deep_insights(
+        llm, topic_clusters,
+        index=index, parent_docs=parent_docs,
+        keywords=keywords
+    )
 
     # 8. Stats
     rss_items = list((rss_history or {}).values()) if isinstance(rss_history, dict) else []

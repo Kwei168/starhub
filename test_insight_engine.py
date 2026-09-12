@@ -31,6 +31,9 @@ from insight_engine import (
     _is_recent,
     _DEFAULTS,
     _SimpleDoc,
+    _group_sentences,
+    _build_hierarchical_index,
+    _retrieve_with_context,
 )
 
 
@@ -400,8 +403,8 @@ class TestDeepInsights(unittest.TestCase):
     def test_generate_deep_insights_with_mock(self):
         """MockLLM generates structured insights."""
         llm = MockLLM()
-        context = {"keywords": ["ai", "llm", "agent"], "topic_count": 5}
-        result = generate_deep_insights(llm, context)
+        topic_clusters = [{"label": "AI", "count": 3, "items": ["AI news 1", "AI news 2"]}]
+        result = generate_deep_insights(llm, topic_clusters, keywords=["ai", "llm", "agent"])
         self.assertIsInstance(result, dict)
         self.assertIn("narrative", result)
         self.assertIn("causal_chains", result)
@@ -413,8 +416,8 @@ class TestDeepInsights(unittest.TestCase):
         llm = MockLLM()
         # Override complete to return non-JSON
         llm.complete = MagicMock(return_value="not json")
-        context = {"keywords": ["ai", "llm"]}
-        result = generate_deep_insights(llm, context)
+        topic_clusters = [{"label": "AI", "count": 2, "items": ["AI news"]}]
+        result = generate_deep_insights(llm, topic_clusters, keywords=["ai", "llm"])
         self.assertIsInstance(result, dict)
         self.assertIn("narrative", result)
         self.assertIn("ai", result["narrative"])
@@ -527,6 +530,70 @@ class TestRunAnalysis(unittest.TestCase):
         result = run_analysis(hot, rss, trending, config)
         self.assertIn("cross_category", result)
         self.assertIsInstance(result["cross_category"], list)
+
+
+# ═══════════════════ Hierarchical Index Tests ═════════════════
+
+class TestHierarchicalIndex(unittest.TestCase):
+    """小索引大窗口：层级索引与检索测试。"""
+
+    def test_group_sentences_basic(self):
+        """Sentence grouping splits text into chunks."""
+        text = "这是第一句话。这是第二句话。这是第三句话。这是第四句话。"
+        groups = _group_sentences(text, token_target=10)
+        self.assertIsInstance(groups, list)
+        self.assertGreater(len(groups), 0)
+        # 所有句子都被包含
+        combined = " ".join(groups)
+        self.assertIn("第一句", combined)
+        self.assertIn("第四句", combined)
+
+    def test_group_sentences_empty(self):
+        """Empty text returns empty list."""
+        groups = _group_sentences("", token_target=100)
+        self.assertEqual(groups, [])
+
+    def test_group_sentences_single(self):
+        """Single sentence returns one group."""
+        groups = _group_sentences("只有一句话。", token_target=100)
+        self.assertEqual(len(groups), 1)
+        self.assertIn("一句话", groups[0])
+
+    def test_group_sentences_respects_target(self):
+        """Groups respect token target approximately."""
+        # 长文本应被分成多个组
+        text = "。".join([f"这是第{i}个句子的内容" for i in range(20)]) + "。"
+        groups = _group_sentences(text, token_target=30)
+        self.assertGreater(len(groups), 1)
+
+    def test_build_hierarchical_index_no_docs(self):
+        """Empty documents returns None."""
+        index, parent_docs = _build_hierarchical_index([])
+        self.assertIsNone(index)
+        self.assertEqual(parent_docs, {})
+
+    def test_build_hierarchical_index_with_docs(self):
+        """Build index from documents (may skip if llama-index unavailable)."""
+        docs = [_SimpleDoc("这是测试文档一。包含多个句子。用于验证层级索引。"),
+                _SimpleDoc("这是测试文档二。另一个主题的内容。测试检索功能。")]
+        index, parent_docs = _build_hierarchical_index(docs)
+        # 在无 llama-index 环境中应返回 None
+        if not __import__('insight_engine').LLAMA_INDEX_AVAILABLE:
+            self.assertIsNone(index)
+            self.assertEqual(parent_docs, {})
+        else:
+            self.assertIsNotNone(index)
+            self.assertEqual(len(parent_docs), 2)
+
+    def test_retrieve_with_context_no_index(self):
+        """Retrieve returns None when index is None."""
+        result = _retrieve_with_context(None, {}, "test query")
+        self.assertIsNone(result)
+
+    def test_retrieve_with_context_empty_map(self):
+        """Retrieve returns None when parent_docs is empty."""
+        result = _retrieve_with_context("fake_index", {}, "test query")
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":
