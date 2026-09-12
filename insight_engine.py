@@ -43,8 +43,8 @@ _SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 _SF_BATCH = 32  # 每批最多处理文本数
 _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 
-# 本地回退模型（fastembed 0.8+ 支持的模型）
-_EMBED_MODEL = "BAAI/bge-m3"
+# 本地回退模型（fastembed 0.8+ / llama-index-embeddings-fastembed 0.7 支持）
+_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 _EMBED_MODEL_FALLBACK = "BAAI/bge-small-en-v1.5"
 
 # ────────────────── Task 2: Defaults / Config ──────────────────
