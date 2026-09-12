@@ -251,20 +251,48 @@ class _SimpleDoc:
 
 
 # ────────────────── Task 3: build_index ──────────────────────
-def build_index(documents):
-    """Build an in-memory VectorStoreIndex. Returns None if deps missing."""
-    if not LLAMA_INDEX_AVAILABLE or not FASTEMBED_AVAILABLE:
+def build_index(documents, embeddings=None, embed_model_name=None):
+    """Build an in-memory VectorStoreIndex.
+    优先使用预计算的 embeddings（与聚类共享同一向量空间）。
+    回退到本地 fastembed。
+    """
+    if not LLAMA_INDEX_AVAILABLE:
+        print("[insight_engine] build_index: llama-index not available", file=sys.stderr)
         return None
+
+    # 诊断日志
+    print(f"[insight_engine] build_index: LLAMA_INDEX={LLAMA_INDEX_AVAILABLE}, "
+          f"FASTEMBED={FASTEMBED_AVAILABLE}, docs={len(documents)}, "
+          f"embeddings={'provided' if embeddings else 'none'}", file=sys.stderr)
+
     try:
+        # 方案 A：使用预计算的 embeddings（与聚类共享 SiliconFlow API 向量空间）
+        if embeddings and len(embeddings) == len(documents):
+            from llama_index.core import Document as LiDocument
+            from llama_index.core.schema import TextNode
+            nodes = []
+            for i, doc in enumerate(documents):
+                text = doc.text if hasattr(doc, 'text') else str(doc)
+                node = TextNode(text=text, embedding=embeddings[i])
+                nodes.append(node)
+            index = VectorStoreIndex(nodes, show_progress=False)
+            print(f"[insight_engine] build_index: built from {len(nodes)} pre-computed embeddings "
+                  f"({embed_model_name or 'unknown'})", file=sys.stderr)
+            return index
+
+        # 方案 B：回退到本地 fastembed
+        if not FASTEMBED_AVAILABLE:
+            print("[insight_engine] build_index: fastembed not available, cannot build index", file=sys.stderr)
+            return None
         model_name = _EMBED_MODEL
-        if _SF_KEY:
-            # SiliconFlow API 可用时仍用本地模型建索引（API 向量由调用方单独获取）
-            model_name = _EMBED_MODEL
         Settings.embed_model = FastEmbedEmbedding(model_name=model_name)
         index = VectorStoreIndex.from_documents(documents, show_progress=False)
+        print(f"[insight_engine] build_index: built via local fastembed {model_name}", file=sys.stderr)
         return index
     except Exception as exc:
-        print(f"[insight_engine] build_index error: {exc}", file=sys.stderr)
+        print(f"[insight_engine] build_index error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return None
 
 
@@ -604,15 +632,24 @@ def extract_keywords_llm(llm, texts, top_n=30):
 
 
 # ────────────────── Task 4: cluster_topics_embedding ─────────
-def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.55, all_doc_texts=None):
-    """Embedding-based greedy clustering. Falls back to char-overlap."""
+def cluster_topics_embedding(articles, max_topics=15, similarity_threshold=0.55,
+                            all_doc_texts=None, pre_embeddings=None, embed_model_name=None):
+    """Embedding-based greedy clustering. Falls back to char-overlap.
+    支持传入预计算的 embedding 向量，避免重复调 API。
+    """
     if not articles:
         return []
     texts = [a if isinstance(a, str) else a.get("text", str(a)) for a in articles]
-    embeddings, embed_model_name = _get_embeddings(texts)
+
+    # 使用预计算向量，或实时获取
+    if pre_embeddings and len(pre_embeddings) == len(articles):
+        embeddings = pre_embeddings
+        embed_model_name = embed_model_name or "pre-computed"
+    else:
+        embeddings, embed_model_name = _get_embeddings(texts)
 
     if embeddings and len(embeddings) == len(articles):
-        print(f"[insight_engine] clustering with embeddings: {embed_model_name}", file=sys.stderr)
+        print(f"[insight_engine] clustering with embeddings: {embed_model_name} ({len(texts)} texts)", file=sys.stderr)
         return _cluster_with_embeddings(articles, embeddings, max_topics, similarity_threshold, all_doc_texts)
     # fallback
     print(f"[insight_engine] clustering with char-overlap fallback (embeddings unavailable)", file=sys.stderr)
@@ -852,23 +889,41 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
 
     t0 = datetime.now(BJT)
     llm = configure_llm(config)
-    max_docs = config.get("insight_max_documents", 200)
+    max_docs = config.get("insight_max_documents", 500)
     top_kw = config.get("insight_top_keywords", 30)
     top_topics = config.get("insight_top_topics", 15)
 
     # 1. Load documents
     documents = load_documents(hot_snapshot, rss_history, trending_data, max_docs)
 
-    # 2. Build index (may be None)
-    index = build_index(documents)
-
-    # 3. Extract keywords
+    # 2. Extract keywords
     doc_texts = [d.text for d in documents] if documents else []
     keywords = extract_keywords_llm(llm, doc_texts, top_n=top_kw)
 
-    # 4. Cluster topics — 分离热榜和RSS，仅对RSS文章聚类
+    # 3. 统一 embedding：一次计算，index + 聚类共享
     rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
-    topic_clusters = cluster_topics_embedding(rss_texts, max_topics=top_topics, all_doc_texts=doc_texts) if rss_texts else []
+    rss_embeddings, rss_embed_model = _get_embeddings(rss_texts) if rss_texts else (None, None)
+
+    # 4. Build index — 使用与聚类相同的向量空间
+    index = build_index(documents, embeddings=rss_embeddings if not rss_texts else None,
+                        embed_model_name=rss_embed_model) if documents else None
+    # 如果有 RSS 向量，用 RSS 子集建索引（更有意义）
+    if index is None and rss_texts and rss_embeddings:
+        from llama_index.core.schema import TextNode
+        try:
+            nodes = [TextNode(text=t, embedding=rss_embeddings[i])
+                     for i, t in enumerate(rss_texts)]
+            index = VectorStoreIndex(nodes, show_progress=False)
+            print(f"[insight_engine] RSS-only index built: {len(nodes)} nodes ({rss_embed_model})",
+                  file=sys.stderr)
+        except Exception as exc:
+            print(f"[insight_engine] RSS index build error: {exc}", file=sys.stderr)
+
+    # 5. Cluster topics — 使用预计算向量，避免重复调 API
+    topic_clusters = cluster_topics_embedding(
+        rss_texts, max_topics=top_topics, all_doc_texts=doc_texts,
+        pre_embeddings=rss_embeddings, embed_model_name=rss_embed_model
+    ) if rss_texts else []
 
     # 5. Cross-platform semantic
     cross_platform = cross_platform_semantic(hot_snapshot)
