@@ -57,7 +57,7 @@ class TestAgnesLLM(unittest.TestCase):
         llm = AgnesLLM(api_key="test-key-123")
         self.assertEqual(llm.api_key, "test-key-123")
         self.assertEqual(llm.model, "agnes-2.5-flash")
-        self.assertEqual(llm.timeout, 30)
+        self.assertEqual(llm.timeout, 60)
 
     def test_init_custom_params(self):
         """Custom model and timeout."""

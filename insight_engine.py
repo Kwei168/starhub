@@ -86,7 +86,7 @@ class AgnesLLM:
 
     API_URL = "https://apihub.agnes-ai.com/v1/chat/completions"
 
-    def __init__(self, api_key, model="agnes-2.5-flash", timeout=30):
+    def __init__(self, api_key, model="agnes-2.5-flash", timeout=60):
         if not api_key:
             raise ValueError("api_key is required")
         self.api_key = api_key
@@ -795,8 +795,44 @@ def _fallback_cluster(texts, max_topics=15, threshold=0.5, all_doc_texts=None):
 
 
 # ────────────────── Task 4: extract_keywords_llm ─────────────
-def extract_keywords_llm(llm, texts, top_n=30):
-    """Use LLM to extract keywords from a combined text sample."""
+def _tfidf_keywords(texts, top_n=30):
+    """TF-IDF fallback keyword extraction (no LLM needed).
+    中文用 2-gram，英文用整词，去除停用词后按 TF 降序取 top_n。
+    """
+    import re
+    from collections import Counter
+    # 中文停用 2-gram + 英文停用词
+    _STOP_2G = {'的', '了', '是', '在', '和', '与', '及', '等', '为', '也',
+                '不', '就', '都', '而', '但', '从', '到', '对', '中', '上',
+                '下', '有', '被', '把', '让', '向', '往', '以', '于', '其',
+                '个', '后', '前', '新', '更', '最', '已', '将', '能', '可'}
+    _STOP_EN = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+                'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+                'can', 'could', 'may', 'might', 'shall', 'should', 'must',
+                'not', 'no', 'but', 'and', 'or', 'if', 'then', 'than',
+                'for', 'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from',
+                'as', 'into', 'about', 'this', 'that', 'it', 'its'}
+    counter = Counter()
+    for text in texts[:200]:
+        # Chinese 2-grams
+        cn_chars = re.findall(r'[\u4e00-\u9fff]', text)
+        for i in range(len(cn_chars) - 1):
+            gram = cn_chars[i] + cn_chars[i + 1]
+            if gram not in _STOP_2G:
+                counter[gram] += 1
+        # English words
+        en_words = re.findall(r'[a-zA-Z]{3,}', text)
+        for w in en_words:
+            wl = w.lower()
+            if wl not in _STOP_EN:
+                counter[wl] += 1
+    return [w for w, _ in counter.most_common(top_n)]
+
+
+def extract_keywords_llm(llm, texts, top_n=30, max_retries=2):
+    """Use LLM to extract keywords from a combined text sample.
+    失败时自动重试；全部失败后回退到 TF-IDF。
+    """
     if not texts:
         return []
     combined = "\n".join(texts[:100])
@@ -805,18 +841,29 @@ def extract_keywords_llm(llm, texts, top_n=30):
         "以 JSON 数组格式返回（只返回数组，不要其他文字）：\n\n"
         f"{combined[:4000]}"
     )
-    result = llm.complete(prompt)
-    parsed = _try_parse_json(result)
-    if isinstance(parsed, list) and len(parsed) > 0:
-        return [str(k) for k in parsed[:top_n]]
-    # fallback: line-split
-    lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
-    keywords = []
-    for line in lines:
-        clean = line.strip("-•· ").strip()
-        if clean and len(clean) < 50:
-            keywords.append(clean)
-    return keywords[:top_n] if keywords else []
+    # LLM 提取（带重试）
+    for attempt in range(max_retries + 1):
+        result = llm.complete(prompt)
+        if not result:
+            print(f"[insight_engine] keyword LLM attempt {attempt+1} returned empty, retrying...",
+                  file=sys.stderr)
+            continue
+        parsed = _try_parse_json(result)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            return [str(k) for k in parsed[:top_n]]
+        # fallback: line-split
+        lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
+        keywords = []
+        for line in lines:
+            clean = line.strip("-•· ").strip()
+            if clean and len(clean) < 50:
+                keywords.append(clean)
+        if keywords:
+            return keywords[:top_n]
+    # 全部 LLM 尝试失败 → TF-IDF fallback
+    print("[insight_engine] keyword LLM all attempts failed, using TF-IDF fallback",
+          file=sys.stderr)
+    return _tfidf_keywords(texts, top_n)
 
 
 # ────────────────── Task 4: cluster_topics_embedding ─────────
@@ -1025,8 +1072,13 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
         f"检索上下文（小索引大窗口检索结果）：\n{combined_context[:4000]}"
     )
     system_prompt = "你是科技情报分析师。只返回 JSON。只分析检索上下文中实际存在的内容。绝对不要解释数据缺失。"
-    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
-    parsed = _try_parse_json(result)
+    # 带重试的 LLM 调用（API 超时时自动重试）
+    result = None
+    for _attempt in range(3):
+        result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
+        if result:
+            break
+    parsed = _try_parse_json(result) if result else None
     if isinstance(parsed, dict) and "narrative" in parsed:
         return _normalize_deep_insights(parsed)
     # fallback: simple keyword-based narrative
@@ -1151,8 +1203,12 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
         "\"outlook\": \"100字以内前瞻\"}"
     )
     system_prompt = "你是科技情报分析师。只返回 JSON。只分析检索上下文中实际存在的内容。绝对不要解释数据缺失。"
-    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
-    parsed = _try_parse_json(result)
+    result = None
+    for _attempt in range(3):
+        result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
+        if result:
+            break
+    parsed = _try_parse_json(result) if result else None
     if isinstance(parsed, dict) and "narrative" in parsed:
         return _normalize_deep_insights(parsed)
     return deep_insights  # 修正失败，保留原版
