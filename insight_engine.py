@@ -59,6 +59,9 @@ _DEFAULTS = {
     "insight_max_documents": 500,
     "insight_top_keywords": 30,
     "insight_top_topics": 15,
+    "insight_self_correct": True,
+    "insight_quality_threshold": 0.6,
+    "insight_max_corrections": 1,
 }
 
 
@@ -1029,6 +1032,149 @@ def _normalize_deep_insights(parsed):
     return parsed
 
 
+# ────────────────── RAGAS-inspired Evaluation & Self-Correction ──────────────────
+def _evaluate_insight_quality(llm, deep_insights, context_text, keywords=None):
+    """RAGAS-inspired 洞察质量评估（无需 ground truth）。
+
+    评估维度：
+    - context_coverage: 洞察对检索上下文的覆盖度（0-1）
+    - faithfulness: 洞察内容是否有上下文支撑（0-1）
+    - relevance: 洞察与关键词/话题的相关性（0-1）
+
+    Returns:
+        {"context_coverage": float, "faithfulness": float, "relevance": float,
+         "overall": float, "feedback": str}
+    """
+    if not context_text or not deep_insights:
+        return {"context_coverage": 0.5, "faithfulness": 0.5,
+                "relevance": 0.5, "overall": 0.5, "feedback": "无上下文可评估"}
+
+    narrative = deep_insights.get("narrative", "")
+    chains = deep_insights.get("causal_chains", [])
+    outlook = deep_insights.get("outlook", "")
+    insight_text = f"{narrative}\n因果链: {chains}\n前瞻: {outlook}"
+
+    prompt = (
+        "你是 RAG 质量评估专家。请评估以下洞察报告的质量。\n\n"
+        "【检索上下文】（来自小索引大窗口检索）：\n"
+        f"{context_text[:2500]}\n\n"
+        "【生成的洞察报告】：\n"
+        f"{insight_text[:1500]}\n\n"
+        f"【关键词】：{', '.join(keywords[:10]) if keywords else '无'}\n\n"
+        "请从三个维度评分（0.0-1.0）并给出改进建议：\n"
+        "1. context_coverage: 洞察是否充分利用了检索上下文中的关键信息？\n"
+        "2. faithfulness: 洞察中的事实/判断是否都有上下文支撑（无编造）？\n"
+        "3. relevance: 洞察是否紧扣关键词和核心话题？\n\n"
+        "以 JSON 返回：{\"context_coverage\": 0.8, \"faithfulness\": 0.9, "
+        "\"relevance\": 0.7, \"feedback\": \"具体改进建议\"}"
+    )
+    result = llm.complete(prompt, temperature=0.2, max_tokens=400)
+    parsed = _try_parse_json(result)
+
+    def _clamp(v):
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.5
+
+    if isinstance(parsed, dict):
+        cov = _clamp(parsed.get("context_coverage", 0.5))
+        faith = _clamp(parsed.get("faithfulness", 0.5))
+        rel = _clamp(parsed.get("relevance", 0.5))
+        return {
+            "context_coverage": round(cov, 2),
+            "faithfulness": round(faith, 2),
+            "relevance": round(rel, 2),
+            "overall": round((cov + faith + rel) / 3, 2),
+            "feedback": str(parsed.get("feedback", "")),
+        }
+
+    return {"context_coverage": 0.5, "faithfulness": 0.5,
+            "relevance": 0.5, "overall": 0.5, "feedback": "评估解析失败"}
+
+
+def _self_correct_insights(llm, deep_insights, context_text, evaluation, keywords=None):
+    """基于评估反馈的自我修正：让 LLM 针对薄弱维度重新生成。"""
+    feedback = evaluation.get("feedback", "")
+    low_dims = []
+    if evaluation.get("context_coverage", 1) < 0.6:
+        low_dims.append("context_coverage（需更多利用检索上下文中的信息）")
+    if evaluation.get("faithfulness", 1) < 0.6:
+        low_dims.append("faithfulness（需确保每个判断都有上下文依据，不要编造）")
+    if evaluation.get("relevance", 1) < 0.6:
+        low_dims.append("relevance（需更紧扣关键词和核心话题）")
+
+    if not low_dims:
+        return deep_insights  # 无需修正
+
+    prompt = (
+        "之前的洞察报告质量评估不达标，请根据反馈重新生成。\n\n"
+        f"【薄弱维度】：{'; '.join(low_dims)}\n"
+        f"【评估反馈】：{feedback}\n\n"
+        "【检索上下文】：\n"
+        f"{context_text[:2500]}\n\n"
+        f"【关键词】：{', '.join(keywords[:10]) if keywords else '无'}\n\n"
+        "请重新生成洞察，以 JSON 格式返回：\n"
+        "{\"narrative\": \"200字以内核心叙事\", "
+        "\"causal_chains\": [\"A→B→C\"], "
+        "\"signals\": [{\"signal\": \"...\", \"confidence\": 0.8}], "
+        "\"outlook\": \"100字以内前瞻\"}"
+    )
+    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。务必充分利用检索上下文。"
+    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.4, max_tokens=800)
+    parsed = _try_parse_json(result)
+    if isinstance(parsed, dict) and "narrative" in parsed:
+        return _normalize_deep_insights(parsed)
+    return deep_insights  # 修正失败，保留原版
+
+
+def _evaluate_and_correct(llm, deep_insights, topic_clusters,
+                          index, parent_docs, keywords, config):
+    """评估-修正闭环：RAGAS 评分 → 不达标则自我修正。"""
+    if not config.get("insight_self_correct", False):
+        return deep_insights, {}
+
+    threshold = config.get("insight_quality_threshold", 0.6)
+    max_iterations = config.get("insight_max_corrections", 1)
+
+    # 构建评估用上下文
+    context_parts = []
+    for cluster in topic_clusters[:5]:
+        items = cluster.get("items", [])
+        if index and parent_docs and items:
+            ctx = _retrieve_with_context(index, parent_docs, items[0],
+                                         top_k=_RETRIEVE_TOP_K,
+                                         context_radius=_CONTEXT_RADIUS)
+            if ctx:
+                context_parts.append(ctx)
+        elif items:
+            context_parts.append("\n".join(items[:3]))
+    context_text = "\n---\n".join(context_parts) if context_parts else ""
+
+    if not context_text:
+        return deep_insights, {}
+
+    # 评估-修正循环
+    current = deep_insights
+    eval_result = {}
+    for iteration in range(max_iterations + 1):
+        eval_result = _evaluate_insight_quality(llm, current, context_text, keywords)
+        print(f"[insight_engine] RAGAS eval iter={iteration}: "
+              f"overall={eval_result['overall']}, "
+              f"cov={eval_result['context_coverage']}, "
+              f"faith={eval_result['faithfulness']}, "
+              f"rel={eval_result['relevance']}", file=sys.stderr)
+
+        if eval_result["overall"] >= threshold:
+            break
+        if iteration < max_iterations:
+            print(f"[insight_engine] quality {eval_result['overall']:.2f} < {threshold}, "
+                  f"self-correcting...", file=sys.stderr)
+            current = _self_correct_insights(llm, current, context_text, eval_result, keywords)
+
+    return current, eval_result
+
+
 # ────────────────── Topic metadata builder ──────────────────
 def _build_topics_with_meta(topic_clusters, rss_history):
     """从 topic_clusters 构建带 sources/links/cats 的话题列表。
@@ -1149,6 +1295,12 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         keywords=keywords
     )
 
+    # 7b. RAGAS 评估 + 自我修正
+    deep_insights, eval_result = _evaluate_and_correct(
+        llm, deep_insights, topic_clusters,
+        index, parent_docs, keywords, config
+    )
+
     # 8. Stats
     rss_items = list((rss_history or {}).values()) if isinstance(rss_history, dict) else []
     recent_count = sum(1 for item in rss_items if _is_recent(item))
@@ -1180,7 +1332,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         "topics": _build_topics_with_meta(topic_clusters, rss_history),
         "summary": summary,
         "stats": stats,
-        "quality": {},
+        "quality": eval_result if eval_result else {},
         "hot_trends": {},  # filled by integration layer in build_rss_aggregator.py
         "cross_platform": cross_platform if cross_platform else [],
         "cross_category": [],  # filled by integration layer in build_rss_aggregator.py
