@@ -2743,12 +2743,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   }
   /* A8 修复：BM_MAX 死代码已移除 */
   var _bookmarks={}, BM_KEY='rss_bookmarks';
-  function loadBookmarks(){try{_bookmarks=JSON.parse(localStorage.getItem(BM_KEY)||'{}');}catch(e){_bookmarks={};}
-    // 过滤陈旧条目：只保留当前 ART 中存在的文章的收藏（URL 变化或文章消失后旧 key 无法被 toggle 删除）
-    var _ak={},_cleaned=false; ART.forEach(function(a){_ak[artKey(a)]=1;});
-    for(var _bk in _bookmarks){if(_bookmarks.hasOwnProperty(_bk)&&!_ak[_bk]){delete _bookmarks[_bk];_cleaned=true;}}
-    if(_cleaned)saveBookmarks();
-  }
+  function loadBookmarks(){try{_bookmarks=JSON.parse(localStorage.getItem(BM_KEY)||'{}');}catch(e){_bookmarks={};}}
   function saveBookmarks(){try{localStorage.setItem(BM_KEY,JSON.stringify(_bookmarks));}catch(e){}}
   function isBookmarked(k){return !!_bookmarks[k];}
   function toggleBookmark(a){
