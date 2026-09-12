@@ -35118,5 +35118,21 @@
   "73b78d3a35301290080bc0861f2d9e20": "史蒂文·约翰逊（谷歌实验室）刚刚描述了如何在未经作者同意的情况下精准克隆一位作家的写作风格。",
   "74046087febf0b5e4de225547d4fcf37": "Palantir Foundry和cuOpt推动NVIDIA供应链分配",
   "6d6cbfeb0484e28437789f808237eb80": "我们距离体现智能的“ChatGPT时刻”还有多远？意见",
-  "a515ac4b493968f6f063f9576523ba53": "Anthropic 的产品负责人安吉拉·姜（Angela Jiang）刚刚告诉她的团队，产品经理工作中“让所有人达成一致”的那一半已经不复存在了。"
+  "a515ac4b493968f6f063f9576523ba53": "Anthropic 的产品负责人安吉拉·姜（Angela Jiang）刚刚告诉她的团队，产品经理工作中“让所有人达成一致”的那一半已经不复存在了。",
+  "ed852256cc36b938685606afb2d7f541": "问 HN：有人是否认为 AI 的诞生类似于比特币？",
+  "85fbe0b4ca6b72da286a49c24f8b3aa9": "评论网址： https://news.ycombinator.com/item?id=49672539\n积分： 1\n#评论： 0",
+  "05bf09d92a3d15a457c1e579ac559d86": "Novgraph：面向代码库的持久化知识图谱",
+  "0e0cf6d2e020d373feb34fbe38150aa6": "你好 HN，我构建了一个代码库知识图谱引擎——记录每一项更改的原因，由代理在工作中回写，因此使用越久效果越好。\n- 仪表板与 GitHub 和 GitLab 的提交和更新保持同步\n- 标记过期文件/代码并在内部降低其权重，使图谱保持最新\n- 节省 78% 至 99.74% 的令牌消耗\n- 连接 Claude Code、Codex、OpenCode 等\n我乐意就图谱、同步更新、持久化记忆以及如何…进行探讨。",
+  "cf66099c9ae5cc2601cead8ffbe60476": "深谋（DeepSeek）4.1 Flash 在配备 128GB 内存的 MacBook Pro 上的 Dwarf Star 支持情况",
+  "eb1ce3e5da972c6ef94a80378714a44e": "Antirez刚刚为DwarfStar的github存储库提交了提交[1] ，这增加了对他高度量化的DeepSeek V4.1 Flash变体的支持。他声称它在macbook pro M5-Max 128 GB笔记本电脑上运行SSD流。 代码刚刚在几个小时前签入，因此请从字面上理解YMMV。[1] https://github.com/antirez/ds4/commit/bd66c402070042bf0a79ad6ece8242de4c93680c\n\n评论网址： https://news.ycombinator.com/item?id=49672171\n积分： 2\n#评论： 0",
+  "b33b9899fad7deef91516300a142a12b": "我的Twitter消息充斥着谷歌已经实现递归自我提升（ RSI ）的说法。我很好奇这里的人们如何解释这一点。 从人工智能系统改进开发未来版本自身的过程的更强意义上说，谷歌展示的东西实际上是否符合RSI的资格，或者“RSI”的使用是否过于宽松？\n\n评论网址： https://news.ycombinator.com/item?id=49670715\n积分： 3\n#评论： 2",
+  "7ba75e96a9fb5e58aa5e3911a57fd55f": "评论网址： https://news.ycombinator.com/item?id=49669460\n积分： 7\n#评论： 6",
+  "b845a47f5d009c051ff65cc4c4530c2d": "过去CSS的奇特之处",
+  "c40b8239882adf0e9975fa88d5c8e45d": "PR 文件和代码块的树状视图，便于您查看变更之间的关联",
+  "6c1c42221db06082530ae7f22aea70e5": "[炫耀周六] 一个会洒咖啡并指向按钮的简单 SVG 角色",
+  "68218b76fc88d4bbb98471099540e40c": "14 件如今比以往任何时候都更昂贵的东西",
+  "6cf6155fc3837b244835c5979a05a56d": "这座大型望远镜农场内部究竟发生了什么",
+  "170d97c069f75082624760c895dfe415": "如何更好地进行对外销售",
+  "ca23dbc187ffb1ed6f6c04a444133a46": "沙滩上的尸体（完整版）| 命名死者 | 国家地理频道",
+  "d2a3d8aa44f60cf5cab89f38a093ea38": "为什么Bolt的首席执行官即使短期有利可图，也不愿玩“短视游戏”"
 }
