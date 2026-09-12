@@ -234,5 +234,6 @@
  "Tencent/weui": "content",
  "Tencent/teamai-cli": "agent",
  "redis/redis": "agent",
- "zjp1997720/zhijian-skills": "agent"
+ "zjp1997720/zhijian-skills": "agent",
+ "run-llama/llama_index": "agent"
 }
