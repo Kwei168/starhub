@@ -1283,7 +1283,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         )
         if index:
             # 从 index 中提取 child_nodes（用于手动余弦检索）
-            child_nodes = index.docstore.docs.values() if hasattr(index, 'docstore') else None
+            child_nodes = list(index.docstore.docs.values()) if hasattr(index, 'docstore') else None
     elif not LLAMA_INDEX_AVAILABLE:
         print("[insight_engine] index skipped: llama-index not available", file=sys.stderr)
 
