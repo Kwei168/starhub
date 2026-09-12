@@ -395,5 +395,6 @@
  "unstablebuild/rune": "专业人士的开发环境",
  "Tencent/weui": "微信官方设计团队的 UI 库，包含移动 Web 应用程序中最有用的小部件/模块。",
  "asgeirtj/system_prompts_leaks": "从 Anthropic 中提取的系统提示 - Claude Fable 5.1、Opus 5、Claude Design、Claude Code。 OpenAI - ChatGPT GPT-6-Astra，法典。 Google - Gemini 3.8 Flash、3.1 Pro、反重力。 xAI - Grok、Grok Bot、Cursor、Kimi 等等！定期更新。",
- "redis/redis": "对于构建实时数据驱动应用程序的开发人员来说，Redis 是首选、速度最快且功能最丰富的缓存、数据结构服务器以及文档和向量查询引擎。"
+ "redis/redis": "对于构建实时数据驱动应用程序的开发人员来说，Redis 是首选、速度最快且功能最丰富的缓存、数据结构服务器以及文档和向量查询引擎。",
+ "zjp1997720/zhijian-skills": "智健AI公共代理技能的规范来源和治理工具包"
 }
