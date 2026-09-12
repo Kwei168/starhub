@@ -502,13 +502,36 @@ class TestRunAnalysis(unittest.TestCase):
             self.assertIn(key, summary)
 
     def test_run_analysis_keywords_format(self):
-        """Keywords are in [word, score] format."""
+        """Keywords are in [word, score] format, with rss and hot pools."""
         hot, rss, trending, config = self._make_data()
         result = run_analysis(hot, rss, trending, config)
+        # global keywords
         global_kw = result["keywords"]["global"]
         self.assertIsInstance(global_kw, list)
         if global_kw:
             self.assertEqual(len(global_kw[0]), 2)  # [word, score]
+        # source-specific keywords
+        self.assertIn("rss", result["keywords"])
+        self.assertIn("hot", result["keywords"])
+        self.assertIsInstance(result["keywords"]["rss"], list)
+        self.assertIsInstance(result["keywords"]["hot"], list)
+
+    def test_run_analysis_source_keywords_separate(self):
+        """RSS and hot keywords are extracted separately."""
+        hot = [
+            {"platform": "weibo", "items": [{"title": "微博热搜话题"}]},
+        ]
+        rss = {
+            "item1": {"title": "OpenAI GPT-5", "summary": "new model release", "cat": "ai"},
+        }
+        config = dict(_DEFAULTS)
+        config["insight_llm_provider"] = "mock"
+        result = run_analysis(hot, rss, {}, config)
+        # Both pools should exist (MockLLM returns mock keywords)
+        self.assertIsInstance(result["keywords"]["rss"], list)
+        self.assertIsInstance(result["keywords"]["hot"], list)
+        # Global should be merge of both
+        self.assertIsInstance(result["keywords"]["global"], list)
 
     def test_run_analysis_meta_fields(self):
         """Meta contains engine info."""
