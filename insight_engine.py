@@ -1098,10 +1098,13 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
 
     prompt = (
         "基于以下检索上下文，生成深度洞察。请以 JSON 格式返回，包含以下字段：\n"
-        "- narrative: 一段200字以内的核心叙事分析\n"
+        "- core_trends: 一段200字以内的核心态势分析（整体市场/技术格局概览）\n"
+        "- rss_insights: 一段200字以内的RSS深度洞察（侧重技术趋势、论文、开源动态）\n"
+        "- narrative: 一段200字以内的叙事脉络（串联核心事件的故事线）\n"
         "- causal_chains: 因果链条数组，如 [\"A→B→C\"]\n"
         "- signals: 异动信号数组，每项含 signal 和 confidence\n"
         "- outlook: 一段100字以内的前瞻研判\n\n"
+        "注意：core_trends、rss_insights、narrative 三者角度必须不同，不要重复相同内容。\n"
         "绝对禁止：\n"
         "- 禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字\n"
         "- 禁止提及任何关键词在上下文中缺失\n"
@@ -1118,11 +1121,18 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     # 带重试的 LLM 调用（API 超时时自动重试）
     result = None
     for _attempt in range(3):
-        result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
+        result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=1200)
         if result:
             break
     parsed = _try_parse_json(result) if result else None
-    if isinstance(parsed, dict) and "narrative" in parsed:
+    if isinstance(parsed, dict) and ("narrative" in parsed or "core_trends" in parsed):
+        # 兼容填充：LLM 可能只返回部分字段
+        if "core_trends" not in parsed and "narrative" in parsed:
+            parsed["core_trends"] = parsed["narrative"]
+        if "rss_insights" not in parsed and "narrative" in parsed:
+            parsed["rss_insights"] = parsed["narrative"]
+        if "narrative" not in parsed and "core_trends" in parsed:
+            parsed["narrative"] = parsed["core_trends"]
         return _normalize_deep_insights(parsed)
     # fallback: simple keyword-based narrative
     kw_str = "、".join(keywords[:10]) if keywords else "无"
@@ -1469,9 +1479,9 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     # 9. Build old-format summary for frontend compatibility
     # WS-C: signals/outlook 不再互相复制，deep_insights 为唯一事实源
     summary = {
-        "core_trends": deep_insights.get("narrative", ""),
+        "core_trends": deep_insights.get("core_trends", ""),
         "signals": "",                                        # 不再用 outlook 冒充
-        "rss_insights": deep_insights.get("narrative", "") or f"共分析 {len(doc_texts)} 条内容，提取 {len(keywords)} 个关键词。",
+        "rss_insights": deep_insights.get("rss_insights", "") or f"共分析 {len(doc_texts)} 条内容，提取 {len(keywords)} 个关键词。",
         "outlook": deep_insights.get("outlook", ""),          # 唯一来源
     }
 
