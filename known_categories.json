@@ -235,5 +235,6 @@
  "Tencent/teamai-cli": "agent",
  "redis/redis": "agent",
  "zjp1997720/zhijian-skills": "agent",
- "run-llama/llama_index": "agent"
+ "run-llama/llama_index": "agent",
+ "datawhalechina/all-in-rag": "learning"
 }
