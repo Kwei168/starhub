@@ -43,8 +43,8 @@ _SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 _SF_BATCH = 32  # 每批最多处理文本数
 _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 
-# 本地回退模型（bge-small-en-v1.5 仅英文，bge-small-zh-en-v1.5 中英双语）
-_EMBED_MODEL = "BAAI/bge-small-zh-en-v1.5"
+# 本地回退模型（fastembed 0.8+ 支持的模型）
+_EMBED_MODEL = "BAAI/bge-m3"
 _EMBED_MODEL_FALLBACK = "BAAI/bge-small-en-v1.5"
 
 # ────────────────── Task 2: Defaults / Config ──────────────────
@@ -904,20 +904,23 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
     rss_embeddings, rss_embed_model = _get_embeddings(rss_texts) if rss_texts else (None, None)
 
-    # 4. Build index — 使用与聚类相同的向量空间
-    index = build_index(documents, embeddings=rss_embeddings if not rss_texts else None,
-                        embed_model_name=rss_embed_model) if documents else None
-    # 如果有 RSS 向量，用 RSS 子集建索引（更有意义）
-    if index is None and rss_texts and rss_embeddings:
+    # 4. Build index — 用 RSS 子集建索引（更有意义）
+    index = None
+    if rss_texts and rss_embeddings and LLAMA_INDEX_AVAILABLE and FASTEMBED_AVAILABLE:
         from llama_index.core.schema import TextNode
         try:
+            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
             nodes = [TextNode(text=t, embedding=rss_embeddings[i])
                      for i, t in enumerate(rss_texts)]
             index = VectorStoreIndex(nodes, show_progress=False)
-            print(f"[insight_engine] RSS-only index built: {len(nodes)} nodes ({rss_embed_model})",
+            print(f"[insight_engine] RSS index built: {len(nodes)} nodes ({rss_embed_model})",
                   file=sys.stderr)
         except Exception as exc:
-            print(f"[insight_engine] RSS index build error: {exc}", file=sys.stderr)
+            print(f"[insight_engine] RSS index build error: {type(exc).__name__}: {exc}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+    elif not LLAMA_INDEX_AVAILABLE:
+        print("[insight_engine] index skipped: llama-index not available", file=sys.stderr)
 
     # 5. Cluster topics — 使用预计算向量，避免重复调 API
     topic_clusters = cluster_topics_embedding(
