@@ -61,7 +61,7 @@ _DEFAULTS = {
     "insight_top_topics": 15,
     "insight_self_correct": True,
     "insight_quality_threshold": 0.6,
-    "insight_max_corrections": 1,
+    "insight_max_corrections": 2,
 }
 
 
@@ -1000,17 +1000,21 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     combined_context = "\n\n".join(topic_contexts) if topic_contexts else "无检索上下文"
 
     prompt = (
-        "基于以下分析上下文，生成深度洞察。请以 JSON 格式返回，包含以下字段：\n"
+        "基于以下检索上下文，生成深度洞察。请以 JSON 格式返回，包含以下字段：\n"
         "- narrative: 一段200字以内的核心叙事分析\n"
         "- causal_chains: 因果链条数组，如 [\"A→B→C\"]\n"
         "- signals: 异动信号数组，每项含 signal 和 confidence\n"
         "- outlook: 一段100字以内的前瞻研判\n\n"
+        "重要约束：\n"
+        "- 所有判断必须基于检索上下文中的具体信息，禁止编造上下文中未出现的事实\n"
+        "- 直接输出分析结论，不要解释数据不足或不匹配的原因\n"
+        "- 如果某个维度信息不足，可以缩小分析范围，但仍需基于已有上下文\n\n"
         f"关键词：{', '.join(keywords[:15]) if keywords else '无'}\n"
         f"话题数：{len(topic_clusters)}\n\n"
         f"检索上下文（小索引大窗口检索结果）：\n{combined_context[:4000]}"
     )
-    system_prompt = "你是科技情报分析师，擅长从多源数据中提取深层洞察。只返回 JSON，不要其他文字。"
-    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.4, max_tokens=800)
+    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。所有判断必须基于检索上下文，禁止编造。"
+    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
     parsed = _try_parse_json(result)
     if isinstance(parsed, dict) and "narrative" in parsed:
         return _normalize_deep_insights(parsed)
@@ -1132,8 +1136,8 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
         "\"signals\": [{\"signal\": \"...\", \"confidence\": 0.8}], "
         "\"outlook\": \"100字以内前瞻\"}"
     )
-    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。务必充分利用检索上下文。"
-    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.4, max_tokens=800)
+    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。务必充分利用检索上下文，禁止编造。"
+    result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
     parsed = _try_parse_json(result)
     if isinstance(parsed, dict) and "narrative" in parsed:
         return _normalize_deep_insights(parsed)
@@ -1337,7 +1341,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     summary = {
         "core_trends": deep_insights.get("narrative", ""),
         "signals": "",                                        # 不再用 outlook 冒充
-        "rss_insights": f"共分析 {len(doc_texts)} 条内容，提取 {len(keywords)} 个关键词。",
+        "rss_insights": deep_insights.get("narrative", "") or f"共分析 {len(doc_texts)} 条内容，提取 {len(keywords)} 个关键词。",
         "outlook": deep_insights.get("outlook", ""),          # 唯一来源
     }
 
