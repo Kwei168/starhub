@@ -1008,6 +1008,7 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
         "重要约束：\n"
         "- 所有判断必须基于检索上下文中的具体信息，禁止编造上下文中未出现的事实\n"
         "- 直接输出分析结论，不要解释数据不足或不匹配的原因\n"
+        "- 不要提及哪些关键词在上下文中缺失，只分析上下文中实际存在的内容\n"
         "- 如果某个维度信息不足，可以缩小分析范围，但仍需基于已有上下文\n\n"
         f"关键词：{', '.join(keywords[:15]) if keywords else '无'}\n"
         f"话题数：{len(topic_clusters)}\n\n"
@@ -1136,7 +1137,7 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
         "\"signals\": [{\"signal\": \"...\", \"confidence\": 0.8}], "
         "\"outlook\": \"100字以内前瞻\"}"
     )
-    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。务必充分利用检索上下文，禁止编造。"
+    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。务必充分利用检索上下文，禁止编造。不要提及哪些关键词在上下文中缺失。"
     result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
     parsed = _try_parse_json(result)
     if isinstance(parsed, dict) and "narrative" in parsed:
