@@ -43,9 +43,9 @@ _SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 _SF_BATCH = 32  # 每批最多处理文本数
 _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 
-# 本地回退模型（fastembed 0.8+ / llama-index-embeddings-fastembed 0.7 支持）
-_EMBED_MODEL = "BAAI/bge-small-en-v1.5"
-_EMBED_MODEL_FALLBACK = "BAAI/bge-small-en-v1.5"
+# 本地回退模型（中英文兼容，fastembed 0.8+ / llama-index-embeddings-fastembed 0.7 支持）
+_EMBED_MODEL = "intfloat/multilingual-e5-small"          # 多语言，中英双语兼容
+_EMBED_MODEL_FALLBACK = "BAAI/bge-small-zh-v1.5"           # 中文回退
 
 # ────────────────── Task 2: Defaults / Config ──────────────────
 _DEFAULTS = {
@@ -338,17 +338,18 @@ def _get_embeddings(texts):
         if not ok:
             print(f"[insight_engine] SiliconFlow API failed, falling back to local fastembed", file=sys.stderr)
 
-    # 2) 本地 fastembed 回退
+    # 2) 本地 fastembed 回退（先试主模型，失败试回退模型）
     if FASTEMBED_AVAILABLE:
-        try:
-            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
-            vecs = Settings.embed_model.get_text_embedding_batch(texts)
-            if vecs and len(vecs) == len(texts):
-                _last_embed_model = _EMBED_MODEL
-                print(f"[insight_engine] embeddings via local {_EMBED_MODEL} ({len(texts)} texts)", file=sys.stderr)
-                return vecs, _last_embed_model
-        except Exception as exc:
-            print(f"[insight_engine] local embed error: {exc}", file=sys.stderr)
+        for model_name in (_EMBED_MODEL, _EMBED_MODEL_FALLBACK):
+            try:
+                Settings.embed_model = FastEmbedEmbedding(model_name=model_name)
+                vecs = Settings.embed_model.get_text_embedding_batch(texts)
+                if vecs and len(vecs) == len(texts):
+                    _last_embed_model = model_name
+                    print(f"[insight_engine] embeddings via local {model_name} ({len(texts)} texts)", file=sys.stderr)
+                    return vecs, _last_embed_model
+            except Exception as exc:
+                print(f"[insight_engine] local embed error ({model_name}): {exc}", file=sys.stderr)
 
     return None, None
 
@@ -908,17 +909,17 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     index = None
     if rss_texts and rss_embeddings and LLAMA_INDEX_AVAILABLE and FASTEMBED_AVAILABLE:
         from llama_index.core.schema import TextNode
-        try:
-            Settings.embed_model = FastEmbedEmbedding(model_name=_EMBED_MODEL)
-            nodes = [TextNode(text=t, embedding=rss_embeddings[i])
-                     for i, t in enumerate(rss_texts)]
-            index = VectorStoreIndex(nodes, show_progress=False)
-            print(f"[insight_engine] RSS index built: {len(nodes)} nodes ({rss_embed_model})",
-                  file=sys.stderr)
-        except Exception as exc:
-            print(f"[insight_engine] RSS index build error: {type(exc).__name__}: {exc}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
+        for model_name in (_EMBED_MODEL, _EMBED_MODEL_FALLBACK):
+            try:
+                Settings.embed_model = FastEmbedEmbedding(model_name=model_name)
+                nodes = [TextNode(text=t, embedding=rss_embeddings[i])
+                         for i, t in enumerate(rss_texts)]
+                index = VectorStoreIndex(nodes, show_progress=False)
+                print(f"[insight_engine] RSS index built: {len(nodes)} nodes ({rss_embed_model}), "
+                      f"embed_model={model_name}", file=sys.stderr)
+                break
+            except Exception as exc:
+                print(f"[insight_engine] RSS index build error ({model_name}): {type(exc).__name__}: {exc}", file=sys.stderr)
     elif not LLAMA_INDEX_AVAILABLE:
         print("[insight_engine] index skipped: llama-index not available", file=sys.stderr)
 
