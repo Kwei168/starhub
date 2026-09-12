@@ -232,5 +232,6 @@
  "deepseek-ai/awesome-deepseek-integration": "agent",
  "xzc0524/HttpCatcher": "agent",
  "Tencent/weui": "content",
- "Tencent/teamai-cli": "agent"
+ "Tencent/teamai-cli": "agent",
+ "redis/redis": "agent"
 }
