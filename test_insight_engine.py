@@ -34,6 +34,9 @@ from insight_engine import (
     _group_sentences,
     _build_hierarchical_index,
     _retrieve_with_context,
+    _evaluate_insight_quality,
+    _self_correct_insights,
+    _evaluate_and_correct,
 )
 
 
@@ -594,6 +597,74 @@ class TestHierarchicalIndex(unittest.TestCase):
         """Retrieve returns None when parent_docs is empty."""
         result = _retrieve_with_context("fake_index", {}, "test query")
         self.assertIsNone(result)
+
+
+class TestRAGASEvaluation(unittest.TestCase):
+    """RAGAS-inspired 评估与自我修正测试。"""
+
+    def test_evaluate_returns_all_dimensions(self):
+        """Evaluation returns context_coverage, faithfulness, relevance, overall, feedback."""
+        llm = MockLLM()
+        insights = {"narrative": "AI技术发展迅速", "causal_chains": ["A→B"],
+                    "signals": [], "outlook": "继续看好"}
+        result = _evaluate_insight_quality(llm, insights, "some context", keywords=["ai"])
+        self.assertIn("context_coverage", result)
+        self.assertIn("faithfulness", result)
+        self.assertIn("relevance", result)
+        self.assertIn("overall", result)
+        self.assertIn("feedback", result)
+        # Scores should be floats in [0, 1]
+        for key in ("context_coverage", "faithfulness", "relevance"):
+            self.assertIsInstance(result[key], float)
+            self.assertGreaterEqual(result[key], 0.0)
+            self.assertLessEqual(result[key], 1.0)
+
+    def test_evaluate_empty_context(self):
+        """Evaluation with empty context returns defaults."""
+        llm = MockLLM()
+        result = _evaluate_insight_quality(llm, {"narrative": "test"}, "", keywords=[])
+        self.assertEqual(result["overall"], 0.5)
+
+    def test_evaluate_empty_insights(self):
+        """Evaluation with empty insights returns defaults."""
+        llm = MockLLM()
+        result = _evaluate_insight_quality(llm, {}, "context", keywords=[])
+        self.assertEqual(result["overall"], 0.5)
+
+    def test_self_correct_no_low_dims(self):
+        """Self-correction returns original when all dims are high."""
+        llm = MockLLM()
+        insights = {"narrative": "original", "causal_chains": [], "signals": [], "outlook": ""}
+        evaluation = {"context_coverage": 0.9, "faithfulness": 0.9,
+                      "relevance": 0.9, "overall": 0.9, "feedback": "good"}
+        result = _self_correct_insights(llm, insights, "context", evaluation, keywords=[])
+        # Should return original (no correction needed)
+        self.assertEqual(result["narrative"], "original")
+
+    def test_evaluate_and_correct_disabled(self):
+        """When insight_self_correct=False, returns original insights."""
+        llm = MockLLM()
+        insights = {"narrative": "test", "causal_chains": [], "signals": [], "outlook": ""}
+        config = {"insight_self_correct": False}
+        result, eval_result = _evaluate_and_correct(
+            llm, insights, [], None, {}, [], config)
+        self.assertEqual(result["narrative"], "test")
+        self.assertEqual(eval_result, {})
+
+    def test_evaluate_and_correct_enabled(self):
+        """When enabled, evaluation runs and returns scores."""
+        llm = MockLLM()
+        insights = {"narrative": "AI技术发展", "causal_chains": ["A→B"],
+                    "signals": [], "outlook": "继续"}
+        clusters = [{"label": "AI", "count": 3, "items": ["AI news 1", "AI news 2"]}]
+        config = {"insight_self_correct": True, "insight_quality_threshold": 0.3,
+                  "insight_max_corrections": 0}
+        result, eval_result = _evaluate_and_correct(
+            llm, insights, clusters, None, {}, ["ai"], config)
+        self.assertIsInstance(result, dict)
+        self.assertIn("narrative", result)
+        # eval_result should have scores (even if no index)
+        self.assertIsInstance(eval_result, dict)
 
 
 if __name__ == "__main__":
