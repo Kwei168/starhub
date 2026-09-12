@@ -2040,8 +2040,8 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
 }
 @media (max-width:700px) {
   .hd .nav-links a { padding:5px 9px; font-size:12px; }
-  .chips { overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px; -webkit-mask-image:linear-gradient(to right,#000 90%,transparent 100%); mask-image:linear-gradient(to right,#000 90%,transparent 100%); }
-  .chip { white-space:nowrap; flex:none; }
+  .chips { overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px; scroll-snap-type:x proximity; -webkit-mask-image:linear-gradient(to right,#000 90%,transparent 100%); mask-image:linear-gradient(to right,#000 90%,transparent 100%); }
+  .chip { white-space:nowrap; flex:none; scroll-snap-align:start; }
   .search-row { flex-wrap:wrap; }
   .sort-select { flex:1; min-width:0; }
   .wall { columns:1 minmax(0,1fr); }
@@ -2202,20 +2202,34 @@ body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body
 .hot-btn:hover{background:#f59e0b;color:#fff;}
 .hot-btn.on{background:#f59e0b;color:#fff;}
 .hot-btn svg{width:13px;height:13px;}
+.tb-divider{width:1px;height:16px;background:var(--line-strong);margin:0 4px;flex:none;}
 
-/* ── 热榜内容区：平台子 Tab + 卡片列表（条目色彩区分靠圆点/选中实底，文字始终用高对比色） ── */
-/* 子 Tab 换行显示（不横向滚动）：窄屏最多两行，任何平台按钮完整可见，杜绝截断/溢出 */
-/* 分类筛选行：紧凑药丸，选中态用 --ink 反转；与平台 Tab 视觉分层（更小、更淡） */
-.hp-cats{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px 0;}
-.hp-cat{flex:none;height:20px;padding:0 8px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--faint);font-size:10.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;}
-.hp-cat:hover{border-color:var(--line-strong);color:var(--muted);}
-.hp-cat.on{background:var(--ink);border-color:var(--ink);color:var(--bg);}
-.hp-tabs{flex:none;display:flex;flex-wrap:wrap;gap:5px;padding:4px 12px 2px;}
-.hp-tab{flex:none;height:24px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
-.hp-tab:hover{border-color:var(--line-strong);color:var(--ink);}
-.hp-tab .dot{width:7px;height:7px;border-radius:50%;flex:none;}
-/* 选中态实底色由 JS 注入加深品牌色（白字对比 ≥4.4:1），文字固定 #fff；未选中态文字用 --muted 保证明暗主题可读 */
-.hp-tab.on{color:#fff;border-color:transparent;}
+/* ── 热榜内容区：维度分层（分类 + 平台）+ 卡片列表（WS-A） ── */
+/* 维度行：行首标签 + 内容区 */
+.dim-row{display:flex;align-items:flex-start;gap:8px;padding:10px 12px 0;}
+.dim-label{flex:none;width:28px;font-size:10px;font-weight:700;color:var(--faint);letter-spacing:1px;padding-top:5px;user-select:none;}
+.dim-body{flex:1;min-width:0;}
+.dim-sep{border:none;border-top:1px solid var(--line);margin:10px 12px 0;}
+/* 分类：分段控件（WS-A2） */
+.hp-seg{display:inline-flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;background:var(--hover);border-radius:8px;padding:2px;gap:2px;scrollbar-width:none;}
+.hp-seg::-webkit-scrollbar{display:none;}
+.hp-seg-btn{flex:none;height:22px;padding:0 11px;border:none;border-radius:6px;background:transparent;color:var(--muted);font-size:11px;font-weight:600;transition:all .15s;white-space:nowrap;font-family:inherit;cursor:pointer;}
+.hp-seg-btn:hover{color:var(--ink);}
+.hp-seg-btn.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+/* 平台行：彩点 chips（WS-A3） */
+.plat-wrap{display:flex;align-items:center;gap:6px;min-width:0;}
+.plat-row{display:flex;flex-wrap:wrap;gap:5px;min-width:0;flex:1;}
+.plat-chip{flex:none;height:24px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--hover);color:var(--muted);font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap;font-family:inherit;cursor:pointer;}
+.plat-chip:hover{border-color:var(--line-strong);color:var(--ink);}
+.plat-chip .dot{width:7px;height:7px;border-radius:50%;flex:none;}
+.plat-chip.on{color:#fff;border-color:transparent;}
+.plat-more{flex:none;height:24px;padding:0 10px;border:1px dashed var(--line-strong);border-radius:999px;background:transparent;color:var(--faint);font-size:11px;font-weight:600;display:none;align-items:center;gap:3px;white-space:nowrap;font-family:inherit;cursor:pointer;}
+.plat-more:hover{color:var(--ink);border-color:var(--faint);}
+.plat-more svg{width:10px;height:10px;transition:transform .2s;}
+.plat-more.open svg{transform:rotate(180deg);}
+/* 分类切换淡入动画（WS-A5） */
+.hp-swap{animation:hpFade .18s ease;}
+@keyframes hpFade{from{opacity:.2}to{opacity:1;}}
 .hp-body{flex:1;overflow-y:auto;padding:8px 12px 16px;-webkit-overflow-scrolling:touch;}
 .hp-item{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;margin-bottom:6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg);cursor:pointer;transition:all .12s;text-decoration:none;color:inherit;}
 .hp-item:hover{border-color:var(--line-strong);background:var(--hover);}
@@ -2224,41 +2238,88 @@ body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body
 .hp-title{flex:1;font-size:13px;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;}
 .hp-hot{flex:none;font-size:11px;color:var(--faint);font-family:var(--mono);margin-top:3px;}
 .hp-empty{padding:40px 16px;text-align:center;color:var(--faint);font-size:13px;}
+@media (max-width:900px){
+  .plat-row.collapsed{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;max-width:100%;-webkit-mask-image:linear-gradient(to right,#000 88%,transparent);mask-image:linear-gradient(to right,#000 88%,transparent);scrollbar-width:none;}
+  .plat-row.collapsed::-webkit-scrollbar{display:none;}
+  .plat-row.collapsed .plat-chip{scroll-snap-align:start;}
+  .plat-wrap .plat-more{display:inline-flex;}
+}
 @media (max-width:700px) {
-  .hp-tabs{padding:8px 10px 2px;gap:4px;}
+  .plat-row{padding:8px 0 2px;}
   .hp-body{padding:6px 10px 14px;}
+  .dim-label{width:24px;}
 }
 
-/* ── Insight Bar（每日洞察面板） ── */
+/* ── Insight Panel（每日洞察面板 · WS-B 容器化） ── */
 .insight-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 13px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid #6366f133;background:#6366f114;color:#4338ca;transition:all .15s;cursor:pointer;}
 .insight-btn:hover{background:#6366f1;color:#fff;}
 .insight-btn.on{background:#6366f1;color:#fff;}
 .insight-btn svg{width:13px;height:13px;}
-.insight-bar{display:none;margin:0 16px 8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden;animation:insightSlide .25s ease;}
-.insight-bar.open{display:block;}
-@keyframes insightSlide{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
-.ib-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 6px;border-bottom:1px solid var(--line);}
-.ib-head h3{margin:0;font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;}
-.ib-head h3 svg{width:16px;height:16px;color:var(--brand);}
-.ib-close{background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;color:var(--faint);transition:all .15s;}
-.ib-close:hover{background:var(--hover);color:var(--ink);}
-.ib-close svg{width:16px;height:16px;}
-.ib-body{padding:12px 16px 16px;}
-.ib-section{margin-bottom:14px;}
-.ib-section:last-child{margin-bottom:0;}
-.ib-label{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+/* 洞察面板：PC 右抽屉 / 移动底部 Sheet（同一组件） */
+.insight-panel{position:fixed;z-index:70;background:var(--card);display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.14);visibility:hidden;}
+@media (min-width:900px){
+  .insight-panel{top:0;right:0;bottom:0;width:min(520px,92vw);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .25s ease,visibility .25s;}
+  .insight-panel.open{transform:none;visibility:visible;}
+}
+@media (max-width:899px){
+  .insight-panel{left:0;right:0;bottom:0;max-height:88vh;border-radius:16px 16px 0 0;border-top:1px solid var(--line);transform:translateY(100%);transition:transform .25s ease,visibility .25s;}
+  .insight-panel.open{transform:none;visibility:visible;}
+}
+.ip-head{display:flex;align-items:center;gap:8px;padding:14px 18px 10px;border-bottom:1px solid var(--line);flex:none;}
+.ip-head h2{margin:0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:7px;}
+.ip-head h2 svg{width:16px;height:16px;color:var(--brand);}
+.ip-gen{font-size:10.5px;color:var(--faint);font-family:var(--mono);}
+.ip-close{margin-left:auto;background:none;border:none;color:var(--faint);padding:6px;border-radius:8px;cursor:pointer;transition:all .15s;}
+.ip-close:hover{background:var(--hover);color:var(--ink);}
+.ip-close svg{width:17px;height:17px;}
+/* 锚点导航条（吸顶） */
+.ip-nav{display:flex;gap:4px;padding:8px 18px;border-bottom:1px solid var(--line);overflow-x:auto;flex:none;background:var(--card);scrollbar-width:none;position:sticky;top:0;z-index:2;}
+.ip-nav::-webkit-scrollbar{display:none;}
+.ip-nav button{flex:none;height:24px;padding:0 11px;border:none;border-radius:999px;background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer;}
+.ip-nav button.on{background:var(--brand-weak);color:var(--brand-strong);}
+.ip-body{flex:1;overflow-y:auto;padding:14px 18px 24px;-webkit-overflow-scrolling:touch;}
+.ip-sec{margin-bottom:22px;scroll-margin-top:44px;}
+.ip-label{font-size:11px;font-weight:800;color:var(--brand-strong);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.ip-label svg{width:13px;height:13px;}
+/* 统计行 */
+.ip-stats{display:flex;gap:18px;flex-wrap:wrap;padding:2px 0 0;}
+.ip-stats span{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.ip-stats svg{width:13px;height:13px;color:var(--faint);}
+/* 核心态势摘要 */
+.ip-lede{font-size:13.5px;line-height:1.8;color:var(--ink);padding:10px 14px;background:var(--brand-weak);border-radius:8px;border-left:3px solid var(--brand);}
+/* 情报子网格 */
+.ip-sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ip-sub{padding:10px 13px;border-radius:8px;border-left:3px solid var(--brand);background:color-mix(in srgb,var(--brand) 4%,transparent);font-size:12.5px;line-height:1.7;}
+.ip-sub.full{grid-column:1/-1;}
+.ip-sub b{display:block;font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--brand-strong);margin-bottom:4px;}
+/* 因果链 */
+.ip-chain{padding:9px 13px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-size:12.5px;line-height:1.7;margin-bottom:8px;}
+.ip-chain .arrow{color:var(--brand);font-weight:700;padding:0 2px;}
+/* 信号看板 */
+.ip-sig{padding:9px 13px;border-radius:8px;background:#f59e0b0a;border:1px solid #f59e0b30;margin-bottom:8px;}
+.ip-sig-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.ip-sig-txt{flex:1;font-size:12.5px;font-weight:600;color:#b45309;}
+.ip-sig-conf{flex:none;font-size:10.5px;font-family:var(--mono);color:var(--faint);font-variant-numeric:tabular-nums;}
+.ip-sig-bar{height:3px;border-radius:2px;background:#f59e0b2e;overflow:hidden;}
+.ip-sig-bar i{display:block;height:100%;border-radius:2px;background:#f59e0b;}
+/* 关键词 */
+.ip-kw-list{display:flex;flex-wrap:wrap;gap:6px;}
+.ip-kw{padding:3px 11px;border-radius:999px;font-size:12px;border:1px solid var(--line);background:var(--bg);color:var(--muted);}
+.ip-kw.rising{border-color:#f59e0b55;background:#f59e0b0e;color:#b45309;font-weight:600;}
+.ip-kw.rising::after{content:"\u2191";margin-left:3px;font-size:10px;font-weight:800;}
+/* 去重提示 */
+.ip-dedup{margin-top:4px;padding:8px 12px;border-radius:8px;background:var(--hover);font-size:11px;color:var(--faint);display:flex;align-items:center;gap:6px;}
+.ip-dedup svg{width:12px;height:12px;flex:none;color:#059669;}
+.ip-empty{padding:24px;text-align:center;color:var(--faint);font-size:12.5px;}
+/* 保留旧 ib-* 样式（话题聚类/关键词/趋势等仍由 renderInsight 使用） */
 .ib-summary{font-size:13.5px;line-height:1.7;color:var(--ink);padding:8px 12px;background:var(--brand-weak);border-radius:8px;border-left:3px solid var(--brand);}
 .ib-sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.ib-sub-section{padding:8px 12px;border-radius:8px;border-left:3px solid;font-size:13px;line-height:1.65;}
-.ib-sub-section.sub-core{background:#6366f10a;border-color:#6366f1;}
-.ib-sub-section.sub-signal{background:#f59e0b0a;border-color:#f59e0b;}
-.ib-sub-section.sub-rss{background:#10b9810a;border-color:#10b981;}
-.ib-sub-section.sub-outlook{background:#ef44440a;border-color:#ef4444;}
-.ib-sub-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;opacity:.7;}
-.ib-sub-section.sub-core .ib-sub-label{color:#6366f1;}
-.ib-sub-section.sub-signal .ib-sub-label{color:#b45309;}
-.ib-sub-section.sub-rss .ib-sub-label{color:#059669;}
-.ib-sub-section.sub-outlook .ib-sub-label{color:#dc2626;}
+.ib-sub-section{padding:8px 12px;border-radius:8px;border-left:3px solid var(--brand);font-size:13px;line-height:1.65;}
+.ib-sub-section.sub-core{background:#6366f10a;}
+.ib-sub-section.sub-signal{background:#f59e0b0a;}
+.ib-sub-section.sub-rss{background:#10b9810a;}
+.ib-sub-section.sub-outlook{background:#ef44440a;}
+.ib-sub-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;opacity:.7;color:var(--brand-strong);}
 .ib-narrative{padding:10px 14px;border-radius:10px;background:linear-gradient(135deg,#6366f10a,#8b5cf60a);border-left:3px solid #7c3aed;font-size:13px;line-height:1.7;color:var(--ink);margin-bottom:10px;}
 .ib-chain-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;margin-bottom:10px;}
 .ib-chain-card{padding:8px 12px;border-radius:8px;background:var(--card);border:1px solid var(--line);font-size:12px;line-height:1.6;}
@@ -2280,7 +2341,7 @@ body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body
 .ib-kw{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--muted);cursor:pointer;transition:all .12s;}
 .ib-kw:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-weak);}
 .ib-kw.rising{border-color:#f59e0b55;background:#f59e0b0e;color:#b45309;}
-.ib-kw.rising::after{content:"↑";margin-left:3px;font-size:10px;font-weight:700;}
+.ib-kw.rising::after{content:"\u2191";margin-left:3px;font-size:10px;font-weight:700;}
 .ib-topic-list{display:flex;flex-direction:column;gap:6px;}
 .ib-topic{display:flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);cursor:pointer;transition:all .12s;}
 .ib-topic:hover{border-color:var(--brand);background:var(--brand-weak);}
@@ -2291,12 +2352,16 @@ body.af-tab-hot .af-sub,body.af-tab-hot .af-filter,body.af-tab-hot .af-body,body
 .ib-stats{display:flex;gap:16px;padding:6px 0;font-size:12px;color:var(--faint);font-family:var(--mono);}
 .ib-stats span{display:flex;align-items:center;gap:4px;}
 .ib-no-data{padding:20px;text-align:center;color:var(--faint);font-size:13px;}
+.ib-section{margin-bottom:14px;}
+.ib-section:last-child{margin-bottom:0;}
+.ib-label{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+@media (max-width:899px){
+  .ip-sub-grid{grid-template-columns:1fr;}
+}
 @media (max-width:700px) {
-  .insight-bar{margin:0 8px 6px;}
-  .ib-body{padding:10px 12px 14px;}
-  .ib-kw-list{gap:4px;}
-  .ib-kw{padding:2px 8px;font-size:11px;}
-  .ib-sub-grid{grid-template-columns:1fr;}
+  .ip-body{padding:10px 12px 14px;}
+  .ip-kw-list{gap:4px;}
+  .ip-kw{padding:2px 8px;font-size:11px;}
 }
 
 /* ── Source Quality Badge（信源质量指示器） ── */
@@ -3144,7 +3209,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   // ── Window exports ──
   window.ART = ART;
   window.closeReader = function(){ _cleanupMedia(); document.body.classList.remove('reading'); curArt=null; window.curArt=null; updateCardStates(); if(_prevFocusEl){try{_prevFocusEl.focus();}catch(e){}_prevFocusEl=null;} };
-  window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); };
+  window.closeOverlays = function(){ document.body.classList.remove('src-open'); window.closeReader(); closeInsight(); };
   window.clearSrcF = function(e){ e.stopPropagation(); var uo=filter.unreadOnly,bm=filter.filterBm; filter={type:'all',unreadOnly:uo,filterBm:bm}; curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); updateTitle(); updateHash(); updateUnreadBtn(); updateBmChip(); };
   window.toggleSrcPanel = toggleSrcPanel;
   window.selectSrc = selectSrc;
@@ -4058,6 +4123,12 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
 
   /* ── 刷新（参照主页 refreshRss 模式） ── */
   function refreshAiFeed(){
+    /* D6: 热榜 Tab 下刷新热榜数据 */
+    if(afTab==='hot'){
+      _hotLoaded=false; _hotLoading=false;
+      loadHotSnapshot();
+      return;
+    }
     if(afRefreshing) return;
     if(!afLoaded) { _loadAll(); return; }
     afRefreshing = true;
@@ -4330,7 +4401,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(th){th.classList.toggle('on',tab==='hot');th.setAttribute('aria-selected',tab==='hot'?'true':'false');}
     var hw=document.getElementById('hpWrap');
     if(hw) hw.style.display=(tab==='hot')?'flex':'none';
-    var rb=document.getElementById('afRefreshBtn'); if(rb) rb.style.display=(tab==='feed')?'':'none';
+    var rb=document.getElementById('afRefreshBtn'); if(rb) rb.style.display=''; /* D6: 双 Tab 均显示刷新按钮 */
     var hb=document.getElementById('btnHot'); if(hb) hb.classList.toggle('on',tab==='hot'&&document.body.classList.contains('ai-open'));
     if(tab==='hot'&&!_hotLoaded) loadHotSnapshot();
   }
@@ -4355,121 +4426,201 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(!panelOpen) toggleAiFeed();
     switchAfTab('hot');
   };
+  var _platExpanded=false;
+  function _applyPlatCollapse(){
+    var row=document.getElementById('hpTabs');
+    if(row) row.classList.toggle('collapsed',window.innerWidth<900&&!_platExpanded);
+  }
+  /* 平台→分类映射：根据平台 ID 返回所属分类 key */
+  function _platCat(p){
+    for(var i=0;i<_hotCats.length;i++){
+      if(_hotCats[i].members&&_hotCats[i].members.indexOf(p)!==-1) return _hotCats[i].key;
+    }
+    return 'all';
+  }
   function loadHotSnapshot(){
     if(_hotLoading || _hotLoaded) return;
     _hotLoading=true;
     var list=document.getElementById('hotList');
     if(!list) return;
-    list.innerHTML='<div class="hp-empty">加载中…</div>';
-    fetch('hot_snapshot.json',{cache:'no-cache'}).then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
+    list.innerHTML=\'<div class="hp-empty">加载中…</div>\';
+    fetch(\'hot_snapshot.json\',{cache:\'no-cache\'}).then(function(r){
+      if(!r.ok) throw new Error(\'HTTP \'+r.status);
       return r.json();
     }).then(function(data){
       _hotLoaded=true;_hotLoading=false;
       _hotData=(data||[]).filter(function(s){return s.items&&s.items.length;});
-      if(!_hotData.length){list.innerHTML='<div class="hp-empty">\u6682\u65e0\u70ed\u699c\u6570\u636e</div>';return;}
-      /* 分类筛选行 */
-      var catsEl=document.getElementById('hpCats');
-      if(catsEl){
-        catsEl.innerHTML=_hotCats.map(function(c){
-          return '<button class="hp-cat'+(c.key==='all'?' on':'')+'" data-cat="'+c.key+'">'+c.name+'</button>';
-        }).join('');
-        catsEl.querySelectorAll('.hp-cat').forEach(function(b){
-          b.addEventListener('click',function(){_filterHotCat(b.getAttribute('data-cat'));});
+      if(!_hotData.length){list.innerHTML=\'<div class="hp-empty">\u6682\u65e0\u70ed\u699c\u6570\u636e</div>\';return;}
+      /* 分类筛选行 → 分段控件（WS-A2） */
+      var segEl=document.getElementById(\'hpCats\');
+      if(segEl){
+        segEl.className=\'hp-seg\';
+        segEl.setAttribute(\'role\',\'tablist\');
+        segEl.innerHTML=_hotCats.map(function(c){
+          return \'<button class="hp-seg-btn\'+(c.key===\'all\'?\' on\':\'\')+\'" role="tab" aria-selected="\'+(c.key===\'all\')+\'" data-cat="\'+c.key+\'">\'+c.name+\'</button>\';
+        }).join(\'\');
+        segEl.querySelectorAll(\'.hp-seg-btn\').forEach(function(b){
+          b.addEventListener(\'click\',function(){_filterHotCat(b.getAttribute(\'data-cat\'));});
         });
       }
-      /* 平台子 Tab：带 data-cat 属性，便于分类筛选 */
-      var tabs=document.getElementById('hpTabs');
-      tabs.innerHTML=_hotData.map(function(s){
-        var p=s.platform,cat=_platCat(p);
-        return '<button class="hp-tab" data-p="'+p+'" data-cat="'+cat+'"><span class="dot" style="background:'+(_hotPlatformColors[p]||'#888')+'"></span>'+(_hotPlatformNames[p]||p)+'</button>';
-      }).join('');
-      tabs.querySelectorAll('.hp-tab').forEach(function(b){
-        b.addEventListener('click',function(){renderHotPlat(b.getAttribute('data-p'));});
+      /* 平台 chips（WS-A3） */
+      var row=document.getElementById(\'hpTabs\');
+      row.className=\'plat-row collapsed\';
+      row.innerHTML=_hotData.map(function(s){
+        var p=s.platform;
+        return \'<button class="plat-chip" data-p="\'+p+\'" data-cat="\'+_platCat(p)+\'"><span class="dot" style="background:\'+(_hotPlatformColors[p]||\'#888\')+\'"></span>\'+(_hotPlatformNames[p]||p)+\'</button>\';
+      }).join(\'\');
+      /* 展开/收起按钮（WS-A4 移动端折叠） */
+      var moreHtml=\'<button class="plat-more" id="btnPlatMore" aria-expanded="false"><span>全部 \'+_hotData.length+\' 个</span>\';
+      moreHtml+=\'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>\';
+      var wrap=row.parentNode.querySelector(\'.plat-wrap\');
+      if(wrap){var existing=document.getElementById(\'btnPlatMore\');if(!existing) row.insertAdjacentHTML(\'afterend\',moreHtml);}
+      var moreBtn=document.getElementById(\'btnPlatMore\');
+      if(moreBtn){
+        moreBtn.onclick=function(){
+          _platExpanded=!_platExpanded;
+          row.classList.toggle(\'collapsed\',window.innerWidth<900&&!_platExpanded);
+          moreBtn.querySelector(\'span\').textContent=_platExpanded?\'收起\':\'全部 \'+_visiblePlats().length+\' 个\';
+          moreBtn.classList.toggle(\'open\',_platExpanded);
+          moreBtn.setAttribute(\'aria-expanded\',_platExpanded);
+        };
+      }
+      row.querySelectorAll(\'.plat-chip\').forEach(function(b){
+        b.addEventListener(\'click\',function(){renderHotPlat(b.getAttribute(\'data-p\'),true);});
       });
       renderHotPlat(_hotData[0].platform);
+      _applyPlatCollapse();
     }).catch(function(){
       _hotLoading=false;
-      list.innerHTML='<div class="hp-empty">加载失败，请稍后重试</div>';
+      list.innerHTML=\'<div class="hp-empty">加载失败，请稍后重试</div>\';
     });
   }
-  /* 查找平台所属分类 key */
-  function _platCat(p){
-    for(var i=1;i<_hotCats.length;i++){if(_hotCats[i].members.indexOf(p)>=0) return _hotCats[i].key;}
-    return 'other';
+  function _visiblePlats(){
+    return _hotData.filter(function(s){return _hotCatKey===\'all\'||_platCat(s.platform)===_hotCatKey;});
   }
-  /* 分类筛选：切换平台 Tab 可见性 */
+  /* 分类筛选：切换平台 chips 可见性（WS-A5 交互反馈） */
   function _filterHotCat(cat){
     _hotCatKey=cat;
-    var catsEl=document.getElementById('hpCats');
-    if(catsEl) catsEl.querySelectorAll('.hp-cat').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-cat')===cat);});
-    var tabs=document.getElementById('hpTabs');
+    var segEl=document.getElementById(\'hpCats\');
+    if(segEl) segEl.querySelectorAll(\'.hp-seg-btn\').forEach(function(b){
+      var on=b.getAttribute(\'data-cat\')===cat;
+      b.classList.toggle(\'on\',on);
+      b.setAttribute(\'aria-selected\',on);
+    });
+    var chips=document.getElementById(\'hpTabs\');
     var firstVisible=null;
-    tabs.querySelectorAll('.hp-tab').forEach(function(b){
-      var show=(cat==='all'||b.getAttribute('data-cat')===cat);
-      b.style.display=show?'':'none';
+    chips.querySelectorAll(\'.plat-chip\').forEach(function(b){
+      var show=(cat===\'all\'||b.getAttribute(\'data-cat\')===cat);
+      b.style.display=show?\'\':\'none\';
       if(show&&!firstVisible) firstVisible=b;
     });
-    /* 如果当前选中的平台被隐藏，自动切到第一个可见平台 */
-    var curTab=tabs.querySelector('.hp-tab.on');
-    if(curTab&&curTab.style.display==='none'&&firstVisible){
-      renderHotPlat(firstVisible.getAttribute('data-p'));
+    /* 更新展开按钮计数 */
+    var moreBtn=document.getElementById(\'btnPlatMore\');
+    if(moreBtn&&!_platExpanded){
+      var vis=_visiblePlats();
+      moreBtn.querySelector(\'span\').textContent=\'全部 \'+vis.length+\' 个\';
     }
+    /* 如果当前选中的平台被隐藏，自动切到第一个可见平台（带 fade 反馈） */
+    var curChip=chips.querySelector(\'.plat-chip.on\');
+    if(curChip&&curChip.style.display===\'none\'&&firstVisible){
+      renderHotPlat(firstVisible.getAttribute(\'data-p\'),true);
+    }
+    /* 分类切换后平台行滚回起点 */
+    chips.scrollLeft=0;
   }
-  function renderHotPlat(p){
-    var tabs=document.getElementById('hpTabs');
-    tabs.querySelectorAll('.hp-tab').forEach(function(b){
-      var on=b.getAttribute('data-p')===p;
-      b.classList.toggle('on',on);
-      b.style.background=on?(_hotPlatformDeep[p]||'#555'):'';
+  function renderHotPlat(p,swap){
+    var chips=document.getElementById(\'hpTabs\');
+    chips.querySelectorAll(\'.plat-chip\').forEach(function(b){
+      var on=b.getAttribute(\'data-p\')===p;
+      b.classList.toggle(\'on\',on);
+      b.style.background=on?(_hotPlatformDeep[p]||\'#555\'):\'\';
     });
-    var list=document.getElementById('hotList');
+    var list=document.getElementById(\'hotList\');
     var src=null;
     for(var i=0;i<_hotData.length;i++){ if(_hotData[i].platform===p){src=_hotData[i];break;} }
-    if(!src){list.innerHTML='<div class="hp-empty">暂无热榜数据</div>';return;}
-    var h='';
+    if(!src){list.innerHTML=\'<div class="hp-empty">暂无热榜数据</div>\';return;}
+    var h=\'\';
     var platTrends=(ANALYSIS_DATA&&ANALYSIS_DATA.hot_trends&&ANALYSIS_DATA.hot_trends[p])||{};
     for(var j=0;j<src.items.length;j++){
-      var it=src.items[j],rk=it.rank||(j+1),cls=rk<=3?' top3':'';
-      var hotTxt=it.hot?(''+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+'\u4e07';}):'';
-      h+='<a class="hp-item" href="'+_escH(it.url||'#')+'" target="_blank" rel="noopener">';
-      h+='<span class="hp-rank'+cls+'">'+rk+'</span>';
-      h+='<span class="hp-title">'+_escH(it.title||'')+'</span>';
-      if(hotTxt) h+='<span class="hp-hot">'+hotTxt+'</span>';
-      var td=platTrends[it.title||''];
-      if(td&&td.trend==='rising') h+='<span class="hp-trend t-up">\u2191'+td.rise+'</span>';
-      else if(td&&td.trend==='falling') h+='<span class="hp-trend t-down">\u2193'+Math.abs(td.rise)+'</span>';
-      else if(td&&td.trend==='new') h+='<span class="hp-trend t-new">\u65b0</span>';
-      h+='</a>';
+      var it=src.items[j],rk=it.rank||(j+1),cls=rk<=3?\' top3\':\'\';
+      var hotTxt=it.hot?(\'\'+it.hot).replace(/^(\d+)(\d{4,})$/,function(m,a,b){return a+\'\u4e07\';}):\'\';
+      h+=\'<a class="hp-item" href="\'+_escH(it.url||\'#\')+\'" target="_blank" rel="noopener">\';
+      h+=\'<span class="hp-rank\'+cls+\'">\'+rk+\'</span>\';
+      h+=\'<span class="hp-title">\'+_escH(it.title||\'\')+\'</span>\';
+      if(hotTxt) h+=\'<span class="hp-hot">\'+hotTxt+\'</span>\';
+      var td=platTrends[it.title||\'\'];
+      if(td&&td.trend===\'rising\') h+=\'<span class="hp-trend t-up">\u2191\'+td.rise+\'</span>\';
+      else if(td&&td.trend===\'falling\') h+=\'<span class="hp-trend t-down">\u2193\'+Math.abs(td.rise)+\'</span>\';
+      else if(td&&td.trend===\'new\') h+=\'<span class="hp-trend t-new">\u65b0</span>\';
+      h+=\'</a>\';
     }
-    list.innerHTML=h||'<div class="hp-empty">暂无热榜数据</div>';
+    list.innerHTML=h||\'<div class="hp-empty">暂无热榜数据</div>\';
+    /* 分类切换 fade 动画（WS-A5） */
+    if(swap&&!matchMedia(\'(prefers-reduced-motion:reduce)\').matches){
+      list.classList.remove(\'hp-swap\');void list.offsetWidth;list.classList.add(\'hp-swap\');
+    }
   }
+  window.addEventListener('resize',function(){ _applyPlatCollapse(); });
 
-  /* ── Insight Panel（每日洞察） ── */
+  /* ── Insight Panel（每日洞察 · WS-B 容器化） ── */
+  var _insightScrollY=0;
   function toggleInsight(){
-    var bar=document.getElementById('insightBar');
+    var panel=document.getElementById('insightPanel');
     var btn=document.getElementById('btnInsight');
-    if(!bar)return;
-    var opening=!bar.classList.contains('open');
-    bar.classList.toggle('open',opening);
-    if(btn)btn.classList.toggle('on',opening);
-    if(opening) renderInsight();
+    if(!panel)return;
+    var opening=!panel.classList.contains('open');
+    if(opening){ renderInsight(); }
+    panel.classList.toggle('open',opening);
+    if(btn){
+      btn.classList.toggle('on',opening);
+      btn.setAttribute('aria-expanded',opening);
+    }
+    /* 遮罩 + 滚动锁 */
+    var scrim=document.getElementById('scrim');
+    if(scrim) scrim.classList.toggle('on',opening);
+    if(opening){
+      _insightScrollY=window.scrollY;
+      document.body.style.overflow='hidden';
+      panel.querySelector('.ip-close').focus();
+    } else {
+      document.body.style.overflow='';
+      window.scrollTo(0,_insightScrollY);
+      if(btn) btn.focus();
+    }
   }
   window.toggleInsight=toggleInsight;
+  function closeInsight(){
+    var p=document.getElementById('insightPanel');
+    if(p&&p.classList.contains('open')) toggleInsight();
+  }
 
   function renderInsight(){
     var el=document.getElementById('insightBody');
     if(!el||!ANALYSIS_DATA)return;
     var d=ANALYSIS_DATA, h='';
+    /* D2: SVG 图标替代 emoji，与站内线性图标体系一致 */
+    var _ico={chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 5-6"/></svg>',bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',signal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/></svg>',clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>',bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',crystal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',tag:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',flame:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>'};
+    /* WS-C 前端去重兆底 */
+    var _dedupSeen=new Set(), _dedupCount=0;
+    function _dedup(text){ var t=String(text||'').trim(); if(!t) return ''; var key=t.slice(0,120); if(_dedupSeen.has(key)){_dedupCount++;return '';} _dedupSeen.add(key);return t; }
+    /* signals 规范化 */
+    function _normSignals(raw){
+      return (Array.isArray(raw)?raw:[]).map(function(s){
+        if(s&&typeof s==='object') return {signal:s.signal||s.label||s.name||s.text||'',conf:s.confidence};
+        var m=String(s).match(/['"]?signal['"]?\s*:\s*['"]([^'"]+)['"]/);
+        var c=String(s).match(/['"]?confidence['"]?\s*:\s*([\d.]+)/);
+        return {signal:m?m[1]:String(s),conf:c?parseFloat(c[1]):null};
+      }).filter(function(x){return x.signal;});
+    }
     // 统计摘要
     if(d.stats||d.generated_at){
       h+='<div class="ib-stats">';
       if(d.stats){
-        h+='<span>\U0001f4ca \u6587\u7ae0: '+d.stats.total_articles+'</span>';
-        h+='<span>\U0001f514 \u8fd124h: '+d.stats.recent_count+'</span>';
-        h+='<span>\U0001f4e1 \u4fe1\u6e90: '+d.stats.source_count+'</span>';
+        h+='<span>'+_ico.chart+' \u6587\u7ae0: '+d.stats.total_articles+'</span>';
+        h+='<span>'+_ico.bell+' \u8fd124h: '+d.stats.recent_count+'</span>';
+        h+='<span>'+_ico.signal+' \u4fe1\u6e90: '+d.stats.source_count+'</span>';
       }
-      if(d.generated_at) h+='<span>\u23f0 '+(d.generated_at||'').slice(0,16).replace('T',' ')+'</span>';
+      if(d.generated_at) h+='<span>'+_ico.clock+' '+(d.generated_at||'').slice(0,16).replace('T',' ')+'</span>';
       h+='</div>';
       h+='<div style="font-size:10.5px;color:var(--faint);padding:0 0 6px;">\u6570\u636e\u8303\u56f4: \u8fd1 72 \u5c0f\u65f6\u6eda\u52a8\u7a97\u53e3</div>';
     }
@@ -4502,11 +4653,11 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(d.deep_insights){
       var di=d.deep_insights;
       if(di.narrative){
-        h+='<div class="ib-section"><div class="ib-label">\U0001f50d \u53d9\u4e8b\u8109\u7edc</div>';
+        h+='<div class="ib-section"><div class="ib-label">'+_ico.search+' \u53d9\u4e8b\u8109\u7edc</div>';
         h+='<div class="ib-narrative">'+esc(di.narrative)+'</div></div>';
       }
       if(di.causal_chains&&di.causal_chains.length){
-        h+='<div class="ib-section"><div class="ib-label">\u26a1 \u56e0\u679c\u94fe</div><div class="ib-chain-grid">';
+        h+='<div class="ib-section"><div class="ib-label">'+_ico.bolt+' \u56e0\u679c\u94fe</div><div class="ib-chain-grid">';
         di.causal_chains.forEach(function(c){
           h+='<div class="ib-chain-card">';
           if(typeof c==='string'){
@@ -4520,14 +4671,14 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         h+='</div></div>';
       }
       if(di.signals&&di.signals.length){
-        h+='<div class="ib-section"><div class="ib-label">\U0001f4e1 \u4fe1\u53f7\u770b\u677f</div><div class="ib-signal-grid">';
+        h+='<div class="ib-section"><div class="ib-label">'+_ico.signal+' \u4fe1\u53f7\u770b\u677f</div><div class="ib-signal-grid">';
         di.signals.forEach(function(s){
           h+='<div class="ib-signal-card">'+esc(s.label||s.name||s.text||s.signal||'')+'</div>';
         });
         h+='</div></div>';
       }
       if(di.outlook){
-        h+='<div class="ib-section"><div class="ib-label">\U0001f52e \u8d8b\u52bf\u5c55\u671b</div>';
+        h+='<div class="ib-section"><div class="ib-label">'+_ico.crystal+' \u8d8b\u52bf\u5c55\u671b</div>';
         h+='<div class="ib-outlook">'+esc(di.outlook)+'</div></div>';
       }
     }
@@ -4535,7 +4686,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(d.topic_clusters&&d.topic_clusters.length){
       var maxCnt=0;
       d.topic_clusters.forEach(function(c){if(c.count>maxCnt)maxCnt=c.count;});
-      h+='<div class="ib-section"><div class="ib-label">\U0001f4ca \u8bdd\u9898\u805a\u7c7b</div><div class="ib-cluster-list">';
+      h+='<div class="ib-section"><div class="ib-label">'+_ico.chart+' \u8bdd\u9898\u805a\u7c7b</div><div class="ib-cluster-list">';
       d.topic_clusters.slice(0,12).forEach(function(c){
         var pct=maxCnt>0?Math.round(c.count/maxCnt*100):0;
         h+='<div class="ib-cluster-card" data-kw="'+esc(c.label||'')+'" onclick="insightSearch(this.dataset.kw)">';
@@ -4657,7 +4808,30 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       h+='</div></div>';
     }
     if(!h) h='<div class="ib-no-data">\u6682\u65e0\u5206\u6790\u6570\u636e</div>';
+    /* WS-C 去重提示 */
+    if(_dedupCount>0) h+='<div class="ip-dedup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>\u5df2\u81ea\u52a8\u8df3\u8fc7 '+_dedupCount+' \u6bb5\u4e0e\u4e0a\u6587\u91cd\u590d\u7684\u5185\u5bb9</div>';
     el.innerHTML=h;
+    /* 锚点导航（WS-B2） */
+    var navEl=document.getElementById('ipNav');
+    if(navEl){
+      var secs=el.querySelectorAll('.ib-section, .ip-sec');
+      var navHtml='';
+      secs.forEach(function(s,i){
+        var label=(s.querySelector('.ib-label, .ip-label')||{}).textContent||'';
+        if(!label) return;
+        if(!s.id) s.id='ip-sec-'+i;
+        navHtml+='<button data-t="'+s.id+'" class="'+(i===0?'on':'')+'">'+label+'</button>';
+      });
+      navEl.innerHTML=navHtml;
+      navEl.querySelectorAll('button').forEach(function(b){
+        b.onclick=function(){
+          navEl.querySelectorAll('button').forEach(function(x){x.classList.remove('on');});
+          b.classList.add('on');
+          var target=document.getElementById(b.dataset.t);
+          if(target) target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'});
+        };
+      });
+    }
   }
 
   function insightSearch(keyword){
@@ -4760,15 +4934,17 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
             '</svg> 洞察</button>\n'
         )
         insight_bar = (
-            '<div class="insight-bar" id="insightBar">\n'
-            '<div class="ib-head">\n'
-            '<h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+            '<aside class="insight-panel" id="insightPanel" role="dialog" aria-modal="true" aria-label="\u6bcf\u65e5\u6d1e\u5bdf">\n'
+            '<div class="ip-head">\n'
+            '<h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'
             '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>'
-            ' 每日洞察</h3>\n'
-            '<button class="ib-close" onclick="toggleInsight()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>\n'
+            ' \u6bcf\u65e5\u6d1e\u5bdf</h2>\n'
+            '<span class="ip-gen" id="ipGen"></span>\n'
+            '<button class="ip-close" onclick="toggleInsight()" aria-label="\u5173\u95ed\u6d1e\u5bdf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>\n'
             '</div>\n'
-            '<div class="ib-body" id="insightBody"></div>\n'
-            '</div>\n'
+            '<nav class="ip-nav" id="ipNav" aria-label="\u6d1e\u5bdf\u7ae0\u8282\u5bfc\u822a"></nav>\n'
+            '<div class="ip-body" id="insightBody"></div>\n'
+            '</aside>\n'
         )
     # 分析数据 JSON 注入到 JS
     analysis_json = ''
@@ -4794,6 +4970,7 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
                 '<button class="unread-toggle" id="markAllReadBtn" onclick="markAllRead()" title="\u5168\u90e8\u6807\u8bb0\u5df2\u8bfb" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> \u5168\u90e8\u5df2\u8bfb</button>\n'
         '<button class="ai-feed-btn" id="btnAiFeed" onclick="toggleAiFeed()" title="AI \u52a8\u6001\u6d41"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> AI \u52a8\u6001</button>\n'
         '<button class="hot-btn" id="btnHot" onclick="toggleHotPanel()" title="\u5168\u7f51\u70ed\u699c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2c1 3-2 5-2 8a4 4 0 0 0 8 0c0-3-2-5-2-8"/><path d="M8.5 14.5A5 5 0 0 0 12 22a5 5 0 0 0 3.5-7.5"/></svg> \u70ed\u699c</button>\n'
+        '<span class="tb-divider" aria-hidden="true"></span>\n'
         + insight_btn +
         
         '<span id="fpillWrap"></span>\n'
@@ -4816,9 +4993,10 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
         '<button class="af-refresh" id="afRefreshBtn" onclick="refreshAiFeed()" title="\u5237\u65b0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>\n'
         '<button class="af-close" onclick="toggleAiFeed()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>\n'
         '<div class="hp-wrap" id="hpWrap">\n'
-        '<div class="hp-cats" id="hpCats"></div>\n'
-        '<div class="hp-tabs" id="hpTabs"></div>\n'
-        '<div class="hp-body" id="hotList"><div class="hp-empty">\u70b9\u51fb\u52a0\u8f7d\u70ed\u699c</div></div></div>\n'
+        '<div class="dim-row"><span class="dim-label">分类</span><div class="dim-body"><div class="hp-seg" id="hpCats" role="tablist" aria-label="热榜分类筛选"></div></div></div>\n'
+        '<hr class="dim-sep">\n'
+        '<div class="dim-row" style="padding-top:0"><span class="dim-label">平台</span><div class="dim-body plat-wrap"><div class="plat-row collapsed" id="hpTabs"></div></div></div>\n'
+        '<div class="hp-body" id="hotList"><div class="hp-empty">点击加载热榜</div></div></div>\n'
         '<div class="af-sub" id="afUpdated"></div>\n'
         '<div class="af-filter" id="afFilter" style="display:none"></div>\n'
         '<div class="af-body" id="afList"><div class="af-empty">\u70b9\u51fb\u67e5\u770b AI \u52a8\u6001</div></div>\n'

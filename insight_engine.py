@@ -755,7 +755,7 @@ def generate_deep_insights(llm, context):
     result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.4, max_tokens=800)
     parsed = _try_parse_json(result)
     if isinstance(parsed, dict) and "narrative" in parsed:
-        return parsed
+        return _normalize_deep_insights(parsed)
     # fallback: simple keyword-based narrative
     keywords = context.get("keywords", [])
     kw_str = "、".join(keywords[:10]) if keywords else "无"
@@ -765,6 +765,26 @@ def generate_deep_insights(llm, context):
         "signals": [],
         "outlook": "建议持续关注上述领域的发展动态。",
     }
+
+
+def _normalize_deep_insights(parsed):
+    """规范化 deep_insights 输出：确保 signals 为 dict 数组，杜绝 dict-repr 字符串入库。"""
+    raw_signals = parsed.get("signals", [])
+    normalized = []
+    for item in raw_signals:
+        if isinstance(item, str):
+            # 字符串项 → 包装为 dict
+            normalized.append({"signal": item, "confidence": None})
+        elif isinstance(item, dict):
+            # dict 项：统一取 signal/label/name 字段
+            sig_text = item.get("signal") or item.get("label") or item.get("name") or ""
+            normalized.append({
+                "signal": str(sig_text),
+                "confidence": item.get("confidence"),
+            })
+        # 其他类型跳过
+    parsed["signals"] = normalized
+    return parsed
 
 
 # ────────────────── Topic metadata builder ──────────────────
@@ -885,11 +905,12 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     }
 
     # 9. Build old-format summary for frontend compatibility
+    # WS-C: signals/outlook 不再互相复制，deep_insights 为唯一事实源
     summary = {
         "core_trends": deep_insights.get("narrative", ""),
-        "signals": deep_insights.get("outlook", ""),
+        "signals": "",                                        # 不再用 outlook 冒充
         "rss_insights": f"共分析 {len(doc_texts)} 条内容，提取 {len(keywords)} 个关键词。",
-        "outlook": deep_insights.get("outlook", ""),
+        "outlook": deep_insights.get("outlook", ""),          # 唯一来源
     }
 
     # 10. Assemble output — old format + new fields
