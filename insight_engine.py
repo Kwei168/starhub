@@ -973,6 +973,8 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     """
     # 为每个话题检索相关上下文（大窗口）
     topic_contexts = []
+    # 提取 top 关键词用于混合检索 query，确保召回与关键词匹配的文档
+    top_kw_for_retrieval = keywords[:5] if keywords else []
     if topic_clusters:
         for cluster in topic_clusters[:5]:  # 最多 5 个话题
             label = cluster.get("label", "")
@@ -980,9 +982,14 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
 
             # 优先从层级索引检索（小索引 → 大窗口扩展）
             ctx = None
-            if child_vecs and child_nodes and parent_docs and items:
-                # 用簇内前 3 个条目拼接作为查询，扩大召回覆盖面
-                query_text = " ".join(items[:3]) if len(items) >= 3 else (items[0] if items else label)
+            if child_vecs and child_nodes and parent_docs and (items or top_kw_for_retrieval):
+                # 混合查询：簇标签 + 簇内条目 + RSS 关键词
+                # 纯用簇内条目会导致检索偏移（如全部偏向某单一话题），
+                # 混入关键词可确保召回与关键词匹配的文档
+                query_parts = [label] if label else []
+                query_parts.extend(items[:2])
+                query_parts.extend(top_kw_for_retrieval)
+                query_text = " ".join(query_parts)
                 query_vecs, _ = _get_embeddings([query_text])
                 if query_vecs:
                     ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
@@ -1160,12 +1167,18 @@ def _evaluate_and_correct(llm, deep_insights, topic_clusters,
     threshold = config.get("insight_quality_threshold", 0.6)
     max_iterations = config.get("insight_max_corrections", 1)
 
-    # 构建评估用上下文
+    # 构建评估用上下文（同样使用混合查询确保召回关键词相关文档）
     context_parts = []
+    top_kw_eval = keywords[:5] if keywords else []
     for cluster in topic_clusters[:5]:
         items = cluster.get("items", [])
-        if child_vecs and child_nodes and parent_docs and items:
-            query_vecs, _ = _get_embeddings([items[0]])
+        label = cluster.get("label", "")
+        if child_vecs and child_nodes and parent_docs and (items or top_kw_eval):
+            query_parts = [label] if label else []
+            query_parts.extend(items[:1])
+            query_parts.extend(top_kw_eval)
+            query_text = " ".join(query_parts)
+            query_vecs, _ = _get_embeddings([query_text])
             if query_vecs:
                 ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
                                              query_vecs[0],
