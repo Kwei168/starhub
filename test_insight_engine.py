@@ -55,7 +55,7 @@ class TestAgnesLLM(unittest.TestCase):
     def test_init_with_api_key(self):
         """Success with valid api_key."""
         llm = AgnesLLM(api_key="test-key-123")
-        self.assertEqual(llm.api_key, "test-key-123")
+        self.assertEqual(llm.api_keys[0], "test-key-123")
         self.assertEqual(llm.model, "agnes-2.5-flash")
         self.assertEqual(llm.timeout, 60)
 
@@ -64,6 +64,19 @@ class TestAgnesLLM(unittest.TestCase):
         llm = AgnesLLM(api_key="key", model="agnes-pro", timeout=60)
         self.assertEqual(llm.model, "agnes-pro")
         self.assertEqual(llm.timeout, 60)
+
+    def test_init_multi_keys(self):
+        """Multiple API keys for rotation."""
+        llm = AgnesLLM(api_key="key1", extra_keys=["key2", "key3"])
+        self.assertEqual(len(llm.api_keys), 3)
+        self.assertEqual(llm.api_keys, ["key1", "key2", "key3"])
+        self.assertEqual(llm._key_idx, 0)
+
+    def test_init_extra_keys_filter_empty(self):
+        """Empty extra keys are filtered out."""
+        llm = AgnesLLM(api_key="key1", extra_keys=["key2", "", None])
+        self.assertEqual(len(llm.api_keys), 2)
+        self.assertEqual(llm.api_keys, ["key1", "key2"])
 
     def test_metadata(self):
         """Metadata property returns correct dict."""
@@ -102,7 +115,7 @@ class TestAgnesLLM(unittest.TestCase):
     def test_stream_complete_yields_result(self):
         """stream_complete yields the complete result."""
         llm = AgnesLLM.__new__(AgnesLLM)
-        llm.api_key = "key"
+        llm.api_keys = ["key"]
         llm.model = "test"
         llm.timeout = 30
         # Patch complete on the instance
@@ -192,7 +205,7 @@ class TestConfigAndFactory(unittest.TestCase):
         cfg = {"insight_llm_provider": "agnes"}
         llm = configure_llm(cfg)
         self.assertIsInstance(llm, AgnesLLM)
-        self.assertEqual(llm.api_key, "test-key-xyz")
+        self.assertEqual(llm.api_keys[0], "test-key-xyz")
 
     def test_unknown_provider_returns_mock(self):
         """Unknown provider → MockLLM."""
