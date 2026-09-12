@@ -1096,44 +1096,90 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
 
     combined_context = "\n\n".join(topic_contexts) if topic_contexts else "无检索上下文"
 
-    prompt = (
-        "基于以下检索上下文，生成深度洞察。请以 JSON 格式返回，包含以下字段：\n"
-        "- core_trends: 一段200字以内的核心态势分析（整体市场/技术格局概览）\n"
-        "- rss_insights: 一段200字以内的RSS深度洞察（侧重技术趋势、论文、开源动态）\n"
-        "- narrative: 一段200字以内的叙事脉络（串联核心事件的故事线）\n"
+    # 分视角生成：分别调用 LLM 确保 core_trends / rss_insights / narrative 内容不同
+    # 1) 结构化字段（因果链、信号、前瞻）—— 一次调用
+    prompt_struct = (
+        "基于以下检索上下文，以 JSON 格式返回：\n"
         "- causal_chains: 因果链条数组，如 [\"A→B→C\"]\n"
         "- signals: 异动信号数组，每项含 signal 和 confidence\n"
         "- outlook: 一段100字以内的前瞻研判\n\n"
-        "注意：core_trends、rss_insights、narrative 三者角度必须不同，不要重复相同内容。\n"
         "绝对禁止：\n"
         "- 禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字\n"
         "- 禁止提及任何关键词在上下文中缺失\n"
         "- 禁止编造上下文中未出现的事实\n"
-        "正确做法：\n"
-        "- 只分析检索上下文中实际存在的内容，直接输出结论\n"
-        "- 如果关键词与上下文不匹配，忽略不匹配的关键词，只分析匹配的部分\n"
-        "- 上下文信息有限时，就有限的信息做深入分析，不要抱怨数据不足\n\n"
-        f"关键词（仅供参考，以检索上下文为准）：{', '.join(keywords[:15]) if keywords else '无'}\n"
-        f"话题数：{len(topic_clusters)}\n\n"
-        f"检索上下文（小索引大窗口检索结果）：\n{combined_context[:4000]}"
+        "正确做法：只分析检索上下文中实际存在的内容，直接输出结论。\n\n"
+        f"关键词（仅供参考）：{', '.join(keywords[:15]) if keywords else '无'}\n\n"
+        f"检索上下文：\n{combined_context[:4000]}"
     )
-    system_prompt = "你是科技情报分析师。只返回 JSON。只分析检索上下文中实际存在的内容。绝对不要解释数据缺失。"
-    # 带重试的 LLM 调用（API 超时时自动重试）
-    result = None
-    for _attempt in range(3):
-        result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=1200)
-        if result:
+    sys_struct = "你是科技情报分析师。只返回 JSON。"
+    struct_result = None
+    for _a in range(3):
+        struct_result = llm.complete(prompt_struct, system_prompt=sys_struct, temperature=0.3, max_tokens=600)
+        if struct_result:
             break
-    parsed = _try_parse_json(result) if result else None
-    if isinstance(parsed, dict) and ("narrative" in parsed or "core_trends" in parsed):
-        # 兼容填充：LLM 可能只返回部分字段
-        if "core_trends" not in parsed and "narrative" in parsed:
-            parsed["core_trends"] = parsed["narrative"]
-        if "rss_insights" not in parsed and "narrative" in parsed:
-            parsed["rss_insights"] = parsed["narrative"]
-        if "narrative" not in parsed and "core_trends" in parsed:
-            parsed["narrative"] = parsed["core_trends"]
-        return _normalize_deep_insights(parsed)
+    struct_parsed = _try_parse_json(struct_result) if struct_result else None
+    causal_chains = struct_parsed.get("causal_chains", []) if isinstance(struct_parsed, dict) else []
+    signals = struct_parsed.get("signals", []) if isinstance(struct_parsed, dict) else []
+    outlook = struct_parsed.get("outlook", "") if isinstance(struct_parsed, dict) else ""
+
+    # 2) core_trends —— 整体市场/技术格局概览
+    prompt_core = (
+        "基于以下检索上下文，用一段200字以内的中文分析整体市场与技术格局的核心态势。\n"
+        "聚焦：哪些技术/产品/公司正在主导方向？竞争格局如何？\n"
+        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "只返回纯文本，不要 JSON，不要字段名。\n\n"
+        f"检索上下文：\n{combined_context[:4000]}"
+    )
+    sys_core = "你是科技情报分析师。直接输出分析结论，不要解释。"
+    core_trends = ""
+    for _a in range(3):
+        core_trends = llm.complete(prompt_core, system_prompt=sys_core, temperature=0.4, max_tokens=400)
+        if core_trends and len(core_trends.strip()) > 10 and re.search(r'[\u4e00-\u9fff]', core_trends):
+            break
+    core_trends = core_trends.strip() if core_trends and re.search(r'[\u4e00-\u9fff]', core_trends) else ""
+
+    # 3) rss_insights —— 侧重技术趋势、论文、开源动态
+    prompt_rss = (
+        "基于以下检索上下文，用一段200字以内的中文分析技术趋势与开源动态。\n"
+        "聚焦：有哪些新的技术路线、开源项目、论文或架构创新？对行业有什么影响？\n"
+        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "只返回纯文本，不要 JSON，不要字段名。\n\n"
+        f"检索上下文：\n{combined_context[:4000]}"
+    )
+    sys_rss = "你是科技情报分析师。直接输出分析结论，不要解释。"
+    rss_insights = ""
+    for _a in range(3):
+        rss_insights = llm.complete(prompt_rss, system_prompt=sys_rss, temperature=0.4, max_tokens=400)
+        if rss_insights and len(rss_insights.strip()) > 10 and re.search(r'[\u4e00-\u9fff]', rss_insights):
+            break
+    rss_insights = rss_insights.strip() if rss_insights and re.search(r'[\u4e00-\u9fff]', rss_insights) else ""
+
+    # 4) narrative —— 串联核心事件的故事线
+    prompt_narr = (
+        "基于以下检索上下文，用一段200字以内的中文串联核心事件，讲一个完整的故事线。\n"
+        "聚焦：事件之间的因果/时间关系是什么？整体叙事脉络如何？\n"
+        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "只返回纯文本，不要 JSON，不要字段名。\n\n"
+        f"检索上下文：\n{combined_context[:4000]}"
+    )
+    sys_narr = "你是科技情报分析师。直接输出分析结论，不要解释。"
+    narrative = ""
+    for _a in range(3):
+        narrative = llm.complete(prompt_narr, system_prompt=sys_narr, temperature=0.4, max_tokens=400)
+        if narrative and len(narrative.strip()) > 10 and re.search(r'[\u4e00-\u9fff]', narrative):
+            break
+    narrative = narrative.strip() if narrative and re.search(r'[\u4e00-\u9fff]', narrative) else ""
+
+    # 组装结果（不再 fallback 复制，各字段独立生成）
+    if narrative or core_trends or rss_insights:
+        return _normalize_deep_insights({
+            "narrative": narrative,
+            "core_trends": core_trends,
+            "rss_insights": rss_insights,
+            "causal_chains": causal_chains,
+            "signals": signals,
+            "outlook": outlook,
+        })
     # fallback: simple keyword-based narrative
     kw_str = "、".join(keywords[:10]) if keywords else "无"
     return {
@@ -1226,7 +1272,9 @@ def _evaluate_insight_quality(llm, deep_insights, context_text, keywords=None):
 
 
 def _self_correct_insights(llm, deep_insights, context_text, evaluation, keywords=None):
-    """基于评估反馈的自我修正：让 LLM 针对薄弱维度重新生成。"""
+    """基于评估反馈的自我修正：让 LLM 针对薄弱维度重新生成。
+    分视角独立调用，确保 core_trends / rss_insights / narrative 内容不同。
+    """
     feedback = evaluation.get("feedback", "")
     low_dims = []
     if evaluation.get("context_coverage", 1) < 0.6:
@@ -1239,32 +1287,91 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
     if not low_dims:
         return deep_insights  # 无需修正
 
-    prompt = (
+    ctx = context_text[:2500]
+    kw_str = ", ".join(keywords[:10]) if keywords else "无"
+    forbid = (
+        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "只返回纯文本，不要 JSON，不要字段名。"
+    )
+    sys_prompt = "你是科技情报分析师。直接输出分析结论，不要解释。"
+
+    # 1) 结构化字段修正
+    prompt_struct = (
         "之前的洞察报告质量评估不达标，请根据反馈重新生成。\n\n"
         f"【薄弱维度】：{'; '.join(low_dims)}\n"
         f"【评估反馈】：{feedback}\n\n"
         "绝对禁止：\n"
         "- 禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字\n"
         "- 禁止提及任何关键词在上下文中缺失\n\n"
-        "【检索上下文】：\n"
-        f"{context_text[:2500]}\n\n"
-        f"【关键词（仅供参考）】：{', '.join(keywords[:10]) if keywords else '无'}\n\n"
-        "请重新生成洞察，以 JSON 格式返回：\n"
-        "{\"narrative\": \"200字以内核心叙事\", "
-        "\"causal_chains\": [\"A→B→C\"], "
-        "\"signals\": [{\"signal\": \"...\", \"confidence\": 0.8}], "
-        "\"outlook\": \"100字以内前瞻\"}"
+        f"【检索上下文】：\n{ctx}\n\n"
+        f"【关键词（仅供参考）】：{kw_str}\n\n"
+        "请重新生成，以 JSON 格式返回：\n"
+        "{\"causal_chains\": [\"A→B→C\"], \"signals\": [{\"signal\": \"...\", \"confidence\": 0.8}], \"outlook\": \"100字以内前瞻\"}"
     )
-    system_prompt = "你是科技情报分析师。只返回 JSON。只分析检索上下文中实际存在的内容。绝对不要解释数据缺失。"
-    result = None
-    for _attempt in range(3):
-        result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
-        if result:
+    sys_struct = "你是科技情报分析师。只返回 JSON。"
+    struct_result = None
+    for _a in range(3):
+        struct_result = llm.complete(prompt_struct, system_prompt=sys_struct, temperature=0.3, max_tokens=600)
+        if struct_result:
             break
-    parsed = _try_parse_json(result) if result else None
-    if isinstance(parsed, dict) and "narrative" in parsed:
-        return _normalize_deep_insights(parsed)
-    return deep_insights  # 修正失败，保留原版
+    struct_parsed = _try_parse_json(struct_result) if struct_result else None
+    causal_chains = struct_parsed.get("causal_chains", deep_insights.get("causal_chains", [])) if isinstance(struct_parsed, dict) else deep_insights.get("causal_chains", [])
+    signals = struct_parsed.get("signals", deep_insights.get("signals", [])) if isinstance(struct_parsed, dict) else deep_insights.get("signals", [])
+    outlook = struct_parsed.get("outlook", deep_insights.get("outlook", "")) if isinstance(struct_parsed, dict) else deep_insights.get("outlook", "")
+
+    # 2) core_trends 修正
+    prompt_core = (
+        "之前的洞察质量不达标，请根据反馈重新分析整体市场与技术格局的核心态势。\n"
+        f"【薄弱维度】：{'; '.join(low_dims)}\n"
+        f"【反馈】：{feedback}\n"
+        "聚焦：哪些技术/产品/公司正在主导方向？竞争格局如何？200字以内。\n"
+        f"{forbid}\n\n检索上下文：\n{ctx}"
+    )
+    core_trends = ""
+    for _a in range(3):
+        core_trends = llm.complete(prompt_core, system_prompt=sys_prompt, temperature=0.4, max_tokens=400)
+        if core_trends and len(core_trends.strip()) > 10 and re.search(r'[\u4e00-\u9fff]', core_trends):
+            break
+    core_trends = core_trends.strip() if core_trends and re.search(r'[\u4e00-\u9fff]', core_trends) else deep_insights.get("core_trends", "")
+
+    # 3) rss_insights 修正
+    prompt_rss = (
+        "之前的洞察质量不达标，请根据反馈重新分析技术趋势与开源动态。\n"
+        f"【薄弱维度】：{'; '.join(low_dims)}\n"
+        f"【反馈】：{feedback}\n"
+        "聚焦：有哪些新的技术路线、开源项目、论文或架构创新？200字以内。\n"
+        f"{forbid}\n\n检索上下文：\n{ctx}"
+    )
+    rss_insights = ""
+    for _a in range(3):
+        rss_insights = llm.complete(prompt_rss, system_prompt=sys_prompt, temperature=0.4, max_tokens=400)
+        if rss_insights and len(rss_insights.strip()) > 10 and re.search(r'[\u4e00-\u9fff]', rss_insights):
+            break
+    rss_insights = rss_insights.strip() if rss_insights and re.search(r'[\u4e00-\u9fff]', rss_insights) else deep_insights.get("rss_insights", "")
+
+    # 4) narrative 修正
+    prompt_narr = (
+        "之前的洞察质量不达标，请根据反馈重新串联核心事件的故事线。\n"
+        f"【薄弱维度】：{'; '.join(low_dims)}\n"
+        f"【反馈】：{feedback}\n"
+        "聚焦：事件之间的因果/时间关系是什么？200字以内。\n"
+        f"{forbid}\n\n检索上下文：\n{ctx}"
+    )
+    narrative = ""
+    for _a in range(3):
+        narrative = llm.complete(prompt_narr, system_prompt=sys_prompt, temperature=0.4, max_tokens=400)
+        if narrative and len(narrative.strip()) > 10 and re.search(r'[\u4e00-\u9fff]', narrative):
+            break
+    narrative = narrative.strip() if narrative and re.search(r'[\u4e00-\u9fff]', narrative) else deep_insights.get("narrative", "")
+
+    return _normalize_deep_insights({
+        "narrative": narrative,
+        "core_trends": core_trends,
+        "rss_insights": rss_insights,
+        "causal_chains": causal_chains,
+        "signals": signals,
+        "outlook": outlook,
+    })
 
 
 def _evaluate_and_correct(llm, deep_insights, topic_clusters,
