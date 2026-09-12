@@ -1266,12 +1266,23 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     # 1. Load documents
     documents = load_documents(hot_snapshot, rss_history, trending_data, max_docs)
 
-    # 2. Extract keywords
+    # 2. Split texts by source & extract keywords per source
     doc_texts = [d.text for d in documents] if documents else []
-    keywords = extract_keywords_llm(llm, doc_texts, top_n=top_kw)
+    rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
+    hot_texts = [t for t in doc_texts if t.startswith('[热榜/')]
+    rss_keywords = extract_keywords_llm(llm, rss_texts, top_n=top_kw)
+    hot_keywords = extract_keywords_llm(llm, hot_texts, top_n=top_kw)
+    # global = merge (rss first, then hot, deduplicated)
+    _seen = set()
+    keywords = []
+    for w in rss_keywords + hot_keywords:
+        if w not in _seen:
+            _seen.add(w)
+            keywords.append(w)
+    keywords = keywords[:top_kw]
+    print(f"[insight_engine] keywords: rss={len(rss_keywords)}, hot={len(hot_keywords)}, global={len(keywords)}", file=sys.stderr)
 
     # 3. 统一 embedding：一次计算，index + 聚类共享
-    rss_texts = [t for t in doc_texts if t.startswith('[RSS/')]
     documents_rss = [d for d in documents if d.text.startswith('[RSS/')]
     rss_embeddings, rss_embed_model = _get_embeddings(rss_texts) if rss_texts else (None, None)
 
@@ -1317,13 +1328,13 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         llm, topic_clusters,
         child_vecs=child_vecs, child_nodes=child_nodes,
         parent_docs=parent_docs,
-        keywords=keywords
+        keywords=rss_keywords
     )
 
     # 7b. RAGAS 评估 + 自我修正
     deep_insights, eval_result = _evaluate_and_correct(
         llm, deep_insights, topic_clusters,
-        child_vecs, child_nodes, parent_docs, keywords, config
+        child_vecs, child_nodes, parent_docs, rss_keywords, config
     )
 
     # 8. Stats
@@ -1351,6 +1362,8 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         "generated_at": now_bj.isoformat(),
         "keywords": {
             "global": [(w, round(top_kw - i, 2)) for i, w in enumerate(keywords[:50])],
+            "rss": [(w, round(top_kw - i, 2)) for i, w in enumerate(rss_keywords[:50])],
+            "hot": [(w, round(top_kw - i, 2)) for i, w in enumerate(hot_keywords[:50])],
             "by_cat": {},
         },
         "rising": rising,
