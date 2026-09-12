@@ -338,15 +338,19 @@ def _build_hierarchical_index(documents, pre_embeddings=None):
     每个文档被切分为 ~150 token 的子块（小索引），
     子块 metadata 中保存父文档引用，检索时可扩展上下文（大窗口）。
 
+    注意：不用 VectorStoreIndex 检索（因为无法用 SiliconFlow API 做 query embed），
+    改用 _retrieve_with_context 中的手动余弦相似度。
+
     Args:
         documents: 文档列表
         pre_embeddings: 预计算的文档级 embedding（用于回退）
 
     Returns:
-        (index, parent_docs_map) 或 (None, {})
+        (index, parent_docs_map, child_vecs) 或 (None, {}, None)
+        child_vecs: 子块 embedding 向量列表（用于手动检索）
     """
     if not LLAMA_INDEX_AVAILABLE or not documents:
-        return None, {}
+        return None, {}, None
 
     try:
         from llama_index.core.schema import TextNode
@@ -375,7 +379,7 @@ def _build_hierarchical_index(documents, pre_embeddings=None):
 
         if not child_nodes:
             print("[insight_engine] hierarchical index: no child chunks generated", file=sys.stderr)
-            return None, {}
+            return None, {}, None
 
         print(f"[insight_engine] hierarchical index: {len(documents)} docs → "
               f"{len(child_nodes)} child chunks", file=sys.stderr)
@@ -393,12 +397,12 @@ def _build_hierarchical_index(documents, pre_embeddings=None):
                     pidx = int(node.metadata["parent_doc_id"].split("_")[1])
                     child_vecs.append(pre_embeddings[pidx])
 
-        # 3) 赋值 embedding 并建索引
+        # 3) 赋值 embedding 并建索引（仅用于存储，不用于检索）
         if child_vecs and len(child_vecs) == len(child_nodes):
             for node, vec in zip(child_nodes, child_vecs):
                 node.embedding = vec
 
-        # 确保 Settings.embed_model 可用（VectorStoreIndex 需要默认模型）
+        # 设置 Settings.embed_model（VectorStoreIndex 构造时需要，但检索用手动余弦）
         if FASTEMBED_AVAILABLE:
             for mn in (_EMBED_MODEL, _EMBED_MODEL_FALLBACK):
                 try:
@@ -410,47 +414,51 @@ def _build_hierarchical_index(documents, pre_embeddings=None):
         index = VectorStoreIndex(child_nodes, show_progress=False)
         print(f"[insight_engine] hierarchical index built: {len(child_nodes)} child nodes, "
               f"{len(parent_docs)} parents", file=sys.stderr)
-        return index, parent_docs
+        return index, parent_docs, child_vecs
 
     except Exception as exc:
         print(f"[insight_engine] _build_hierarchical_index error: {type(exc).__name__}: {exc}",
               file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
-        return None, {}
+        return None, {}, None
 
 
-def _retrieve_with_context(index, parent_docs, query, top_k=10, context_radius=3):
+def _retrieve_with_context(parent_docs, child_vecs, child_nodes, query_vec,
+                           top_k=10, context_radius=3):
     """从层级索引检索并扩展上下文窗口（大窗口）。
 
-    当某个子块被命中时，通过 parent→children 映射拉取完整语境：
-    包含命中块前后各 context_radius 个句子组。
+    使用手动余弦相似度（而非 VectorStoreIndex.as_retriever），
+    因为索引向量来自 SiliconFlow API，无法用本地模型做 query embed。
 
     Args:
-        index: 层级 VectorStoreIndex
         parent_docs: {parent_id: original_text} 映射
-        query: 查询文本
+        child_vecs: 子块 embedding 向量列表（与 child_nodes 一一对应）
+        child_nodes: 子块 TextNode 列表（含 metadata）
+        query_vec: 查询文本的 embedding 向量
         top_k: 返回子块数
         context_radius: 命中块前后各取 N 个邻居
 
     Returns:
         扩展后的上下文文本，或 None
     """
-    if not index or not parent_docs:
+    if not parent_docs or not child_vecs or not query_vec:
         return None
 
     try:
-        retriever = index.as_retriever(similarity_top_k=top_k)
-        results = retriever.retrieve(query)
-        if not results:
-            return None
+        # 手动余弦相似度检索
+        scores = []
+        for i, child_vec in enumerate(child_vecs):
+            sim = _cosine_similarity(query_vec, child_vec)
+            scores.append((i, sim))
+        scores.sort(key=lambda x: -x[1])
 
         # 按父文档分组，扩展上下文窗口
         context_parts = []
         seen_parents = set()
 
-        for node_with_score in results:
-            node = node_with_score.node
+        for idx, sim in scores[:top_k]:
+            node = child_nodes[idx]
             parent_id = node.metadata.get("parent_doc_id")
             child_idx = node.metadata.get("child_idx", 0)
 
@@ -958,9 +966,10 @@ def _is_recent(item, hours=24):
 
 
 # ────────────────── Task 5: generate_deep_insights ───────────
-def generate_deep_insights(llm, topic_clusters, index=None, parent_docs=None, keywords=None):
+def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=None,
+                           parent_docs=None, keywords=None):
     """Use LLM to generate narrative insights from analysis context.
-    小索引大窗口：通过层级索引检索相关子块，扩展上下文后提供给 LLM。
+    小索引大窗口：通过手动余弦相似度检索相关子块，扩展上下文后提供给 LLM。
     """
     # 为每个话题检索相关上下文（大窗口）
     topic_contexts = []
@@ -971,12 +980,15 @@ def generate_deep_insights(llm, topic_clusters, index=None, parent_docs=None, ke
 
             # 优先从层级索引检索（小索引 → 大窗口扩展）
             ctx = None
-            if index and parent_docs and items:
-                # 用簇内最典型的条目作为查询
-                query = items[0] if items else label
-                ctx = _retrieve_with_context(index, parent_docs, query,
-                                             top_k=_RETRIEVE_TOP_K,
-                                             context_radius=_CONTEXT_RADIUS)
+            if child_vecs and child_nodes and parent_docs and items:
+                # 用簇内最典型的条目作为查询，通过 SiliconFlow API 获取 query embedding
+                query_text = items[0] if items else label
+                query_vecs, _ = _get_embeddings([query_text])
+                if query_vecs:
+                    ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
+                                                 query_vecs[0],
+                                                 top_k=_RETRIEVE_TOP_K,
+                                                 context_radius=_CONTEXT_RADIUS)
 
             # 回退：直接使用簇内条目
             if not ctx and items:
@@ -1129,7 +1141,7 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
 
 
 def _evaluate_and_correct(llm, deep_insights, topic_clusters,
-                          index, parent_docs, keywords, config):
+                          child_vecs, child_nodes, parent_docs, keywords, config):
     """评估-修正闭环：RAGAS 评分 → 不达标则自我修正。"""
     if not config.get("insight_self_correct", False):
         return deep_insights, {}
@@ -1141,12 +1153,15 @@ def _evaluate_and_correct(llm, deep_insights, topic_clusters,
     context_parts = []
     for cluster in topic_clusters[:5]:
         items = cluster.get("items", [])
-        if index and parent_docs and items:
-            ctx = _retrieve_with_context(index, parent_docs, items[0],
-                                         top_k=_RETRIEVE_TOP_K,
-                                         context_radius=_CONTEXT_RADIUS)
-            if ctx:
-                context_parts.append(ctx)
+        if child_vecs and child_nodes and parent_docs and items:
+            query_vecs, _ = _get_embeddings([items[0]])
+            if query_vecs:
+                ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
+                                             query_vecs[0],
+                                             top_k=_RETRIEVE_TOP_K,
+                                             context_radius=_CONTEXT_RADIUS)
+                if ctx:
+                    context_parts.append(ctx)
         elif items:
             context_parts.append("\n".join(items[:3]))
     context_text = "\n---\n".join(context_parts) if context_parts else ""
@@ -1259,11 +1274,16 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     # 4. Build hierarchical index — 小索引大窗口（精细切片 + 上下文扩展）
     index = None
     parent_docs = {}
+    child_vecs = None
+    child_nodes = None
     if rss_texts and LLAMA_INDEX_AVAILABLE:
-        index, parent_docs = _build_hierarchical_index(
+        index, parent_docs, child_vecs = _build_hierarchical_index(
             documents_rss,  # 用 Document 对象列表
             pre_embeddings=rss_embeddings
         )
+        if index:
+            # 从 index 中提取 child_nodes（用于手动余弦检索）
+            child_nodes = index.docstore.docs.values() if hasattr(index, 'docstore') else None
     elif not LLAMA_INDEX_AVAILABLE:
         print("[insight_engine] index skipped: llama-index not available", file=sys.stderr)
 
@@ -1291,14 +1311,15 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     # 7. Deep insights — 使用层级索引检索 + 大窗口上下文
     deep_insights = generate_deep_insights(
         llm, topic_clusters,
-        index=index, parent_docs=parent_docs,
+        child_vecs=child_vecs, child_nodes=child_nodes,
+        parent_docs=parent_docs,
         keywords=keywords
     )
 
     # 7b. RAGAS 评估 + 自我修正
     deep_insights, eval_result = _evaluate_and_correct(
         llm, deep_insights, topic_clusters,
-        index, parent_docs, keywords, config
+        child_vecs, child_nodes, parent_docs, keywords, config
     )
 
     # 8. Stats

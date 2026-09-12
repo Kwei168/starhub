@@ -571,15 +571,16 @@ class TestHierarchicalIndex(unittest.TestCase):
 
     def test_build_hierarchical_index_no_docs(self):
         """Empty documents returns None."""
-        index, parent_docs = _build_hierarchical_index([])
+        index, parent_docs, child_vecs = _build_hierarchical_index([])
         self.assertIsNone(index)
         self.assertEqual(parent_docs, {})
+        self.assertIsNone(child_vecs)
 
     def test_build_hierarchical_index_with_docs(self):
         """Build index from documents (may skip if llama-index unavailable)."""
         docs = [_SimpleDoc("这是测试文档一。包含多个句子。用于验证层级索引。"),
                 _SimpleDoc("这是测试文档二。另一个主题的内容。测试检索功能。")]
-        index, parent_docs = _build_hierarchical_index(docs)
+        index, parent_docs, child_vecs = _build_hierarchical_index(docs)
         # 在无 llama-index 环境中应返回 None
         if not __import__('insight_engine').LLAMA_INDEX_AVAILABLE:
             self.assertIsNone(index)
@@ -589,13 +590,13 @@ class TestHierarchicalIndex(unittest.TestCase):
             self.assertEqual(len(parent_docs), 2)
 
     def test_retrieve_with_context_no_index(self):
-        """Retrieve returns None when index is None."""
-        result = _retrieve_with_context(None, {}, "test query")
+        """Retrieve returns None when parent_docs is empty."""
+        result = _retrieve_with_context({}, None, None, None)
         self.assertIsNone(result)
 
     def test_retrieve_with_context_empty_map(self):
         """Retrieve returns None when parent_docs is empty."""
-        result = _retrieve_with_context("fake_index", {}, "test query")
+        result = _retrieve_with_context({}, [0.1, 0.2], ["a", "b"], [0.3, 0.4])
         self.assertIsNone(result)
 
 
@@ -647,7 +648,7 @@ class TestRAGASEvaluation(unittest.TestCase):
         insights = {"narrative": "test", "causal_chains": [], "signals": [], "outlook": ""}
         config = {"insight_self_correct": False}
         result, eval_result = _evaluate_and_correct(
-            llm, insights, [], None, {}, [], config)
+            llm, insights, [], None, None, {}, [], config)
         self.assertEqual(result["narrative"], "test")
         self.assertEqual(eval_result, {})
 
@@ -660,7 +661,7 @@ class TestRAGASEvaluation(unittest.TestCase):
         config = {"insight_self_correct": True, "insight_quality_threshold": 0.3,
                   "insight_max_corrections": 0}
         result, eval_result = _evaluate_and_correct(
-            llm, insights, clusters, None, {}, ["ai"], config)
+            llm, insights, clusters, None, None, {}, ["ai"], config)
         self.assertIsInstance(result, dict)
         self.assertIn("narrative", result)
         # eval_result should have scores (even if no index)
