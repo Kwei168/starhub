@@ -2043,7 +2043,7 @@ body.reading .reader2 { transform:translate(-50%,-50%) scale(1); opacity:1; poin
   .chips { overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px; scroll-snap-type:x proximity; -webkit-mask-image:linear-gradient(to right,#000 90%,transparent 100%); mask-image:linear-gradient(to right,#000 90%,transparent 100%); }
   .chip { white-space:nowrap; flex:none; scroll-snap-align:start; }
   .search-row { flex-wrap:wrap; }
-  .sort-select { flex:0 0 auto; min-width:0; }
+  .sort-select { flex:0 0 auto; min-width:0; padding:6px 22px 6px 8px; font-size:12px; background-position:right 6px center; }
   .wall { columns:1 minmax(0,1fr); }
   .reader2 { width:96vw; max-height:92vh; border-radius:12px; }
   .r2-top { padding:8px 10px; gap:8px; }
