@@ -981,8 +981,8 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
             # 优先从层级索引检索（小索引 → 大窗口扩展）
             ctx = None
             if child_vecs and child_nodes and parent_docs and items:
-                # 用簇内最典型的条目作为查询，通过 SiliconFlow API 获取 query embedding
-                query_text = items[0] if items else label
+                # 用簇内前 3 个条目拼接作为查询，扩大召回覆盖面
+                query_text = " ".join(items[:3]) if len(items) >= 3 else (items[0] if items else label)
                 query_vecs, _ = _get_embeddings([query_text])
                 if query_vecs:
                     ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
@@ -1005,16 +1005,19 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
         "- causal_chains: 因果链条数组，如 [\"A→B→C\"]\n"
         "- signals: 异动信号数组，每项含 signal 和 confidence\n"
         "- outlook: 一段100字以内的前瞻研判\n\n"
-        "重要约束：\n"
-        "- 所有判断必须基于检索上下文中的具体信息，禁止编造上下文中未出现的事实\n"
-        "- 直接输出分析结论，不要解释数据不足或不匹配的原因\n"
-        "- 不要提及哪些关键词在上下文中缺失，只分析上下文中实际存在的内容\n"
-        "- 如果某个维度信息不足，可以缩小分析范围，但仍需基于已有上下文\n\n"
-        f"关键词：{', '.join(keywords[:15]) if keywords else '无'}\n"
+        "绝对禁止：\n"
+        "- 禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字\n"
+        "- 禁止提及任何关键词在上下文中缺失\n"
+        "- 禁止编造上下文中未出现的事实\n"
+        "正确做法：\n"
+        "- 只分析检索上下文中实际存在的内容，直接输出结论\n"
+        "- 如果关键词与上下文不匹配，忽略不匹配的关键词，只分析匹配的部分\n"
+        "- 上下文信息有限时，就有限的信息做深入分析，不要抱怨数据不足\n\n"
+        f"关键词（仅供参考，以检索上下文为准）：{', '.join(keywords[:15]) if keywords else '无'}\n"
         f"话题数：{len(topic_clusters)}\n\n"
         f"检索上下文（小索引大窗口检索结果）：\n{combined_context[:4000]}"
     )
-    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。所有判断必须基于检索上下文，禁止编造。"
+    system_prompt = "你是科技情报分析师。只返回 JSON。只分析检索上下文中实际存在的内容。绝对不要解释数据缺失。"
     result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
     parsed = _try_parse_json(result)
     if isinstance(parsed, dict) and "narrative" in parsed:
@@ -1128,16 +1131,19 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
         "之前的洞察报告质量评估不达标，请根据反馈重新生成。\n\n"
         f"【薄弱维度】：{'; '.join(low_dims)}\n"
         f"【评估反馈】：{feedback}\n\n"
+        "绝对禁止：\n"
+        "- 禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字\n"
+        "- 禁止提及任何关键词在上下文中缺失\n\n"
         "【检索上下文】：\n"
         f"{context_text[:2500]}\n\n"
-        f"【关键词】：{', '.join(keywords[:10]) if keywords else '无'}\n\n"
+        f"【关键词（仅供参考）】：{', '.join(keywords[:10]) if keywords else '无'}\n\n"
         "请重新生成洞察，以 JSON 格式返回：\n"
         "{\"narrative\": \"200字以内核心叙事\", "
         "\"causal_chains\": [\"A→B→C\"], "
         "\"signals\": [{\"signal\": \"...\", \"confidence\": 0.8}], "
         "\"outlook\": \"100字以内前瞻\"}"
     )
-    system_prompt = "你是科技情报分析师。只返回 JSON，不要其他文字。务必充分利用检索上下文，禁止编造。不要提及哪些关键词在上下文中缺失。"
+    system_prompt = "你是科技情报分析师。只返回 JSON。只分析检索上下文中实际存在的内容。绝对不要解释数据缺失。"
     result = llm.complete(prompt, system_prompt=system_prompt, temperature=0.3, max_tokens=800)
     parsed = _try_parse_json(result)
     if isinstance(parsed, dict) and "narrative" in parsed:
