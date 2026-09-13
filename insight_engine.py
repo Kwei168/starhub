@@ -6,6 +6,7 @@ semantic analysis.  Fully optional: works (with reduced functionality) even
 when llama-index / fastembed are not installed.
 """
 
+import hashlib
 import json
 import math
 import os
@@ -42,6 +43,37 @@ _SF_EMBED_URL = "https://api.siliconflow.cn/v1/embeddings"
 _SF_KEY = os.environ.get("SILICONFLOW_API_KEY", "")
 _SF_BATCH = 32  # 每批最多处理文本数
 _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
+
+# ── D1 嵌入缓存（spec: docs/superpowers/specs/2026-09-14-insight-optimization-spec.md）──
+# 文本 md5 → 向量，按模型名隔离；每次 _get_embeddings 前重读文件（MB 级、每场仅数次调用，
+# 可接受），写盘原子替换。仅缓存 SiliconFlow 结果（本地 fastembed 免费快速，不缓存）。
+_EMBED_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emb_cache.json")
+_EMBED_CACHE_MAX = 5000  # 向量条数上限，超限按插入序淘汰最旧
+
+
+def _embed_cache_load(model_name):
+    """读取嵌入缓存。返回 (cache_model, vectors_dict)；文件缺失/损坏/模型不匹配 → 空缓存。"""
+    try:
+        with open(_EMBED_CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or data.get("model") != model_name:
+            return model_name, {}
+        vectors = data.get("vectors", {})
+        return model_name, vectors if isinstance(vectors, dict) else {}
+    except Exception:
+        return model_name, {}
+
+
+def _embed_cache_save(model_name, vectors):
+    """原子写缓存（tmp + replace，尽力而为：写失败不影响主流程）。"""
+    try:
+        tmp = _EMBED_CACHE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"model": model_name, "vectors": vectors}, f)
+        os.replace(tmp, _EMBED_CACHE_FILE)
+    except Exception as exc:
+        print(f"[insight_engine] embed cache save failed: {exc}", file=sys.stderr)
+
 
 # ────────────────── Hierarchical chunking (小索引大窗口) ──────────────────
 _CHUNK_TOKEN_TARGET = 150    # 子块目标 token 数（约100词/句）
@@ -561,11 +593,23 @@ def _get_embeddings(texts):
         return None, None
 
     # 1) 硅基流动 BAAI/bge-m3 API（8192 token，1024 维，中英双语）
+    #    D1 缓存：命中的文本零 API，只对未命中部分保持批量调用；返回顺序=输入顺序
     if _SF_KEY:
+        _cache_model, _cache_vectors = _embed_cache_load(_SF_EMBED_MODEL)
+        _vecs_out = [None] * len(texts)
+        _missing_pos, _missing = [], []
+        for _i, _t in enumerate(texts):
+            _k = hashlib.md5(_t.encode("utf-8")).hexdigest()
+            _v = _cache_vectors.get(_k)
+            if _v is not None:
+                _vecs_out[_i] = _v
+            else:
+                _missing_pos.append(_i)
+                _missing.append(_t)
         all_vecs = []
         ok = True
-        for i in range(0, len(texts), _SF_BATCH):
-            batch = texts[i:i + _SF_BATCH]
+        for i in range(0, len(_missing), _SF_BATCH):
+            batch = _missing[i:i + _SF_BATCH]
             payload = json.dumps({
                 "model": _SF_EMBED_MODEL,
                 "input": batch,
@@ -587,10 +631,17 @@ def _get_embeddings(texts):
                 print(f"[insight_engine] SiliconFlow embed batch error: {exc}", file=sys.stderr)
                 ok = False
                 break
-        if ok and len(all_vecs) == len(texts):
-            _last_embed_model = f"siliconflow/{_SF_EMBED_MODEL}"
-            print(f"[insight_engine] embeddings via SiliconFlow {_SF_EMBED_MODEL} ({len(texts)} texts)", file=sys.stderr)
-            return all_vecs, _last_embed_model
+        if ok and len(all_vecs) == len(_missing):
+            for _pos, _i in enumerate(_missing_pos):
+                _vecs_out[_i] = all_vecs[_pos]
+                _cache_vectors[hashlib.md5(_missing[_pos].encode("utf-8")).hexdigest()] = all_vecs[_pos]
+            while len(_cache_vectors) > _EMBED_CACHE_MAX:
+                _cache_vectors.pop(next(iter(_cache_vectors)))
+            _embed_cache_save(_SF_EMBED_MODEL, _cache_vectors)
+            if all(v is not None for v in _vecs_out):
+                _last_embed_model = f"siliconflow/{_SF_EMBED_MODEL}"
+                print(f"[insight_engine] embeddings via SiliconFlow {_SF_EMBED_MODEL} ({len(texts)} texts, {len(_missing)} new)", file=sys.stderr)
+                return _vecs_out, _last_embed_model
         if not ok:
             print(f"[insight_engine] SiliconFlow API failed, falling back to local fastembed", file=sys.stderr)
 
@@ -1092,26 +1143,32 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     # 提取 top 关键词用于混合检索 query，确保召回与关键词匹配的文档
     top_kw_for_retrieval = keywords[:5] if keywords else []
     if topic_clusters:
+        # D2 查询批化：先收集全部簇查询文本，一次批量嵌入（消灭 ≤5 次单条调用的 N+1）
+        _q_labels, _q_items, _q_texts = [], [], []
         for cluster in topic_clusters[:5]:  # 最多 5 个话题
             label = cluster.get("label", "")
             items = cluster.get("items", [])
-
-            # 优先从层级索引检索（小索引 → 大窗口扩展）
+            if not (child_vecs and child_nodes and parent_docs and (items or top_kw_for_retrieval)):
+                continue
+            # 混合查询：簇标签 + 簇内条目 + RSS 关键词
+            # 纯用簇内条目会导致检索偏移（如全部偏向某单一话题），
+            # 混入关键词可确保召回与关键词匹配的文档
+            query_parts = [label] if label else []
+            query_parts.extend(items[:2])
+            query_parts.extend(top_kw_for_retrieval)
+            _q_texts.append(" ".join(query_parts))
+            _q_labels.append(label)
+            _q_items.append(items)
+        _q_vec_list = []
+        if _q_texts:
+            _q_vec_list, _ = _get_embeddings(_q_texts)
+        for label, items, qvec in zip(_q_labels, _q_items, _q_vec_list or [None] * len(_q_texts)):
             ctx = None
-            if child_vecs and child_nodes and parent_docs and (items or top_kw_for_retrieval):
-                # 混合查询：簇标签 + 簇内条目 + RSS 关键词
-                # 纯用簇内条目会导致检索偏移（如全部偏向某单一话题），
-                # 混入关键词可确保召回与关键词匹配的文档
-                query_parts = [label] if label else []
-                query_parts.extend(items[:2])
-                query_parts.extend(top_kw_for_retrieval)
-                query_text = " ".join(query_parts)
-                query_vecs, _ = _get_embeddings([query_text])
-                if query_vecs:
-                    ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
-                                                 query_vecs[0],
-                                                 top_k=_RETRIEVE_TOP_K,
-                                                 context_radius=_CONTEXT_RADIUS)
+            if qvec:
+                ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
+                                             qvec,
+                                             top_k=_RETRIEVE_TOP_K,
+                                             context_radius=_CONTEXT_RADIUS)
 
             # 回退：直接使用簇内条目
             if not ctx and items:
@@ -1412,22 +1469,29 @@ def _evaluate_and_correct(llm, deep_insights, topic_clusters,
     # 构建评估用上下文（同样使用混合查询确保召回关键词相关文档）
     context_parts = []
     top_kw_eval = keywords[:5] if keywords else []
+    # D2 查询批化：先收集查询文本，一次批量嵌入（消灭 ≤5 次单条调用）
+    _q_meta, _q_texts = [], []
     for cluster in topic_clusters[:5]:
         items = cluster.get("items", [])
         label = cluster.get("label", "")
-        if child_vecs and child_nodes and parent_docs and (items or top_kw_eval):
-            query_parts = [label] if label else []
-            query_parts.extend(items[:1])
-            query_parts.extend(top_kw_eval)
-            query_text = " ".join(query_parts)
-            query_vecs, _ = _get_embeddings([query_text])
-            if query_vecs:
-                ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
-                                             query_vecs[0],
-                                             top_k=_RETRIEVE_TOP_K,
-                                             context_radius=_CONTEXT_RADIUS)
-                if ctx:
-                    context_parts.append(ctx)
+        if not (child_vecs and child_nodes and parent_docs and (items or top_kw_eval)):
+            continue
+        query_parts = [label] if label else []
+        query_parts.extend(items[:1])
+        query_parts.extend(top_kw_eval)
+        _q_texts.append(" ".join(query_parts))
+        _q_meta.append((label, items))
+    _q_vec_list = []
+    if _q_texts:
+        _q_vec_list, _ = _get_embeddings(_q_texts)
+    for (label, items), qvec in zip(_q_meta, _q_vec_list or [None] * len(_q_texts)):
+        if qvec:
+            ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
+                                         qvec,
+                                         top_k=_RETRIEVE_TOP_K,
+                                         context_radius=_CONTEXT_RADIUS)
+            if ctx:
+                context_parts.append(ctx)
         elif items:
             context_parts.append("\n".join(items[:3]))
     context_text = "\n---\n".join(context_parts) if context_parts else ""
@@ -1514,7 +1578,7 @@ def _build_topics_with_meta(topic_clusters, rss_history):
 
 # ────────────────── Task 5: run_analysis (main entry) ────────
 def run_analysis(hot_snapshot, rss_history, trending_data, config,
-                 prev_keywords=None, hot_history=None):
+                 prev_keywords=None, hot_history=None, bad_date_sources=None):
     """Main entry point. Returns analysis dict or None if disabled."""
     if not config.get("insight_engine_enabled", True):
         return None
@@ -1634,6 +1698,7 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
         "stats": stats,
         "quality": eval_result if eval_result else {},
         "hot_trends": {},  # filled by integration layer in build_rss_aggregator.py
+        "bad_date_sources": sorted(bad_date_sources) if bad_date_sources else [],
         "cross_platform": cross_platform if cross_platform else [],
         "cross_category": [],  # filled by integration layer in build_rss_aggregator.py
         # New fields
