@@ -293,7 +293,7 @@ def _accumulate_history(sources_with_items):
             _rss_history[link] = {
                 "link": link,
                 "source": src["name"], "source_key": src["key"],
-                "cat": src["cat"], "color": src["color"],
+                "cat": src.get("cat", "other"), "color": src.get("color", "#6366f1"),
                 "title": it.get("title", ""), "title_zh": it.get("title_zh", ""),
                 "summary": it.get("summary", ""), "summary_zh": it.get("summary_zh", ""),
                 "full_content": it.get("full_content", ""),
@@ -353,7 +353,7 @@ def _accumulate_history(sources_with_items):
         _bb = 'bestblogs.dev' in (_src_url_map.get(src["key"]) or '')
         src_map[src["key"]] = {
             "key": src["key"], "name": src["name"],
-            "cat": src["cat"], "color": src["color"],
+            "cat": src.get("cat", "other"), "color": src.get("color", "#6366f1"),
             "tier": src.get("tier", 3), "items": [],
         }
         if _bb:
@@ -459,7 +459,7 @@ def _save_api_snapshot(sources_with_items, meta=None):
             items.append(item)
         snapshot_sources.append({
             "key": src["key"], "name": src["name"],
-            "cat": src["cat"], "color": src["color"],
+            "cat": src.get("cat", "other"), "color": src.get("color", "#6366f1"),
             "tier": src.get("tier", 3), "items": items,
         })
     snapshot = {
@@ -903,7 +903,12 @@ def _zen_call_model(text, model, timeout, auth):
             with _TRANS_LOCK:
                 _ZEN_TIMEOUT_STREAK[model] = 0
                 _ZEN_MODEL_OFFENSES[model] = 0
-        return out, False, False
+            return out, False, False
+        # HTTP 200 但空 content：与超时同账本，连续 2 次自封（防恒空模型零成本占用全池轮询）
+        with _TRANS_LOCK:
+            _ZEN_TIMEOUT_STREAK[model] = _ZEN_TIMEOUT_STREAK.get(model, 0) + 1
+            streak = _ZEN_TIMEOUT_STREAK[model]
+        return None, streak >= 2, False
     except urllib.error.HTTPError as e:
         # 任何 HTTP 错误都自封该模型（401/403=key 不被接受，429=限流，5xx=故障），避免逐文本反复撞墙
         return None, True, e.code in (401, 403)
@@ -947,12 +952,15 @@ def _zen_translate(text, timeout=25):
             return out
         if to_block:
             with _TRANS_LOCK:
-                offenses = _ZEN_MODEL_OFFENSES.get(model, 0)
-                block_s = min(300 * (2 ** offenses), 3600)
-                _ZEN_MODEL_BLOCK[model] = time.time() + block_s
-                _ZEN_TIMEOUT_STREAK[model] = 0
-                _ZEN_MODEL_OFFENSES[model] = offenses + 1
-            print("[翻译] Zen %s 限流/故障，自封 %d 分钟并切换下一模型" % (model, block_s // 60), file=sys.stderr)
+                if _ZEN_MODEL_BLOCK.get(model, 0) > time.time():
+                    pass  # 已在罚期内：同波并发失败只记一次违规（P1 竞态修复）
+                else:
+                    offenses = _ZEN_MODEL_OFFENSES.get(model, 0)
+                    block_s = min(300 * (2 ** offenses), 3600)
+                    _ZEN_MODEL_BLOCK[model] = time.time() + block_s
+                    _ZEN_TIMEOUT_STREAK[model] = 0
+                    _ZEN_MODEL_OFFENSES[model] = offenses + 1
+                    print("[翻译] Zen %s 限流/故障，自封 %d 分钟并切换下一模型" % (model, block_s // 60), file=sys.stderr)
     return None
 
 
