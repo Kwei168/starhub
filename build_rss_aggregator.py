@@ -6,6 +6,7 @@
 功能：信源分类筛选、全局搜索、标题/摘要翻译、响应式三端适配、主题切换。
 """
 import collections
+import concurrent.futures
 import html as html_mod
 import datetime
 import hashlib
@@ -14,6 +15,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 import build_logger
 import urllib.parse
@@ -138,11 +140,26 @@ def _load_caches():
             print("[缓存] 加载 RSS 缓存失败: %s" % e, file=sys.stderr)
 
 
+def _atomic_write_json(path, obj, **dump_kw):
+    """原子写 JSON：先写 .tmp 再 os.replace，进程中断不会留下半截文件"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, **dump_kw)
+    os.replace(tmp, path)
+
+
+def _atomic_write_text(path, text):
+    """原子写文本文件：先写 .tmp 再 os.replace"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
 def _save_caches():
     """保存翻译和 RSS 缓存（RSS 缓存写盘前裁剪过期条目，防止文件无限膨胀）"""
     try:
-        with open(TRANS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(_trans_cache, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(TRANS_CACHE_FILE, _trans_cache, ensure_ascii=False, indent=2)
         print("[缓存] 保存翻译缓存: %d 条" % len(_trans_cache))
     except Exception as e:
         print("[缓存] 保存翻译缓存失败: %s" % e, file=sys.stderr)
@@ -152,8 +169,7 @@ def _save_caches():
               if time.time() - v.get("fetched_at", 0) < RSS_CACHE_TTL}
     dropped = len(_rss_cache) - len(pruned)
     try:
-        with open(RSS_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(pruned, f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_write_json(RSS_CACHE_FILE, pruned, ensure_ascii=False, separators=(",", ":"))
         print("[缓存] 保存 RSS 缓存: %d 个源%s" % (len(pruned), "（裁剪过期 %d 个）" % dropped if dropped else ""))
     except Exception as e:
         print("[缓存] 保存 RSS 缓存失败: %s" % e, file=sys.stderr)
@@ -211,8 +227,7 @@ def _load_history():
 def _save_history():
     """保存 72 小时文章历史"""
     try:
-        with open(RSS_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(_rss_history, f, ensure_ascii=False)
+        _atomic_write_json(RSS_HISTORY_FILE, _rss_history, ensure_ascii=False)
         print("[历史] 保存文章历史: %d 篇" % len(_rss_history))
     except Exception as e:
         print("[历史] 保存失败: %s" % e, file=sys.stderr)
@@ -436,8 +451,7 @@ def _save_api_snapshot(sources_with_items, meta=None):
     if meta:
         snapshot["meta"] = meta
     try:
-        with open("rss_api_snapshot.json", "w", encoding="utf-8") as f:
-            json.dump(snapshot, f, ensure_ascii=False)
+        _atomic_write_json("rss_api_snapshot.json", snapshot, ensure_ascii=False)
         total_items = sum(len(s["items"]) for s in snapshot_sources)
         print("[快照] 保存 API 快照: %d 源, %d 篇" % (len(snapshot_sources), total_items))
     except Exception as e:
@@ -936,7 +950,7 @@ def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None):
         return r.read(5000000).decode("utf-8", errors="replace")
 
 
-def _fetch_rss(source):
+def _fetch_rss(source, timeout=None):
     name = source["name"]
     url = source["url"]
     key = source["key"]
@@ -950,7 +964,7 @@ def _fetch_rss(source):
             return cached.get("items", [])
 
     try:
-        raw = _fetch_url(url, timeout=FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
+        raw = _fetch_url(url, timeout=timeout or FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
     except Exception as ex:
         print("[RSS聚合] %s 拉取失败: %s" % (name, ex), file=sys.stderr)
         return []
@@ -5154,8 +5168,7 @@ def _load_prev_analysis():
 def _save_analysis_snapshot(analysis_data):
     """保存分析快照到 analysis_snapshot.json。"""
     try:
-        with open(ANALYSIS_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-            json.dump(analysis_data, f, ensure_ascii=False, indent=1)
+        _atomic_write_json(ANALYSIS_SNAPSHOT_FILE, analysis_data, ensure_ascii=False, indent=1)
         print("[分析] 保存分析快照 → %s" % ANALYSIS_SNAPSHOT_FILE)
     except Exception as e:
         print("[分析] 保存失败: %s" % e, file=sys.stderr)
@@ -5164,8 +5177,7 @@ def _save_analysis_snapshot(analysis_data):
 def _save_source_quality(quality_data):
     """保存信源质量评分到 source_quality.json。"""
     try:
-        with open(SOURCE_QUALITY_FILE, "w", encoding="utf-8") as f:
-            json.dump(quality_data, f, ensure_ascii=False, indent=1)
+        _atomic_write_json(SOURCE_QUALITY_FILE, quality_data, ensure_ascii=False, indent=1)
         print("[分析] 保存信源评分 → %s (%d 个源)" % (SOURCE_QUALITY_FILE, len(quality_data)))
     except Exception as e:
         print("[分析] 信源评分保存失败: %s" % e, file=sys.stderr)
@@ -5205,8 +5217,7 @@ def _accumulate_hot_history(hot_snapshot, now_bj):
         # 清理超过 7 天的旧数据
         history[plat] = [e for e in history[plat] if e["ts"] >= cutoff_7d]
     try:
-        with open(HOT_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_write_json(HOT_HISTORY_FILE, history, ensure_ascii=False, separators=(",", ":"))
         total = sum(len(v) for v in history.values())
         print("[热榜] 轨迹累积: %d 平台, %d 条记录" % (len(history), total))
     except Exception as e:
@@ -5414,8 +5425,7 @@ def _accumulate_rss_trend_history(analysis_data, now_bj):
     cutoff_14d = (now_bj - datetime.timedelta(days=14)).isoformat()
     history["snapshots"] = [s for s in history["snapshots"] if s["ts"] >= cutoff_14d]
     try:
-        with open(RSS_TREND_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, separators=(",", ":"))
+        _atomic_write_json(RSS_TREND_HISTORY_FILE, history, ensure_ascii=False, separators=(",", ":"))
         print("[分析] RSS 趋势历史累积: %d 个快照" % len(history["snapshots"]))
     except Exception as e:
         print("[分析] RSS 趋势历史写入失败: %s" % e, file=sys.stderr)
@@ -5742,8 +5752,15 @@ def main(mode="full"):
             })
         print("[增量模式] 历史索引: %d 源有历史数据" % len(_hist_by_key))
 
-    # 串行抓取 RSS（短超时，失败快速跳过）
-    for src in RSS_SOURCES:
+    # 并行抓取 RSS（短超时，失败快速跳过）
+    # - 全局并发 12；同一域名并发 2（对单域行为接近串行，避免打爆 xgo.ing 等桥接服务）
+    # - 域级熔断：同域名连续 3 次失败则本轮跳过该域剩余源，下轮增量再试
+    # - 流水线：某源抓完即在主线程串行翻译，与其余源的网络 IO 重叠；翻译不进线程池（翻译服务有限流）
+    _results = [None] * len(RSS_SOURCES)  # 按 RSS_SOURCES 顺序回填，保持产物顺序稳定
+
+    # 主线程分流：增量跳过判断（含 T1/缓存命中回填）不涉及网络 IO，直接定结果
+    _to_fetch = []
+    for _i, src in enumerate(RSS_SOURCES):
         key = src["key"]
         tier = src.get("tier", 3)
 
@@ -5755,12 +5772,12 @@ def main(mode="full"):
             if tier == 1:
                 skipped_count += 1
                 # 从历史索引填充 T1 源（增量构建不抓取 T1，但不能传空 items 导致历史数据流失）
-                sources_with_items.append({
+                _results[_i] = {
                     "key": key, "name": src["name"], "cat": src["cat"],
                     "color": src["color"], "url": src.get("url", ""),
                     "items": _hist_by_key.get(key, []),
                     "tier": tier,
-                })
+                }
                 _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_t1", "items": len(_hist_by_key.get(key, []))})
                 continue
             prev = last_fetch.get(key)
@@ -5771,46 +5788,90 @@ def main(mode="full"):
                     if (now - prev_time).total_seconds() < threshold:
                         skipped_count += 1
                         # 从历史索引填充跳过的 T2/T3 源（避免空 items 导致历史数据流失）
-                        sources_with_items.append({
+                        _results[_i] = {
                             "key": key, "name": src["name"], "cat": src["cat"],
                             "color": src["color"], "url": src.get("url", ""),
                             "items": _hist_by_key.get(key, []),
                             "tier": tier,
-                        })
+                        }
                         _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_cached", "items": len(_hist_by_key.get(key, []))})
                         continue
                 except (ValueError, TypeError):
                     pass
+        _to_fetch.append((_i, src))
 
-        items = _fetch_rss(src)
-        n = len(items)
-        _fetch_ok = n > 0
-        if _fetch_ok:
-            ok_count += 1
-            last_fetch[key] = now.isoformat()
-        else:
-            failed_count += 1
+    # 域名信号量与熔断状态全部在提交任务前于主线程建好，规避运行期并发初始化竞争
+    def _src_domain(url):
+        m = re.match(r"https?://([^/]+)", url or "")
+        return m.group(1) if m else ""
 
-        # 翻译标题和摘要
-        for it in items:
-            it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
-            it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
-            it["time_str"] = _fmt_rel_time(it.get("pub_date"))
-            # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
-            pd = it.get("pub_date")
-            if pd and hasattr(pd, 'isoformat'):
-                it["pub_date"] = pd.isoformat()
+    _domain_sems = {}
+    for src in RSS_SOURCES:
+        _d = _src_domain(src.get("url", ""))
+        if _d and _d not in _domain_sems:
+            _domain_sems[_d] = threading.Semaphore(2)
+    _domain_lock = threading.Lock()
+    _domain_failstreak = collections.defaultdict(int)  # 域名 → 连续失败数
+    _domain_broken = set()  # 本轮已熔断域名
 
-        src_data = {
-            "key": src["key"], "name": src["name"], "cat": src["cat"],
-            "color": src["color"], "url": src.get("url", ""),
-            "items": items,
-            "tier": tier,
-        }
-        sources_with_items.append(src_data)
-        total_items += n
-        print("[RSS聚合] %s: %d 条" % (src["name"], n))
-        _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "ok" if _fetch_ok else "empty", "items": n})
+    def _worker(i, src):
+        """只做网络 IO 与域名熔断判定；计数、翻译、last_fetch 由主线程汇总"""
+        dom = _src_domain(src.get("url", ""))
+        with _domain_lock:
+            if dom and dom in _domain_broken:
+                return i, src, None, "domain_broken"
+        try:
+            if dom:
+                with _domain_sems[dom]:
+                    items = _fetch_rss(src, timeout=src.get("timeout"))
+            else:
+                items = _fetch_rss(src, timeout=src.get("timeout"))
+        except Exception:
+            items = []
+        ok = len(items) > 0
+        with _domain_lock:
+            if ok:
+                _domain_failstreak[dom] = 0
+            elif dom:
+                _domain_failstreak[dom] += 1
+                if _domain_failstreak[dom] >= 3:
+                    _domain_broken.add(dom)
+        return i, src, items, ("ok" if ok else "empty")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as _pool:
+        _futs = [_pool.submit(_worker, i, src) for i, src in _to_fetch]
+        for _fut in concurrent.futures.as_completed(_futs):
+            i, src, items, status = _fut.result()
+            key = src["key"]
+            tier = src.get("tier", 3)
+            n = len(items) if items else 0
+            if status == "ok":
+                ok_count += 1
+                last_fetch[key] = now.isoformat()
+                # 翻译标题和摘要（主线程串行；完成顺序不影响最终产物顺序）
+                for it in items:
+                    it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
+                    it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
+                    it["time_str"] = _fmt_rel_time(it.get("pub_date"))
+                    # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
+                    pd = it.get("pub_date")
+                    if pd and hasattr(pd, 'isoformat'):
+                        it["pub_date"] = pd.isoformat()
+            else:
+                failed_count += 1
+                if items is None:
+                    items = []
+            _results[i] = {
+                "key": key, "name": src["name"], "cat": src["cat"],
+                "color": src["color"], "url": src.get("url", ""),
+                "items": items,
+                "tier": tier,
+            }
+            total_items += n
+            print("[RSS聚合] %s: %d 条%s" % (src["name"], n, "（域熔断跳过）" if status == "domain_broken" else ""))
+            _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": status, "items": n})
+
+    sources_with_items.extend(r for r in _results if r is not None)
 
     if mode == "incremental":
         print("[增量模式] 跳过 %d 个源，抓取 %d 个源" % (skipped_count, len(RSS_SOURCES) - skipped_count))
@@ -5834,8 +5895,7 @@ def main(mode="full"):
             try:
                 hot_snapshot = fetch_newsnow_snapshot()
                 try:
-                    with open(HOT_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-                        json.dump(hot_snapshot, f, ensure_ascii=False, separators=(",", ":"))
+                    _atomic_write_json(HOT_SNAPSHOT_FILE, hot_snapshot, ensure_ascii=False, separators=(",", ":"))
                 except Exception as e:
                     print("[热榜] 快照写入失败: %s" % e, file=sys.stderr)
             except Exception as e:
@@ -5857,14 +5917,12 @@ def main(mode="full"):
     if not ANALYSIS_ENABLED:
         hot_snapshot = fetch_newsnow_snapshot()
         try:
-            with open(HOT_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-                json.dump(hot_snapshot, f, ensure_ascii=False, separators=(",", ":"))
+            _atomic_write_json(HOT_SNAPSHOT_FILE, hot_snapshot, ensure_ascii=False, separators=(",", ":"))
         except Exception as e:
             print("[热榜] 快照写入失败: %s" % e, file=sys.stderr)
 
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms, analysis_data=analysis_data)
-    with open(OUT, "w", encoding="utf-8") as f:
-        f.write(html_doc)
+    _atomic_write_text(OUT, html_doc)
 
     # 数据分块：rss-data-0.js（首屏）/ rss-data-1.js（全量，后台合并）
     try:
@@ -5872,11 +5930,10 @@ def main(mode="full"):
     except Exception as e:
         print("[数据分块] 写出失败: %s" % e, file=sys.stderr)
 
-    # 生成 rss_sources.json（供 /api/rss 使用）
-    sources_json = json.dumps([{"key": s["key"], "name": s["name"], "cat": s["cat"],
-        "color": s["color"], "url": s["url"], "tier": s.get("tier", 3)} for s in RSS_SOURCES], ensure_ascii=False)
-    with open("rss_sources.json", "w", encoding="utf-8") as f:
-        f.write(sources_json)
+    # 生成 rss_sources.json（供 /api/rss 使用）；整体回写保留 timeout 等扩展字段
+    for s in RSS_SOURCES:
+        s.setdefault("tier", 3)
+    _atomic_write_json("rss_sources.json", RSS_SOURCES, ensure_ascii=False, separators=(",", ":"))
 
     print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
 
