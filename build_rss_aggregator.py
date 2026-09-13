@@ -116,8 +116,9 @@ _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, su
 _TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
 # GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
 _AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
-# Agnes 免费但限流：收到 429 后暂停直连 5 分钟，期间直接走后续端点，不浪费每次 0.4s 的撞墙
+# Agnes 免费但限流：收到 429 后按连续违规指数退避（5→10→20→40 分钟，封顶 1h），期间直接走后续端点
 _AGNES_BLOCK_UNTIL = 0.0
+_AGNES_OFFENSES = 0
 # OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，免费档需 OpenCode 客户端会话头。
 # 实测（2026-09-13）：ling 2.4s / big-pickle 5.6s / mimo 13.1s 可用；muse-spark 稳定 500、nemotron 两款 88s+，不入轮询。
 _ZEN_KEY = os.environ.get("ZEN_API_KEY", "") or os.environ.get("OPENCODE_KEY", "")
@@ -834,6 +835,7 @@ def _detect_lang(text):
 
 def _agnes_translate(text, timeout=20):
     """Agnes AI 翻译（OpenAI 兼容接口，agnes-2.5-flash）。失败返回 None。"""
+    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES
     payload = json.dumps({
         "model": "agnes-2.5-flash",
         "messages": [
@@ -857,12 +859,16 @@ def _agnes_translate(text, timeout=20):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+        out = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+        if out:
+            _AGNES_OFFENSES = 0
+        return out
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            global _AGNES_BLOCK_UNTIL
-            _AGNES_BLOCK_UNTIL = time.time() + 300
-            print("[翻译] Agnes 429 限流，暂停直连 5 分钟", file=sys.stderr)
+            block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
+            _AGNES_BLOCK_UNTIL = time.time() + block_s
+            _AGNES_OFFENSES += 1
+            print("[翻译] Agnes 429 限流，暂停直连 %d 分钟" % (block_s // 60), file=sys.stderr)
         return None
     except Exception:
         return None
