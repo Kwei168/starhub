@@ -409,5 +409,7 @@
  "jihe520/MathModelAgent": "🤖📐专为数学建模设计的 Agent &amp; skills ,自动完成数学建模，生成一份完整的可以直接提交的论文。 An Agent Designed for Mathematical Modeling ,Automatically complete mathmodel and generate a complete paper ready for submission.",
  "Xu123-Bob/Baize": "白泽 —— 中国古代神话中通晓万物的瑞兽，如今化身为 Vibe Coding 助手。 一个开源的 AI Coding Agent CLI，支持多后端（DeepSeek / OpenAI 兼容 / Ollama 本地），具备工具调用、技能加载、子代理委派、上下文压缩、安全沙箱等完整能力。在终端即可与 AI 结对编程。",
  "tech-leads-club/agent-skills": "专业AI编码代理的安全、经过验证的技能注册表。绝对自信地扩展Antigravity、Claude Code、Cursor、Copilot等。",
- "duixcom/Duix-Avatar": "🚀 真正开源的人工智能头像（数字人类）工具包，用于离线视频生成和数字人类克隆。"
+ "duixcom/Duix-Avatar": "🚀 真正开源的人工智能头像（数字人类）工具包，用于离线视频生成和数字人类克隆。",
+ "SnailSploit/Claude-Red": "claude-red 是一个专为 Claude 技能系统设计的进攻性安全技能库。每项技能都是一个结构化的 SKILL.md 文件，为 Claude 提供针对特定攻击面的专家级方法——从 SQLi 到 shellcode，从 EDR 规避到漏洞利用开发。",
+ "max-sixty/worktrunk": "Worktrunk 是一个用于 Git 工作树管理的 CLI，专为并行 AI 代理工作流程而设计"
 }
