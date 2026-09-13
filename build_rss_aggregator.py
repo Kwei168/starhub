@@ -486,10 +486,12 @@ try:
     _BAD = []
     _COLOR_PALETTE = ["#6366f1", "#10a37f", "#4285f4", "#e61919", "#ff6600", "#7c3aed", "#0891b2", "#d97706", "#d32f2f", "#24292e"]
     for _s in RSS_SOURCES:
+        if not isinstance(_s, dict):
+            _BAD.append(str(_s)[:30] + "(非dict)")
+            continue
         if not _s.get("key") or not _s.get("name") or not _s.get("url"):
             _BAD.append(_s.get("key") or "(无key)")
-    _RSS_SOURCES_RAW_COUNT = len(RSS_SOURCES)
-    RSS_SOURCES = [s for s in RSS_SOURCES if s.get("key") and s.get("name") and s.get("url")]
+    RSS_SOURCES = [s for s in RSS_SOURCES if isinstance(s, dict) and s.get("key") and s.get("name") and s.get("url")]
     for _s in RSS_SOURCES:
         _s.setdefault("tier", 3)
         _s.setdefault("cat", "other")
