@@ -111,6 +111,7 @@ ANALYSIS_ENABLED = _load_analysis_enabled()
 RSS_HISTORY_FILE = "rss_history.json"
 RSS_HISTORY_HOURS = 72
 _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, summary, summary_zh, pub_date, time_str}}
+_LAST_UNRELIABLE_SRCS = set()  # D4：最近一场 bad_date 审计判定的不可信日期源（关键词降权消费）
 
 # ── 翻译统计 
 _TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
@@ -406,6 +407,9 @@ def _accumulate_history(sources_with_items):
         print("[bad_date] 不可信信源 %d 个: %s%s" % (
             len(_unreliable_srcs), ", ".join(names),
             " ..." if len(_unreliable_srcs) > 10 else ""))
+    # D4：暴露给趋势快照与关键词降权消费
+    global _LAST_UNRELIABLE_SRCS
+    _LAST_UNRELIABLE_SRCS = set(_unreliable_srcs)
 
     # 第二遍：标记 bad_date 并重组
     for item in _rss_history.values():
@@ -4160,6 +4164,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         h+='<span>'+_ico.signal+' \u4fe1\u6e90: '+d.stats.source_count+'</span>';
       }
       if(d.generated_at) h+='<span>'+_ico.clock+' '+(d.generated_at||'').slice(0,16).replace('T',' ')+'</span>';
+      /* D3 轻量场：重分析沿用旧值时诚实标注"深度分析沿用" */
+      if(d.stale) h+='<span style="color:var(--warn,#f59e0b)">\u26a0 \u6df1\u5ea6\u5206\u6790\u6cbf\u7528</span>';
       h+='</div>';
       h+='<div style="font-size:10.5px;color:var(--faint);padding:0 0 6px;">\u6570\u636e\u8303\u56f4: \u8fd1 72 \u5c0f\u65f6\u6eda\u52a8\u7a97\u53e3</div>';
     }
@@ -4733,8 +4739,15 @@ def _tfidf_keywords(texts, top_n=50, per_doc_top=10):
     return sorted(scores.items(), key=lambda x: -x[1])[:top_n]
 
 
-def _extract_keywords(rss_history, now_bj):
-    """从 72h 历史中提取关键词。返回 {global: [...], by_cat: {cat: [...]}}。"""
+def _extract_keywords(rss_history, now_bj, unreliable_srcs=None):
+    """从 72h 历史中提取关键词。返回 {global: [...], by_cat: {cat: [...]}}。
+
+    D4：bad_date 不可信源（unreliable_srcs）的条目按 0.3 权重精确降权——
+    以 10 倍放大实现整数化配比（正常基线 10 份、不可信 3 份），
+    tfidf 频次与文本份数线性映射，权重比逐字面成立。
+    """
+    _W_BASE, _W_RECENT, _UNRELIABLE_FACTOR = 10, 2, 3
+    unreliable = unreliable_srcs or set()
     cutoff_24h = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=24)
     # 近 24h 文章用于热点提取
     recent_texts = []
@@ -4755,9 +4768,17 @@ def _extract_keywords(rss_history, now_bj):
         text = (title + ' ' + summary).strip()
         if not text:
             continue
-        if pd >= cutoff_24h:
-            recent_texts.append(text)
-        cat_texts[item.get('cat', 'other')].append(text)
+        is_recent = pd >= cutoff_24h
+        # D4 权重以语料份额计（精确 0.3）：正常 recent 20+10=30 份 / 非recent 10 份；
+        # 不可信 recent 6+3=9 份（0.3×）/ 非recent 3 份（0.3×）
+        if item.get('source_key', '') in unreliable:
+            if is_recent:
+                recent_texts.extend([text] * 6)
+            cat_texts[item.get('cat', 'other')].extend([text] * (3 if is_recent else 1))
+        else:
+            if is_recent:
+                recent_texts.extend([text] * 20)
+            cat_texts[item.get('cat', 'other')].extend([text] * 10)
     # 全局关键词（近 24h 优先，但用全部 72h 数据）
     all_texts = recent_texts * 2 + [t for cat_ts in cat_texts.values() for t in cat_ts]  # 近 24h 权重 x2
     global_kw = _tfidf_keywords(all_texts, top_n=50)
@@ -5604,12 +5625,13 @@ def _accumulate_rss_trend_history(analysis_data, now_bj):
             "count": t.get("count", 0),
             "sources": len(t.get("sources", [])),
         })
-    # 追加新快照
+    # 追加新快照（D4：记录不可信日期源名单，供趋势/关键词降权消费）
     snapshot = {
         "ts": now_bj.isoformat(),
         "keywords": kw_rank,
         "topics": topics_summary,
         "by_cat": by_cat,
+        "bad_date_sources": sorted(_LAST_UNRELIABLE_SRCS),
     }
     history["snapshots"].append(snapshot)
     # 清理超过 14 天的旧快照
@@ -5783,14 +5805,43 @@ def _compute_cross_category_topics(kw_data):
     return cross[:20]
 
 
-def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=None):
-    """执行智能分析流水线。优先使用 insight_engine (LlamaIndex)，失败回退统计方法。"""
-    # ── 尝试 insight_engine (LlamaIndex) ──
+def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=None, mode="incremental"):
+    """执行智能分析流水线。
+
+    D3 轻/重分级：重分析（语义聚类/深度洞察/RAGAS）按 insight_heavy_interval_hours
+    （默认 6h；full 模式无条件重跑）间隔运行，轻量场复用上次重字段并标注 stale=true；
+    统计字段（关键词/趋势/质量/轨迹）每场照算。insight_engine 不可用时回退统计方法。
+    """
+    prev_analysis = _load_prev_analysis()
+    ie_cfg = {}
+    engine_on = False
     try:
         import insight_engine
-        ie_config = insight_engine.load_config()
-        if ie_config.get("insight_engine_enabled", True):
-            prev_analysis = _load_prev_analysis()
+        ie_cfg = insight_engine.load_config()
+        engine_on = bool(ie_cfg.get("insight_engine_enabled", True))
+    except Exception:
+        engine_on = False
+    heavy_due = True
+    if engine_on:
+        try:
+            _interval = float(ie_cfg.get("insight_heavy_interval_hours", 6))
+        except (TypeError, ValueError):
+            _interval = 6.0
+        _prev_gen = (prev_analysis or {}).get("generated_at", "")
+        if not _prev_gen or mode == "full" or _interval <= 0:
+            heavy_due = True
+        else:
+            try:
+                _pg = datetime.datetime.fromisoformat(_prev_gen)
+                if _pg.tzinfo:
+                    _pg = _pg.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
+                heavy_due = (now_bj.replace(tzinfo=None) - _pg).total_seconds() >= _interval * 3600
+            except ValueError:
+                heavy_due = True
+    if engine_on and heavy_due:
+        # ── 重分析：insight_engine (LlamaIndex) ──
+        try:
+            import insight_engine
             prev_keywords = []
             if prev_analysis and prev_analysis.get("keywords", {}).get("global"):
                 prev_keywords = [w for w, _ in prev_analysis["keywords"]["global"][:50]]
@@ -5805,9 +5856,10 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
                 hot_snapshot=hot_snapshot,
                 rss_history=_rss_history,
                 trending_data=trending_data,
-                config=ie_config,
+                config=ie_cfg,
                 prev_keywords=prev_keywords,
                 hot_history=hot_history,
+                bad_date_sources=set(_LAST_UNRELIABLE_SRCS),
             )
             if ie_result is not None:
                 # 合并原有需要保留的字段（热榜趋势、RSS轨迹等仍由旧方法计算）
@@ -5821,24 +5873,25 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
                 _save_source_quality(quality)
                 ie_result["quality"] = {sk: v["score"] for sk, v in quality.items()}
                 _save_analysis_snapshot(ie_result)
-                print("[分析] insight_engine (LlamaIndex) 分析完成")
+                print("[分析] insight_engine (LlamaIndex) 重分析完成")
                 return ie_result
-    except ImportError:
-        print("[分析] insight_engine 未安装，回退统计方法")
-    except Exception as e:
-        print("[分析] insight_engine 失败: %s，回退统计方法" % e, file=sys.stderr)
-        import traceback; traceback.print_exc()
-    # ── 回退：原有统计方法 ──
+        except ImportError:
+            print("[分析] insight_engine 未安装，回退统计方法")
+        except Exception as e:
+            print("[分析] insight_engine 失败: %s，回退统计方法" % e, file=sys.stderr)
+            import traceback; traceback.print_exc()
+    elif engine_on:
+        print("[分析] 轻量模式：距上次重分析不足间隔，语义主题/深度洞察沿用旧值")
+    # ── 统计路径（insight_engine 关闭/失败/轻量场共用）──
     t0 = time.time()
     print("[分析] 开始智能分析...")
     # 1. 信源质量评分
     quality = _score_sources(sources_with_items, _rss_history)
     _save_source_quality(quality)
     # 2. 关键词提取
-    kw_data = _extract_keywords(_rss_history, now_bj)
+    kw_data = _extract_keywords(_rss_history, now_bj, _LAST_UNRELIABLE_SRCS)
     global_kw = kw_data["global"]
     # 3. 趋势检测（与上次构建对比）
-    prev_analysis = _load_prev_analysis()
     prev_kw = prev_analysis.get("keywords", {}).get("global", []) if prev_analysis else []
     rising = []
     if prev_kw:
@@ -5880,6 +5933,14 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
         'hot_trends': hot_trends,
         'cross_platform': cross_platform,
     }
+    # D3 轻量场：语义主题/深度洞察/RAGAS 等重字段沿用上次重分析，诚实标注 stale；
+    # generated_at 保持上次重分析时间（前端据此展示真实新鲜度）
+    if not heavy_due and prev_analysis:
+        for _k, _v in prev_analysis.items():
+            if _k not in analysis:
+                analysis[_k] = _v
+        analysis["stale"] = True
+        analysis["generated_at"] = prev_analysis.get("generated_at") or analysis["generated_at"]
     _save_analysis_snapshot(analysis)
     # 9. RSS 内容趋势历史累积（在 analysis_snapshot 保存后，以便读取当前关键词数据）
     trend_history = _accumulate_rss_trend_history(analysis, now_bj)
@@ -6112,7 +6173,8 @@ def main(mode="full"):
             # 累积热榜历史轨迹（始终执行，确保 hot_history.json 被创建）
             hot_history = _accumulate_hot_history(hot_snapshot or [], now_bj)
             analysis_data = _run_analysis(sources_with_items, now_bj,
-                                          hot_snapshot=hot_snapshot, hot_history=hot_history)
+                                          hot_snapshot=hot_snapshot, hot_history=hot_history,
+                                          mode=mode)
         except Exception as e:
             print("[分析] 智能分析失败，跳过: %s" % e, file=sys.stderr)
             import traceback; traceback.print_exc()
