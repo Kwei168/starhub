@@ -2859,11 +2859,15 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     if(window.requestIdleCallback)window.requestIdleCallback(_loadRest,{timeout:5000});
     else setTimeout(_loadRest,1200);
   }
-  if(window.__CHUNKS&&window.__CHUNKS[0]){_bootWith(window.__CHUNKS[0].sources);}
-  else{loadChunk(0).then(function(){_bootWith(window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources);}).catch(function(e){
-    _bootFinish();
-    var w=document.getElementById('wall');
-    if(w)w.innerHTML='<div class="empty-hint">\u5185\u5bb9\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u5237\u65b0\u91cd\u8bd5</div>';
+  /* chunk0 同款守卫（复审 P2）：onload 不等于数据完好，截断/损坏时显式报错而非静默空站 */
+  function _bootFail(msg){_bootFinish();console.warn('[starhub]',msg);var w=document.getElementById('wall');if(w)w.innerHTML='<div class="empty-hint">'+msg+'</div>';}
+  if(window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources&&window.__CHUNKS[0].sources.length){_bootWith(window.__CHUNKS[0].sources);}
+  else if(window.__CHUNKS&&window.__CHUNKS[0]){_bootFail('首屏数据异常，请刷新重试');}
+  else{loadChunk(0).then(function(){
+        var _cs=window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources;
+        if(!_cs||!_cs.length){_bootFail('首屏数据异常，请刷新重试');return;}
+        _bootWith(_cs);}).catch(function(e){
+    _bootFail('内容加载失败，请检查网络后刷新重试');
   });}
   /* 无限滚动：接近底部自动加载更多（带节流锁） */
   var _scrollLock=false;
