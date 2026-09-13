@@ -388,6 +388,25 @@ export default async function handler(req, res) {
     return res.status(200).json({ total: metaTotal });
   }
 
+  // 单源实时抓取端点：前端点开某个信源时调用，返回该源最新内容
+  if (req.query && req.query.source) {
+    try {
+      const sources = loadSources();
+      const src = sources.find(s => s.key === req.query.source);
+      if (!src) {
+        return res.status(404).json({ error: 'source not found' });
+      }
+      const result = await fetchOne(src);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-RSS-Single', src.key);
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error('[rss] Single source error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
   const now = Date.now();
   const isRefresh = req.query && req.query.refresh === '1';
   
