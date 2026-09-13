@@ -127,6 +127,7 @@ _ZEN_MODELS = ([m.strip() for m in os.environ["ZEN_TRANSLATE_MODEL"].split(",") 
 _ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
 _ZEN_MODEL_BLOCK = {}  # model → 429/5xx 自封截止时间戳（5 分钟）
 _ZEN_MODEL_IDX = 0     # 轮询游标（翻译线程池共享，_TRANS_LOCK 保护）
+_ZEN_AUTH_STICKY = None  # 本场构建实测可用的鉴权 token；key 撞 401/403 后粘性回退 "public"
 # 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
 _TRANS_FAIL_STREAK = 0
 _TRANS_BLOCK_UNTIL = 0.0
@@ -862,8 +863,8 @@ def _agnes_translate(text, timeout=20):
         return None
 
 
-def _zen_call_model(text, model, timeout):
-    """单模型调用。返回 (译文|None, 是否自封该模型)。"""
+def _zen_call_model(text, model, timeout, auth):
+    """单模型单鉴权调用。返回 (译文|None, 是否自封该模型, 是否鉴权类失败 401/403)。"""
     payload = json.dumps({
         "model": model,
         "messages": [
@@ -875,7 +876,7 @@ def _zen_call_model(text, model, timeout):
     }).encode("utf-8")
     req = urllib.request.Request(_ZEN_URL, data=payload, headers={
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + (_ZEN_KEY or "public"),
+        "Authorization": "Bearer " + auth,
         # 免费档要求 OpenCode 客户端身份，session/request 为每次调用生成的唯一 ID
         "User-Agent": "opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13",
         "x-opencode-client": "cli",
@@ -886,17 +887,24 @@ def _zen_call_model(text, model, timeout):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None, False
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None, False, False
     except urllib.error.HTTPError as e:
-        return None, e.code in (429, 500, 502, 503)
+        # 任何 HTTP 错误都自封该模型（401/403=key 不被接受，429=限流，5xx=故障），避免逐文本反复撞墙
+        return None, True, e.code in (401, 403)
     except Exception:
-        return None, False
+        return None, False, False
 
 
 def _zen_translate(text, timeout=40):
-    """OpenCode Zen 免费模型轮询翻译：游标挑一个未自封的模型，429/5xx 自封该模型 5 分钟
-    并在同一文本上切换下一个模型。全部处于自封期则返回 None。"""
-    global _ZEN_MODEL_IDX
+    """OpenCode Zen 免费模型轮询翻译：游标挑一个未自封的模型，HTTP 错误自封该模型 5 分钟
+    并切换下一个；个人 key 撞 401/403 时当场回退 Bearer public 并粘性记住。全部自封返回 None。"""
+    global _ZEN_MODEL_IDX, _ZEN_AUTH_STICKY
+    with _TRANS_LOCK:
+        auth = _ZEN_AUTH_STICKY
+    fallback_auth = None
+    if not auth:
+        auth = _ZEN_KEY or "public"
+        fallback_auth = "public" if auth != "public" else None
     for _attempt in range(len(_ZEN_MODELS)):
         model = None
         with _TRANS_LOCK:
@@ -908,7 +916,13 @@ def _zen_translate(text, timeout=40):
                     break
         if model is None:
             return None
-        out, to_block = _zen_call_model(text, model, timeout)
+        out, to_block, auth_fail = _zen_call_model(text, model, timeout, auth)
+        if auth_fail and fallback_auth and not out:
+            out, to_block, auth_fail = _zen_call_model(text, model, timeout, fallback_auth)
+            if out:
+                with _TRANS_LOCK:
+                    _ZEN_AUTH_STICKY = fallback_auth
+                print("[翻译] Zen key 被拒，粘性回退 Bearer public", file=sys.stderr)
         if out:
             return out
         if to_block:
@@ -919,7 +933,7 @@ def _zen_translate(text, timeout=40):
 
 
 def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
-    """翻译降级链：Agnes AI（首选，无 IP 封锁）→ Google → MyMemory → Google dict-chrome（带缓存）。"""
+    """翻译降级链：Agnes → Google gtx → Zen 免费模型轮询 → MyMemory → dict-chrome（带缓存+熔断）。"""
     if not text:
         return ""
     # 先清理 HTML 标签
