@@ -1,0 +1,20 @@
+schema_version: 1
+module_path: data_and_build_scripts
+title: StarHub & RSS 聚合器构建脚本集
+scope:
+    - build_rss_aggregator.py
+    - build_ai_daily.py
+    - merge_sources.py
+    - fetch_and_build.py
+    - dev_render.py
+    - _check_fc_format.py
+    - _fix_regex.py
+    - check_html.py
+    - check_wiki_sync.py
+    - extract_bestblogs_sources.py
+    - rss_sources_merged.py
+source_files: []
+depends_on: []
+related_to:
+    - path: api
+    - path: static_data

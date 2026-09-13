@@ -1,0 +1,17 @@
+schema_version: 1
+module_path: static_data
+title: 静态数据与前端资源目录
+scope:
+    - known_categories.json
+    - descriptions_zh.json
+    - bestblogs_analysis.json
+    - bestblogs_sources.json
+    - t1_sources.json
+    - t2_sources.json
+    - trending_snapshot.json
+    - vendor_qrcode.min.js
+source_files: []
+depends_on: []
+related_to:
+    - path: data_and_build_scripts
+    - path: insight_engine
