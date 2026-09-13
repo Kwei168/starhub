@@ -5838,10 +5838,17 @@ def main(mode="full"):
                     _domain_broken.add(dom)
         return i, src, items, ("ok" if ok else "empty")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as _pool:
-        _futs = [_pool.submit(_worker, i, src) for i, src in _to_fetch]
+    _pool = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+    try:
+        _futs = {_pool.submit(_worker, i, src): (i, src) for i, src in _to_fetch}
         for _fut in concurrent.futures.as_completed(_futs):
-            i, src, items, status = _fut.result()
+            i, src = _futs[_fut]
+            try:
+                _, src, items, status = _fut.result()
+            except Exception as _ex:
+                # 单个 worker 意外异常不拖垮整场构建：该源按失败处理，其余继续
+                print("[RSS聚合] %s worker 异常: %s" % (src["name"], _ex), file=sys.stderr)
+                items, status = [], "empty"
             key = src["key"]
             tier = src.get("tier", 3)
             n = len(items) if items else 0
@@ -5870,6 +5877,11 @@ def main(mode="full"):
             total_items += n
             print("[RSS聚合] %s: %d 条%s" % (src["name"], n, "（域熔断跳过）" if status == "domain_broken" else ""))
             _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": status, "items": n})
+    except BaseException:
+        # 中断（Ctrl+C/任务取消）时丢弃排队任务立即退出，避免 shutdown(wait=True) 等完上千个待抓源
+        _pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    _pool.shutdown(wait=True)
 
     sources_with_items.extend(r for r in _results if r is not None)
 
