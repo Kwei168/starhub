@@ -116,9 +116,11 @@ _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, su
 _TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
 # GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
 _AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
-# Agnes 免费但限流：收到 429 后按连续违规指数退避（5→10→20→40 分钟，封顶 1h），期间直接走后续端点
+# Agnes 免费但限流：HTTP 错误与连续空响应都按连续违规指数退避（5→10→20→40 分钟，封顶 1h），
+# 期间直接走后续端点，不浪费每次 0.4s 的撞墙（对齐 Zen Z1 账本语义）
 _AGNES_BLOCK_UNTIL = 0.0
 _AGNES_OFFENSES = 0
+_AGNES_EMPTY_STREAK = 0
 # OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，免费档需 OpenCode 客户端会话头。
 # 实测（2026-09-13）：ling 2.4s / big-pickle 5.6s / mimo 13.1s 可用；muse-spark 稳定 500、nemotron 两款 88s+，不入轮询。
 _ZEN_KEY = os.environ.get("ZEN_API_KEY", "") or os.environ.get("OPENCODE_KEY", "")
@@ -847,7 +849,7 @@ def _detect_lang(text):
 
 def _agnes_translate(text, timeout=20):
     """Agnes AI 翻译（OpenAI 兼容接口，agnes-2.5-flash）。失败返回 None。"""
-    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES
+    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES, _AGNES_EMPTY_STREAK
     payload = json.dumps({
         "model": "agnes-2.5-flash",
         "messages": [
@@ -872,20 +874,31 @@ def _agnes_translate(text, timeout=20):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
         out = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
-        if out:
-            _AGNES_OFFENSES = 0
+        with _TRANS_LOCK:
+            if out:
+                _AGNES_OFFENSES = 0
+                _AGNES_EMPTY_STREAK = 0
+            else:
+                # 200 但空 content（模型对特定输入的拒绝/截断）：连续 3 次视为端点异常入罚期
+                _AGNES_EMPTY_STREAK += 1
+                empty_hit = _AGNES_EMPTY_STREAK >= 3
+                if empty_hit and _AGNES_BLOCK_UNTIL <= time.time():
+                    block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
+                    _AGNES_BLOCK_UNTIL = time.time() + block_s
+                    _AGNES_OFFENSES += 1
+                    _AGNES_EMPTY_STREAK = 0
+                    print("[翻译] Agnes 连续 %d 次空响应，暂停直连 %d 分钟" % (3, block_s // 60), file=sys.stderr)
         return out
     except urllib.error.HTTPError as e:
-        if e.code in (429, 401, 403):
-            # P1 同款修复：锁内幂等——同波并发失败只记一次违规，罚期不被并发覆盖翻倍；
-            # 401/403（key 失效/上游拒绝）与 429 同账本，避免每条文本白撞一次鉴权
-            with _TRANS_LOCK:
-                if _AGNES_BLOCK_UNTIL > time.time():
-                    return None
-                block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
-                _AGNES_BLOCK_UNTIL = time.time() + block_s
-                _AGNES_OFFENSES += 1
-                print("[翻译] Agnes HTTP %d，暂停直连 %d 分钟" % (e.code, block_s // 60), file=sys.stderr)
+        # 对齐 Zen Z1 语义：任何 HTTP 错误都入账本（429 限流 / 401/403 key 问题 / 5xx 上游故障），
+        # 锁内幂等——同波并发失败只记一次违规，罚期不被并发覆盖翻倍
+        with _TRANS_LOCK:
+            if _AGNES_BLOCK_UNTIL > time.time():
+                return None
+            block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
+            _AGNES_BLOCK_UNTIL = time.time() + block_s
+            _AGNES_OFFENSES += 1
+            print("[翻译] Agnes HTTP %d，暂停直连 %d 分钟" % (e.code, block_s // 60), file=sys.stderr)
         return None
     except Exception:
         return None
@@ -938,8 +951,9 @@ def _zen_call_model(text, model, timeout, auth):
 
 
 def _zen_translate(text, timeout=25):
-    """OpenCode Zen 免费模型轮询翻译：游标挑一个未自封的模型，HTTP 错误自封该模型 5 分钟
-    并切换下一个；个人 key 撞 401/403 时当场回退 Bearer public 并粘性记住。全部自封返回 None。"""
+    """OpenCode Zen 免费模型轮询翻译：游标挑一个未自封的模型，HTTP 错误/连续超时自封该模型
+    （指数退避 5→10→20→40 分钟封顶 1h，成功清零）并切换下一个；个人 key 撞 401/403 时
+    当场回退 Bearer public 并粘性记住。全部自封返回 None。"""
     global _ZEN_MODEL_IDX, _ZEN_AUTH_STICKY
     with _TRANS_LOCK:
         auth = _ZEN_AUTH_STICKY

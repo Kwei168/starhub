@@ -10,3 +10,10 @@ __pycache__/
 rss_cache.json
 # 原子写的临时文件（进程中断可能残留）
 *.tmp
+
+# 对抗性审查/TDD 的临时测试与提取脚本（本地运行产物，不入库）
+_rev*
+_adv*
+_agnes_batch_test.py
+_check_js_temp.js
+_fix_quotes.py
