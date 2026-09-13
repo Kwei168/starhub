@@ -482,11 +482,21 @@ try:
     with open(_SOURCES_FILE, "r", encoding="utf-8") as _f:
         RSS_SOURCES = json.load(_f)
     # 补全缺失 tier/color（兼容旧格式；前端与聚合代码直接读 color，缺失会 KeyError）
+    # 丢弃缺 key/name/url 的坏条目：单条坏配置不应炸整场构建（对抗性审查 P3）
+    _BAD = []
     _COLOR_PALETTE = ["#6366f1", "#10a37f", "#4285f4", "#e61919", "#ff6600", "#7c3aed", "#0891b2", "#d97706", "#d32f2f", "#24292e"]
     for _s in RSS_SOURCES:
+        if not _s.get("key") or not _s.get("name") or not _s.get("url"):
+            _BAD.append(_s.get("key") or "(无key)")
+    _RSS_SOURCES_RAW_COUNT = len(RSS_SOURCES)
+    RSS_SOURCES = [s for s in RSS_SOURCES if s.get("key") and s.get("name") and s.get("url")]
+    for _s in RSS_SOURCES:
         _s.setdefault("tier", 3)
+        _s.setdefault("cat", "other")
         if not _s.get("color"):
             _s["color"] = _COLOR_PALETTE[int(hashlib.md5(_s.get("key", "").encode("utf-8")).hexdigest(), 16) % len(_COLOR_PALETTE)]
+    if _BAD:
+        print("[RSS] 丢弃 %d 个缺 key/name/url 的坏配置: %s" % (len(_BAD), _BAD[:5]), file=sys.stderr)
     print("[RSS] 从 rss_sources.json 加载 %d 个源" % len(RSS_SOURCES))
 except (FileNotFoundError, json.JSONDecodeError) as _e:
     print("[RSS] rss_sources.json 不可用 (%s)，RSS 聚合将跳过" % _e, file=sys.stderr)
@@ -864,11 +874,16 @@ def _agnes_translate(text, timeout=20):
             _AGNES_OFFENSES = 0
         return out
     except urllib.error.HTTPError as e:
-        if e.code == 429:
-            block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
-            _AGNES_BLOCK_UNTIL = time.time() + block_s
-            _AGNES_OFFENSES += 1
-            print("[翻译] Agnes 429 限流，暂停直连 %d 分钟" % (block_s // 60), file=sys.stderr)
+        if e.code in (429, 401, 403):
+            # P1 同款修复：锁内幂等——同波并发失败只记一次违规，罚期不被并发覆盖翻倍；
+            # 401/403（key 失效/上游拒绝）与 429 同账本，避免每条文本白撞一次鉴权
+            with _TRANS_LOCK:
+                if _AGNES_BLOCK_UNTIL > time.time():
+                    return None
+                block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
+                _AGNES_BLOCK_UNTIL = time.time() + block_s
+                _AGNES_OFFENSES += 1
+                print("[翻译] Agnes HTTP %d，暂停直连 %d 分钟" % (e.code, block_s // 60), file=sys.stderr)
         return None
     except Exception:
         return None
