@@ -478,9 +478,12 @@ _SOURCES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rss_so
 try:
     with open(_SOURCES_FILE, "r", encoding="utf-8") as _f:
         RSS_SOURCES = json.load(_f)
-    # 补全缺失 tier（兼容旧格式）
+    # 补全缺失 tier/color（兼容旧格式；前端与聚合代码直接读 color，缺失会 KeyError）
+    _COLOR_PALETTE = ["#6366f1", "#10a37f", "#4285f4", "#e61919", "#ff6600", "#7c3aed", "#0891b2", "#d97706", "#d32f2f", "#24292e"]
     for _s in RSS_SOURCES:
         _s.setdefault("tier", 3)
+        if not _s.get("color"):
+            _s["color"] = _COLOR_PALETTE[int(hashlib.md5(_s.get("key", "").encode("utf-8")).hexdigest(), 16) % len(_COLOR_PALETTE)]
     print("[RSS] 从 rss_sources.json 加载 %d 个源" % len(RSS_SOURCES))
 except (FileNotFoundError, json.JSONDecodeError) as _e:
     print("[RSS] rss_sources.json 不可用 (%s)，RSS 聚合将跳过" % _e, file=sys.stderr)
@@ -5888,7 +5891,7 @@ def main(mode="full"):
                 # 从历史索引填充 T1 源（增量构建不抓取 T1，但不能传空 items 导致历史数据流失）
                 _results[_i] = {
                     "key": key, "name": src["name"], "cat": src["cat"],
-                    "color": src["color"], "url": src.get("url", ""),
+                    "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
                     "items": _hist_by_key.get(key, []),
                     "tier": tier,
                 }
@@ -5904,7 +5907,7 @@ def main(mode="full"):
                         # 从历史索引填充跳过的 T2/T3 源（避免空 items 导致历史数据流失）
                         _results[_i] = {
                             "key": key, "name": src["name"], "cat": src["cat"],
-                            "color": src["color"], "url": src.get("url", ""),
+                            "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
                             "items": _hist_by_key.get(key, []),
                             "tier": tier,
                         }
@@ -5981,7 +5984,7 @@ def main(mode="full"):
                     items = []
             _results[i] = {
                 "key": key, "name": src["name"], "cat": src["cat"],
-                "color": src["color"], "url": src.get("url", ""),
+                "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
                 "items": items,
                 "tier": tier,
             }

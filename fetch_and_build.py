@@ -799,8 +799,9 @@ def main(mode="full"):
     try:
         import build_rss_aggregator
         build_rss_aggregator.main(mode=mode)
-    except Exception as e:
-        print("[RSS聚合] 生成失败: %s" % e, file=sys.stderr)
+    except Exception:
+        import traceback
+        print("[RSS聚合] 生成失败:\n%s" % traceback.format_exc(), file=sys.stderr)
 
     print("更新完成：共 %d 个项目" % len(out))
 
