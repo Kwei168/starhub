@@ -28,6 +28,7 @@ from insight_engine import (
     _cosine_similarity,
     _average_vector,
     _fallback_cluster,
+    _is_entry_recent,
     _is_recent,
     _DEFAULTS,
     _SimpleDoc,
@@ -231,9 +232,10 @@ class TestDataLoading(unittest.TestCase):
         ]
 
     def _make_rss_history(self):
+        recent = "2026-09-13T10:00:00+08:00"
         return {
-            "item1": {"title": "AI News", "summary": "Latest AI developments", "cat": "ai"},
-            "item2": {"title": "Tech Update", "summary": "New tech releases", "cat": "tech"},
+            "item1": {"title": "AI News", "summary": "Latest AI developments", "cat": "ai", "pub_date": recent},
+            "item2": {"title": "Tech Update", "summary": "New tech releases", "cat": "tech", "pub_date": recent},
         }
 
     def _make_trending_data(self):
@@ -280,6 +282,41 @@ class TestDataLoading(unittest.TestCase):
         """Empty data returns empty list."""
         docs = load_documents(None, None, None)
         self.assertEqual(len(docs), 0)
+
+    def test_is_entry_recent_pub_date(self):
+        """Entry with recent pub_date is recent."""
+        from datetime import datetime, timezone, timedelta
+        recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        self.assertTrue(_is_entry_recent({"pub_date": recent}))
+
+    def test_is_entry_recent_first_seen_fallback(self):
+        """Entry without pub_date but with recent first_seen is recent."""
+        from datetime import datetime, timezone, timedelta
+        recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        self.assertTrue(_is_entry_recent({"first_seen": recent}))
+
+    def test_is_entry_recent_expired(self):
+        """Entry with old pub_date and old first_seen is not recent."""
+        from datetime import datetime, timezone, timedelta
+        old = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
+        self.assertFalse(_is_entry_recent({"pub_date": old, "first_seen": old}))
+
+    def test_is_entry_recent_no_dates(self):
+        """Entry without any date fields is not recent."""
+        self.assertFalse(_is_entry_recent({}))
+
+    def test_load_documents_filters_old_rss(self):
+        """load_documents filters out RSS entries older than 72h."""
+        old = "2026-01-01T00:00:00+08:00"
+        recent = "2026-09-13T10:00:00+08:00"
+        rss = {
+            "a": {"title": "old article", "pub_date": old, "cat": "tech"},
+            "b": {"title": "new article", "pub_date": recent, "cat": "tech"},
+        }
+        docs = load_documents([], rss, [], max_documents=100)
+        texts = [d.text for d in docs]
+        self.assertTrue(any("new article" in t for t in texts))
+        self.assertFalse(any("old article" in t for t in texts))
 
     def test_build_index_returns_none_without_deps(self):
         """build_index returns None when deps are unavailable (test env)."""

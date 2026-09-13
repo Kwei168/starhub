@@ -223,9 +223,33 @@ def configure_llm(config):
 
 
 # ────────────────── Task 3: load_documents ───────────────────
+_RSS_HISTORY_HOURS = 72
+
+
+def _is_entry_recent(item, hours=_RSS_HISTORY_HOURS):
+    """判断 RSS 条目是否在时间窗口内。优先 pub_date，回退 first_seen。"""
+    now = datetime.now(BJT)
+    cutoff = now - timedelta(hours=hours)
+    pub_str = item.get("pub_date") or item.get("published") or item.get("date")
+    fs_str = item.get("first_seen", "")
+    for ts_str in [pub_str, fs_str]:
+        if not ts_str:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=BJT)
+            if dt >= cutoff:
+                return True
+        except (ValueError, TypeError):
+            continue
+    return False  # 两个时间都无法解析，视为过期
+
+
 def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
     """Convert raw data dicts into a list of LlamaIndex Document objects.
     使用配额制确保热榜/Trending/RSS 各类别均有代表，避免高优先级源挤占全部名额。
+    RSS 条目过滤 72h 窗口外的过期数据，无 pub_date 时使用 first_seen 基准。
     """
     hot_docs, trend_docs, rss_docs = [], [], []
 
@@ -247,11 +271,13 @@ def load_documents(hot_snapshot, rss_history, trending_data, max_documents=500):
             text = f"[Trending] {repo} (+{stars} stars): {desc}"
             trend_docs.append(text)
 
-    # --- RSS items (lowest priority) ---
+    # --- RSS items (lowest priority, filtered by 72h window) ---
     if rss_history:
         rss_items = rss_history.values() if isinstance(rss_history, dict) else rss_history
         for item in rss_items:
             if isinstance(item, dict):
+                if not _is_entry_recent(item):
+                    continue  # 跳过超 72h 的过期条目
                 title = item.get("title", "")
                 summary = item.get("summary", "")[:300]
                 cat = item.get("cat", item.get("category", "rss"))
