@@ -57,6 +57,14 @@ jobs:
       - name: Install insight engine dependencies
         run: pip install llama-index-core llama-index-embeddings-fastembed fastembed
 
+      - name: Restore embedding cache
+        uses: actions/cache@v4
+        with:
+          path: emb_cache.json
+          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            emb-cache-${{ runner.os }}-
+
       - name: Fetch stars & build
         run: python fetch_and_build.py $MODE
 

@@ -31,8 +31,12 @@ class SpyIE(types.ModuleType):
         return {"insight_engine_enabled": True,
                 "insight_heavy_interval_hours": type(self).interval}
 
+    fail = False
+
     def run_analysis(self, **kwargs):
-        type(self).calls.append(kwargs)
+        self.calls.append(kwargs)
+        if self.fail:
+            raise RuntimeError("模拟重分析失败")
         return {
             "generated_at": datetime.datetime.now(TZ8).isoformat(),
             "topics": [{"label": "语义主题A", "items": ["a1", "a2"]}],
@@ -130,6 +134,28 @@ def main():
         r = m._run_analysis(sources, NOW, mode="full")
         assert len(spy.calls) == 1, "T-D3-2 FAIL: full 模式应重分析"
         print("PASS T-D3-2 full 模式: 无条件重分析 ✓")
+
+        # ── T-D3-5: 重分析失败 → overlay 沿用旧语义字段 + stale（P1-2 修复）──
+        spy.calls.clear()
+        spy.fail = True
+        with open(m.ANALYSIS_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+            json.dump({"generated_at": iso_ago(7),
+                       "topics": [{"label": "旧语义主题"}],
+                       "deep_insights": {"narrative": "旧深度洞察"}}, f)
+        r = m._run_analysis(sources, NOW, mode="incremental")
+        spy.fail = False
+        assert r.get("deep_insights", {}).get("narrative") == "旧深度洞察",             "T-D3-5 FAIL: 重分析失败后旧语义字段未保留 %r" % r.get("deep_insights")
+        assert r.get("stale") is True, "T-D3-5 FAIL: 失败路径缺 stale 标注"
+        print("PASS T-D3-5 重分析失败: overlay 沿用旧语义字段 + stale 诚实标注")
+
+        # ── T-D3-6: 语义字段缺失（模拟失败后快照）→ 到期前也触发重分析（P1-2 条件）──
+        spy.calls.clear()
+        with open(m.ANALYSIS_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+            json.dump({"generated_at": iso_ago(0.5),
+                       "keywords": {"global": [["统计词", 3]]}}, f)  # 无 deep_insights
+        r = m._run_analysis(sources, NOW, mode="incremental")
+        assert len(spy.calls) == 1, "T-D3-6 FAIL: 语义字段缺失应触发重分析 %d" % len(spy.calls)
+        print("PASS T-D3-6 语义字段缺失: 即使 prev 新鲜也触发重分析 ✓")
     finally:
         sys.modules.pop("insight_engine", None)
 
