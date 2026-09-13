@@ -66,6 +66,7 @@ _rss_cache = {}    # {source_key: {"items": [...], "fetched_at": timestamp}}
 ANALYSIS_SNAPSHOT_FILE = "analysis_snapshot.json"
 SOURCE_QUALITY_FILE = "source_quality.json"
 RSS_TREND_HISTORY_FILE = "rss_trend_history.json"  # RSS 内容趋势历史（保留 14 天）
+TRENDING_SNAPSHOT_FILE = "trending_snapshot.json"  # GitHub Trending 数据
 # 中英文停用词表（关键词提取时过滤）
 _STOP_WORDS_ZH = set("的了是在我有和就不人都一个上也这到说们为你会对" +
     "他就是那要被她它自己什么没有可以已经还是或者虽然但是因此如果" +
@@ -231,7 +232,8 @@ def _accumulate_history(sources_with_items):
             if not link:
                 continue
             pd_str = it.get("pub_date", "")
-            # 解析日期：无日期或解析失败时使用当前时间作为回退
+            # 解析日期：优先 pub_date，无日期时使用 first_seen（首次抓取时间），
+            # 仅当 first_seen 也不可用时才回退当前时间（仅首次出现的新条目）
             pd_bj = now_bj.replace(tzinfo=None)  # 默认当前时间
             if pd_str:
                 try:
@@ -241,7 +243,16 @@ def _accumulate_history(sources_with_items):
                     else:
                         pd_bj = pd
                 except ValueError:
-                    pass  # 保持默认当前时间
+                    pass  # pub_date 解析失败，尝试 first_seen
+            else:
+                # 无 pub_date 时使用 first_seen 作为时间基准
+                fs_str = _rss_history.get(link, {}).get("first_seen", "")
+                if fs_str:
+                    try:
+                        fs = datetime.datetime.fromisoformat(fs_str)
+                        pd_bj = fs.replace(tzinfo=None) if fs.tzinfo else fs
+                    except ValueError:
+                        pass  # first_seen 也解析失败，保持当前时间
             if pd_bj < cutoff:
                 continue  # 过期文章跳过
             if link not in _rss_history:
@@ -275,7 +286,23 @@ def _accumulate_history(sources_with_items):
                 else:
                     pd_bj = pd
             except ValueError:
-                pass  # 保持默认当前时间
+                # pub_date 解析失败，使用 first_seen
+                fs_str = item.get("first_seen", "")
+                if fs_str:
+                    try:
+                        fs = datetime.datetime.fromisoformat(fs_str)
+                        pd_bj = fs.replace(tzinfo=None) if fs.tzinfo else fs
+                    except ValueError:
+                        pass
+        else:
+            # 无 pub_date，使用 first_seen
+            fs_str = item.get("first_seen", "")
+            if fs_str:
+                try:
+                    fs = datetime.datetime.fromisoformat(fs_str)
+                    pd_bj = fs.replace(tzinfo=None) if fs.tzinfo else fs
+                except ValueError:
+                    pass
         if pd_bj < cutoff:
             expired.append(link)
     for link in expired:
@@ -6259,10 +6286,17 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
             prev_keywords = []
             if prev_analysis and prev_analysis.get("keywords", {}).get("global"):
                 prev_keywords = [w for w, _ in prev_analysis["keywords"]["global"][:50]]
+            # 读取 Trending 数据供 insight engine 使用
+            trending_data = {}
+            try:
+                with open(TRENDING_SNAPSHOT_FILE, "r", encoding="utf-8") as _f:
+                    trending_data = json.load(_f)
+            except Exception:
+                pass
             ie_result = insight_engine.run_analysis(
                 hot_snapshot=hot_snapshot,
                 rss_history=_rss_history,
-                trending_data=[],
+                trending_data=trending_data,
                 config=ie_config,
                 prev_keywords=prev_keywords,
                 hot_history=hot_history,
