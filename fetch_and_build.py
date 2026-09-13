@@ -801,7 +801,8 @@ def main(mode="full"):
         build_rss_aggregator.main(mode=mode)
     except Exception:
         import traceback
-        print("[RSS聚合] 生成失败:\n%s" % traceback.format_exc(), file=sys.stderr)
+        # ::error:: 注解让它出现在 Actions 摘要里——禁止"绿色成功但 RSS 产物缺失"的假成功
+        print("::error::[RSS聚合] 生成失败:\n%s" % traceback.format_exc(), file=sys.stderr)
 
     print("更新完成：共 %d 个项目" % len(out))
 
