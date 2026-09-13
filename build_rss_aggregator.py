@@ -2861,12 +2861,12 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   }
   /* chunk0 同款守卫（复审 P2）：onload 不等于数据完好，截断/损坏时显式报错而非静默空站 */
   function _bootFail(msg){_bootFinish();console.warn('[starhub]',msg);var w=document.getElementById('wall');if(w)w.innerHTML='<div class="empty-hint">'+msg+'</div>';}
-  if(window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources&&window.__CHUNKS[0].sources.length){_bootWith(window.__CHUNKS[0].sources);}
+  if(window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources&&window.__CHUNKS[0].sources.length){try{_bootWith(window.__CHUNKS[0].sources);}catch(e){console.warn('[starhub] boot 异常:',e);_bootFail('首屏渲染异常，请刷新重试');}}
   else if(window.__CHUNKS&&window.__CHUNKS[0]){_bootFail('首屏数据异常，请刷新重试');}
   else{loadChunk(0).then(function(){
         var _cs=window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0].sources;
         if(!_cs||!_cs.length){_bootFail('首屏数据异常，请刷新重试');return;}
-        _bootWith(_cs);}).catch(function(e){
+        try{_bootWith(_cs);}catch(e){console.warn('[starhub] boot 异常:',e);_bootFail('首屏渲染异常，请刷新重试');}}).catch(function(e){
     _bootFail('内容加载失败，请检查网络后刷新重试');
   });}
   /* 无限滚动：接近底部自动加载更多（带节流锁） */
@@ -2952,7 +2952,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         /* 大 chunk（37MB 级）在慢网络下下载可超 45s：超时只提示、绝不 reject——
            reject 会让 .catch 静默吞掉合并，数据到位也无人消费（线上实证 bug）；
            onload/onerror 才是脚本状态的唯一事实源 */
-        var t=setTimeout(function(){if(!done){toast('后台仍在加载剩余内容，稍候自动合并…');}},45000);
+        var t=setTimeout(function(){if(!done){toast('内容仍在后台加载，完成后自动合并…');}},45000);
         sc.src='rss-data-'+i+'.js?v='+BUILD_TS;
         sc.onload=function(){if(!done){done=true;clearTimeout(t);resolve();}};
         sc.onerror=function(){if(!done){done=true;clearTimeout(t);reject(new Error('chunk '+i+' fail'));}};
