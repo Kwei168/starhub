@@ -2845,9 +2845,16 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
     /* 让首屏先稳定可交互，再在空闲时解析 25MB 的 chunk1，避免后台加载反过来卡住主线程 */
     var _loadRest=function(){
       loadChunk(1).then(function(){
+        /* P2 加固：onload 不等于数据完好（截断/CDN 损坏/错误页 200 也会 onload）。
+           __CHUNKS[1] 缺失时告警 + 提示刷新，不再无痕假成功 */
+        if(!(window.__CHUNKS&&window.__CHUNKS[1])){
+          console.warn('[starhub] chunk1 onload 但 __CHUNKS[1] 缺失（文件截断或内容异常）');
+          toast('剩余内容数据异常，刷新页面可重试');
+          return;
+        }
         var n=_mergeChunk(window.__CHUNKS&&window.__CHUNKS[1]);
         if(n>0)toast('\u5df2\u52a0\u8f7d\u5168\u90e8 '+ART.length+' \u7bc7\u5185\u5bb9\uff08\u65b0\u589e '+n+' \u7bc7\uff09');
-      }).catch(function(){});
+      }).catch(function(e){console.warn('[starhub] chunk1 加载失败:', e);});
     };
     if(window.requestIdleCallback)window.requestIdleCallback(_loadRest,{timeout:5000});
     else setTimeout(_loadRest,1200);
@@ -2945,7 +2952,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         sc.src='rss-data-'+i+'.js?v='+BUILD_TS;
         sc.onload=function(){if(!done){done=true;clearTimeout(t);resolve();}};
         sc.onerror=function(){if(!done){done=true;clearTimeout(t);reject(new Error('chunk '+i+' fail'));}};
-        document.head.appendChild(sc);
+        try{document.head.appendChild(sc);}catch(e){clearTimeout(t);throw e;}
       }catch(e){reject(e);}
     });
   }
