@@ -125,7 +125,8 @@ _ZEN_MODELS = ([m.strip() for m in os.environ["ZEN_TRANSLATE_MODEL"].split(",") 
                if os.environ.get("ZEN_TRANSLATE_MODEL")
                else ["ling-3.0-flash-fin-free", "big-pickle", "mimo-v2.5-free"])
 _ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
-_ZEN_MODEL_BLOCK = {}  # model → 429/5xx 自封截止时间戳（5 分钟）
+_ZEN_MODEL_BLOCK = {}   # model → 自封截止时间戳
+_ZEN_MODEL_OFFENSES = {}  # model → 连续自封次数（自封期翻倍：5→10→20→40 分钟，封顶 1h；成功清零）
 _ZEN_MODEL_IDX = 0     # 轮询游标（翻译线程池共享，_TRANS_LOCK 保护）
 _ZEN_AUTH_STICKY = None  # 本场构建实测可用的鉴权 token；key 撞 401/403 后粘性回退 "public"
 _ZEN_TIMEOUT_STREAK = {}  # model → 连续超时/网络失败计数（≥2 自封；成功重置）
@@ -895,6 +896,7 @@ def _zen_call_model(text, model, timeout, auth):
         if out:
             with _TRANS_LOCK:
                 _ZEN_TIMEOUT_STREAK[model] = 0
+                _ZEN_MODEL_OFFENSES[model] = 0
         return out, False, False
     except urllib.error.HTTPError as e:
         # 任何 HTTP 错误都自封该模型（401/403=key 不被接受，429=限流，5xx=故障），避免逐文本反复撞墙
@@ -939,9 +941,12 @@ def _zen_translate(text, timeout=25):
             return out
         if to_block:
             with _TRANS_LOCK:
-                _ZEN_MODEL_BLOCK[model] = time.time() + 300
+                offenses = _ZEN_MODEL_OFFENSES.get(model, 0)
+                block_s = min(300 * (2 ** offenses), 3600)
+                _ZEN_MODEL_BLOCK[model] = time.time() + block_s
                 _ZEN_TIMEOUT_STREAK[model] = 0
-            print("[翻译] Zen %s 限流/故障，自封 5 分钟并切换下一模型" % model, file=sys.stderr)
+                _ZEN_MODEL_OFFENSES[model] = offenses + 1
+            print("[翻译] Zen %s 限流/故障，自封 %d 分钟并切换下一模型" % (model, block_s // 60), file=sys.stderr)
     return None
 
 
