@@ -796,6 +796,9 @@ def main(mode="full"):
         print("[AI晨报] 生成失败: %s" % e, file=sys.stderr)
 
     # RSS 聚合页：生成 rss-aggregator.html（独立页面）
+    # 有意取舍（对抗性审查两轮确认）：RSS 失败只打 ::error:: 注解不改变退出码——
+    # stars/index/ai-daily 的提交与部署不应被 RSS 连坐；代价是 job 保持绿色，
+    # 靠红注解与下方 traceback 可见。若改为 sys.exit(1)，主流程数据也会丢失。
     try:
         import build_rss_aggregator
         build_rss_aggregator.main(mode=mode)
