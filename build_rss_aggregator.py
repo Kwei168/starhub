@@ -2921,7 +2921,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       try{
         if(window.__CHUNKS&&window.__CHUNKS[i])return resolve();
         var sc=document.createElement('script'),done=false;
-        var t=setTimeout(function(){if(!done){done=true;reject(new Error('chunk '+i+' timeout'));}},45000);
+        /* 大 chunk（37MB 级）在慢网络下下载可超 45s：超时只提示、绝不 reject——
+           reject 会让 .catch 静默吞掉合并，数据到位也无人消费（线上实证 bug）；
+           onload/onerror 才是脚本状态的唯一事实源 */
+        var t=setTimeout(function(){if(!done){toast('后台仍在加载剩余内容，稍候自动合并…');}},45000);
         sc.src='rss-data-'+i+'.js?v='+BUILD_TS;
         sc.onload=function(){if(!done){done=true;clearTimeout(t);resolve();}};
         sc.onerror=function(){if(!done){done=true;clearTimeout(t);reject(new Error('chunk '+i+' fail'));}};
@@ -2958,7 +2961,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         if(_oldLimit>WALL_STEP) wallLimit=Math.max(wallLimit,_oldLimit);
       }
       return added;
-    }catch(e){return 0;}
+    }catch(e){console.warn('[starhub] chunk 合并失败（数据在 __CHUNKS，刷新可重试）:', e);return 0;}
   }
   function _mergeRemoteSources(j){
     try{
