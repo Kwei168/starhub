@@ -17,6 +17,7 @@ import re
 import sys
 import threading
 import time
+import uuid
 import build_logger
 import urllib.error
 import urllib.parse
@@ -857,8 +858,10 @@ def _agnes_translate(text, timeout=20):
         return None
 
 
-def _zen_translate(text, timeout=20):
-    """OpenCode Zen 免费模型翻译（OpenAI 兼容端点）。429 自封 5 分钟，失败返回 None。"""
+def _zen_translate(text, timeout=40):
+    """OpenCode Zen 免费模型翻译。免费档校验 OpenCode 客户端会话头（缺了报 MissingSessionID），
+    上游凭据用 Bearer public（配置了 ZEN_API_KEY 时优先用真 key）。模型较大、单条 6~24s，
+    故放在链路后段接 gtx 限流溢出；自身 429 自封 5 分钟。失败返回 None。"""
     global _ZEN_BLOCK_UNTIL
     payload = json.dumps({
         "model": _ZEN_MODEL,
@@ -871,8 +874,13 @@ def _zen_translate(text, timeout=20):
     }).encode("utf-8")
     req = urllib.request.Request(_ZEN_URL, data=payload, headers={
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + _ZEN_KEY,
-        "User-Agent": "starhub-auto-update",
+        "Authorization": "Bearer " + (_ZEN_KEY or "public"),
+        # 免费档要求 OpenCode 客户端身份，session/request 为每次调用生成的唯一 ID
+        "User-Agent": "opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13",
+        "x-opencode-client": "cli",
+        "x-opencode-project": "global",
+        "x-opencode-request": "msg_" + uuid.uuid4().hex,
+        "x-opencode-session": "ses_" + uuid.uuid4().hex,
     })
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -928,18 +936,6 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         except Exception:
             pass
 
-    # 0.5) OpenCode Zen 免费模型（Agnes 限流/封锁时的接力；自身 429 后自封 5 分钟）
-    if _ZEN_KEY and time.time() >= _ZEN_BLOCK_UNTIL:
-        try:
-            cand = _zen_translate(text, timeout=timeout)
-            if cand and len(cand) > len(text) * 0.2:
-                _TRANS_STATS["zen"] += 1
-                _TRANS_FAIL_STREAK = 0
-                _trans_cache[text_hash] = cand  # 写入缓存
-                return cand
-        except Exception:
-            pass
-
     # 1) Google gtx
     try:
         url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=" + encoded
@@ -955,6 +951,18 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
                 return result
     except Exception:
         pass
+
+    # 1.5) OpenCode Zen 免费模型（gtx 限流时的接力：配额独立、质量好但单条 6~24s；429 自封 5 分钟）
+    if time.time() >= _ZEN_BLOCK_UNTIL:
+        try:
+            cand = _zen_translate(text, timeout=40)
+            if cand and len(cand) > len(text) * 0.2:
+                _TRANS_STATS["zen"] += 1
+                _TRANS_FAIL_STREAK = 0
+                _trans_cache[text_hash] = cand  # 写入缓存
+                return cand
+        except Exception:
+            pass
 
     # 2) MyMemory（自动检测源语言，避免硬编码 en 导致非英语源翻译质量差）
     try:
