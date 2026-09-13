@@ -3,39 +3,125 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-09-06T00:00:00Z"
+exported_at: "2026-09-13T07:31:23Z"
 modules:
     "":
-        dir_name: StarHub GitHub Starred 聚合站根编排
-        title: StarHub GitHub Starred 聚合站根编排
+        dir_name: StarHub 收藏台与 RSS_AIHOT 聚合站点根工程
+        title: StarHub 收藏台与 RSS/AIHOT 聚合站点根工程
         scope:
-            - .
-            - .gitignore
             - README.md
+            - .gitignore
+            - .vercelignore
+            - package.json
+            - vercel.json
+            - .github/
+            - .workbuddy/
             - HANDOFF.md
-            - descriptions_zh.json
-            - fetch_and_build.py
-            - build_rss_aggregator.py
-            - index.html
-            - rss-aggregator.html
-            - rss_sources.json
-            - rss_history.json
+            - LICENSE
+            - REFRESH_VERIFICATION_REPORT.md
+            - _check_syntax.js
+            - actions-step5-expanded.png
+            - ai_daily.json
+            - failed-run-364-annotations.png
+            - failed-run-364-final.png
+            - failed-run-364-screenshot.png
+            - rss-data-0.js
+            - rss-data-1.js
             - rss_api_snapshot.json
-            - known_categories.json
-            - template.html
-            - trending_snapshot.json
+            - rss_cache.json
+            - rss_history.json
+            - rss_sources.json
+            - translations.json
         source_files: []
         children:
-            - vercel_functions
+            - api
+            - data_and_build_scripts
+            - docs_specs
+            - frontend
+            - insight_engine
+            - static_data
         depends_on: []
         related_to: []
-    vercel_functions:
-        dir_name: Vercel Serverless Workflow 触发器
-        title: Vercel Serverless Workflow 触发器
+    api:
+        dir_name: Vercel Serverless 聚合网关（AGI Hunt _ GitHub _ RSS _ 搜索 _ 翻译）
+        title: Vercel Serverless 聚合网关（AGI Hunt / GitHub / RSS / 搜索 / 翻译）
         scope:
             - api/
-            - vercel.json
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: data_and_build_scripts
+            - path: frontend
+    data_and_build_scripts:
+        dir_name: StarHub & RSS 聚合器构建脚本集
+        title: StarHub & RSS 聚合器构建脚本集
+        scope:
+            - build_rss_aggregator.py
+            - build_ai_daily.py
+            - merge_sources.py
+            - fetch_and_build.py
+            - dev_render.py
+            - _check_fc_format.py
+            - _fix_regex.py
+            - check_html.py
+            - check_wiki_sync.py
+            - extract_bestblogs_sources.py
+            - rss_sources_merged.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: api
+            - path: static_data
+    docs_specs:
+        dir_name: StarHub 功能规格与实施计划文档集
+        title: StarHub 功能规格与实施计划文档集
+        scope:
+            - docs/
         source_files: []
         children: []
         depends_on: []
         related_to: []
+    frontend:
+        dir_name: StarHub 前端静态入口（索引_模板_AI日报_RSS聚合）
+        title: StarHub 前端静态入口（索引/模板/AI日报/RSS聚合）
+        scope:
+            - index.html
+            - template.html
+            - ai-daily.html
+            - rss-aggregator.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: api
+    insight_engine:
+        dir_name: 多源数据语义洞察引擎
+        title: 多源数据语义洞察引擎
+        scope:
+            - insight_engine.py
+            - test_insight_engine.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: static_data
+    static_data:
+        dir_name: 静态数据与前端资源目录
+        title: 静态数据与前端资源目录
+        scope:
+            - known_categories.json
+            - descriptions_zh.json
+            - bestblogs_analysis.json
+            - bestblogs_sources.json
+            - t1_sources.json
+            - t2_sources.json
+            - trending_snapshot.json
+            - vendor_qrcode.min.js
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: data_and_build_scripts
+            - path: insight_engine

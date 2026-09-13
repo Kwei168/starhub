@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: frontend
+title: StarHub 前端静态入口（索引/模板/AI日报/RSS聚合）
+scope:
+    - index.html
+    - template.html
+    - ai-daily.html
+    - rss-aggregator.html
+source_files: []
+depends_on: []
+related_to:
+    - path: api

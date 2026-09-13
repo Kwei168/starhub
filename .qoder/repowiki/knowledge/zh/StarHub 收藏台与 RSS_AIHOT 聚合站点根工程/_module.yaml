@@ -1,0 +1,30 @@
+schema_version: 1
+module_path: ""
+title: StarHub 收藏台与 RSS/AIHOT 聚合站点根工程
+scope:
+    - README.md
+    - .gitignore
+    - .vercelignore
+    - package.json
+    - vercel.json
+    - .github/
+    - .workbuddy/
+    - HANDOFF.md
+    - LICENSE
+    - REFRESH_VERIFICATION_REPORT.md
+    - _check_syntax.js
+    - actions-step5-expanded.png
+    - ai_daily.json
+    - failed-run-364-annotations.png
+    - failed-run-364-final.png
+    - failed-run-364-screenshot.png
+    - rss-data-0.js
+    - rss-data-1.js
+    - rss_api_snapshot.json
+    - rss_cache.json
+    - rss_history.json
+    - rss_sources.json
+    - translations.json
+source_files: []
+depends_on: []
+related_to: []
