@@ -5368,12 +5368,13 @@ def _extract_json_from_text(text):
 
 
 def _load_prev_analysis():
-    """加载前一天的分析快照（用于趋势对比）。返回完整 analysis dict。"""
+    """加载前一天的分析快照。返回 dict；损坏/非 dict（rev9 P3①）返回 None。"""
     if not os.path.exists(ANALYSIS_SNAPSHOT_FILE):
         return None
     try:
         with open(ANALYSIS_SNAPSHOT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
     except Exception:
         return None
 
