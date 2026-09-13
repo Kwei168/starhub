@@ -118,11 +118,15 @@ _TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "di
 _AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
 # Agnes 免费但限流：收到 429 后暂停直连 5 分钟，期间直接走后续端点，不浪费每次 0.4s 的撞墙
 _AGNES_BLOCK_UNTIL = 0.0
-# OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，Agnes 限流时的接力端点
-_ZEN_KEY = os.environ.get("ZEN_API_KEY", "")
-_ZEN_MODEL = os.environ.get("ZEN_TRANSLATE_MODEL", "mimo-v2.5-free")
+# OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，免费档需 OpenCode 客户端会话头。
+# 实测（2026-09-13）：ling 2.4s / big-pickle 5.6s / mimo 13.1s 可用；muse-spark 稳定 500、nemotron 两款 88s+，不入轮询。
+_ZEN_KEY = os.environ.get("ZEN_API_KEY", "") or os.environ.get("OPENCODE_KEY", "")
+_ZEN_MODELS = ([m.strip() for m in os.environ["ZEN_TRANSLATE_MODEL"].split(",") if m.strip()]
+               if os.environ.get("ZEN_TRANSLATE_MODEL")
+               else ["ling-3.0-flash-fin-free", "big-pickle", "mimo-v2.5-free"])
 _ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
-_ZEN_BLOCK_UNTIL = 0.0
+_ZEN_MODEL_BLOCK = {}  # model → 429/5xx 自封截止时间戳（5 分钟）
+_ZEN_MODEL_IDX = 0     # 轮询游标（翻译线程池共享，_TRANS_LOCK 保护）
 # 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
 _TRANS_FAIL_STREAK = 0
 _TRANS_BLOCK_UNTIL = 0.0
@@ -858,13 +862,10 @@ def _agnes_translate(text, timeout=20):
         return None
 
 
-def _zen_translate(text, timeout=40):
-    """OpenCode Zen 免费模型翻译。免费档校验 OpenCode 客户端会话头（缺了报 MissingSessionID），
-    上游凭据用 Bearer public（配置了 ZEN_API_KEY 时优先用真 key）。模型较大、单条 6~24s，
-    故放在链路后段接 gtx 限流溢出；自身 429 自封 5 分钟。失败返回 None。"""
-    global _ZEN_BLOCK_UNTIL
+def _zen_call_model(text, model, timeout):
+    """单模型调用。返回 (译文|None, 是否自封该模型)。"""
     payload = json.dumps({
-        "model": _ZEN_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": "你是翻译引擎。把用户输入翻译成简体中文，只输出译文，不要解释。"},
             {"role": "user", "content": text[:1500]},
@@ -885,14 +886,36 @@ def _zen_translate(text, timeout=40):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None, False
     except urllib.error.HTTPError as e:
-        if e.code == 429:
-            _ZEN_BLOCK_UNTIL = time.time() + 300
-            print("[翻译] Zen 429 限流，暂停直连 5 分钟", file=sys.stderr)
-        return None
+        return None, e.code in (429, 500, 502, 503)
     except Exception:
-        return None
+        return None, False
+
+
+def _zen_translate(text, timeout=40):
+    """OpenCode Zen 免费模型轮询翻译：游标挑一个未自封的模型，429/5xx 自封该模型 5 分钟
+    并在同一文本上切换下一个模型。全部处于自封期则返回 None。"""
+    global _ZEN_MODEL_IDX
+    for _attempt in range(len(_ZEN_MODELS)):
+        model = None
+        with _TRANS_LOCK:
+            for _k in range(len(_ZEN_MODELS)):
+                cand = _ZEN_MODELS[_ZEN_MODEL_IDX % len(_ZEN_MODELS)]
+                _ZEN_MODEL_IDX += 1
+                if _ZEN_MODEL_BLOCK.get(cand, 0) <= time.time():
+                    model = cand
+                    break
+        if model is None:
+            return None
+        out, to_block = _zen_call_model(text, model, timeout)
+        if out:
+            return out
+        if to_block:
+            with _TRANS_LOCK:
+                _ZEN_MODEL_BLOCK[model] = time.time() + 300
+            print("[翻译] Zen %s 限流/故障，自封 5 分钟并切换下一模型" % model, file=sys.stderr)
+    return None
 
 
 def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
@@ -952,17 +975,16 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     except Exception:
         pass
 
-    # 1.5) OpenCode Zen 免费模型（gtx 限流时的接力：配额独立、质量好但单条 6~24s；429 自封 5 分钟）
-    if time.time() >= _ZEN_BLOCK_UNTIL:
-        try:
-            cand = _zen_translate(text, timeout=40)
-            if cand and len(cand) > len(text) * 0.2:
-                _TRANS_STATS["zen"] += 1
-                _TRANS_FAIL_STREAK = 0
-                _trans_cache[text_hash] = cand  # 写入缓存
-                return cand
-        except Exception:
-            pass
+    # 1.5) OpenCode Zen 免费模型轮询（gtx 限流时的接力；单模型 429/5xx 自封 5 分钟并自动切换）
+    try:
+        cand = _zen_translate(text, timeout=40)
+        if cand and len(cand) > len(text) * 0.2:
+            _TRANS_STATS["zen"] += 1
+            _TRANS_FAIL_STREAK = 0
+            _trans_cache[text_hash] = cand  # 写入缓存
+            return cand
+    except Exception:
+        pass
 
     # 2) MyMemory（自动检测源语言，避免硬编码 en 导致非英语源翻译质量差）
     try:
