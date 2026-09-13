@@ -128,6 +128,7 @@ _ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
 _ZEN_MODEL_BLOCK = {}  # model → 429/5xx 自封截止时间戳（5 分钟）
 _ZEN_MODEL_IDX = 0     # 轮询游标（翻译线程池共享，_TRANS_LOCK 保护）
 _ZEN_AUTH_STICKY = None  # 本场构建实测可用的鉴权 token；key 撞 401/403 后粘性回退 "public"
+_ZEN_TIMEOUT_STREAK = {}  # model → 连续超时/网络失败计数（≥2 自封；成功重置）
 # 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
 _TRANS_FAIL_STREAK = 0
 _TRANS_BLOCK_UNTIL = 0.0
@@ -890,15 +891,23 @@ def _zen_call_model(text, model, timeout, auth):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None, False, False
+        out = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+        if out:
+            with _TRANS_LOCK:
+                _ZEN_TIMEOUT_STREAK[model] = 0
+        return out, False, False
     except urllib.error.HTTPError as e:
         # 任何 HTTP 错误都自封该模型（401/403=key 不被接受，429=限流，5xx=故障），避免逐文本反复撞墙
         return None, True, e.code in (401, 403)
     except Exception:
-        return None, False, False
+        # 超时/网络故障不计 HTTP 错误，但连续挂起同样拖死管线：连续 2 次自封该模型
+        with _TRANS_LOCK:
+            _ZEN_TIMEOUT_STREAK[model] = _ZEN_TIMEOUT_STREAK.get(model, 0) + 1
+            streak = _ZEN_TIMEOUT_STREAK[model]
+        return None, streak >= 2, False
 
 
-def _zen_translate(text, timeout=40):
+def _zen_translate(text, timeout=25):
     """OpenCode Zen 免费模型轮询翻译：游标挑一个未自封的模型，HTTP 错误自封该模型 5 分钟
     并切换下一个；个人 key 撞 401/403 时当场回退 Bearer public 并粘性记住。全部自封返回 None。"""
     global _ZEN_MODEL_IDX, _ZEN_AUTH_STICKY
@@ -931,6 +940,7 @@ def _zen_translate(text, timeout=40):
         if to_block:
             with _TRANS_LOCK:
                 _ZEN_MODEL_BLOCK[model] = time.time() + 300
+                _ZEN_TIMEOUT_STREAK[model] = 0
             print("[翻译] Zen %s 限流/故障，自封 5 分钟并切换下一模型" % model, file=sys.stderr)
     return None
 
@@ -994,7 +1004,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
 
     # 1.5) OpenCode Zen 免费模型轮询（gtx 限流时的接力；单模型 429/5xx 自封 5 分钟并自动切换）
     try:
-        cand = _zen_translate(text, timeout=40)
+        cand = _zen_translate(text, timeout=25)
         if cand and len(cand) > len(text) * 0.2:
             _TRANS_STATS["zen"] += 1
             _TRANS_FAIL_STREAK = 0
