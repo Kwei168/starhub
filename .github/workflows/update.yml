@@ -18,6 +18,13 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    # env 提升到 job 级：push 冲突重试分支在 "Commit & push" 步骤里重新跑构建，
+    # 步骤级 env 会让重试构建拿不到翻译 key（退化）与 GitHub API 配额（403）
+    env:
+      AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+      AGNES_API_KEY_2: ${{ secrets.AGNES_API_KEY_2 }}
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      ZEN_API_KEY: ${{ secrets.ZEN_API_KEY || secrets.OPENCODE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -51,11 +58,6 @@ jobs:
         run: pip install llama-index-core llama-index-embeddings-fastembed fastembed
 
       - name: Fetch stars & build
-        env:
-          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
-          AGNES_API_KEY_2: ${{ secrets.AGNES_API_KEY_2 }}
-          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
-          ZEN_API_KEY: ${{ secrets.ZEN_API_KEY || secrets.OPENCODE_KEY }}
         run: python fetch_and_build.py $MODE
 
       - name: Cleanup old build logs
