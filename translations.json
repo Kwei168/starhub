@@ -35692,5 +35692,19 @@
   "334d5c3b3ffde8c9deac5494cbbdaa57": "当前的社交媒体平台在使用广告和销售数据时是免费的。新平台中是否有任何特定功能值得您每月支付 1 美元？\n\n评论网址：https://news.ycombinator.com/item?id=49674670\n积分：1\n# 评论: 6",
   "d5d21d6406ce969116f17bc3e634d4a7": "我最近被 Reddit 决定在用户未登录时阻止使用旧版 Reddit 惹毛了，那原本是我默认的浏览方式。今天早上登录 Reddit 时，使用装了 uBlock Origin 的 Firefox 浏览器竟然出现这个错误：> 发生错误，请禁用任何扩展或使用其他浏览器继续。这难道是真的吗？\n\n评论链接：https://news.ycombinator.com/item?id=49673323\n积分：16\n# 评论：3",
   "03f1d8ebce2824401490d45c8bfa6c04": "总务省在要求披露后删除了邮政丑闻聊天记录；法律规定保存 - 朝日新闻",
-  "c7e2a1cb3f61e70b0fef2649c479f2eb": "总务省在要求披露后删除了邮政丑闻聊天记录；法律规定保存·朝日新闻"
+  "c7e2a1cb3f61e70b0fef2649c479f2eb": "总务省在要求披露后删除了邮政丑闻聊天记录；法律规定保存·朝日新闻",
+  "02f6f31eb548bfca9ed72174fd8a66aa": "在我的Raspberry Pi上直接启动到本地LLM （无Linux ）",
+  "b51616a556c436f5d279ac8d90c2a650": "文章链接: https://www.xda-developers.com/raspberry-pi-boots-straight-into-local-llm/\n评论链接: https://news.ycombinator.com/item?id=49678542\n得分: 4\n# 评论: 0",
+  "72acec411d6d72b7ce213a18ed1e56de": "文章网址: https://www.tokendelivery.ai/\n评论网址: https://news.ycombinator.com/item?id=49674280\n积分: 6\n# 评论: 1",
+  "db093e7ece2b1a63dccffcce890a01bd": "使用 GPT-6 Astra 和 ChatGPT Work 生成跑步路线",
+  "8b2e13abc43ae4ed77f19fadc34c9165": "这是今早我让 ChatGPT 结合 GPT-6 Astra（Max）完成的一个有趣任务：\n\n我住在某地。以我家为起点，规划两条往返的5公里和10公里跑步路线，并使用 OSM 数据。\n\n它运行了27分钟，精准地生成我所要求的内容——既包含嵌入式可视化图表，又提供可下载的 GPX 文件和 GeoJSON 文件。以下是这条5公里路线：\n\n当我询问它是如何创建这条路线时，它回复道：\n\n“我使用 Nominatim 定位地址，并通过 Overpass 下载了本地 OpenStreetMap 道路数据……”",
+  "8d6bdff6c0d08d9ec2b736cb45f0844f": "加州褐鹈鹕",
+  "8b81a8fc29ddadca87e392c26916457c": "加州棕鹈鹕，位于美国加利福尼亚州圣马特奥县。今年6月初，因混凝土人行道出现裂缝导致进入栈桥存在安全隐患，帕西菲卡码头（Pacifica Pier）随即关闭。此后，该码头完全被鹈鹕占据！\n\n标签：野生动物",
+  "43731475233ae2a068912ad078fc060e": "限时免费获取字体 Baseball Grunge[Windows、macOS][$18→0]",
+  "1b3d4dd7b8b2ee5019e9586940fa3802": "CMLink 英国实体卡和eSIM",
+  "bc2669d1204fc78910577bffdb7ed28c": "通过配置设置，我已关闭提交时自动添加“合作作者”Claude签名。但注意：他们现在默认启用了新的“Claude-Session: https://claude.ai/code/session_xyz”行并追加到提交中。令人恼火，感觉有点下作（虽然讽刺的是）。\n\n评论链接：https://news.ycombinator.com/item?id=49675094\n积分：5\n# 评论：1",
+  "e2cb80871d401930cf93213df4e3ba08": "我最近被 Reddit 决定在用户未登录时屏蔽旧版 Reddit 的使用所伤害，而这原本是我阅读的主要方式。今天早上，我在 Firefox 上尝试登录 Reddit 时（使用 uBlock Origin 插件），遇到了这个错误：> 发生错误。请禁用任何扩展或尝试使用不同的网页浏览器以继续。这是真的吗？评论链接：https://news.ycombinator.com/item?id=49673323 分数：18 # 评论数：4",
+  "23248e1d28c950394e090ecef8443957": "为什么操作系统不使用 zstandard",
+  "87a929f882a28d5e230bbb0c0444db05": "PLEASE SELECT TWO DISTINCT LANGUAGES",
+  "a8ad41852ab0420780c566af93460625": "PLEASE SELECT TWO DISTINCT LANGUAGES"
 }
