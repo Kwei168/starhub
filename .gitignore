@@ -17,3 +17,6 @@ _adv*
 _agnes_batch_test.py
 _check_js_temp.js
 _fix_quotes.py
+
+# D1 嵌入向量缓存（~8MB/5000 条，CI 用 actions/cache 持久化，不进仓库）
+emb_cache.json

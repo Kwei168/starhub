@@ -122,6 +122,7 @@ _AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
 _AGNES_BLOCK_UNTIL = 0.0
 _AGNES_OFFENSES = 0
 _AGNES_EMPTY_STREAK = 0
+_AGNES_EMPTY_LIMIT = 3  # 连续空响应阈值（模型偶发拒绝 vs 端点异常的分界）
 # OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，免费档需 OpenCode 客户端会话头。
 # 实测（2026-09-13）：ling 2.4s / big-pickle 5.6s / mimo 13.1s 可用；muse-spark 稳定 500、nemotron 两款 88s+，不入轮询。
 _ZEN_KEY = os.environ.get("ZEN_API_KEY", "") or os.environ.get("OPENCODE_KEY", "")
@@ -885,13 +886,13 @@ def _agnes_translate(text, timeout=20):
             else:
                 # 200 但空 content（模型对特定输入的拒绝/截断）：连续 3 次视为端点异常入罚期
                 _AGNES_EMPTY_STREAK += 1
-                empty_hit = _AGNES_EMPTY_STREAK >= 3
+                empty_hit = _AGNES_EMPTY_STREAK >= _AGNES_EMPTY_LIMIT
                 if empty_hit and _AGNES_BLOCK_UNTIL <= time.time():
                     block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
                     _AGNES_BLOCK_UNTIL = time.time() + block_s
                     _AGNES_OFFENSES += 1
                     _AGNES_EMPTY_STREAK = 0
-                    print("[翻译] Agnes 连续 %d 次空响应，暂停直连 %d 分钟" % (3, block_s // 60), file=sys.stderr)
+                    print("[翻译] Agnes 连续 %d 次空响应，暂停直连 %d 分钟" % (_AGNES_EMPTY_LIMIT, block_s // 60), file=sys.stderr)
         return out
     except urllib.error.HTTPError as e:
         # 对齐 Zen Z1 语义：任何 HTTP 错误都入账本（429 限流 / 401/403 key 问题 / 5xx 上游故障），
@@ -4769,16 +4770,16 @@ def _extract_keywords(rss_history, now_bj, unreliable_srcs=None):
         if not text:
             continue
         is_recent = pd >= cutoff_24h
-        # D4 权重以语料份额计（精确 0.3）：正常 recent 20+10=30 份 / 非recent 10 份；
-        # 不可信 recent 6+3=9 份（0.3×）/ 非recent 3 份（0.3×）
+        # D4 权重以语料份额计（精确 0.3）：正常 recent = W_BASE*W_RECENT 份 + W_BASE 份；
+        # 不可信 = 正常 × UNRELIABLE_FACTOR/10（0.3 倍）
         if item.get('source_key', '') in unreliable:
             if is_recent:
-                recent_texts.extend([text] * 6)
-            cat_texts[item.get('cat', 'other')].extend([text] * (3 if is_recent else 1))
+                recent_texts.extend([text] * (_W_BASE * _W_RECENT * _UNRELIABLE_FACTOR // 10))
+            cat_texts[item.get('cat', 'other')].extend([text] * (_W_BASE * _UNRELIABLE_FACTOR // 10))
         else:
             if is_recent:
-                recent_texts.extend([text] * 20)
-            cat_texts[item.get('cat', 'other')].extend([text] * 10)
+                recent_texts.extend([text] * (_W_BASE * _W_RECENT))
+            cat_texts[item.get('cat', 'other')].extend([text] * _W_BASE)
     # 全局关键词（近 24h 优先，但用全部 72h 数据）
     all_texts = recent_texts * 2 + [t for cat_ts in cat_texts.values() for t in cat_ts]  # 近 24h 权重 x2
     global_kw = _tfidf_keywords(all_texts, top_n=50)
@@ -5828,7 +5829,10 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
         except (TypeError, ValueError):
             _interval = 6.0
         _prev_gen = (prev_analysis or {}).get("generated_at", "")
-        if not _prev_gen or mode == "full" or _interval <= 0:
+        # P1-2 修复（对抗性审查 f168c43）：语义字段（deep_insights）缺失也触发重分析——
+        # 重分析失败时统计路径会刷新 generated_at，仅看时间会把退化态锁定一整个间隔
+        _semantics_missing = not (prev_analysis or {}).get("deep_insights")
+        if not _prev_gen or mode == "full" or _interval <= 0 or _semantics_missing:
             heavy_due = True
         else:
             try:
@@ -5935,7 +5939,9 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
     }
     # D3 轻量场：语义主题/深度洞察/RAGAS 等重字段沿用上次重分析，诚实标注 stale；
     # generated_at 保持上次重分析时间（前端据此展示真实新鲜度）
-    if not heavy_due and prev_analysis:
+    # P1-2 修复：overlay 无条件复用——重分析失败（insight_engine 抛异常）时统计路径
+    # 也要沿用上次的语义主题/深度洞察，并诚实标注 stale，防止退化态无痕
+    if prev_analysis:
         for _k, _v in prev_analysis.items():
             if _k not in analysis:
                 analysis[_k] = _v
