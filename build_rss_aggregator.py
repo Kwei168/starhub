@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import build_logger
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -111,12 +112,20 @@ RSS_HISTORY_HOURS = 72
 _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, summary, summary_zh, pub_date, time_str}}
 
 # ── 翻译统计 
-_TRANS_STATS = {"agnes": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
+_TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
 # GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
 _AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
+# Agnes 免费但限流：收到 429 后暂停直连 5 分钟，期间直接走后续端点，不浪费每次 0.4s 的撞墙
+_AGNES_BLOCK_UNTIL = 0.0
+# OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，Agnes 限流时的接力端点
+_ZEN_KEY = os.environ.get("ZEN_API_KEY", "")
+_ZEN_MODEL = os.environ.get("ZEN_TRANSLATE_MODEL", "mimo-v2.5-free")
+_ZEN_URL = "https://opencode.ai/zen/v1/chat/completions"
+_ZEN_BLOCK_UNTIL = 0.0
 # 翻译熔断：连续 5 次全端点失败后暂停翻译请求 5 分钟（避免上游故障时的请求风暴与构建拖长）
 _TRANS_FAIL_STREAK = 0
 _TRANS_BLOCK_UNTIL = 0.0
+_TRANS_LOCK = threading.Lock()  # 并行翻译线程池下的熔断状态保护
 
 
 def _load_caches():
@@ -838,6 +847,42 @@ def _agnes_translate(text, timeout=20):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
         return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            global _AGNES_BLOCK_UNTIL
+            _AGNES_BLOCK_UNTIL = time.time() + 300
+            print("[翻译] Agnes 429 限流，暂停直连 5 分钟", file=sys.stderr)
+        return None
+    except Exception:
+        return None
+
+
+def _zen_translate(text, timeout=20):
+    """OpenCode Zen 免费模型翻译（OpenAI 兼容端点）。429 自封 5 分钟，失败返回 None。"""
+    global _ZEN_BLOCK_UNTIL
+    payload = json.dumps({
+        "model": _ZEN_MODEL,
+        "messages": [
+            {"role": "system", "content": "你是翻译引擎。把用户输入翻译成简体中文，只输出译文，不要解释。"},
+            {"role": "user", "content": text[:1500]},
+        ],
+        "max_tokens": 400,
+        "temperature": 0.2,
+    }).encode("utf-8")
+    req = urllib.request.Request(_ZEN_URL, data=payload, headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + _ZEN_KEY,
+        "User-Agent": "starhub-auto-update",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or None
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _ZEN_BLOCK_UNTIL = time.time() + 300
+            print("[翻译] Zen 429 限流，暂停直连 5 分钟", file=sys.stderr)
+        return None
     except Exception:
         return None
 
@@ -871,12 +916,24 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
 
     encoded = urllib.parse.quote(text[:500])
 
-    # 0) Agnes AI（首选：GA 免费端点全被封，付费接口无 IP 限制）
-    if _AGNES_KEY:
+    # 0) Agnes AI（首选，免费但限流：429 后暂停直连，期间直接走后续端点）
+    if _AGNES_KEY and time.time() >= _AGNES_BLOCK_UNTIL:
         try:
             cand = _agnes_translate(text, timeout=timeout)
             if cand and len(cand) > len(text) * 0.2:
                 _TRANS_STATS["agnes"] += 1
+                _TRANS_FAIL_STREAK = 0
+                _trans_cache[text_hash] = cand  # 写入缓存
+                return cand
+        except Exception:
+            pass
+
+    # 0.5) OpenCode Zen 免费模型（Agnes 限流/封锁时的接力；自身 429 后自封 5 分钟）
+    if _ZEN_KEY and time.time() >= _ZEN_BLOCK_UNTIL:
+        try:
+            cand = _zen_translate(text, timeout=timeout)
+            if cand and len(cand) > len(text) * 0.2:
+                _TRANS_STATS["zen"] += 1
                 _TRANS_FAIL_STREAK = 0
                 _trans_cache[text_hash] = cand  # 写入缓存
                 return cand
@@ -932,11 +989,24 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
         pass
 
     _TRANS_STATS["fail"] += 1
-    _TRANS_FAIL_STREAK += 1
-    if _TRANS_FAIL_STREAK >= 5:
-        _TRANS_BLOCK_UNTIL = time.time() + 300
-        print("[翻译熔断] 连续 %d 次全端点失败，暂停翻译请求 5 分钟" % _TRANS_FAIL_STREAK, file=sys.stderr)
+    with _TRANS_LOCK:
+        _TRANS_FAIL_STREAK += 1
+        if _TRANS_FAIL_STREAK >= 5:
+            _TRANS_BLOCK_UNTIL = time.time() + 300
+            print("[翻译熔断] 连续 %d 次全端点失败，暂停翻译请求 5 分钟" % _TRANS_FAIL_STREAK, file=sys.stderr)
     return text  # 翻译失败保留原文
+
+
+def _translate_source_items(items):
+    """翻译单个源的全部条目（在翻译线程池中执行）：标题/摘要走既有降级链，附相对时间与 ISO 日期。"""
+    for it in items:
+        it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
+        it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
+        it["time_str"] = _fmt_rel_time(it.get("pub_date"))
+        # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
+        pd = it.get("pub_date")
+        if pd and hasattr(pd, "isoformat"):
+            it["pub_date"] = pd.isoformat()
 
 
 # ──────────────────────────── RSS 抓取 ────────────────────────────
@@ -5838,6 +5908,9 @@ def main(mode="full"):
                     _domain_broken.add(dom)
         return i, src, items, ("ok" if ok else "empty")
 
+    # 翻译线程池：有界并发（6 源并发），不拖住抓取主循环；Agnes 429/全链熔断时自动降级
+    _trans_pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+    _trans_futs = []
     _pool = concurrent.futures.ThreadPoolExecutor(max_workers=12)
     try:
         _futs = {_pool.submit(_worker, i, src): (i, src) for i, src in _to_fetch}
@@ -5855,15 +5928,9 @@ def main(mode="full"):
             if status == "ok":
                 ok_count += 1
                 last_fetch[key] = now.isoformat()
-                # 翻译标题和摘要（主线程串行；完成顺序不影响最终产物顺序）
-                for it in items:
-                    it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
-                    it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
-                    it["time_str"] = _fmt_rel_time(it.get("pub_date"))
-                    # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
-                    pd = it.get("pub_date")
-                    if pd and hasattr(pd, 'isoformat'):
-                        it["pub_date"] = pd.isoformat()
+                # 翻译交给独立线程池有界并发；完成顺序不影响最终产物顺序
+                if items:
+                    _trans_futs.append(_trans_pool.submit(_translate_source_items, items))
             else:
                 failed_count += 1
                 if items is None:
@@ -5880,8 +5947,16 @@ def main(mode="full"):
     except BaseException:
         # 中断（Ctrl+C/任务取消）时丢弃排队任务立即退出，避免 shutdown(wait=True) 等完上千个待抓源
         _pool.shutdown(wait=False, cancel_futures=True)
+        _trans_pool.shutdown(wait=False, cancel_futures=True)
         raise
     _pool.shutdown(wait=True)
+    # 等待全部源级翻译完成（下游历史累积/渲染依赖 title_zh）
+    for _tf in _trans_futs:
+        try:
+            _tf.result()
+        except Exception as _ex:
+            print("[翻译] 条目翻译任务异常: %s" % _ex, file=sys.stderr)
+    _trans_pool.shutdown(wait=True)
 
     sources_with_items.extend(r for r in _results if r is not None)
 
@@ -5950,8 +6025,8 @@ def main(mode="full"):
     print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
 
     # 打印翻译统计
-    print("[翻译统计] 缓存命中: %d, Agnes: %d, Google: %d, MyMemory: %d, Dict: %d, 跳过: %d, 失败: %d" % (
-        _TRANS_STATS["cache_hit"], _TRANS_STATS["agnes"], _TRANS_STATS["google"], _TRANS_STATS["mymemory"],
+    print("[翻译统计] 缓存命中: %d, Agnes: %d, Zen: %d, Google: %d, MyMemory: %d, Dict: %d, 跳过: %d, 失败: %d" % (
+        _TRANS_STATS["cache_hit"], _TRANS_STATS["agnes"], _TRANS_STATS["zen"], _TRANS_STATS["google"], _TRANS_STATS["mymemory"],
         _TRANS_STATS["dict"], _TRANS_STATS["skip"], _TRANS_STATS["fail"]
     ))
 
