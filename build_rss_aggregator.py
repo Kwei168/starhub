@@ -5633,6 +5633,8 @@ def _accumulate_rss_trend_history(analysis_data, now_bj):
         "topics": topics_summary,
         "by_cat": by_cat,
         "bad_date_sources": sorted(_LAST_UNRELIABLE_SRCS),
+        # D3 轻量场：本快照的语义主题为沿用值，消费方可据此识别平台期
+        "stale": bool(analysis_data.get("stale")),
     }
     history["snapshots"].append(snapshot)
     # 清理超过 14 天的旧快照
@@ -5943,7 +5945,7 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
     # 也要沿用上次的语义主题/深度洞察，并诚实标注 stale，防止退化态无痕
     if prev_analysis:
         for _k, _v in prev_analysis.items():
-            if _k not in analysis:
+            if _k not in analysis and _k != "bad_date_sources":
                 analysis[_k] = _v
         analysis["stale"] = True
         analysis["generated_at"] = prev_analysis.get("generated_at") or analysis["generated_at"]
