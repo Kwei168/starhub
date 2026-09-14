@@ -367,7 +367,8 @@ def _accumulate_history(sources_with_items):
     # 第一遍：按源统计 pub_date 异常比例
     #   异常模式 A: pub_date ≈ first_seen (|delta|<10min) → pub_date 大概率是抓取时间
     #   异常模式 B: pub_date > first_seen (delta<-10min) → 日期倒挂
-    #   已知类目 C: cat=="wechat" → 公众号 RSS 源 pub_date 不可信
+    #   注：公众号源已不再硬编码为不可信——实测 wechat2rss 的 pub_date 均为真实发布时间，
+    #       统一由异常率阈值判定（与其余类目一视同仁）
     _src_date_stats = {}  # source_key -> {total, anomaly_a, anomaly_b}
     for item in _rss_history.values():
         sk = item["source_key"]
@@ -392,17 +393,14 @@ def _accumulate_history(sources_with_items):
             except (ValueError, TypeError):
                 pass
 
-    # 判定不可信源：已知类目 C 或 异常率 > 30%
+    # 判定不可信源：异常率 > 30%
     _unreliable_srcs = set()
     BAD_DATE_ANOMALY_THRESHOLD = 0.3
     for sk, stats in _src_date_stats.items():
         if stats["total"] == 0:
             continue
-        cat = src_map[sk].get("cat", "")
         anomaly_ratio = (stats["anomaly_a"] + stats["anomaly_b"]) / stats["total"]
-        if cat == "wechat":
-            _unreliable_srcs.add(sk)  # 已知不可信类目
-        elif anomaly_ratio > BAD_DATE_ANOMALY_THRESHOLD:
+        if anomaly_ratio > BAD_DATE_ANOMALY_THRESHOLD:
             _unreliable_srcs.add(sk)  # 自动检测为不可信
     if _unreliable_srcs:
         names = [src_map[sk]["name"] for sk in _unreliable_srcs if sk in src_map][:10]
@@ -1987,26 +1985,37 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
           bad_date:!!it.bad_date, bb:!!s.bb});
       });
     });
-    var nowIso=new Date().toISOString();
-    ART.forEach(function(a){ if(a.date&&a.date>nowIso) a.date=nowIso; });
+    /* 时区安全钳制（根因修复：旧实现用字符串比较判断未来日期，对 +08:00/Z 混合格式
+       误判时区，把早间公众号文章改写成打开页面的时刻——09-14 08:15 事件） */
+    var nowMs=Date.now();
+    ART.forEach(function(a){ if(!a.date) return; var _t=new Date(a.date).getTime(); if(!isNaN(_t)&&_t>nowMs) a.date=new Date(nowMs).toISOString(); });
     applySort();
     window.ART = ART;
   }
   /* ── Sort ── */
   var sortMode = localStorage.getItem('rss_sort_mode') || 'newest';
+  /* 时区安全日期比较（D3 修复：+08:00/Z 混合格式的字符串比较是时区盲的）；
+     无日期沉底，两个无日期视为相等 */
+  function _dateCmp(x,y){
+    var tx=x?new Date(x).getTime():NaN, ty=y?new Date(y).getTime():NaN;
+    if(isNaN(tx)&&isNaN(ty)) return 0;
+    if(isNaN(tx)) return 1;
+    if(isNaN(ty)) return -1;
+    return tx-ty;
+  }
   /* F1 修复：'active' 按信源最近更新时间排序 */
   function applySort(){
-    if(sortMode==='oldest') ART.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+    if(sortMode==='oldest') ART.sort(function(a,b){ return _dateCmp(a.date,b.date); });
     else if(sortMode==='active'){
       var srcLatest={};
-      ART.forEach(function(a){ if(a.date){ var cur=srcLatest[a.sk]; if(!cur||a.date>cur) srcLatest[a.sk]=a.date; }});
+      ART.forEach(function(a){ if(a.date){ var cur=srcLatest[a.sk]; if(!cur||_dateCmp(a.date,cur)>0) srcLatest[a.sk]=a.date; }});
       ART.sort(function(a,b){
         var sa=srcLatest[a.sk]||'', sb=srcLatest[b.sk]||'';
-        if(sa!==sb) return sb.localeCompare(sa);
-        return (b.date||'').localeCompare(a.date||'');
+        if(sa!==sb) return _dateCmp(sb,sa);
+        return _dateCmp(b.date,a.date);
       });
     }
-    else ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    else ART.sort(function(a,b){ return _dateCmp(b.date,a.date); });
     if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
       var qm=ANALYSIS_DATA.quality;
       ART.sort(function(a,b){ return (qm[b.sk]||0)-(qm[a.sk]||0); });
