@@ -2251,6 +2251,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
 """ + qr_lib + """
 ;(function(){
   var BUILD_TS = """ + str(int(build_ts_ms)) + """;
+  var DIVERSE_WINDOW = """ + str(int(diverse_window_minutes)) + """;
   var SOURCES = [];
   var CAT_LABELS = """ + cat_labels_json + """;
   var ANALYSIS_DATA = """ + (analysis_json if analysis_json else 'null') + """;
@@ -2340,6 +2341,17 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         return _dateCmpDesc(a.date,b.date);
       });
     }
+    else if(sortMode==='diverse'){
+      // 先时间降序，再信誉打散
+      ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
+      var _qMap = (ANALYSIS_DATA && ANALYSIS_DATA.quality) ? ANALYSIS_DATA.quality : {};
+      var _win = (typeof DIVERSE_WINDOW !== 'undefined') ? DIVERSE_WINDOW : 120;
+      /* 原地替换而非重新绑定 ART：window.ART / 各闭包持有的是同一个数组引用，
+         若在此处整体替换引用，后续重排对持有旧引用的调用方不可见。 */
+      var _sh = weightedShuffle(ART, _win, _qMap);
+      ART.length = 0;
+      for(var _i=0;_i<_sh.length;_i++) ART.push(_sh[_i]);
+    }
     else ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
     if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
       var qm=ANALYSIS_DATA.quality;
@@ -2350,6 +2362,60 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   if(_sortEl){ _sortEl.value=sortMode; _sortEl.addEventListener('change',function(){ sortMode=this.value; localStorage.setItem('rss_sort_mode',sortMode); applySort(); wallLimit=WALL_STEP; curArt=null; renderWall(); }); }
   /* A6 修复：中文阅读速度约 400 字/分钟 */
   function estRead(a){ var mins=Math.max(1,Math.round((a.s||'').length/400)); return mins+' min'; }
+
+  /* ── 信誉打散：时间窗口内加权采样，避免高信誉源霸屏 ── */
+  function weightedShuffle(articles, windowMinutes, qualityMap) {
+    if (!articles || articles.length <= 1) return articles ? articles.slice() : [];
+    if (!windowMinutes || windowMinutes <= 0) {
+      // 窗口=0 → 纯时间降序（退化为现有行为）
+      return articles.slice().sort(function(a,b){ return _dateCmpDesc(a.date, b.date); });
+    }
+    var qm = qualityMap || {};
+    // 1. 先按时间降序排列（拷贝，不改原数组）
+    var sorted = articles.slice().sort(function(a,b){ return _dateCmpDesc(a.date, b.date); });
+    // 2. 滑动窗口分组
+    var groups = [], cur = [sorted[0]];
+    for (var i = 1; i < sorted.length; i++) {
+      var tBase = new Date(cur[0].date).getTime();
+      var tCur  = new Date(sorted[i].date).getTime();
+      if (!isNaN(tBase) && !isNaN(tCur) && (tBase - tCur) <= windowMinutes * 60000) {
+        cur.push(sorted[i]);
+      } else {
+        groups.push(cur);
+        cur = [sorted[i]];
+      }
+    }
+    groups.push(cur);
+    // 3. 窗口内加权采样（确定性 seed：同 quality 同输入序 → 同输出）
+    var result = [];
+    for (var g = 0; g < groups.length; g++) {
+      var remaining = groups[g].slice();
+      while (remaining.length > 0) {
+        // 计算总权重
+        var totalW = 0;
+        for (var k = 0; k < remaining.length; k++) {
+          totalW += (qm[remaining[k].sk] !== undefined ? qm[remaining[k].sk] : 50);
+        }
+        if (totalW <= 0) {
+          // 所有权重为 0 → 按输入顺序取
+          for (var k = 0; k < remaining.length; k++) result.push(remaining[k]);
+          break;
+        }
+        // 加权选取：使用确定性伪随机（基于索引和权重的线性扫描）
+        var threshold = (totalW * 0.5); // 固定取中位权重附近 → 确定性
+        var cumW = 0, picked = -1;
+        for (var k = 0; k < remaining.length; k++) {
+          cumW += (qm[remaining[k].sk] !== undefined ? qm[remaining[k].sk] : 50);
+          if (cumW >= threshold && picked < 0) { picked = k; }
+        }
+        if (picked < 0) picked = 0;
+        result.push(remaining[picked]);
+        remaining.splice(picked, 1);
+      }
+    }
+    return result;
+  }
+  /* ── weightedShuffle end ── */
 
   /* ── 分层交织：每 4 篇高频文章穿插 1 篇低频文章 ─ */
   function tierInterleave(){
@@ -4896,7 +4962,9 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
         '<div class="search-row">\n'
         '<span class="global-search" id="globalSearchWrap"><input id="globalSearch" placeholder="\u641c\u7d22\u6587\u7ae0\u6807\u9898\u3001\u6458\u8981\u6216\u4fe1\u606f\u6e90\u540d\u79f0\u2026" autocomplete="off"><span class="sx" id="globalSearchClear">\u2715</span></span>\n'
                 '<span class="src-match-label" id="srcMatchLabel" style="display:none" aria-live="polite"></span>\n'
-        '<select class="sort-select" id="sortSelect" title="\u6392\u5e8f\u65b9\u5f0f"><option value="newest">\u6700\u65b0\u53d1\u5e03</option><option value="oldest">\u6700\u65e9\u53d1\u5e03</option><option value="active">\u6700\u8fd1\u6d3b\u8dc3</option><option value="quality">\u4fe1\u6e90\u8d28\u91cf</option></select>\n'
+        '<select class="sort-select" id="sortSelect" title="\u6392\u5e8f\u65b9\u5f0f"><option value="newest">\u6700\u65b0\u53d1\u5e03</option><option value="oldest">\u6700\u65e9\u53d1\u5e03</option><option value="active">\u6700\u8fd1\u6d3b\u8dc3</option><option value="quality">\u4fe1\u6e90\u8d28\u91cf</option>'
+        + ('<option value="diverse">\u591a\u6837\u63a8\u8350</option>' if diverse_enabled else '')
+        + '</select>\n'
         '</div>\n'
         + insight_bar +
         '<div class="build-bar">\u81ea\u52a8\u751f\u6210\u4e8e ' + _esc(build_time) + '\uff08\u5317\u4eac\u65f6\u95f4\uff09\u00b7 \u5171 ' + str(total_items) + ' \u7bc7 \u00b7 <span id="buildRel"></span><span id="liveStatus"></span></div>\n'
