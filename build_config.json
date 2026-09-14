@@ -9,5 +9,7 @@
   "insight_llm_provider": "agnes",
   "insight_max_documents": 200,
   "insight_top_keywords": 30,
-  "insight_top_topics": 15
+  "insight_top_topics": 15,
+  "diverse_enabled": true,
+  "diverse_window_minutes": 120
 }
