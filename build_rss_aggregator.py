@@ -531,6 +531,12 @@ def _save_api_snapshot(sources_with_items, meta=None):
             # 日期缺失，d 由 first_seen 降级而来 → 前端需区分展示（「收录」而非「发布」）
             if it.get("date_fallback"):
                 item["date_fallback"] = True
+            # 话题标签（issue M5）：此前白名单只有 t/u/s/d，tags 在快照层就被丢掉，
+            # 打标结果成为死数据。仅非空时写入 —— 无标签条目连键都不出现，
+            # 不为空值付体积（快照 item 只有 4~5 个字段，占比比 chunk0 更敏感）。
+            _tags = it.get("tags")
+            if _tags:
+                item["tags"] = _tags
             fc = it.get("full_content", "")
             if fc:
                 item["fc"] = fc[:50000]
@@ -2285,6 +2291,12 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   /* 全量数据按日期降序后由构建脚本切成 rss-data-0.js（首屏）与
      rss-data-1.js（后台合并）两块，页面不再内嵌数据（31MB→约0.15MB）。
      首屏严格时间排序；chunk1 合并后或刷新时应用 tier 交织。 */
+  /* tags 归一化（issue M5）：只接受「非空数组」，其余（undefined / null / [] / 脏值）
+     一律归一为 null。两条通道（构建期 chunk、刷新通道）共用同一函数，
+     避免只修一条导致同一篇文章在不同通道下形状不一致。 */
+  function _tagsOf(x){
+    return (x && Object.prototype.toString.call(x.tags) === '[object Array]' && x.tags.length) ? x.tags : null;
+  }
   function buildArt(){
     /* 渲染前全局去重：以 源key|链接 为唯一键，防止任何合并路径（chunk/快照/远程刷新）
        造成的同源同链文章重复渲染 */
@@ -2299,7 +2311,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
           /* fc 兼容两条通道：chunk 通道字段名为 full_content，远程刷新通道为 fc */
           time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
           img:it.image||it.img||'', mu:it.mu||'', mt:it.mt||'',
-          bad_date:!!it.bad_date, bb:!!s.bb, dfb:!!it.date_fallback});
+          bad_date:!!it.bad_date, bb:!!s.bb, dfb:!!it.date_fallback, tags:_tagsOf(it)});
       });
     });
     /* 时区安全钳制（根因修复：旧实现用字符串比较判断未来日期，对 +08:00/Z 混合格式
@@ -2396,7 +2408,42 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   /* A6 修复：中文阅读速度约 400 字/分钟 */
   function estRead(a){ var mins=Math.max(1,Math.round((a.s||'').length/400)); return mins+' min'; }
 
-  /* ── 信誉打散：时间窗口内加权采样，避免高信誉源霸屏 ── */
+  /* ── 信誉打散：时间窗口内加权采样 + 同源抑制，避免单源霸屏 ── */
+  /* 同源抑制间隔（issue C1）：同一源在最近 SRC_GAP 位内出现过的，本轮不再选。
+     缺陷背景：旧实现只有「窗口内按权重重排」，没有任何抑制同源相邻的项 ——
+     「打散」（避免单源霸屏）等于没做。
+
+     可证的界（精确表述，不要读成「最长连续恒 ≤ 2」）：
+       · 池非空 ⇒ 同一源在最近 SRC_GAP 位内不会被再次选中 ⇒ 相邻必异源。
+       · 池为空（组内剩余条目的源都恰好落在最近 SRC_GAP 位里）⇒ 退化为
+         「最久未出现优先」；若此时只剩单一源，连出长度 = 该源剩余条目数，不可避。
+     实测（2026-09-14 快照，9092 条 / 509 源）：
+       前 200 位同源最长连续 9（纯时间降序）→ 1；前 20 位单源最多 13 → 4；
+       前 200 位覆盖源数 36；平均时间位移与旧实现持平（103.1 vs 103.1）。
+       残留：全长最长连出 11（人民网，第 7480 位 / 82% 深处），落在 g28 组内
+       （该组 140 条 / 57 源 / 人民网 46 条，构成**可行**：46 ≤ floor(142/3)=47），
+       根因是贪心消耗不均衡使组尾塌成单源，不是数据所迫。
+       已实测的替代规则（池内改为「剩余量优先」）能把全程 maxRun 压到 1，
+       但前 200 位单源占比 12%→25%、覆盖源数 36→13、前 20 位源质量均值 82.45→78.08，
+       牺牲首屏多样性换深层不可见指标，净亏，故不改，如实记录为已知限制。
+
+     报告建议的 seeded PRNG 解决不了它：随机化不提供「不相邻」的任何保证，
+     而且按 quality 加权采样会把首屏推向纯降序（前轮读数：首屏均值 99.26 vs
+     时间序 82.20，本轮未复测），与「保持时间可读性」冲突。
+     只有位置约束能给出可证的界。 */
+  var SRC_GAP = 2;
+
+  /* 距末尾最近一次出现的距离；从未出现返回大值（恒可用）。
+     用 lastAt 映射做到 O(1)，避免每次重扫输出数组。 */
+  function _srcGap(lastAt, len, sk) {
+    var at = lastAt[sk];
+    return (at === undefined) ? 1e9 : (len - at);
+  }
+
+  function _srcWeight(x, qm) {
+    return (qm[x.sk] !== undefined ? qm[x.sk] : 50);
+  }
+
   function weightedShuffle(articles, windowMinutes, qualityMap) {
     if (!articles || articles.length <= 1) return articles ? articles.slice() : [];
     if (!windowMinutes || windowMinutes <= 0) {
@@ -2406,7 +2453,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     var qm = qualityMap || {};
     // 1. 先按时间降序排列（拷贝，不改原数组）
     var sorted = articles.slice().sort(function(a,b){ return _dateCmpDesc(a.date, b.date); });
-    // 2. 滑动窗口分组
+    // 2. 锚定分段：组内每一条与组锚点（组内第一篇）的时间差 ≤ 窗口
     var groups = [], cur = [sorted[0]];
     for (var i = 1; i < sorted.length; i++) {
       var tBase = new Date(cur[0].date).getTime();
@@ -2419,31 +2466,52 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       }
     }
     groups.push(cur);
-    // 3. 窗口内加权采样（确定性 seed：同 quality 同输入序 → 同输出）
+    // 3. 窗口内加权采样（确定性 + 同源抑制）
     var result = [];
+    var lastAt = {};   // sk → 上一次进入 result 的下标（跨组保留，防跨组边界处连出）
     for (var g = 0; g < groups.length; g++) {
       var remaining = groups[g].slice();
       while (remaining.length > 0) {
-        // 计算总权重
+        // 3a 先取「最近 SRC_GAP 位内未出现」的条目作为可选池
+        var pool = [], k, gk;
+        for (k = 0; k < remaining.length; k++) {
+          if (_srcGap(lastAt, result.length, remaining[k].sk) > SRC_GAP) pool.push(remaining[k]);
+        }
+        if (!pool.length) {
+          // 3b 可选池为空：该源在本窗口占绝对多数，异源条目已用尽。
+          //     退而取「最久未出现」的源（而不是接着选刚用过的源），
+          //     否则会用 fallback 把刚压下去的连续段重新接起来。
+          var maxGap = -1;
+          for (k = 0; k < remaining.length; k++) {
+            gk = _srcGap(lastAt, result.length, remaining[k].sk);
+            if (gk > maxGap) maxGap = gk;
+          }
+          for (k = 0; k < remaining.length; k++) {
+            if (_srcGap(lastAt, result.length, remaining[k].sk) === maxGap) pool.push(remaining[k]);
+          }
+        }
+        // 3c 池内确定性加权选取
         var totalW = 0;
-        for (var k = 0; k < remaining.length; k++) {
-          totalW += (qm[remaining[k].sk] !== undefined ? qm[remaining[k].sk] : 50);
-        }
+        for (k = 0; k < pool.length; k++) totalW += _srcWeight(pool[k], qm);
+        var chosen;
         if (totalW <= 0) {
-          // 所有权重为 0 → 按输入顺序取
-          for (var k = 0; k < remaining.length; k++) result.push(remaining[k]);
-          break;
+          chosen = pool[0];       // 所有权重为 0 → 按输入顺序取
+        } else {
+          /* 取「累计权重跨过总量一半」的那一个（池内顺序上的权重中位点）。
+             注意这是确定性算法，不是随机采样：同一输入必然产出同一排列（D8 守卫）。
+             本注释修正自旧的「使用确定性伪随机」—— 旧实现里没有任何 PRNG，注释与实现不符。 */
+          var threshold = totalW * 0.5, cumW = 0, picked = -1;
+          for (k = 0; k < pool.length; k++) {
+            cumW += _srcWeight(pool[k], qm);
+            if (cumW >= threshold && picked < 0) picked = k;
+          }
+          chosen = pool[picked < 0 ? 0 : picked];
         }
-        // 加权选取：使用确定性伪随机（基于索引和权重的线性扫描）
-        var threshold = (totalW * 0.5); // 固定取中位权重附近 → 确定性
-        var cumW = 0, picked = -1;
-        for (var k = 0; k < remaining.length; k++) {
-          cumW += (qm[remaining[k].sk] !== undefined ? qm[remaining[k].sk] : 50);
-          if (cumW >= threshold && picked < 0) { picked = k; }
+        result.push(chosen);
+        lastAt[chosen.sk] = result.length - 1;
+        for (k = 0; k < remaining.length; k++) {
+          if (remaining[k] === chosen) { remaining.splice(k, 1); break; }
         }
-        if (picked < 0) picked = 0;
-        result.push(remaining[picked]);
-        remaining.splice(picked, 1);
       }
     }
     return result;
@@ -3460,7 +3528,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         s.items.forEach(function(it){
           if(!it||!it.u||it.u==='#') return;
           var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date, dfb:!!it.date_fallback};
+                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date, dfb:!!it.date_fallback, tags:_tagsOf(it)};
           if(!a.t) return;
           var k=artKey(a);
           if(known[k]) return;
@@ -5326,39 +5394,208 @@ def _score_sources(sources_with_items, rss_history):
     return result
 
 
+# ──────────────────── 话题标签提取（issue C2） ────────────────────
+# 旧实现直接取 _tokenize 的词频 Top3。但 _tokenize 是「从位置 0 起逐位贪心吞 3 字」
+# 的扫描器，词典术语会被前一位置的误吞切断，且切点落在词中间：
+#     '苹果发布会'   → ['苹果发', '布会']
+#     '关于人工智能' → ['关于人', '工智能']      （'工智能' 是 '人工智能' 的真子串）
+#     '出席金砖国家' → ['出席金', '砖国家']
+# 真实语料实测（27076 个标签）：16.7% 的标签首/尾是虚词功能字
+# （'的星尘' / '或让' / '将瞄准' / '定 价' / '大  '），4.2% 含空白，
+# 台标与栏目名（rfi / cnn / hn / 问与答）进入 Top 15 —— 与「出版社样板污染」同源。
+#
+# 新口径（顺序即优先级）：
+#   P1 词典术语整词命中（绝不切碎）
+#   P2 英文词：原文含大写（品牌/缩写）或命中词典，且非台标/样板
+#   P3 长度 4..上界的边界对齐中文整段（'苹果发布会' 这类短段整取，不切）
+#   P4 其余中文段（2~3 字、或超过上界）用过滤后的词频兜底
+#   P5 按源样板抑制：某 token 出现在该源 ≥60% 篇目中 → 台标/栏目名，整源剔除
+_TAG_MAX_LEN = 6                 # 中文标签长度上界；超过这个长度的整段是句子片段，不是标签
+_TAG_BOILER_MIN_ITEMS = 10       # 源内至少这么多篇才做样板词统计（样本太少无统计意义）
+_TAG_BOILER_RATIO = 0.6          # 出现在该源 ≥60% 篇目 → 判为台标/栏目名
+
+# 首/尾出现这些字即为「切在词中间」的切片（'的星尘' / '或让' / '将瞄准'）
+_TAG_EDGE_NOISE = set(
+    "的了是在我有和就不都一个上也这到说们为你对被把让给用从向"
+    "该此其本如与及或并等将已正未很更最又还只仅才再也都吗呢吧啊着过据称当以对"
+)
+# 样板/泛化词：命中词典也不作标签（否则 '发布'/'公司'/'技术' 会占领标签表）
+_TAG_BLOCKLIST = set("""
+报道 据悉 表示 指出 认为 透露 宣布 发布 推出 上线 下线 升级 更新 修复
+完成 使用 进行 实现 相关 有关 目前 近日 今日 昨日 未来 正在 已经 可以 需要
+公司 企业 机构 政府 部门 组织 用户 产品 服务 平台 应用 软件 硬件
+系统 数据 技术 创新 突破 进展 成果 市场 行业 领域 情况 问题 方面 内容 方式
+为什么 有没有 一个 做了 第一个 第二十 十周年 评论 询问 突发 分享 观点 消息
+记者 编辑 来源 版权 转载 声明 观察 分析 解读 盘点 汇总 速览 早报 晚报
+网址 链接 原文 全文 本文 本站 译者 校对 责编 发自 综合报道 文章来源
+文章网址 评论网址 阅读全文 查看更多 推荐阅读 相关阅读 点击查看 详情
+""".split())
+# 英文样板词：多为栏目名/停用词，且不在 _TECH_DICT 内
+_TAG_EN_BLOCKLIST = set("""
+hn pro fix show duo flash ask news de le der web france fr en es
+the and for with from that this new top best how why what when who
+you your his her its our their all any can may not but
+""".split())
+_TAG_DICT_LOWER = set(t.lower() for t in _TECH_DICT)
+_TAG_CJK_RUN = re.compile(r"[\u4e00-\u9fff]{2,}")
+_TAG_EN_WORD = re.compile(r"[A-Za-z][A-Za-z0-9._+\-]{1,19}")
+_TAG_WS = re.compile(r"\s")
+
+
+def _tag_src_name_norm(name):
+    """源名归一化：只留字母/数字/汉字（用于台标自指判断）。"""
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", (name or "").lower())
+
+
+def _is_tag_station(tok, src_norm):
+    """台标判定：标签是源名的一部分，或源名是标签的一部分（'cnn' ⊂ 'CNN'）。"""
+    if not src_norm or len(tok) < 2:
+        return False
+    tl = tok.lower()
+    return tl in src_norm or (len(src_norm) >= 3 and src_norm in tl)
+
+
+def _tag_edge_ok(tok):
+    """标签首/尾不得是虚词功能字（'的星尘' / '或让' 这类切片的判据）。"""
+    return len(tok) >= 2 and tok[0] not in _TAG_EDGE_NOISE and tok[-1] not in _TAG_EDGE_NOISE
+
+
+def _tag_ok(tok, src_norm, low_text):
+    """标签通用过滤：长度/空白/样板/边界/数值单位/台标/词典术语真子串。"""
+    if len(tok) < 2 or _TAG_WS.search(tok):
+        return False
+    if tok in _TAG_BLOCKLIST or tok in _TAG_EN_BLOCKLIST:
+        return False
+    if not _tag_edge_ok(tok) or _is_numeric_unit_phrase(tok):
+        return False
+    if _is_tag_station(tok, src_norm):
+        return False
+    if not tok.isascii() and len(tok) > _TAG_MAX_LEN:
+        return False
+    # 词典术语的真子串：'工智能' ⊂ '人工智能'（同一文本里 '人工智能' 也在）
+    if any(tok != d and tok in d and d in low_text for d in _TAG_DICT_LOWER):
+        return False
+    return True
+
+
+def _tag_candidates(text, src_norm, allow_runs=True):
+    """按优先级产出候选标签（可能超过 3 个，由调用方截断）。
+
+    allow_runs=False 时只走 P1/P2（词典术语 + 英文词），不切中文段：
+    摘要是一整段散文，长中文段里没有可用词典术语时只能靠 n-gram 硬切，
+    实测切出来的是 '自微信' / '际广播' / '文章网址' 这类东西。
+    标题本身短且是名词短语，才值得做边界对齐的整段取词。
+    """
+    text = text or ""
+    if not text.strip():
+        return []
+    low = text.lower()
+    picks = []
+
+    # P1 词典术语：整词命中。按出现位置排，同位置取更长者（避免短词吃掉长词的位）
+    hits = []
+    for term in _TECH_DICT:
+        k = low.find(term.lower())
+        if k >= 0:
+            hits.append((term.lower(), k, len(term)))
+    hits.sort(key=lambda x: (x[1], -x[2]))
+    for w, _k, _L in hits:
+        if _tag_ok(w, src_norm, low):
+            picks.append(w)
+
+    # P2 英文词：原文含大写（品牌/缩写如 OpenAI/iPhone），或命中词典（ai/llm/gpt）
+    for m in _TAG_EN_WORD.finditer(text):
+        raw = m.group(0)
+        w = raw.lower()
+        if w in _TAG_EN_BLOCKLIST or w in _TAG_BLOCKLIST:
+            continue
+        if w not in _TAG_DICT_LOWER and not any(c.isupper() for c in raw):
+            continue
+        if _is_tag_station(w, src_norm):
+            continue
+        picks.append(w)
+
+    # P3/P4 中文段：短段（4..上界）整取，其余用过滤后的词频兜底
+    if allow_runs:
+        for run in _TAG_CJK_RUN.findall(text):
+            L = len(run)
+            if L < 2:
+                continue
+            # 「本段有可用词典术语」时不再切段 —— 切碎只会产生碎片（'出席金'/'砖国家'）。
+            # 两种情形交给 P1 整词发出：
+            #   a) 段太长（>上界）：整段不可用，只能靠词典术语，切碎只会更差；
+            #   b) 段内某个可用术语几乎占满整段（len ≥ L-1）：该段基本就是这个术语 + 杂字。
+            # 反例（必须走整段）：'苹果发布会' 段内的 '发布' 是样板词、不可用，
+            # 此时整段本身就是最好的短语，切碎才会得到 '苹果发'/'布会'。
+            eff = [d for d in _TAG_DICT_LOWER if d in run and _tag_ok(d, src_norm, low)]
+            has_any = any(d in run for d in _TAG_DICT_LOWER)
+            if has_any and (L > _TAG_MAX_LEN or (eff and max(len(d) for d in eff) >= L - 1)):
+                continue
+            if 4 <= L <= _TAG_MAX_LEN and _tag_ok(run, src_norm, low):
+                picks.append(run)
+                continue
+            toks = []
+            for t in _tokenize_cached(run):
+                t = t.strip()
+                if _tag_ok(t, src_norm, low):
+                    toks.append(t)
+            for w, _ in collections.Counter(toks).most_common(3):
+                picks.append(w)
+
+    seen, out = set(), []
+    for w in picks:
+        if w in seen:
+            continue
+        seen.add(w)
+        out.append(w)
+    return out
+
+
 def _tag_articles(sources_with_items):
-    """为每篇文章提取 1-3 个话题标签（复用现有 _tokenize_cached）。
+    """为每篇文章提取 1-3 个话题标签。
 
     标签来源：标题（title_zh/title/t，构建期与刷新通道两种契约）优先，
     不足 3 个时用摘要前 200 字（summary_zh/summary/s）补齐。
-    取词频最高的 token，过滤单字与纯数值单位短语。
+    口径见上方常量区注释（C2 修复）。
     原地修改 item，新增 tags 字段。
     """
     for src in sources_with_items:
-        for it in src.get("items", []):
+        items = src.get("items", [])
+        if not items:
+            continue
+        sn = _tag_src_name_norm(src.get("name"))
+        # 第一遍：逐条产出候选
+        raw = []
+        for it in items:
             title = it.get("title_zh") or it.get("title") or it.get("t") or ""
             summary = (it.get("summary_zh") or it.get("summary") or it.get("s") or "")[:200]
             if not (title or summary).strip():
-                it["tags"] = []
+                raw.append([])
                 continue
             tags = []
-            seen = set()
-            # 标题优先：标题是主题的最强信号，摘要只用于补齐不足的位
-            for pool in (title, summary):
+            # 标题：完整管线（含边界对齐整段取词）；
+            # 摘要：只取词典术语与英文词（散文长段硬切只会得到 '自微信'/'际网址' 这类碎片）
+            for pool, allow_runs in ((title, True), (summary, False)):
                 if len(tags) >= 3:
                     break
-                # strip 必须在长度判断之前：n-gram 切割会在中文与 ASCII 边界留下空格，
-                # 实测会产出 '完成 ' / '小米 ' / '美团 ' 这类带尾空格的标签。
-                tokens = [t.strip() for t in _tokenize_cached(pool)]
-                tokens = [t for t in tokens if len(t) >= 2 and not _is_numeric_unit_phrase(t)]
-                for tok, _ in collections.Counter(tokens).most_common(3):
+                for w in _tag_candidates(pool, sn, allow_runs=allow_runs):
                     if len(tags) >= 3:
                         break
-                    if tok in seen:
-                        continue
-                    seen.add(tok)
-                    tags.append(tok)
-            it["tags"] = tags
+                    if w not in tags:
+                        tags.append(w)
+            raw.append(tags)
+        # 第二遍：按源统计样板词（台标/栏目名），整源剔除
+        # 判据是「在这个源里几乎每篇都出现」——话题词不会这么均匀，栏目名会。
+        boiler = set()
+        if len(items) >= _TAG_BOILER_MIN_ITEMS:
+            df = collections.Counter()
+            for tags in raw:
+                for t in set(tags):
+                    df[t] += 1
+            need = max(3, _TAG_BOILER_RATIO * len(items))
+            boiler = set(t for t, c in df.items() if c >= need)
+        for it, tags in zip(items, raw):
+            it["tags"] = [t for t in tags if t not in boiler]
 
 
 def _is_numeric_unit_phrase(s):
@@ -6714,8 +6951,8 @@ def main(mode="full"):
             import traceback; traceback.print_exc()
 
     # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
-    meta = {"last_fetch": last_fetch}
-    _save_api_snapshot(sources_with_items, meta=meta)
+    # 调用位置在 _tag_articles() 之后：快照 item 只搬用白名单字段，
+    # 若在打标前构造，tags 恒为空（现网缺陷形态）。
 
     # 若分析未启用，仍需抓取热榜快照
     if not ANALYSIS_ENABLED:
@@ -6732,6 +6969,12 @@ def main(mode="full"):
         print("[标签] 已为 %d 篇文章提取话题标签" % _tagged)
     except Exception as e:
         print("[标签] 提取失败，跳过: %s" % e, file=sys.stderr)
+
+    # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
+    # 必须晚于 _tag_articles()：快照构造只搬用白名单字段，早于打标则 tags 恒为空。
+    # 仍早于 build_html / write_data_chunks，保证产物写出异常时快照已落地。
+    meta = {"last_fetch": last_fetch}
+    _save_api_snapshot(sources_with_items, meta=meta)
 
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms, analysis_data=analysis_data,
                           diverse_window_minutes=DIVERSE_CFG["window_minutes"],

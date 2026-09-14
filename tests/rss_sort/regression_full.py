@@ -53,6 +53,11 @@ console.log(JSON.stringify({
 """
 
 BLOCKS = [
+    # _tagsOf 必须先于 buildArt 抽取：M5 修复后 buildArt 构造 ART 时会调用 _tagsOf(it)，
+    # 漏抽这一块会让 harness 直接抛 ReferenceError: _tagsOf is not defined，
+    # 而旧版 run() 对 node 崩溃只打印一行「无输出」，于是**静默失败**（本轮已修）。
+    # 基线（git HEAD 的旧版）里还没有这个函数，故抽取失败只告警、不中断。
+    ("tagsOf", "  function _tagsOf(x){", "function buildArt(){"),
     ("build", "function buildArt(){", "/* ── Sort ── */"),
     ("sort", "/* ── Sort ── */", "/* ── State ── */"),
 ]
@@ -66,8 +71,17 @@ def extract(src, start, end):
     return src[i:j]
 
 
-def blocks_from(src):
-    return "\n".join(extract(src, s, e) or "" for _, s, e in BLOCKS)
+def blocks_from(src, label):
+    parts, missing = [], []
+    for name, s, e in BLOCKS:
+        body = extract(src, s, e)
+        if body is None:
+            missing.append(name)
+            continue
+        parts.append(body)
+    if missing:
+        print("[%s] 警告：未找到块 %s（基线版本可能尚无该代码）" % (label, missing))
+    return "\n".join(parts)
 
 
 def sources_js():
@@ -119,8 +133,12 @@ def main():
     if not old:
         print("警告：无法从 git HEAD 取原始版本，跳过基线")
     else:
-        run("BASELINE 修复前（git HEAD 原始代码）", blocks_from(old))
-    run("FIXED 修复后（工作区当前代码）", blocks_from(cur))
+        run("BASELINE 修复前（git HEAD 原始代码）", blocks_from(old, "BASELINE"))
+    fixed = run("FIXED 修复后（工作区当前代码）", blocks_from(cur, "FIXED"))
+    if fixed is None:
+        # 当前代码跑不出结果就是硬失败，不能return 0 掩盖
+        print("FIXED 运行失败：当前源码无法产出结果，判定为失败")
+        return 1
     return 0
 
 
