@@ -2392,7 +2392,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     }
   }
   var _sortEl = document.getElementById('sortSelect');
-  if(_sortEl){ _sortEl.value=sortMode; _sortEl.addEventListener('change',function(){ sortMode=this.value; localStorage.setItem('rss_sort_mode',sortMode); applySort(); wallLimit=WALL_STEP; curArt=null; renderWall(); }); }
+  if(_sortEl){ _sortEl.value=sortMode; _sortEl.addEventListener('change',function(){ sortMode=_normSortMode(this.value); localStorage.setItem('rss_sort_mode',sortMode); applySort(); wallLimit=WALL_STEP; curArt=null; renderWall(); }); }
   /* A6 修复：中文阅读速度约 400 字/分钟 */
   function estRead(a){ var mins=Math.max(1,Math.round((a.s||'').length/400)); return mins+' min'; }
 
