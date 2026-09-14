@@ -6950,10 +6950,6 @@ def main(mode="full"):
             print("[分析] 智能分析失败，跳过: %s" % e, file=sys.stderr)
             import traceback; traceback.print_exc()
 
-    # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
-    # 调用位置在 _tag_articles() 之后：快照 item 只搬用白名单字段，
-    # 若在打标前构造，tags 恒为空（现网缺陷形态）。
-
     # 若分析未启用，仍需抓取热榜快照
     if not ANALYSIS_ENABLED:
         hot_snapshot = fetch_newsnow_snapshot()
