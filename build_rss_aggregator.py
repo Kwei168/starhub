@@ -261,6 +261,28 @@ def _accumulate_history(sources_with_items):
     now_bj = _now_bj()
     cutoff = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=RSS_HISTORY_HOURS)
 
+    # ── pub_date 时区校正（声明式）与同源系统性倒挂发现 ──
+    # 校正量来自源配置的 pub_date_offset_min（见 _load_pub_date_offsets 里的取舍说明）；
+    # 检测器只报告不落库，避免「猜出来的偏移」静默改写日期。
+    # 后续合并 / 裁剪 / 审计 / 输出四处统一用 _effective_pub_dt，避免多套口径。
+    _pd_offsets = _load_pub_date_offsets()
+    if _pd_offsets:
+        print("[pub_date] 已声明时区校正 %d 个源: %s" % (
+            len(_pd_offsets),
+            ", ".join("%s %+dmin" % (k, v) for k, v in list(_pd_offsets.items())[:8])))
+    _anomalies = _detect_pub_date_anomalies(_rss_history, _pd_offsets)
+    for _a in _anomalies:
+        if _a["kind"] == "tz":
+            print("[pub_date] 疑似时区误标 %s: n=%d 倒挂=%.0f%% 中位=%+.0fmin "
+                  "→ 建议 pub_date_offset_min=%d（需人工确认后写入 rss_sources.json）" % (
+                      _a["key"], _a["n"], _a["inverted_ratio"] * 100,
+                      _a["median_delta_min"], _a["suggest_min"]), file=sys.stderr)
+        else:
+            print("[pub_date] 日期异常（非时区）%s: n=%d 倒挂=%.0f%% 中位=%+.0fmin "
+                  "→ 需要前移 %.0fh，远超真实时区范围，不作时区校正" % (
+                      _a["key"], _a["n"], _a["inverted_ratio"] * 100,
+                      _a["median_delta_min"], _a["need_min"] / 60.0), file=sys.stderr)
+
     # 合并新文章（按 link 去重，新数据覆盖旧数据）
     new_count = 0
     genuinely_new = 0  # 真正新增的链接（非覆盖）
@@ -270,18 +292,12 @@ def _accumulate_history(sources_with_items):
             if not link:
                 continue
             pd_str = it.get("pub_date", "")
-            # 解析日期：优先 pub_date，无日期时使用 first_seen（首次抓取时间），
-            # 仅当 first_seen 也不可用时才回退当前时间（仅首次出现的新条目）
+            # 解析日期：优先 pub_date（按源声明的偏移做时区校正），无日期或不可解析时
+            # 使用 first_seen（首次抓取时间），仅当 first_seen 也不可用时才回退当前时间。
             pd_bj = now_bj.replace(tzinfo=None)  # 默认当前时间
-            if pd_str:
-                try:
-                    pd = datetime.datetime.fromisoformat(pd_str)
-                    if pd.tzinfo:
-                        pd_bj = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
-                    else:
-                        pd_bj = pd
-                except ValueError:
-                    pass  # pub_date 解析失败，尝试 first_seen
+            _eff = _effective_pub_dt({"pub_date": pd_str, "source_key": src["key"]}, _pd_offsets)
+            if _eff is not None:
+                pd_bj = _eff.replace(tzinfo=None)
             else:
                 # 无 pub_date 时使用 first_seen 作为时间基准
                 fs_str = _rss_history.get(link, {}).get("first_seen", "")
@@ -292,6 +308,12 @@ def _accumulate_history(sources_with_items):
                     except ValueError:
                         pass  # first_seen 也解析失败，保持当前时间
             if pd_bj < cutoff:
+                # 已过期：若历史里已存在同链接条目（典型是「pub_date 为空、靠 first_seen
+                # 续命」的陈旧条目），用本轮拿到的真实日期覆盖它，让紧随其后的裁剪循环
+                # 按真实日期清掉 —— 否则它会被降级键渲染成「收录 X 前」长期留在页面上。
+                _old = _rss_history.get(link)
+                if _old is not None:
+                    _old["pub_date"] = pd_str
                 continue  # 过期文章跳过
             if link not in _rss_history:
                 genuinely_new += 1
@@ -316,24 +338,13 @@ def _accumulate_history(sources_with_items):
     for link, item in _rss_history.items():
         pd_str = item.get("pub_date", "")
         pd_bj = now_bj.replace(tzinfo=None)  # 默认当前时间
-        if pd_str:
-            try:
-                pd = datetime.datetime.fromisoformat(pd_str)
-                if pd.tzinfo:
-                    pd_bj = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
-                else:
-                    pd_bj = pd
-            except ValueError:
-                # pub_date 解析失败，使用 first_seen
-                fs_str = item.get("first_seen", "")
-                if fs_str:
-                    try:
-                        fs = datetime.datetime.fromisoformat(fs_str)
-                        pd_bj = fs.replace(tzinfo=None) if fs.tzinfo else fs
-                    except ValueError:
-                        pass
+        # 与合并阶段同一口径：用校正后的发布时间判定是否过期。
+        # 不校正的话，被标成 +00:00 的源会「多活 8 小时」（其 pub_date 偏晚）。
+        _eff = _effective_pub_dt(item, _pd_offsets)
+        if _eff is not None:
+            pd_bj = _eff.replace(tzinfo=None)
         else:
-            # 无 pub_date，使用 first_seen
+            # pub_date 缺失或不可解析，使用 first_seen
             fs_str = item.get("first_seen", "")
             if fs_str:
                 try:
@@ -377,14 +388,13 @@ def _accumulate_history(sources_with_items):
         if sk not in _src_date_stats:
             _src_date_stats[sk] = {"total": 0, "anomaly_a": 0, "anomaly_b": 0}
         _src_date_stats[sk]["total"] += 1
-        pd_str = item.get("pub_date", "")
-        fs_str = item.get("first_seen", "")
-        if pd_str and fs_str:
+        # 审计必须跑在**校正后**的发布时间上：否则一个纯时区解析问题会被判成
+        # 「日期不可信」，进而把该源的关键词按 0.3 倍降权（内容质量问题），
+        # 并把卡片改成显示绝对日期 —— 两处都是误伤。
+        pd = _effective_pub_dt(item, _pd_offsets)
+        fs = _parse_hist_dt(item.get("first_seen"))
+        if pd is not None and fs is not None:
             try:
-                pd = datetime.datetime.fromisoformat(pd_str)
-                if pd.tzinfo:
-                    pd = pd.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
-                fs = datetime.datetime.fromisoformat(fs_str)
                 delta_sec = (fs - pd).total_seconds()
                 if abs(delta_sec) < 600:      # 模式 A: < 10 分钟
                     _src_date_stats[sk]["anomaly_a"] += 1
@@ -411,14 +421,58 @@ def _accumulate_history(sources_with_items):
     global _LAST_UNRELIABLE_SRCS
     _LAST_UNRELIABLE_SRCS = set(_unreliable_srcs)
 
-    # 第二遍：标记 bad_date 并重组
+    # 第二遍：时区校正 → 未来日期处置 → 标记 bad_date → 重组
+    # 判伪条目的回拉位移先算好（按「源 + 抓取批次」分组，保序不折叠 —— 见 _plan_falsify_shifts）
+    _cutoff_aware = cutoff.replace(tzinfo=_BJ_TZ)
+    _falsify_shifts = _plan_falsify_shifts(
+        _rss_history, _pd_offsets, src_keys=set(src_map.keys()))
+    _n_tz_fixed = 0
+    _n_falsified = 0
+    _n_shifted = 0
     for item in _rss_history.values():
         sk = item["source_key"]
         if sk in src_map:
-            entry = dict(item)
+            entry = dict(item)   # 副本：下面的降级改写不得污染历史（历史只存原始 pub_date）
             entry["bad_date"] = sk in _unreliable_srcs
+            # (1) 源级时区校正：把上游标错时区的时间还原成真实发布时间。
+            #     这是根因层修复 —— 校正后条目不再「出生于未来」，
+            #     也就不需要前端钳制介入（钳制会把多条折叠成同一时刻 → 整块钉首屏）。
+            _off = _pd_offsets.get(sk)
+            if _off and entry.get("pub_date"):
+                _shifted = _shift_iso_minutes(entry["pub_date"], _off)
+                if _shifted != entry["pub_date"]:
+                    entry["pub_date"] = _shifted
+                    _n_tz_fixed += 1
+            # (2) 取不到 pub_date 时给一个可排序的降级键（= first_seen，我方首次收录该链接的真实时刻）。
+            #     没有它，条目在默认排序里只能沉底 → 用户永远看不到（2026-09-14：201 条因此不可见）。
+            _fb = _fallback_date_iso(entry)
+            if not _fb and _pub_date_falsified(entry, _pd_offsets):
+                # (3) 有 pub_date，但晚于 first_seen 超过容忍阈值 —— 我们「在文章发布前抓到了它」，
+                #     物理不可能 ⇒ 该日期已被证伪，不能拿来排序。改用它自己的 first_seen：
+                #     这是一个我方记录的真实时刻，既诚实（前端显示「收录」）又能参与排序。
+                #     不选「钳到 now」：那会让多条条目获得同一时刻，正是首屏同刻扎堆的成因。
+                #     也不能整批都写同一个 first_seen（first_seen 是批次戳，实测 8411 条只有
+                #     122 个取值）—— 故按 _falsify_shifts 保序回拉，最新的一条锚在 first_seen，
+                #     组内相对先后保留，且下限钳在 72h cutoff 上。
+                _shift = _falsify_shifts.get(item.get("link"), 0)
+                _fb = _shift_iso_minutes(_first_seen_iso(entry), _shift)
+                _fbd = _parse_hist_dt(_fb)
+                if _fbd is None or _fbd < _cutoff_aware:
+                    _fb = _cutoff_aware.replace(microsecond=0).isoformat()
+                if _fb:
+                    _n_falsified += 1
+                    if _shift:
+                        _n_shifted += 1
+            if _fb:
+                entry["pub_date"] = _fb
+                entry["date_fallback"] = True
             entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
             src_map[sk]["items"].append(entry)
+
+    if _n_tz_fixed or _n_falsified:
+        print("[pub_date] 口径修正：时区校正 %d 条 / 未来日期改用收录时刻 %d 条"
+              "（其中 %d 条按批次保序回拉，未折叠为同一时刻）" % (
+                  _n_tz_fixed, _n_falsified, _n_shifted))
 
     result = list(src_map.values())
     total = sum(len(s["items"]) for s in result)
@@ -452,6 +506,9 @@ def _save_api_snapshot(sources_with_items, meta=None):
             }
             if it.get("bad_date"):
                 item["bad_date"] = True
+            # 日期缺失，d 由 first_seen 降级而来 → 前端需区分展示（「收录」而非「发布」）
+            if it.get("date_fallback"):
+                item["date_fallback"] = True
             fc = it.get("full_content", "")
             if fc:
                 item["fc"] = fc[:50000]
@@ -775,22 +832,259 @@ def _parse_iso(s):
 _RSS_MONTHS = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
                "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
 
+# RFC 822 字母时区（小时偏移）。注意 CST 在 RFC 822 中定义为 -0600（美国中部）；
+# 中国的 CST(+0800) 在真实 feed 里一律写作 +0800 / GMT+0800，不靠裸 "CST" 表达。
+_RSS_TZ_NAMED = {"UT":0,"UTC":0,"GMT":0,"Z":0,
+                 "EST":-5,"EDT":-4,"CST":-6,"CDT":-5,
+                 "MST":-7,"MDT":-6,"PST":-8,"PDT":-7}
+
+# 覆盖真实世界出现过的 RSS pubDate 写法（2026-09-14 实测样本见 tests/rss_date/）：
+#   "Fri Oct 27 2023 15:13:00 GMT+0800 (China Standard Time)"   ← JS Date.toString()，月在前
+#   "13 Sep 2026 07:28:00 EST"                                  ← 日在前 + 字母时区，无星期前缀
+#   "Mon, 18 May 2020"                                          ← 仅日期
+#   "Mon, 14 Sep 2026 01:18:00 GMT"                             ← 标准 RFC 822
+_RSS_DATE_RE = re.compile(
+    r"^(?:\w{3,9},?\s+)?"                                       # 可选星期前缀（Mon, / Monday ）
+    r"(?:"
+    r"(?P<d1>\d{1,2})\s+(?P<m1>[A-Za-z]{3,9})"                  # 词序 A：日 月
+    r"|"
+    r"(?P<m2>[A-Za-z]{3,9})\.?\s+(?P<d2>\d{1,2}),?"             # 词序 B：月 日（可带点/逗号）
+    r")"
+    r"\s+(?P<y>\d{4})"                                          # 年
+    r"(?:\s+(?P<H>\d{1,2}):(?P<M>\d{2})(?::(?P<S>\d{2}))?)?"    # 可选时间（秒可省略）
+    r"(?:\s*(?:GMT|UTC|UT)?\s*(?P<tz>[+-]\d{2}:?\d{2}|[A-Za-z]{2,4}))?"   # 可选时区（数字或字母）
+    r"(?:\s*\(.*\))?$"                                          # 忽略 "(China Standard Time)"
+)
+
+
+def _rss_tz_offset(tz):
+    """把时区串变成 timedelta。无法识别时保守返回 UTC（宁可靠近而非丢弃）。"""
+    if not tz:
+        return datetime.timedelta(0)
+    if tz[0] in "+-":
+        sign = 1 if tz[0] == "+" else -1
+        digits = tz[1:].replace(":", "")
+        try:
+            hh = int(digits[:2])
+            mm = int(digits[2:4]) if len(digits) >= 4 else 0
+        except ValueError:
+            return datetime.timedelta(0)
+        return datetime.timedelta(hours=sign * hh, minutes=sign * mm)
+    hours = _RSS_TZ_NAMED.get(tz.upper())
+    if hours is None:
+        return datetime.timedelta(0)
+    return datetime.timedelta(hours=hours)
+
+
 def _parse_rss_date(s):
     s = (s or "").strip()
     if not s:
         return None
-    m = re.match(r"\w+,\s+(\d{1,2})\s+(\w+)\s+(\d{4})\s+(\d{2}:\d{2}:\d{2})\s*([+-]\d{4})?", s)
+    m = _RSS_DATE_RE.match(s)
     if m:
-        day, mon, year, timestr, tz = int(m.group(1)), _RSS_MONTHS.get(m.group(2), 1), int(m.group(3)), m.group(4), m.group(5) or "+0000"
-        h, mi, sec = map(int, timestr.split(":"))
-        tz_sign = 1 if tz[0] == "+" else -1
-        tz_h, tz_m = int(tz[1:3]), int(tz[3:5])
-        tz_offset = datetime.timedelta(hours=tz_sign * tz_h, minutes=tz_sign * tz_m)
-        try:
-            return datetime.datetime(year, mon, day, h, mi, sec, tzinfo=datetime.timezone(tz_offset))
-        except ValueError:
-            return None
+        mon = _RSS_MONTHS.get((m.group("m1") or m.group("m2"))[:3].title())
+        if mon:
+            h, mi, sec = int(m.group("H") or 0), int(m.group("M") or 0), int(m.group("S") or 0)
+            try:
+                return datetime.datetime(int(m.group("y")), mon, int(m.group("d1") or m.group("d2")),
+                                         h, mi, sec, tzinfo=datetime.timezone(_rss_tz_offset(m.group("tz"))))
+            except ValueError:
+                return None
     return _parse_iso(s)
+
+
+_BJ_TZ = datetime.timezone(datetime.timedelta(hours=8))
+
+
+def _parse_hist_dt(s):
+    """历史/输出里的时间串 → 北京时间 aware datetime（裸值按北京时间理解）。
+
+    历史文件里 pub_date 可能是 aware（+08:00 / Z）也可能是裸值，
+    历史上各处各写一份解析逻辑（至少 4 处），口径容易漂移 —— 统一到这里。
+    """
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+    return d.replace(tzinfo=_BJ_TZ) if d.tzinfo is None else d.astimezone(_BJ_TZ)
+
+
+def _first_seen_iso(entry):
+    """first_seen（我方首次收录该链接的时刻）的 ISO 形式，解析失败返回空串。"""
+    d = _parse_hist_dt(entry.get("first_seen"))
+    return d.isoformat() if d else ""
+
+
+def _load_pub_date_offsets(sources=None):
+    """读取源配置里**声明**的 pub_date 时区校正量（单位：分钟；负值 = 把 pub_date 往前挪）。
+
+    为什么是声明式而非自动推断：物理约束（我们不可能在文章发布前抓到它）只能给出
+    偏移的**下界** `need = max(first_seen - pub_date)`，而满足下界的合法时区偏移往往不止一个。
+    实测超能网 need = 444.7min 时，480 / 525 / 570min 全都物理可行 —— 统计上无法唯一确定。
+    按「最小候选」猜会静默改写日期，属于数据污染风险，故改由配置显式声明；
+    自动检测降级为**发现器**（见 _detect_pub_date_anomalies），只报告不落库。
+    """
+    out = {}
+    for s in (sources if sources is not None else RSS_SOURCES):
+        if not isinstance(s, dict):
+            continue
+        try:
+            v = int(s.get("pub_date_offset_min") or 0)
+        except (TypeError, ValueError):
+            continue
+        if v:
+            out[s.get("key")] = v
+    return out
+
+
+def _shift_iso_minutes(iso_str, minutes):
+    """把 ISO 时间串按分钟平移（负值 = 往前）。解析失败原样返回（不制造新数据）。"""
+    d = _parse_hist_dt(iso_str)
+    if d is None:
+        return iso_str
+    return (d + datetime.timedelta(minutes=minutes)).isoformat()
+
+
+def _effective_pub_dt(item, offsets=None):
+    """条目**校正后**的发布时间（北京时间 aware）。声明了偏移的源按偏移平移。
+
+    合并 / 72h 裁剪 / 审计 / 输出四处都必须用本函数，否则会出现多套口径
+    （2026-09-14：构建期切块曾用字符串比较、审计用时区安全比较，导致选片错位）。
+    """
+    d = _parse_hist_dt(item.get("pub_date"))
+    if d is None:
+        return None
+    off = (offsets if offsets is not None else _load_pub_date_offsets()).get(item.get("source_key"))
+    if off:
+        d = d + datetime.timedelta(minutes=off)
+    return d
+
+
+# pub_date 晚于 first_seen 超过该阈值 → 判为「已被证伪」。
+# 容忍 1 小时两端时钟漂移；超过即说明我们「在文章发布之前抓到了它」，物理上不可能。
+FUTURE_DATE_TOLERANCE_MIN = 60
+
+
+def _pub_date_falsified(entry, offsets=None):
+    """pub_date 是否已被物理事实证伪（晚于 first_seen 超过容忍阈值）。
+
+    注意与「无 pub_date」区分：那是缺失，走既有降级路径；
+    这里是**有一个明确错误的值**，不能拿来排序（否则条目「出生于未来」，
+    前端钳制会把多条折叠成同一时刻 → 整块钉在首屏顶部）。
+    """
+    fs = _parse_hist_dt(entry.get("first_seen"))
+    pd = _effective_pub_dt(entry, offsets)
+    if fs is None or pd is None:
+        return False
+    return (pd - fs) > datetime.timedelta(minutes=FUTURE_DATE_TOLERANCE_MIN)
+
+
+def _plan_falsify_shifts(history, offsets=None, src_keys=None):
+    """为「将被证伪、须改用收录时刻」的条目规划保序回拉位移量（分钟，<=0），返回 {link: shift}。
+
+    为什么不能统统写成同一个 first_seen：
+      first_seen 是我方**按抓取批次**打的时间戳 —— 实测全量历史 8411 条只有 122 个取值，
+      最大一个批次覆盖 1857 条。把一批被判伪的条目统统赋成同一个 first_seen，
+      这一批就退化成「同一时刻」；前端按时间降序排完就是一大块同源同刻卡片，
+      与 2026-09-14 用户报告的「同刻扎堆」是同一形态（只是源从超能网换成了 arxiv/product_hunt）。
+      实测：60min 阈值下 101 条判伪里有 68 条落在「同批次多条」上，最大单组 27 条
+      （arxiv_ai_4）、次大 24 条（product_hunt_797）——即一次修好、一次又造出来。
+
+    对策（与前端 L3 钳制同一语义：**保序回拉**，不是折叠）：
+      保留 feed 自身的相对先后（若干条目间的声称时间差是有信息的），整批后移，
+      使**最新的一条**恰好落在 first_seen，其余按其原间隔往前排开。
+    边界：
+      · 只处理「有 pub_date 且被证伪」的条目；本来就无日期者没有相对信息，保持原行为；
+      · 任何一条都不得早于 cutoff —— 72h 窗口是用户可见契约，不允许被位移越界。
+    """
+    groups = {}
+    for link, item in history.items():
+        sk = item.get("source_key")
+        if src_keys is not None and sk not in src_keys:
+            continue
+        if not item.get("pub_date"):
+            continue
+        fs = _parse_hist_dt(item.get("first_seen"))
+        if fs is None or not _pub_date_falsified(item, offsets):
+            continue
+        pd = _effective_pub_dt(item, offsets)
+        groups.setdefault((sk, item.get("first_seen") or ""), []).append(
+            (link, (pd - fs).total_seconds() / 60.0))
+
+    shifts = {}
+    for arr in groups.values():
+        newest_adv = max(a for _l, a in arr)   # 组内最「未来」的那条 → 锚到 first_seen
+        for link, adv in arr:
+            shifts[link] = -int(round(newest_adv - adv))
+    return shifts
+
+
+def _detect_pub_date_anomalies(history, offsets=None):
+    """发现器：找出「pub_date 系统性晚于 first_seen」的源，只报告不修改数据。
+
+    返回 [{key, n, inverted_ratio, min_delta_min, median_delta_min, need_min, kind, suggest_min}]：
+      kind='tz'    → 物理可行的最小前移量落在真实时区范围内 ⇒ 可能是时区标注错误，
+                     suggest_min 给出最小的合法候选（供人工确认后写进源配置）
+      kind='other' → 需要前移几十小时，远超任何真实时区 ⇒ 不是时区问题
+                     （典型是播客/Newsletter 的「预约发布」，或源侧日期本身错乱），不给建议
+
+    为什么只报告不落库：见 _load_pub_date_offsets 的说明（物理约束只给下界，可能多解）。
+    """
+    buckets = {}
+    for item in history.values():
+        sk = item.get("source_key")
+        pd = _effective_pub_dt(item, offsets)
+        fs = _parse_hist_dt(item.get("first_seen"))
+        if not sk or pd is None or fs is None:
+            continue
+        buckets.setdefault(sk, []).append((fs - pd).total_seconds() / 60.0)
+
+    out = []
+    for sk, deltas in buckets.items():
+        if sk in (offsets or {}) or len(deltas) < TZ_ANOMALY_MIN_ITEMS:
+            continue
+        inverted = sum(1 for d in deltas if d < -10)
+        ratio = inverted / float(len(deltas))
+        if ratio < TZ_ANOMALY_INVERT_RATIO:
+            continue
+        srt = sorted(deltas)
+        need = -srt[0]
+        kind, suggest = "other", None
+        if need <= TZ_MAX_OFFSET_MIN:
+            cands = [c for c in _TZ_LEGAL_OFFSETS_MIN if c >= need - 1e-9]
+            if cands:
+                kind, suggest = "tz", -cands[0]
+        out.append({
+            "key": sk, "n": len(deltas), "inverted_ratio": ratio,
+            "min_delta_min": srt[0], "median_delta_min": srt[len(srt) // 2],
+            "need_min": need, "kind": kind, "suggest_min": suggest,
+        })
+    out.sort(key=lambda x: -x["n"])
+    return out
+
+
+TZ_ANOMALY_MIN_ITEMS = 8       # 少于此条数不足以判断「系统性」
+TZ_ANOMALY_INVERT_RATIO = 0.9  # 倒挂率门槛（arxiv 51.7% / product_hunt 80% 均被排除）
+TZ_MAX_OFFSET_MIN = 840        # +14:00 是现实中最大的 UTC 偏移；超过即不可能是时区标注错误
+# 现实在用的 UTC 偏移（分钟）。不能只取「任何 0.5h 倍数」：+7:30 已无地区使用，
+# 若把它列进候选，「最小候选」规则会把 超能网 的 8h 误判成 7.5h。
+_TZ_LEGAL_OFFSETS_MIN = tuple(sorted(set(
+    [h * 60 for h in range(-12, 15)] + [330, 345, 390, 525, 570, 630, 765, -210, -570])))
+
+
+def _fallback_date_iso(entry):
+    """条目拿不到 pub_date 时的降级排序键 = first_seen（我方首次收录该链接的真实时刻）。
+
+    为什么必须给一个键：空 pub_date 会让条目在默认排序里沉底 → 用户永远看不到
+    （2026-09-14 实测：201 条因此不可见）。降级键只负责「让它按时间参与排序」，
+    语义上不等于发布时间，因此调用方需用 date_fallback 标记，前端据此外显区分。
+    """
+    if entry.get("pub_date"):
+        return ""
+    return _first_seen_iso(entry)
 
 
 def _fmt_rel_time(dt):
@@ -1982,26 +2276,56 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
           /* fc 兼容两条通道：chunk 通道字段名为 full_content，远程刷新通道为 fc */
           time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
           img:it.image||it.img||'', mu:it.mu||'', mt:it.mt||'',
-          bad_date:!!it.bad_date, bb:!!s.bb});
+          bad_date:!!it.bad_date, bb:!!s.bb, dfb:!!it.date_fallback});
       });
     });
     /* 时区安全钳制（根因修复：旧实现用字符串比较判断未来日期，对 +08:00/Z 混合格式
-       误判时区，把早间公众号文章改写成打开页面的时刻——09-14 08:15 事件） */
-    var nowMs=Date.now();
-    ART.forEach(function(a){ if(!a.date) return; var _t=new Date(a.date).getTime(); if(!isNaN(_t)&&_t>nowMs) a.date=new Date(nowMs).toISOString(); });
+       误判时区，把早间公众号文章改写成打开页面的时刻——09-14 08:15 事件）
+       2026-09-14 二次修复：旧实现把**每一条**未来日期都改写成 now，N 条因此获得
+       完全相同的时刻；默认降序排序下同刻并列，整块钉在首屏顶部
+       （实测：超能网 6 条占据前 7 位中的 6 位）。
+       改为「保序回拉」：最新的一条落到 now，其余按原始间距排在它之前 ——
+       既不越界，也不制造人为并列；残留顺序信息一点不丢。
+       注：构建期已对源级时区误标与「晚于 first_seen 的未来日期」做处置，
+       本钳制是刷新通道（tier-1 由服务端 JS 重解析）的最后一道网。 */
+    var nowMs=Date.now(), _fut=[];
+    ART.forEach(function(a){
+      if(!a.date) return;
+      var _t=new Date(a.date).getTime();
+      if(!isNaN(_t)&&_t>nowMs) _fut.push(a);
+    });
+    if(_fut.length){
+      var _fmax=0;
+      _fut.forEach(function(a){ var _t=new Date(a.date).getTime(); if(_t>_fmax) _fmax=_t; });
+      _fut.forEach(function(a){
+        a.date=new Date(nowMs-(_fmax-new Date(a.date).getTime())).toISOString();
+      });
+    }
     applySort();
     window.ART = ART;
   }
   /* ── Sort ── */
   var sortMode = localStorage.getItem('rss_sort_mode') || 'newest';
-  /* 时区安全日期比较（D3 修复：+08:00/Z 混合格式的字符串比较是时区盲的）；
-     无日期沉底，两个无日期视为相等 */
+  /* 时区安全日期比较【仅用于升序】（D3 修复：+08:00/Z 混合格式的字符串比较是时区盲的）；
+     无日期沉底，两个无日期视为相等。
+     注意：本函数的 NaN 分支是为升序写的，降序调用会反转语义（无日期置顶）。
+     任何降序排序一律使用 _dateCmpDesc，不要反向调用本函数。 */
   function _dateCmp(x,y){
     var tx=x?new Date(x).getTime():NaN, ty=y?new Date(y).getTime():NaN;
     if(isNaN(tx)&&isNaN(ty)) return 0;
     if(isNaN(tx)) return 1;
     if(isNaN(ty)) return -1;
     return tx-ty;
+  }
+  /* 时区安全日期比较【仅用于降序】：无日期一律沉底，语义与调用方向无关。
+     修复前 newest/active 反向调用 _dateCmp，导致 201 条无日期条目被顶到首屏。 */
+  function _dateCmpDesc(x,y){
+    var tx=x?new Date(x).getTime():NaN, ty=y?new Date(y).getTime():NaN;
+    if(isNaN(tx)&&isNaN(ty)) return 0;
+    if(isNaN(tx)) return 1;      /* x 无日期 → x 靠后 */
+    if(isNaN(ty)) return -1;
+    if(tx===ty) return 0;
+    return tx<ty?1:-1;           /* 新的在前 */
   }
   /* F1 修复：'active' 按信源最近更新时间排序 */
   function applySort(){
@@ -2011,11 +2335,12 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
       ART.forEach(function(a){ if(a.date){ var cur=srcLatest[a.sk]; if(!cur||_dateCmp(a.date,cur)>0) srcLatest[a.sk]=a.date; }});
       ART.sort(function(a,b){
         var sa=srcLatest[a.sk]||'', sb=srcLatest[b.sk]||'';
-        if(sa!==sb) return _dateCmp(sb,sa);
-        return _dateCmp(b.date,a.date);
+        /* _dateCmpDesc 自身即为降序语义，参数不可再反转（反转会使无日期源置顶） */
+        if(sa!==sb) return _dateCmpDesc(sa,sb);
+        return _dateCmpDesc(a.date,b.date);
       });
     }
-    else ART.sort(function(a,b){ return _dateCmp(b.date,a.date); });
+    else ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
     if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
       var qm=ANALYSIS_DATA.quality;
       ART.sort(function(a,b){ return (qm[b.sk]||0)-(qm[a.sk]||0); });
@@ -2939,7 +3264,13 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
   /* ── Refresh: 后台增量更新 —— 不整页 reload，避免重新下载18MB 页面导致长时间白屏 ── */
   var _refreshing=false, _lastTotal=ART.length;
   /* ── Dynamic relative time: computed from a.date at render time, never frozen ─ */
-  function _dynTime(a) {
+  /* 日期缺失时 a.date 由 first_seen（首次收录时刻）降级而来，见 _fallback_date_iso；
+     这类条目必须与「发布时间」区分显示，不能把收录时间冒充成发布时间。 */
+  function _dynTime(a){
+    var s=_dynTimeCore(a);
+    return (a&&a.dfb&&s)?('\u6536\u5f55 '+s):s;
+  }
+  function _dynTimeCore(a) {
     if (!a || !a.date) return a && a.time ? a.time : '';
     // bad_date: pub_date 不可信（构建时自动检测：wechat类目/日期倒挂/抓取时间冒充），显示绝对日期
     if (a.bad_date) {
@@ -3030,17 +3361,27 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
         s.items.forEach(function(it){
           if(!it||!it.u||it.u==='#') return;
           var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
-                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date};
+                 time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date, dfb:!!it.date_fallback};
           if(!a.t) return;
           var k=artKey(a);
           if(known[k]) return;
           known[k]=1; added.push(a);
         });
       });
-      if(!added.length) return 0;
-      added.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      if(!added.length){
+        /* 无新增内容时也要纠错：若可见首屏混入无日期条目（NaN 置顶缺陷的指纹），
+           重新规范化排序。健康状态下该分支不触发，因此不会造成可见跳变。
+           例外：quality 模式按源质量重排，天然会把高质量源的无日期条目顶回首屏，
+           谓词会恒真 → 每次刷新都重渲染，故排除该模式。 */
+        var _head=Math.min(ART.length, wallLimit||0), _bad=0;
+        for(var h=0;h<_head;h++){ var _d=ART[h].date; if(!_d||isNaN(new Date(_d).getTime())) _bad++; }
+        if(sortMode!=='quality' && _head>0 && _bad*2>_head){ applySort(); renderChips(); renderWall(); renderPanel(); }
+        return 0;
+      }
       for(var i=added.length-1;i>=0;i--) ART.unshift(added[i]);
-      ART.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      /* 不再对 added 单独预排序：紧接着的 applySort() 会对整个 ART 重排，
+         预排序对最终顺序无影响（原为 localeCompare，已随口径统一移除） */
+      applySort();
       tierInterleave();
       wallLimit=Math.min(ART.length, Math.max(wallLimit, WALL_STEP));
       return added.length;
@@ -4425,6 +4766,26 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
 
 CHUNK0_SIZE = 360  # 首屏块文章数（复刻前端 ART 排序后取前 N 篇）
 
+def _chrono_key(item):
+    """切块排序键：按解析后的**绝对时间**降序（与前端 _dateCmpDesc 同口径）。
+
+    不能直接比 pub_date 字符串：数据里 "+08:00" 与 "+00:00/Z" 混用，字符串比较是
+    时区盲的（实测 "…T09:00:00+08:00" 会被判为比 "…T02:00:00+00:00" 更新，导致首屏
+    选片选错）。无日期/非法日期返回 (0, 0) → 一律沉底进 chunk1。
+    """
+    s = item.get("pub_date") or ""
+    try:
+        d = datetime.datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return (0, 0.0)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=8)))  # 裸值按北京时间
+    try:
+        return (1, d.timestamp())
+    except (OverflowError, OSError, ValueError):
+        return (0, 0.0)
+
+
 def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     """把全量文章拆成两块：首屏 chunk0 按严格时间排序（不交织），
     后台 chunk1 包含剩余文章；前端合并 chunk1 后再应用 tier 交织。
@@ -4433,7 +4794,7 @@ def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     for s in sources:
         for it in s.get("items", []):
             flat.append((s, it))
-    flat.sort(key=lambda x: x[1].get("pub_date") or "", reverse=True)
+    flat.sort(key=lambda x: _chrono_key(x[1]), reverse=True)
     seen = set()
     c0_items = {}
     for s, it in flat[:chunk0_size]:
