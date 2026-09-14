@@ -59,7 +59,11 @@ def _embed_cache_load(model_name):
         if not isinstance(data, dict) or data.get("model") != model_name:
             return model_name, {}
         vectors = data.get("vectors", {})
-        return model_name, vectors if isinstance(vectors, dict) else {}
+        if not isinstance(vectors, dict):
+            return model_name, {}
+        # rev10 P3①：值类型过滤——手改/损坏产生的非 list 值（str/int）不透传调用方
+        clean = {k: v for k, v in vectors.items() if isinstance(v, list) and v}
+        return model_name, clean
     except Exception:
         return model_name, {}
 
@@ -633,13 +637,17 @@ def _get_embeddings(texts):
                 break
         _dims_ok = True
         if ok and len(all_vecs) == len(_missing) and all_vecs:
-            # P2-2 维度护栏（仅在有 API 向量时比较——纯缓存命中无 _dims 可言）：
-            # 服务商换维度不改名时，混合维度矩阵让余弦静默归零——
-            # 检测到不一致即弃用本轮（走 fastembed 全量重算），不写缓存
+            # P2-2 维度护栏 v3（rev10 处方）：_cached_dims 取整个缓存文件——
+            # 纯未命中调用（如 cross_platform 每场全新的热榜标题）也能检测漂移；
+            # 检出漂移即失效缓存文件（自愈，防粘性降级），本轮走 fastembed 全量重算
             _dims = {len(v) for v in all_vecs}
-            _cached_dims = {len(v) for v in _vecs_out if v is not None and isinstance(v, list)}
+            _cached_dims = {len(v) for v in _cache_vectors.values() if isinstance(v, list)}
             if len(_dims) > 1 or (_cached_dims and _dims != _cached_dims):
-                print(f"[insight_engine] 维度漂移检测 {_dims}/缓存{_cached_dims}，弃用本轮嵌入", file=sys.stderr)
+                print(f"[insight_engine] 维度漂移检测 {_dims}/缓存{_cached_dims}，失效缓存并弃用本轮嵌入", file=sys.stderr)
+                try:
+                    os.remove(_EMBED_CACHE_FILE)
+                except OSError:
+                    pass
                 _dims_ok = False
         if ok and _dims_ok and len(all_vecs) == len(_missing):
             for _pos, _i in enumerate(_missing_pos):
