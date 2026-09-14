@@ -5224,6 +5224,38 @@ def _score_sources(sources_with_items, rss_history):
     return result
 
 
+def _tag_articles(sources_with_items):
+    """为每篇文章提取 1-3 个话题标签（复用现有 _tokenize_cached）。
+
+    标签来源：标题（title_zh/title/t，构建期与刷新通道两种契约）优先，
+    不足 3 个时用摘要前 200 字（summary_zh/summary/s）补齐。
+    取词频最高的 token，过滤单字与纯数值单位短语。
+    原地修改 item，新增 tags 字段。
+    """
+    for src in sources_with_items:
+        for it in src.get("items", []):
+            title = it.get("title_zh") or it.get("title") or it.get("t") or ""
+            summary = (it.get("summary_zh") or it.get("summary") or it.get("s") or "")[:200]
+            if not (title or summary).strip():
+                it["tags"] = []
+                continue
+            tags = []
+            seen = set()
+            # 标题优先：标题是主题的最强信号，摘要只用于补齐不足的位
+            for pool in (title, summary):
+                if len(tags) >= 3:
+                    break
+                tokens = [t for t in _tokenize_cached(pool) if len(t) >= 2 and not _is_numeric_unit_phrase(t)]
+                for tok, _ in collections.Counter(tokens).most_common(3):
+                    if len(tags) >= 3:
+                        break
+                    if tok in seen:
+                        continue
+                    seen.add(tok)
+                    tags.append(tok)
+            it["tags"] = tags
+
+
 def _is_numeric_unit_phrase(s):
     """判断字符串是否为纯数值单位短语（如 '亿欧元'、'万美元'、'千亿元'）。
     这类短语不适合作为话题标签。
