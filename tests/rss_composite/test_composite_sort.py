@@ -98,7 +98,9 @@ n1 = sum(len(s.get("items", [])) for s in c1)
 eq(n0 + n1, 2, "C1 条目总数守恒")
 
 # C2 是真正的守卫：产物里有没有 tags，取决于 main() 的调用顺序
-src_text = io.open(os.path.join(ROOT, "build_rss_aggregator.py"), encoding="utf-8").read()
+# 必须读 RSS_BUILD_SRC（变异测试指向副本），读真实源码会让本断言对变异免疫
+_src_path = os.environ.get("RSS_BUILD_SRC") or os.path.join(ROOT, "build_rss_aggregator.py")
+src_text = io.open(_src_path, encoding="utf-8").read()
 mi = src_text.find("def main(")
 ok(mi >= 0, "C2a 源码中存在 main()")
 main_body = src_text[mi:] if mi >= 0 else ""
