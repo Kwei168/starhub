@@ -52,6 +52,18 @@ def run(name, script):
     return p.returncode, (p.stdout or "")
 
 
+def run_suite(label, script, tail=6):
+    """跑子套件；失败时打印尾部输出，避免「只看到一行 FAIL」查不动。"""
+    rc, out = run(label, script)
+    ok(rc == 0, label)
+    if rc != 0:
+        lines = [l for l in out.strip().splitlines() if l.strip()]
+        print("        ↳ %s 尾部输出:" % os.path.basename(script))
+        for l in lines[-tail:]:
+            print("          " + l)
+    return rc, out
+
+
 print("=" * 74)
 print("V1: _tag_articles 覆盖率（真实 rss_api_snapshot.json）")
 print("=" * 74)
@@ -86,12 +98,20 @@ print("=" * 74)
 print("V2/V3: 跨套件回归")
 print("=" * 74)
 
-rc, out = run("diverse", os.path.join(HERE, "test_diverse_js.py"))
-ok(rc == 0, "V2 weightedShuffle JS 套件全绿（含 D13 窗口=0 等价性）")
-rc2, out2 = run("rss_sort", os.path.join(ROOT, "tests", "rss_sort", "test_rss_sort.py"))
-ok(rc2 == 0, "V3 rss_sort 套件全绿（diverse 未破坏现有排序）")
-rc3, out3 = run("rss_date", os.path.join(ROOT, "tests", "rss_date", "test_split_chunks.py"))
-ok(rc3 == 0, "V3b rss_date 分块套件全绿")
+run_suite("V2 weightedShuffle JS 套件全绿（含 D13 窗口=0 等价性 + E 段同源抑制）",
+          os.path.join(HERE, "test_diverse_js.py"))
+run_suite("V2b 标签语义套件全绿（issue C2：词典优先 / 边界对齐 / 台标抑制）",
+          os.path.join(HERE, "test_tag_semantics.py"))
+run_suite("V2c 刷新通道 tags 穿透套件全绿（issue M5）",
+          os.path.join(HERE, "test_refresh_tags_js.py"))
+run_suite("V2d 快照通道 tags + 管线顺序套件全绿（issue M5）",
+          os.path.join(HERE, "test_snapshot_tags.py"))
+run_suite("V2e 真实语料首屏回归全绿（issue C1：diverse 必须优于时间降序）",
+          os.path.join(HERE, "test_diverse_realdata.py"))
+run_suite("V3 rss_sort 套件全绿（diverse 未破坏现有排序）",
+          os.path.join(ROOT, "tests", "rss_sort", "test_rss_sort.py"))
+run_suite("V3b rss_date 分块套件全绿",
+          os.path.join(ROOT, "tests", "rss_date", "test_split_chunks.py"))
 
 print()
 print("=" * 74)

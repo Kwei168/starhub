@@ -41,6 +41,41 @@ def extract_function(js, name):
     return None
 
 
+def extract_braced(js, start_idx):
+    """从 start_idx 处第一个 '{' 开始做括号匹配，返回配平后的文本（含收尾 ');'）。"""
+    k = js.find("{", start_idx)
+    if k < 0:
+        return None
+    depth = 0
+    for p in range(k, len(js)):
+        if js[p] == "{":
+            depth += 1
+        elif js[p] == "}":
+            depth -= 1
+            if depth == 0:
+                return js[start_idx:p + 1] + ");"
+    return None
+
+
+def extract_clamp(js):
+    """切出**完整**的钳制语句。
+
+    旧实现用正则 r"var nowMs[^\\n]*\\n\\s*ART\\.forEach\\(function\\(a\\)\\{[^\\n]*\\n"：
+    `[^\\n]*\\n` 只吃到回调体的第一行（`if(!a.date) return;`）就断掉，
+    产出的是**未闭合**的 JS（SyntaxError）→ node stdout 为空 → json.loads 抛
+    JSONDecodeError。该分支只在「当前时刻晚于样例时间 2026-09-14T04:30+08:00」时执行，
+    所以是一个**日期依赖的潜伏缺陷**：2026-09-14 04:30 之后必崩，与本次 C1/C2/M5 改动无关。
+    改为括号配平切全，行为与源码一致。
+    """
+    i = js.find("var nowMs")
+    if i < 0:
+        return None
+    j = js.find("ART.forEach(function(a){", i)
+    if j < 0:
+        return None
+    return extract_braced(js, i)
+
+
 def main():
     # 取当前 HEAD 的生成 JS（字节级忠实）
     import subprocess as sp
@@ -56,13 +91,13 @@ def main():
     check("R1a 旧字符串钳制已移除", not has_old_clamp, "仍存在 a.date>nowIso")
     check("R1b 新钳制基于 Date.now()", has_new_clamp)
 
-    # 功能级：沙箱执行新钳制逻辑（从 js 中截取 nowIso/ART.forEach 两行 + ART 声明）
-    mline = re.search(r"var nowMs[^\n]*\n\s*ART\.forEach\(function\(a\)\{[^\n]*\n", js)
-    if not mline:
+    # 功能级：沙箱执行新钳制逻辑（从 js 中截取完整的钳制语句 + ART 声明）
+    snippet_body = extract_clamp(js)
+    if not snippet_body:
         check("R1c 钳制代码片段可提取", False, "未匹配到钳制片段")
     else:
         snippet = ("var ART=[{date:'2026-09-14T04:12:00+08:00'},{date:'2026-09-14T04:30:00+08:00'}];\n"
-                   + mline.group(0))
+                   + snippet_body + "\n")
         # 模拟"过去"的真实时间：钳制不应触发（04:12+08:00 与 04:30+08:00 均为过去——
         # 以测试执行时刻为准：若当前时刻早于这两条，则它们是未来，应被钳制到当前）
         now_ms = int(sp.run(["node", "-e", "console.log(Date.now())"],

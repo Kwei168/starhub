@@ -236,6 +236,226 @@ it('D17 条目缺 tags 字段时 diverse 不崩溃', function () {
   sortMode = 'newest';
 });
 
+/* ── E 段：同源抑制（issue C1）─────────────────────────────────────────────
+   缺陷：weightedShuffle 只在窗口内按权重重排，没有任何「抑制同源相邻」的项，
+   首屏会被单一源连续霸占。
+
+   ⚠ 夹具判别性（本轮修复的测试缺陷，务必保留说明）：
+   上一版 E 段用「5 源 × 6 篇」**均衡**夹具，实测在**去掉同源抑制的变异体上仍然全绿**
+   —— 属变异存活（误绿），等于没有守住修复。均衡夹具下旧实现偶然也能打散，
+   maxRun 天然 ≤2。现改用**倾斜夹具**（单一主导源占 23%~29%，其余 5~10 源等量）：
+   实测 当前实现 maxRun=1，去抑制变异体=3~4，具备判别性。
+   判别性验证方法：去掉 SRC_GAP 过滤后重跑本套件，E1/E1b/E1c/E5/E8 必须变红。
+
+   约束的精确边界（不要读成「最长连续恒 ≤ 2」）：
+   · 池非空 ⇒ 同一源在最近 SRC_GAP 位内不会被再次选中 ⇒ 相邻必异源（run=1）。
+   · 池为空（组内剩余条目的源都恰好出现在最近 SRC_GAP 位里）⇒ 退化为
+     「最久未出现优先」；若此时只剩单一源，连出长度 = 该源剩余条目数，不可避。
+   · 实测残留（9092 条真实语料）：最长连出 11（人民网，第 7480 位，82% 深处），
+     发生在 g28 组内（该组 140 条 / 57 源 / 人民网占 46 条）。该组构成**可行**
+     （46 ≤ floor(142/3)=47），根因是贪心消耗不均衡使组尾塌成单源，不是数据所迫。
+     已实测的替代选择规则（池内改为「剩余量优先」）能把全程 maxRun 压到 1，
+     但会把前 200 位单源占比从 12% 抬到 25%、覆盖源数从 36 压到 13、
+     前 20 位源质量均值从 82.45 降到 78.08 —— 牺牲首屏多样性换深层不可见指标，
+     净亏，故不改，如实记录为已知限制。 */
+
+function skRun(arr, gap) {
+  /* arr 元素需带 sk；返回 {maxRun, worst} —— 最长同源连续段 */
+  var maxRun = 0, cur = 0, prev = null, worst = null;
+  for (var i = 0; i < arr.length; i++) {
+    var s = arr[i].sk;
+    if (s === prev) { cur++; } else { cur = 1; prev = s; }
+    if (cur > maxRun) { maxRun = cur; worst = s; }
+  }
+  return { maxRun: maxRun, worst: worst };
+}
+
+function srcCover(arr, n) {
+  /* 前 n 位内出现的不同源数量 —— 覆盖度守卫 */
+  var set = {};
+  for (var i = 0; i < Math.min(n, arr.length); i++) set[arr[i].sk] = 1;
+  return Object.keys(set).length;
+}
+
+function mkSkew(domCount, nSrc, perSrc) {
+  /* 同一时间窗口内的**倾斜**多源条目：一个主导源 + nSrc 个等量异源。
+     全部落在 120 分钟窗口内（异源跨度 110 分钟）⇒ 单一分组。
+     这种形态是判别性夹具：均衡夹具无法暴露「同源连出」。 */
+  var base = Date.UTC(2026, 8, 14, 0, 0, 0);
+  var arts = [], i, k;
+  for (i = 0; i < domCount; i++) {
+    arts.push({ t: 'D' + i, sk: 'DOM', date: new Date(base + Math.floor(i * 60 / Math.max(1, domCount)) * 60000).toISOString() });
+  }
+  for (k = 0; k < nSrc; k++) {
+    for (i = 0; i < perSrc; i++) {
+      arts.push({ t: 'O' + k + '_' + i, sk: 'O' + k, date: new Date(base + Math.floor(i * 110 / Math.max(1, perSrc)) * 60000).toISOString() });
+    }
+  }
+  return arts;
+}
+
+/* E1: 倾斜夹具 → 同源最长连续 ≤ 2（去抑制变异体实测 4）*/
+it('E1 倾斜夹具下同源不得连出', function () {
+  var arts = mkSkew(12, 5, 6);               // 12 主导 + 5 源 × 6 = 42 条，主导占 28.6%
+  var r = weightedShuffle(arts, 120, {});    // 质量表为空：全部等权，只考位置约束
+  var st = skRun(r, 2);
+  ok(st.maxRun <= 2, 'E1 同源最长连续 ≤2（实得 ' + st.maxRun + '，源 ' + st.worst + '）');
+});
+
+/* E1b/E1c: 换两种倾斜形态，避免「只对一种夹具成立」 */
+it('E1b 倾斜夹具（8 异源）同源不得连出', function () {
+  var arts = mkSkew(12, 8, 5);               // 12 + 40 = 52 条，主导占 23.1%
+  var st = skRun(weightedShuffle(arts, 120, {}), 2);
+  ok(st.maxRun <= 2, 'E1b 同源最长连续 ≤2（实得 ' + st.maxRun + '，源 ' + st.worst + '）');
+});
+
+it('E1c 倾斜夹具（10 异源）同源不得连出', function () {
+  var arts = mkSkew(14, 10, 4);              // 14 + 40 = 54 条，主导占 25.9%
+  var st = skRun(weightedShuffle(arts, 120, {}), 2);
+  ok(st.maxRun <= 2, 'E1c 同源最长连续 ≤2（实得 ' + st.maxRun + '，源 ' + st.worst + '）');
+});
+
+/* E2: 抑制不得丢篇或复制 */
+it('E2 同源抑制下条目守恒', function () {
+  var arts = mkSkew(12, 5, 6);
+  var r = weightedShuffle(arts, 120, {});
+  eq(r.length, arts.length, 'E2a 42 条进 42 条出');
+  var a = r.map(function (x) { return x.t; }).sort().join(',');
+  var b = arts.map(function (x) { return x.t; }).sort().join(',');
+  eq(a, b, 'E2b 条目集合完全一致（无丢失/重复）');
+});
+
+/* E3: 单源场景（无处可抑制）不得崩、不得丢 —— 退化为原行为 */
+it('E3 单源场景退化为原行为', function () {
+  var arts = mkSkew(10, 0, 0);
+  var r = weightedShuffle(arts, 120, {});
+  eq(r.length, 10, 'E3a 单源 10 条不丢');
+  eq(r.every(function (x) { return x.sk === 'DOM'; }), true, 'E3b 全为同源');
+});
+
+/* E4: 抑制是「延后」而不是「删除」—— 一个源在窗口内仍会被全部输出 */
+it('E4 抑制不得删除任何源', function () {
+  var arts = mkSkew(12, 5, 6);
+  var r = weightedShuffle(arts, 120, {});
+  var bySrc = {};
+  r.forEach(function (x) { bySrc[x.sk] = (bySrc[x.sk] || 0) + 1; });
+  eq(Object.keys(bySrc).sort().join(','), 'DOM,O0,O1,O2,O3,O4', 'E4a 六个源均出现');
+  eq(bySrc.DOM, 12, 'E4b 主导源 12 篇一篇不少');
+  var others = 0;
+  Object.keys(bySrc).forEach(function (k) { if (k !== 'DOM') others += bySrc[k]; });
+  eq(others, 30, 'E4c 异源合计仍为 30 篇');
+});
+
+/* E5: 集成契约 —— applySort 的 diverse 分支同样受同源抑制约束 */
+it('E5 diverse 模式集成受同源抑制约束', function () {
+  ART.length = 0;
+  var arts = mkSkew(12, 8, 5);
+  for (var i = 0; i < arts.length; i++) { arts[i].ti = 2; ART.push(arts[i]); }
+  sortMode = 'diverse';
+  ANALYSIS_DATA = { quality: { DOM: 90, O0: 70, O1: 60, O2: 50, O3: 40, O4: 30, O5: 20, O6: 10, O7: 5 } };
+  applySort();
+  var st = skRun(ART, 2);
+  ok(st.maxRun <= 2, 'E5a diverse 模式同源最长连续 ≤2（实得 ' + st.maxRun + '）');
+  eq(ART.length, arts.length, 'E5b diverse 模式条目守恒');
+  sortMode = 'newest';
+  ANALYSIS_DATA = null;
+});
+
+/* E6: 首屏不被单一源霸占 —— 主导源质量最高（99）时仍不得连出 */
+it('E6 最高质量源也不得连出', function () {
+  var arts = mkSkew(12, 5, 6);
+  var r = weightedShuffle(arts, 120, { DOM: 99, O0: 20, O1: 20, O2: 20, O3: 20, O4: 20 });
+  var st = skRun(r.slice(0, 20), 2);
+  ok(st.maxRun <= 2, 'E6a 前 20 位同源最长连续 ≤2（实得 ' + st.maxRun + '）');
+  eq(r[0].sk, 'DOM', 'E6b 最高质量源仍居首（位置约束不吞噬质量偏好）');
+});
+
+/* E7: 覆盖度守卫 —— 防止「压住连出」的代价是牺牲首屏源多样性。
+   实测依据：把池内选择改成「剩余量优先」虽能把 maxRun 压到 1，
+   但前 200 位单源占比会从 12% 抬到 25%、覆盖源数从 36 压到 13。
+   本用例锁住「前 20 位至少 6 个不同源、单源不超过 6 条」。 */
+it('E7 首屏源覆盖度不得被压缩', function () {
+  var arts = mkSkew(12, 5, 6);
+  var r = weightedShuffle(arts, 120, { DOM: 99, O0: 20, O1: 20, O2: 20, O3: 20, O4: 20 });
+  var head = r.slice(0, 20);
+  var cnt = {};
+  head.forEach(function (x) { cnt[x.sk] = (cnt[x.sk] || 0) + 1; });
+  var top = 0;
+  Object.keys(cnt).forEach(function (k) { if (cnt[k] > top) top = cnt[k]; });
+  eq(srcCover(r, 20), 6, 'E7a 前 20 位覆盖全部 6 个源（实得 ' + srcCover(r, 20) + '）');
+  ok(top <= 6, 'E7b 前 20 位单源最多 ' + top + ' 条（≤6）');
+});
+
+/* E8: 不可行域回归锁 —— 主导源占比过大（40%）时允许连出，但不得回到旧实现在该形态
+   下的 12 连。本用例是「不回退」守卫，不是「≤2」保证，见段首边界说明。 */
+it('E8 不可行域不得回退到旧实现的连出长度', function () {
+  var arts = mkSkew(20, 5, 6);               // 20 主导 + 30 异源 = 50 条，主导占 40%
+  var r = weightedShuffle(arts, 120, {});
+  var st = skRun(r, 2);
+  eq(r.length, 50, 'E8a 条目守恒');
+  ok(st.maxRun <= 8, 'E8b 连出长度 ≤8（当前实现 7，旧等价实现 12，实得 ' + st.maxRun + '）');
+});
+
+/* E9: 抑制间隔本身必须被守住 —— 同一源两次出现的最小距离 ≥3。
+   E1 只断言「连续段 ≤2」，把 SRC_GAP 从 2 改成 1（只挡相邻）仍能通过，
+   等于常量本身无人守卫。本用例锁住 SRC_GAP=2 的语义（间隔 2 位 ⇒ 距离 ≥3）。
+
+   为何必须用**均衡**夹具：在倾斜夹具上实测最小距离 = 2 —— 这不是过滤失效，
+   而是池为空时的退化分支（3b）**有意**放宽到「最久未出现优先」的后果。
+   均衡夹具（每源占 1/6 ≈ 16.7% < 1/3）下池永不枯竭，间隔语义才能被干净地测出来。 */
+function mkBalanced(nSrc, perSrc) {
+  var base = Date.UTC(2026, 8, 14, 0, 0, 0);
+  var arts = [], s, i;
+  for (s = 0; s < nSrc; s++) {
+    for (i = 0; i < perSrc; i++) {
+      arts.push({ t: 'S' + s + '_' + i, sk: 'S' + s, date: new Date(base + Math.floor(i * 110 / perSrc) * 60000).toISOString() });
+    }
+  }
+  return arts;
+}
+
+it('E9 均衡夹具下同源最小距离 ≥3', function () {
+  var arts = mkBalanced(6, 6);
+  var r = weightedShuffle(arts, 120, {});
+  var last = {}, minD = Infinity;
+  for (var i = 0; i < r.length; i++) {
+    var s = r[i].sk;
+    if (last[s] !== undefined) { var d = i - last[s]; if (d < minD) minD = d; }
+    last[s] = i;
+  }
+  ok(minD >= 3, 'E9 同源最小间隔 ≥3（实得 ' + minD + '）');
+});
+
+/* E9b: 倾斜夹具上退化分支的放宽幅度必须有界 —— 记录「距离掉到 2」的占比。
+   这是对上面那条注释的可执行背书：不是断言「绝不出现」，而是断言「不成规模」。 */
+it('E9b 退化分支的间隔放宽不成规模', function () {
+  var arts = mkSkew(12, 5, 6);
+  var r = weightedShuffle(arts, 120, {});
+  var last = {}, tight = 0;
+  for (var i = 0; i < r.length; i++) {
+    var s = r[i].sk;
+    if (last[s] !== undefined && (i - last[s]) < 3) tight++;
+    last[s] = i;
+  }
+  ok(tight <= Math.ceil(r.length * 0.2),
+     'E9b 间隔被放宽的条目数 ≤20%（实际 ' + tight + '/' + r.length + '）');
+});
+
+/* E10: 双源夹具必须严格交替（连出 ≤1）。
+   为什么单列：过滤失效时池恒非空，但**退化分支内部的选源规则**（3b 的「取最大 gap」
+   还是「取最小 gap」）在其余 24 个夹具上实测**行为完全一致** ——
+   因为池枯竭时通常只剩单一源，max 与 min 相等，那条分支近似死代码（变异 C1-c 存活）。
+   只有「双源 + 篇数相等」能把池枯竭时的选源规则暴露出来：
+     当前实现 S1S0S1S0…（连出 1）；反向选择 S1S0S0S1S1…（连出 2）。
+   注意必须**等量**：篇数不等时少的一方耗尽后必然连出，那是数据所迫，不算缺陷。 */
+it('E10 双源等量夹具严格交替', function () {
+  var arts = mkBalanced(2, 10);
+  var r = weightedShuffle(arts, 120, {});
+  var st = skRun(r, 2);
+  eq(r.length, 20, 'E10a 条目守恒（20 条）');
+  ok(st.maxRun <= 1, 'E10b 双源严格交替，同源最长连续 ≤1（实得 ' + st.maxRun + '，源 ' + st.worst + '）');
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);

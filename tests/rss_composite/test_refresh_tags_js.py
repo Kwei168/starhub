@@ -1,35 +1,41 @@
+# tests/rss_composite/test_refresh_tags_js.py
 # -*- coding: utf-8 -*-
-"""RSS 排序修复 · 测试运行器
+"""tags 穿透两条通道的 JS 侧测试运行器（issue M5）
 
-做法：从 build_rss_aggregator.py 中**原地抽取**内嵌 JS 的两个代码块，
-拼接 shim 前置 + 用例，交给 node 执行。不依赖构建产物，不依赖网络。
+做法：与 test_diverse_js.py 同构 —— 从 build_rss_aggregator.py 抽取真实代码块
+（data 块提供 buildArt，sort 块提供 applySort/tierInterleave，
+ 另外单抽 _mergeRemoteSources 函数体），拼接 shim + 用例交给 node 执行。
 
-用法：
-    python tests/rss_sort/test_rss_sort.py
-退出码：0 = 全绿；1 = 有失败；2 = 抽取失败（说明构建脚本结构变了）
+为什么必须抽真实源码而不是在 harness 里另造一份：
+  本用例断言的是「字段白名单里有没有 tags」这一具体实现细节，
+  自造实现会让断言与被测对象脱钩（正是 M5 长期未被发现的原因：
+  四个复合排序测试文件里 _mergeRemoteSources 引用数为 0）。
 """
 import os
+import re
 import subprocess
 import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# RSS_BUILD_SRC 用于变异测试：允许把被测源码指向一个副本，从而在不改动真实源码的
-# 前提下验证「把这行改坏，测试是否会红」。默认指向真实构建脚本。
 BUILD = os.environ.get("RSS_BUILD_SRC") or os.path.join(ROOT, "build_rss_aggregator.py")
-# harness 写到系统临时目录，不进仓库（变异测试并发时用 RSS_HARNESS_NAME 区分）
-HARNESS = os.path.join(tempfile.gettempdir(), os.environ.get("RSS_HARNESS_NAME") or "_rss_sort_harness.js")
+HARNESS = os.path.join(tempfile.gettempdir(), "_rss_refresh_tags_harness.js")
 
-# 抽取边界：(名称, 起止锚点)。结束锚点不计入。
-# tagsfn 块是 buildArt / _mergeRemoteSources 共用的 tags 归一化助手（issue M5），
-# 它位于 buildArt 定义**之前**，不单独抽取会让 build 块里出现未定义引用。
+# 缺失即「功能未实现」→ RED
+REQUIRED_ANCHORS = [
+    "function buildArt(){",
+    "function _mergeRemoteSources(j){",
+    "function weightedShuffle(",
+]
+
 BLOCKS = [
-    ("tagsfn", "  function _tagsOf(x){", "  function buildArt(){"),
-    ("build", "function buildArt(){", "/* ── Sort ── */"),
+    ("data", "/* ── Data ── */", "/* ── Sort ── */"),
     ("sort", "/* ── Sort ── */", "/* ── State ── */"),
-    ("merge", "function _mergeRemoteSources(j){", "function _applyRemote(j, manual){"),
-    ("dyn", "/* ── Dynamic relative time: computed from a.date at render time, never frozen ─ */",
-     "function _fmtRel(dstr){"),
+]
+
+# _mergeRemoteSources 位于 Refresh 大块内，整块依赖过重，单抽该函数体
+FUNC_BLOCKS = [
+    ("_mergeRemoteSources", "  function _mergeRemoteSources(j){", "  function _applyRemote("),
 ]
 
 PRELUDE = r"""
@@ -39,6 +45,7 @@ var SOURCES = [];
 var window = {};
 var wallLimit = 120, WALL_STEP = 80, curArt = null;
 var ANALYSIS_DATA = null;
+var CATEGORY_ORDER = [];
 var renderCalls = { chips: 0, wall: 0, panel: 0 };
 function renderChips(){ renderCalls.chips++; }
 function renderWall(){ renderCalls.wall++; }
@@ -66,16 +73,30 @@ def extract(src, start, end):
     return src[i:j]
 
 
+# 数据块内含 Python f-string 插值（如 `var CAT_ORDER = """ + json.dumps(...) + """;`），
+# 直接抽取会产出非法 JS。这些变量与 buildArt 的断言无关，统一置为 null。
+_PY_INTERP = re.compile(r'"""\s*\+[^"]+?\+\s*"""')
+
+
+def sanitize(js):
+    return _PY_INTERP.sub("null", js)
+
+
 def main():
     with open(BUILD, "r", encoding="utf-8") as f:
         src = f.read()
 
+    missing = [a for a in REQUIRED_ANCHORS if a not in src]
+    if missing:
+        raise SystemExit("[抽取失败] 源码缺少锚点: %s" % missing)
+
     chunks = [PRELUDE]
     for name, s, e in BLOCKS:
-        body = extract(src, s, e)
-        chunks.append("\n/* ===== 抽取块: %s ===== */\n" % name + body)
+        chunks.append("\n/* ===== 抽取块: %s ===== */\n" % name + sanitize(extract(src, s, e)))
+    for name, s, e in FUNC_BLOCKS:
+        chunks.append("\n/* ===== 抽取函数: %s ===== */\n" % name + extract(src, s, e))
 
-    cases_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases.js")
+    cases_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases_refresh_tags.js")
     with open(cases_path, "r", encoding="utf-8") as f:
         chunks.append("\n/* ===== 用例 ===== */\n" + f.read())
 
@@ -85,7 +106,8 @@ def main():
     node = r"C:\Users\40832\.workbuddy\binaries\node\versions\22.22.2-3\node.exe"
     if not os.path.exists(node):
         node = "node"
-    p = subprocess.run([node, HARNESS], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    p = subprocess.run([node, HARNESS], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
     sys.stdout.write(p.stdout or "")
     if p.stderr:
         sys.stderr.write(p.stderr)
