@@ -88,6 +88,21 @@ B._tag_articles(src8)
 tags8 = src8[0]["items"][0].get("tags", [])
 ok(not any(t in ("亿美元", "万元", "亿元", "亿美元融") for t in tags8),
    "A6 数值单位短语不成为标签（实得 %r）" % (tags8,))
+# A6a 防空集恒真：上一条是否定式断言，tags 为空时必然通过，
+# 故必须同时断言产出非空（issue m5：把 _tag_articles 变异成恒返回 [] 时 A6 单独仍绿）
+ok(len(tags8) > 0, "A6a 夹具产出非空标签（防空集恒真，实得 %r）" % (tags8,))
+
+# A7 标签不得含首尾空白（issue m3）
+# 根因：_tokenize_cached 的 n-gram 切割会在中文与 ASCII 边界留下空格，
+# 实测原夹具 "该公司完成 3 亿美元 融资 估值 上涨" 会产出 '完成 '。
+src9 = mk_src([("该公司完成 3 亿美元 融资 估值 上涨", ""),
+               ("小米 发布 新车 SU7 交付", ""),
+               ("美团 外卖 单量 创新高", "")])
+B._tag_articles(src9)
+all_tags9 = [t for s in src9 for it in s["items"] for t in (it.get("tags") or [])]
+eq([t for t in all_tags9 if t != t.strip()], [],
+   "A7 标签无首尾空白（全部实得 %r）" % (all_tags9,))
+ok(all(len(t) >= 2 for t in all_tags9), "A7b strip 后仍满足长度≥2")
 
 print()
 print("=" * 74)
