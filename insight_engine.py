@@ -67,7 +67,7 @@ def _embed_cache_load(model_name):
 def _embed_cache_save(model_name, vectors):
     """原子写缓存（tmp + replace，尽力而为：写失败不影响主流程）。"""
     try:
-        tmp = _EMBED_CACHE_FILE + ".tmp"
+        tmp = "%s.%s.tmp" % (_EMBED_CACHE_FILE, os.getpid())
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"model": model_name, "vectors": vectors}, f)
         os.replace(tmp, _EMBED_CACHE_FILE)
@@ -631,13 +631,24 @@ def _get_embeddings(texts):
                 print(f"[insight_engine] SiliconFlow embed batch error: {exc}", file=sys.stderr)
                 ok = False
                 break
-        if ok and len(all_vecs) == len(_missing):
+        _dims_ok = True
+        if ok and len(all_vecs) == len(_missing) and all_vecs:
+            # P2-2 维度护栏（仅在有 API 向量时比较——纯缓存命中无 _dims 可言）：
+            # 服务商换维度不改名时，混合维度矩阵让余弦静默归零——
+            # 检测到不一致即弃用本轮（走 fastembed 全量重算），不写缓存
+            _dims = {len(v) for v in all_vecs}
+            _cached_dims = {len(v) for v in _vecs_out if v is not None and isinstance(v, list)}
+            if len(_dims) > 1 or (_cached_dims and _dims != _cached_dims):
+                print(f"[insight_engine] 维度漂移检测 {_dims}/缓存{_cached_dims}，弃用本轮嵌入", file=sys.stderr)
+                _dims_ok = False
+        if ok and _dims_ok and len(all_vecs) == len(_missing):
             for _pos, _i in enumerate(_missing_pos):
                 _vecs_out[_i] = all_vecs[_pos]
                 _cache_vectors[hashlib.md5(_missing[_pos].encode("utf-8")).hexdigest()] = all_vecs[_pos]
             while len(_cache_vectors) > _EMBED_CACHE_MAX:
                 _cache_vectors.pop(next(iter(_cache_vectors)))
-            _embed_cache_save(_SF_EMBED_MODEL, _cache_vectors)
+            if _missing:  # P3-2：全命中零新数据时跳过大文件重写
+                _embed_cache_save(_SF_EMBED_MODEL, _cache_vectors)
             if all(v is not None for v in _vecs_out):
                 _last_embed_model = f"siliconflow/{_SF_EMBED_MODEL}"
                 print(f"[insight_engine] embeddings via SiliconFlow {_SF_EMBED_MODEL} ({len(texts)} texts, {len(_missing)} new)", file=sys.stderr)
