@@ -1,10 +1,10 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-09-06（同步最近两天 RSS 架构变更）
+> 最后更新：2026-09-14（同步洞察引擎、翻译分流 v2、1014 源三层分级、热榜 40 平台等重大变更）
 
 ## 一、项目一句话
 
-**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
+**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；LlamaIndex 语义洞察引擎驱动主题聚类与深度洞察；1014 RSS 源三层分级 + 多引擎翻译分流链（Agnes → Zen → GTX）；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
 
 - 用户访问地址：https://kwei168.github.io/starhub/（GitHub Pages，国内可达的静态入口）
 - Vercel 项目：https://starhub-refresh.vercel.app（静态产物 + Serverless API）
@@ -42,7 +42,7 @@
 │  │              Python: fetch_and_build.py              │    │
 │  │   拉取 starred repos → 智能分类 → 翻译描述 →         │    │
 │  │   生成 index.html + ai-daily.html +                  │    │
-│  │   rss-aggregator.html（711 源三层分级构建）            │    │
+│  │   rss-aggregator.html（1014 源三层分级构建）           │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 
@@ -70,7 +70,9 @@
 | **主数据区**（Star 项目列表） | GitHub API: `/users/Kwei168/starred` | workflow 触发 `fetch_and_build.py` 静态构建 | `index.html` |
 | **关注动态区**（右侧 Feed） | GitHub API: `/users/{user}/events/public` | `/api/events.js` 实时查询，前端 30min 轮询 | 运行时 API |
 | **AI 晨报** | AIHOT 公开 API v1（降级回退 RSS）+ HN / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis / AtlasNote 多渠道 | `build_ai_daily.py` 每次构建时云端拉取生成 | `ai-daily.html` |
-| **RSS 聚合** | 711 源（GitHub/新闻/公众号/播客/YouTube），T1/T2/T3 三层分级 | `build_rss_aggregator.py` 构建 72h 快照 + `api/rss.js` T1 实时抓取 | `rss-aggregator.html` + `rss-data-0.js`/`rss-data-1.js` + `rss_api_snapshot.json` |
+| **RSS 聚合** | 1014 源（AI/科技/开发/新闻/公众号/播客/Twitter），T1/T2/T3 三层分级 | `build_rss_aggregator.py` 构建 72h 快照 + `api/rss.js` T1 实时抓取；并行抓取（12 并发 + 域级熔断） | `rss-aggregator.html` + `rss-data-0.js`/`rss-data-1.js` + `rss_api_snapshot.json` |
+| **语义洞察** | LlamaIndex 向量索引 + Agnes LLM + SiliconFlow embedding | `insight_engine.py` 构建时运行；嵌入缓存 `emb_cache.json` 跨 run 持久化 | `analysis_snapshot.json`（含 deep_insights / topic_clusters / cross_platform） |
+| **热榜态势** | newsnow 40 平台热榜快照 | `build_rss_aggregator.py` 的 `fetch_newsnow_snapshot()`；`hot_snapshot.json` + `hot_history.json` | AI 动态面板「热榜」Tab + 分类筛选 |
 
 ---
 
@@ -80,14 +82,36 @@
 
 | 文件 | 行数 | 作用 |
 |---|---|---|
-| `fetch_and_build.py` | 666 | **核心入口**。拉取 starred repos、智能分类、翻译描述、生成 `index.html`。末尾调用 `build_ai_daily.main()` |
-| `build_ai_daily.py` | ~1042 | AI 晨报生成器。主源 AIHOT 公开 API v1（匿名 `/api/v1/items`，失败降级 RSS → 本地 JSON）→ 筛选 36h 条目；多渠道快讯：Hacker News / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis博客 / AtlasNote → 英译中 → 跨源四层去重（精确/子串/同URL/摘要互含）→ 头条评分制（跨源报道数+编辑分+信源权重+新鲜度）→ 生成报纸风格 `ai-daily.html`，页脚显示信源成败状态栏 |
-| `template.html` | ~1905 | **页面模板**。包含全部 CSS + HTML 结构 + JS 交互逻辑。`fetch_and_build.py` 读取此文件，替换占位符生成 `index.html`。2026-08-29 重设计为纸感编辑风（暖纸底+衬线标题+等宽数字），搜索置顶通栏+340px粘性侧栏 |
+| `fetch_and_build.py` | 815 | **核心入口**。拉取 starred repos、智能分类、翻译描述、生成 `index.html`。末尾调用 `build_ai_daily.main()` 与 `build_rss_aggregator.main(mode)` |
+| `build_ai_daily.py` | ~1250 | AI 晨报生成器。主源 AIHOT 公开 API v1（匿名 `/api/v1/items`，失败降级 RSS → 本地 JSON）→ 筛选 36h 条目；多渠道快讯：Hacker News / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis博客 / AtlasNote → 英译中 → 跨源四层去重（精确/子串/同URL/摘要互含）→ 头条评分制（跨源报道数+编辑分+信源权重+新鲜度）→ 生成报纸风格 `ai-daily.html`，页脚显示信源成败状态栏 |
+| `template.html` | ~2110 | **页面模板**。包含全部 CSS + HTML 结构 + JS 交互逻辑。`fetch_and_build.py` 读取此文件，替换占位符生成 `index.html`。2026-08-29 重设计为纸感编辑风（暖纸底+衬线标题+等宽数字），搜索置顶通栏+340px粘性侧栏 |
 | `index.html` | 自动生成 | 最终部署页面。**不要直接编辑**，每次 workflow 会从 template 重新生成 |
 | `ai-daily.html` | 自动生成 | AI 晨报页面。**不要直接编辑**，每次构建重新生成 |
-| `build_rss_aggregator.py` | ~3700 | **RSS 聚合页生成器**。711 源三层分级（T1=23/T2=20/T3=668），支持 full/incremental 两种构建模式；同时生成卡片墙、AI 动态面板、阅读器、`rss-data-0.js`/`rss-data-1.js`、快照与历史文件 |
-| `rss-aggregator.html` | 自动生成 | RSS 聚合页面。**不要直接编辑**；由 `build_rss_aggregator.py` 生成，包含卡片墙、AI 动态双形态面板、信源面板、reader2 阅读器、筛选/搜索/分享/主题切换/实时刷新 |
+| `build_rss_aggregator.py` | ~6650 | **RSS 聚合页生成器**。1014 源三层分级（T1=6/T2=207/T3=801），支持 full/incremental 两种构建模式；并行抓取（全局 12 并发 + 每域名 2 + 域级熔断）；多引擎翻译分流链（Agnes → Zen → GTX → Bing → MyMemory）；同时生成卡片墙、AI 动态双形态面板（含热榜 Tab）、信源面板、reader2 阅读器、筛选/搜索/分享/主题切换/实时刷新、媒体播放（YouTube/播客） |
+| `rss-aggregator.html` | 自动生成 | RSS 聚合页面。**不要直接编辑**；由 `build_rss_aggregator.py` 生成，包含卡片墙、AI 动态双形态面板（桌面左侧常驻/移动抽屉）、热榜分类筛选、信源面板、reader2 阅读器（内嵌媒体播放）、筛选/搜索/分享/主题切换/实时刷新 |
 | `bestblogs_sources.json` | 559 条 | BestBlogs 项目导出的 RSS 源列表（375 公众号 + 60 播客 + 124 YouTube），构建时自动合并 |
+
+### 语义洞察引擎
+
+| 文件 | 行数 | 作用 |
+|---|---|---|
+| `insight_engine.py` | ~1735 | **LlamaIndex 语义分析引擎**。替代纯统计 _run_analysis()；AgnesLLM 多 key 轮询 + 429 自动切换；SiliconFlow bge-m3 API embedding（本地 fastembed 回退）；层级索引 + 手动余弦相似度检索（避向量维度不匹配）；RAGAS-inspired 评估 + 自纠错循环；话题聚类（embedding + TF-IDF 加权）；关键词提取（LLM + 分源关键词池）；深度洞察三视角独立生成（core_trends / rss_insights / narrative）；嵌入缓存 `emb_cache.json` 跨 run 持久化（5000 条上限） |
+| `build_config.json` | 14 | 构建配置外置文件。控制 insight_engine 开关、LLM provider、max_documents、top_keywords/topics 等参数；缺失键自动填充默认值 |
+| `build_logger.py` | ~120 | **构建日志系统**。JSONL 格式每日追加，14 天滚动清理；提供 `append()` / `cleanup()` / `summary()` API；供 workflow 与 `api/build_log.js` 消费 |
+
+### 测试文件
+
+| 文件 | 作用 |
+|---|---|
+| `test_frontend_tz_regression.py` | 前端时区盲日期比较回归测试（P0 修复验证） |
+| `test_insight_engine.py` | 洞察引擎单元测试 |
+| `test_insight_schedule.py` | 洞察调度与轻量场/重场分级测试 |
+| `test_insight_bad_date.py` | bad_date 降权与 stale 标注测试 |
+| `test_insight_guard_v3.py` | 维度护栏 v3 + 漂移自愈失效缓存测试 |
+| `test_insight_embeddings.py` | 嵌入缓存值类型过滤 + NaN/TypeError 防御测试 |
+| `test_insight_query_batch.py` | 查询批化与检索偏移修复测试 |
+| `test_translation_endpoints.py` | 翻译端点分流与降级链测试 |
+| `test_frontend_tz_regression.py` | 前端时区漂移回归测试 |
 
 ### 数据文件（workflow 自动维护）
 
@@ -97,9 +121,14 @@
 | `descriptions_zh.json` | 项目→中文描述缓存（避免重复翻译） |
 | `trending_snapshot.json` | 趋势分析快照数据 |
 | `rss_api_snapshot.json` | RSS API 快照（72h 累积历史 + meta.last_fetch 增量状态） |
-| `rss_sources.json` | RSS 源元数据（711 条，含 tier 字段） |
+| `rss_sources.json` | RSS 源元数据（1014 条，含 tier/cat/color 字段；8 分类：ai/tech/cn_tech/dev/news/podcast/wechat/twitter） |
 | `rss_history.json` | RSS 文章历史累积（跨构建持久化） |
 | `translations.json` | 翻译缓存（MD5 hash → 中文，供构建和 API 共享） |
+| `hot_snapshot.json` | 热榜快照数据（40 平台，列表格式） |
+| `hot_history.json` | 热榜历史累积（跨构建持久化） |
+| `analysis_snapshot.json` | 洞察分析快照（含 keywords / topics / deep_insights / topic_clusters / cross_platform / hot_trends / stale 标注） |
+| `rss_trend_history.json` | RSS 趋势追踪（14 天滚动快照；关键词 5 种生命周期 + 话题 4 种生命周期） |
+| `emb_cache.json` | 嵌入向量缓存（~8MB/5000 条，CI 用 actions/cache 持久化，gitignore） |
 
 ### Vercel Serverless 函数
 
@@ -109,17 +138,22 @@
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
 | `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
-| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：返回构建时生成的 72h 累积快照（711 源）；`?refresh=1` 时仅实时抓取 T1 高频源（23 个），T2/T3 从快照读取；T1 英文源实时翻译 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：返回构建时生成的 72h 累积快照（1014 源）；`?refresh=1` 时仅实时抓取 T1 高频源（6 个），T2/T3 从快照读取；T1 英文源实时翻译 |
 | `api/article.js` | `/api/article` | GET/OPTIONS | CORS 允许所有来源（`*`） | 15s（函数配置） | 阅读器全文兜底：快照全文 map → 特殊源提取/GitHub/YouTube → Readability 通用提取；OPTIONS 返回 204 |
 | `api/agihunt.js` | `/api/agihunt` | GET | 公开读取 | 15s | AI 动态侧栏的 AGI Hunt 频道代理 |
+| `api/translate.js` | `/api/translate` | POST | Origin 白名单 | 30s | **翻译代理**。引擎分流：mode='full'（全文/摘要按钮）→ Agnes 主力 + GTX 兜底；mode='bulk'（缺省，批量补翻）→ 前端浏览器直连 GTX 主力，服务端 GTX 尽力 + Agnes 限量兜底（AGNES_FALLBACK_MAX=8） |
+| `api/build_log.js` | `/api/build_log` | GET | CORS 宽松 | 10s | **构建日志查询**。读 `build_logs/*.jsonl`，支持日期/类型过滤、分页、摘要模式（`?summary=1`） |
 
 ### 配置
 
 | 文件 | 作用 |
 |---|---|
-| `vercel.json` | Vercel 项目配置，声明 7 个 Serverless 函数及超时（refresh/search/events/news/rss/article/agihunt） |
-| `.github/workflows/update.yml` | GitHub Actions 工作流定义。**分层调度**：UTC 21:00（北京 05:00）全量构建，UTC 2/6/10/14（北京 10/14/18/22）增量构建 |
-| `.gitignore` | 忽略 `__pycache__/`、`.deploy-tmp/` 等 |
+| `vercel.json` | Vercel 项目配置，声明 9 个 Serverless 函数及超时（refresh/search/events/news/rss/article/agihunt/translate/build_log） |
+| `.github/workflows/update.yml` | GitHub Actions 主工作流。**分层调度**：UTC 21:00（北京 05:00）全量构建，UTC 2/6/10/14（北京 10/14/18/22）增量构建；安装 LlamaIndex + fastembed；恢复嵌入缓存；env 提升到 job 级防 push 重试丢 key |
+| `.github/workflows/zen-check.yml` | Zen 翻译链路 CI 验证（手动触发），实测 6 条文本的 Zen 轮询翻译 |
+| `.github/workflows/build-log-summary.yml` | 每小时整点生成构建日志摘要并提交 |
+| `.github/workflows/sync-agnes-env.yml` | Agnes 环境变量同步到 Vercel（一次性工具） |
+| `.gitignore` | 忽略 `__pycache__/`、`.deploy-tmp/`、`rss_cache.json`（构建期缓存）、`emb_cache.json`（嵌入向量缓存）、`*.tmp`（原子写临时文件）、`_rev*`/`_adv*`（对抗性审查临时脚本）等 |
 
 ### 辅助目录
 
@@ -140,8 +174,12 @@
 | `GH_TOKEN` | GitHub PAT（fine-grained），需 `contents:write` + `actions:write` 权限 | Secret |
 | `REFRESH_KEY` | 弱防护密钥，用于 `/api/refresh` 和 `/api/search` 的 header 校验 | Secret |
 | `VERCEL_TOKEN` | Vercel 部署令牌（GitHub Actions 中使用） | Secret（workflow secrets） |
+| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力） | Secret |
+| `AGNES_API_KEY_2` | Agnes AI 第二 key（多 key 轮询，429 自动切换） | Secret |
+| `SILICONFLOW_API_KEY` | 硅基流动 API key（bge-m3 embedding 主力） | Secret |
+| `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力） | Secret |
 
-**当前状态**（2026-09-06）：
+**当前状态**（2026-09-14）：
 - `REFRESH_KEY`：仅在 Vercel 环境变量、GitHub Actions Secret 与受控触发配置中维护；手册不记录实际值。
 - `GH_TOKEN`：仅在受控 Secret 中维护；不得读取、打印或回显实际值。
 
@@ -187,9 +225,10 @@
 ### 导航栏结构
 
 1. ** AI 晨报** — 高亮入口，链接到 `ai-daily.html`
-2. **📚 学习资源 ** — 小林笔记、KamaCoder、Agents Course、Vibe Coding、AGI Hunt
-3. **📡 资讯平台 ▾** — NewsNow、今日热榜、赋范空间、V2EX、Linux Do
-4. **🤖 AI 工具 ▾** — CodeFather、CodeFather AI
+2. **📡 RSS 聚合** — 高亮入口，链接到 `rss-aggregator.html`
+3. **📚 学习资源 ▾** — 小林笔记、KamaCoder、Agents Course、Vibe Coding、AGI Hunt、FDE Learning、All-in-RAG
+4. **📡 资讯平台 ▾** — NewsNow、今日热榜、赋范空间、V2EX、Linux Do
+5. **🤖 AI 工具 ▾** — CodeFather、CodeFather AI
 
 ---
 
@@ -260,15 +299,19 @@ GitHub Actions: update.yml
   1. checkout main (fetch-depth: 0, 完整历史)
   2. setup Python 3.11
   3. 判断构建模式：UTC 21:00 → full，其余 → incremental
-  4. python fetch_and_build.py $MODE
+  4. pip install llama-index-core llama-index-embeddings-fastembed fastembed
+  5. 恢复嵌入缓存（actions/cache）
+  6. python fetch_and_build.py $MODE
      - 拉取 Kwei168 的 starred repos（分页，每页 100）
      - 智能分类（关键词匹配 + known_categories.json 缓存）
-     - 翻译英文描述为中文（Google 翻译 → 保留原文）
+     - 翻译英文描述为中文（多引擎分流：Agnes → Zen → GTX → Bing → MyMemory）
      - 生成 index.html（从 template.html 替换占位符）
      - 调用 build_ai_daily.main() 生成 ai-daily.html
      - 调用 build_rss_aggregator.main(mode) 生成 RSS 聚合页
-       · full 模式：抓取全部 711 源
-       · incremental 模式：跳过 T1 源 + 4h 内已抓源
+       · full 模式：并行抓取全部 1014 源（12 并发 + 域级熔断）
+       · incremental 模式：跳过 T1 源 + 4h 内已抓源；跳过的源从历史数据填充
+       · 运行 insight_engine 语义分析（LlamaIndex + Agnes LLM）
+       · 生成热榜快照 + 趋势追踪
   5. git add + commit + push（仅当有变更时）
   6. npx vercel --prod --yes --token $VERCEL_TOKEN
                 ↓
@@ -281,6 +324,7 @@ Vercel 部署完成（约 2-3 分钟）
 - **`index.html` 是自动生成文件**，直接编辑会被 workflow 覆盖
 - **Vercel 环境变量变更后必须 Redeploy**，否则新值不生效
 - **concurrency: cancel-in-progress: true**，新触发取消旧排队，永远只跑最新一次，从根本上消除并发冲突
+- **env 提升到 job 级**，确保 push 冲突重试时重新构建仍能拿到翻译 key 与 GitHub API 配额
 - **分层调度预算**：全量 ~15min × 30天 + 增量 ~5min × 4次 × 30天 + star数据 ~30min × 30天 ≈ 1950 min/月（安全线内）
 
 ---
@@ -442,21 +486,25 @@ function _mergeLiveSources(liveData, silent) {
 
 ### 7.15 RSS 聚合器三层分级架构（2026-09-05）
 
-**背景**：集成 BestBlogs 559 源后，源清单达到当前 711；全量抓取超出 GitHub Actions 分钟预算。
+**背景**：集成 BestBlogs 559 源后，源清单达到当前 1014（含 160 个 X/Twitter 源）；全量抓取超出 GitHub Actions 分钟预算。
 
 **三层分级**：
 
 | Tier | 定义 | 源数量 | 刷新方式 |
-|------|------|--------|---------|
-| T1 | 日均产出 > 30 篇 | 23（全部现有源） | 用户刷新时 api/rss.js 实时抓取 |
-| T2 | 日均产出 10-30 篇 | 19（全部现有源） | Actions 增量构建 |
-| T3 | 日均产出 < 10 篇 | 668（110 现有 + 558 BestBlogs） | Actions 增量构建 |
+|------|------|--------|--------|
+| T1 | 日均产出极高（头部高频源） | 6 | 用户刷新时 api/rss.js 实时抓取 |
+| T2 | 日均产出 10+ 篇 | 207 | Actions 增量构建 |
+| T3 | 日均产出 < 10 篇 | 801 | Actions 增量构建 |
 
-**BestBlogs 559 源分类**：
-- 375 公众号（wechat2rss）→ `cn_tech`
-- 60 播客（rsshub）→ `podcast`
-- 124 YouTube → `youtube`（新增分类）
-- 全部 BestBlogs 源产出低（最高 ~1 篇/天），归入 T3
+**1014 源分类分布**：
+- wechat（公众号）: 386
+- dev（开发）: 184
+- twitter（X/Twitter）: 160
+- news（新闻）: 60
+- ai: 61
+- podcast（播客）: 71
+- tech（科技）: 67
+- cn_tech（中国科技）: 25
 
 **增量构建逻辑**（`build_rss_aggregator.py`）：
 ```
@@ -470,12 +518,12 @@ incremental 模式：
 
 **API 层分层抓取**（`api/rss.js`）：
 - 快照优先：默认返回构建时生成的 72h 累积快照
-- `?refresh=1` 时：仅实时抓取 23 个 T1 源（~3s），T2/T3 从快照读取
-- T1 英文源（9 个）实时翻译：Google → MyMemory → Google-chrome 三端点降级
+- `?refresh=1` 时：仅实时抓取 6 个 T1 源（~3s），T2/T3 从快照读取
+- T1 英文源实时翻译：Agnes → Zen → GTX → Bing → MyMemory 五端点降级
 
 **卡片墙交织算法**（`tierInterleave`）：
 - 双队列 4:1 交织：每 4 篇 T1/T2 文章穿插 1 篇 T3 文章
-- 防止 T3 的 668 个低频源被 T1 的 23 个高频源完全淹没
+- 防止 T3 的 801 个低频源被 T1 的 6 个高频源完全淹没
 - T1+T2 占 ~80% 卡片位，T3 占 ~20%
 
 **源面板排序**：每个分类内按文章数降序排列，用户可快速定位活跃源。
@@ -567,10 +615,15 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 | 提交 | 变更 | 关键证据 |
 |---|---|---|
+| `27232cf` | P0 前端时区盲日期比较修复——08:15 时间漂移根因 | `test_frontend_tz_regression.py` 回归测试 |
+| `8d8933e` | 维度护栏 v3（全文件取维+漂移自愈失效缓存）+ 嵌入缓存值类型过滤 | `test_insight_guard_v3.py` + `test_insight_embeddings.py` |
+| `eba5d2f` | 洞察模块优化 D1-D4（嵌入缓存/查询批化/轻重分级/bad_date 降权） | TDD spec: `docs/superpowers/specs/2026-09-14-insight-optimization-spec.md` |
+| `521604d` | RSS 源配置外置到 rss_sources.json，新增单源实时刷新与 Twitter/X 分类 | 1014 源，8 分类 |
+| `f7eaa87` | RSS 抓取并行化（全局 12 并发 + 每域名 2 + 域级熔断）与 JSON 原子写 | 构建时间显著缩短 |
+| `d5da7a9` | Zen 免费模型轮询使用，单模型限流自封并自动切换 | 指数退避 5→10→20→40 分钟 |
+| `c6d1f8d` | RSS 全信源内容趋势追踪增强（14 天滚动快照 + 关键词生命周期） | `rss_trend_history.json` |
+| `44b2d60` | AI 动态流改为桌面端左侧常驻侧栏（≥1280px） | 静态 13/13、双视口 E2E 20/20 |
 | `a16b13a` | 去除快照替换竞态；ART/_mergeChunk 去重；无图文章回退纯文字卡 | 去重与卡片墙 E2E：DUP=0 |
-| `a86b04b` | `full_content` → `fc` 前端兼容映射 | `.deploy-tmp/verify_fulltext_fix.cjs`：9/9 |
-| `9f17610` | `/api/article` 补 CORS 头与 OPTIONS 预检 | 线上 OPTIONS 204 + ACAO `*` |
-| `44b2d60` | AI 动态桌面左侧常驻栏 + 移动抽屉分流 | 静态 13/13、双视口 E2E 20/20 |
 
 ### 8.5 维护禁忌与快速定位
 
@@ -579,6 +632,98 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 - 修改 AI 面板 DOM/CSS 时，同时验证 `reader2`（z-index 70）、`src-panel`（80）、`share-modal`（100）及 `scrim`，不要把桌面常驻栏误当成 `body.ai-open` 浮层。
 - 线上验证不要只看静态字符串；布局必须用真实浏览器 computed style + 双视口交互验证。
 - 任何令牌、密钥、Cookie、GitHub/Vercel Secret 都不写入手册、临时脚本或提交。
+- 不要直接编辑 `analysis_snapshot.json`；由 `insight_engine.py` 构建时生成。
+- 修改 `insight_engine.py` 后必须运行 `test_insight_*.py` 全套测试，确认维度护栏、缓存防御、嵌入类型过滤均通过。
+
+### 8.6 洞察引擎集成（2026-09-08 ~ 09-14）
+
+**核心模块**：`insight_engine.py`（1735 行），替代原纯统计 `_run_analysis()` 管线。
+
+**架构概览**：
+```
+构建时数据流：
+  hot_snapshot.json + rss_history.json + trending_data
+       ↓
+  load_documents() 配额制（RSS 70% + 热榜 20% + Trending 10%）
+       ↓
+  build_index() 层级索引（子块 ~150 token）
+       ↓
+  SiliconFlow bge-m3 API embedding（本地 fastembed 回退）
+       ↓
+  手动余弦相似度检索（避 VectorStoreIndex 维度不匹配）
+       ↓
+  extract_keywords_llm() → cluster_topics_embedding()
+       ↓
+  generate_deep_insights() 三视角独立生成
+       ↓
+  RAGAS-inspired 评估 + 自纠错循环
+       ↓
+  analysis_snapshot.json（含 deep_insights / topic_clusters / cross_platform / hot_trends）
+```
+
+**关键设计决策**：
+- **AgnesLLM 多 key 轮询**：遇到 429 自动切换下一个 key；非 429 错误重试当前 key 2 次
+- **嵌入缓存**：`emb_cache.json` 按模型名隔离，5000 条上限，原子写；CI 用 `actions/cache` 持久化
+- **三视角独立 LLM 调用**：core_trends / rss_insights / narrative 分别调用，避免 fallback 复制导致内容相同
+- **维度护栏 v3**：全文件取维 + 漂移自愈失效缓存 + 值类型过滤 + NaN/TypeError 防御
+- **轻量场/重场分级**：数据不足时走轻量路径（不携带旧 bad_date 名单）
+- **趋势快照 stale 标注**：过期数据标记 stale 而非丢弃
+
+**环境变量**：`AGNES_API_KEY`（必需）、`AGNES_API_KEY_2`（轮询）、`SILICONFLOW_API_KEY`（embedding）
+
+**配置**：`build_config.json` 控制开关、provider、max_documents 等参数
+
+### 8.7 翻译引擎分流 v2（2026-09-08 定版）
+
+**背景**：旧版批量补翻全打 Agnes，首屏几十条打爆上游限额（实测分钟级仅 1~2 次，agnes 429），反把全文翻译拖死。
+
+**最终方案**：按场景分流
+
+| 场景 | 主力 | 兜底 | 说明 |
+|------|------|------|------|
+| 全文/摘要按钮（mode='full'） | Agnes AI | 服务端 GTX | 低频高价值，用户主动点击 |
+| 批量补翻（mode='bulk'，缺省） | 浏览器直连 GTX | 服务端 GTX 尽力 + Agnes 限量（8 条） | 用户本地 IP，GTX 端点响应带 ACAO:* |
+| 构建期翻译 | Agnes → Zen → GTX → Bing → MyMemory | 翻译熔断（连续 5 次全失败暂停 5min） | 有界并发池（6 源并发） |
+
+**Zen 免费模型轮询**：
+- 默认模型：`ling-3.0-flash-fin-free`、`big-pickle`、`mimo-v2.5-free`
+- 指数退避自封：5→10→20→40 分钟封顶 1h，成功清零
+- 连续 2 次超时/网络故障自封模型 5 分钟
+- 粘性鉴权：实测可用的 token 保持，401/403 后回退 "public"
+
+**Agnes 指数退避**：HTTP 错误或连续 3 次空响应 → 自封 5→10→20→40 分钟，成功清零
+
+### 8.8 RSS 并行抓取与原子写（2026-09-07）
+
+- **全局 12 并发** + 每域名 2 并发 + 域级熔断（连续失败暂停该域）
+- **JSON 原子写**：`_atomic_write_json()` / `_atomic_write_text()` 先写 `.tmp` 再 `os.replace()`，防止进程中断导致数据损坏
+- **增量构建历史填充**：跳过的源从 `rss_history.json` 填充历史 items，确保 72h 滚动窗口数据不因增量构建而丢失
+
+### 8.9 热榜 40 平台与 AI 动态面板增强
+
+- 热榜从 14 平台扩展至 40 平台（+26 商业/资讯/生活/娱乐）
+- 热榜分类筛选行：全部/热搜/科技/财经/资讯/生活
+- 热榜并入 AI 动态面板双 Tab（AI 动态 + 热榜）
+- `hot_snapshot.json` 加入版本控制，CI 构建后提交部署
+- `hot_history.json` 跨构建持久化
+
+### 8.10 RSS 阅读器媒体播放系统
+
+- 阅读器内嵌 YouTube 视频 / 播客音频播放
+- 媒体嵌入代码移入构建模板（防止被构建覆盖）
+- iframe 安全加固（sandbox 属性）+ 错误降级 UI
+- 关闭后不再后台播放
+
+### 8.11 前端关键修复（2026-09-07 ~ 09-14）
+
+| 修复 | 根因 | 方案 |
+|------|------|------|
+| P0 时区盲日期比较 | 前端用 `new Date()` 当前时间做日期比较，08:15 时间漂移 | 改用源数据 pub_date 静态比较 |
+| chunk1 加载超时拒绝合并 | 37MB 大块慢网络下必现信源丢失 | 超时不再拒绝，改为接受已加载部分 |
+| chunk0 假成功守卫 | 截断/损坏 JSON 显示误导性空态 | 显式报错 toast 替代空态 |
+| KeyError 'color' | RSS 源缺 color 字段导致静默失败 | 缺省颜色兜底 |
+| Agnes 思考型模型耗尽 max_tokens | AI 摘要为空 | `enable_thinking: false` 关闭思考 |
+| AGI Hunt 移动端超时 | 12 频道并行触发移动端 6 连接槽排队 | 改为顺序请求，5s 单请求 + 30s 总超时 |
 
 ---
 
@@ -586,12 +731,14 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 | 层 | 技术 |
 |---|---|
-| 构建脚本 | Python 3.11（纯标准库，无第三方依赖） |
-| Serverless | Vercel Functions（Node.js，原生 fetch） |
+| 构建脚本 | Python 3.11（`fetch_and_build.py` 纯标准库；`build_rss_aggregator.py` 加 threading/LlamaIndex；`insight_engine.py` 加 llama-index-core/fastembed） |
+| 语义引擎 | LlamaIndex VectorStoreIndex + 层级索引 + 手动余弦相似度；AgnesLLM（多 key 轮询）；SiliconFlow bge-m3 embedding（本地 fastembed 回退） |
+| Serverless | Vercel Functions（Node.js，原生 fetch）；9 个函数 |
 | 托管 | Vercel（主）+ GitHub Pages（备） |
-| CI/CD | GitHub Actions（分层调度：凌晨全量 + 白天增量） |
-| 定时触发 | GitHub cron（主力，5 次/天） |
+| CI/CD | GitHub Actions（4 个 workflow：update/zen-check/build-log-summary/sync-agnes-env） |
+| 定时触发 | cron-job.org 每小时 POST（主力）+ GitHub cron（5 次/天，兆底） |
 | 前端 | 原生 HTML/CSS/JS，无框架 |
-| 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源：公众号+播客+YouTube） |
-| 翻译 | Google 翻译非官方端点 → MyMemory → Google-chrome 三端点降级链 |
-| RSS 架构 | 711 源三层分级（T1 实时/T2/T3 快照）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 |
+| 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源）、X/Twitter（160 源 via xgo.ing）、newsnow 40 平台热榜 |
+| 翻译 | 五端点降级链：Agnes AI → OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时按场景分流（全文走 Agnes、批量走浏览器 GTX） |
+| RSS 架构 | 1014 源三层分级（T1=6 实时/T2=207/T3=801 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放 |
+| 洞察引擎 | LlamaIndex 语义分析 + RAGAS-inspired 评估自纠错 + 话题聚类 + 关键词生命周期追踪 + 14 天趋势滚动 |
