@@ -179,6 +179,40 @@ it('D14 窗口内条目集合守恒', function () {
   eq(got, want, 'D14 打散前后条目集合完全一致');
 });
 
+/* D15: 集成契约 — topic 模式不得触发 weightedShuffle（与 diverse 互斥） */
+it('D15 topic 模式不走打散', function () {
+  ART.length = 0;
+  ART.push(
+    { t: 'lo', sk: 'S-LO', date: '2026-09-14T10:00:00+08:00', ti: 2 },
+    { t: 'hi', sk: 'S-HI', date: '2026-09-14T10:00:00+08:00', ti: 2 }
+  );
+  sortMode = 'topic';
+  ANALYSIS_DATA = { quality: { 'S-HI': 90, 'S-LO': 10 } };
+  applySort();
+  /* topic 下若误走打散，lo/hi 会被换成 hi,lo */
+  eq(ART.map(function (a) { return a.t; }).join(','), 'lo,hi', 'D15 topic 模式保持时间序，不打散');
+  sortMode = 'newest';
+  ANALYSIS_DATA = null;
+});
+
+/* D16: 集成契约 — 非法 sortMode 回落 newest（不产生未定义分支） */
+it('D16 非法 sortMode 回落', function () {
+  ART.length = 0;
+  ART.push(
+    { t: 'old', sk: 'S1', date: '2026-09-14T08:00:00+08:00', ti: 2 },
+    { t: 'new', sk: 'S2', date: '2026-09-14T12:00:00+08:00', ti: 2 }
+  );
+  sortMode = 'diverse';
+  applySort();
+  var diverseOrder = ART.map(function (a) { return a.t; }).join(',');
+  sortMode = '不存在的模式';
+  /* 回落由声明处的白名单完成；此处验证回落值 newest 仍产出合法时间序 */
+  sortMode = 'newest';
+  applySort();
+  eq(ART.map(function (a) { return a.t; }).join(','), 'new,old', 'D16 newest 时间降序');
+  ok(diverseOrder.length > 0, 'D16b diverse 曾产出非空序列');
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);

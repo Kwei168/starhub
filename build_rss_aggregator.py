@@ -2357,6 +2357,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         return _dateCmpDesc(a.date,b.date);
       });
     }
+    /* 集成契约（对齐 docs/superpowers/plans/2026-09-14-composite-sort-spec.md Phase 5）：
+       - sortMode 单值 → diverse 与 topic 天然互斥，不可能同时触发
+       - diverse 只重排窗口内次序；tierInterleave() 由合并/刷新路径在其之后调用，不受影响
+       - topic 分支（由主题聚类方案实现）不得调用 weightedShuffle，主题视图自带分桶逻辑 */
     else if(sortMode==='diverse'){
       // 先时间降序，再信誉打散
       ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
