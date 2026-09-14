@@ -97,10 +97,16 @@ _STOP_WORDS_EN = set(("the a an is are was were be been being have has had do do
 _STOP_WORDS = _STOP_WORDS_ZH | _STOP_WORDS_EN
 
 # ── 分析功能开关（从 build_config.json 读取） ──
+# 配置路径按本文件位置解析，不用相对路径：相对路径依赖进程 CWD，
+# 从别的目录导入本模块时会静默读到另一个同名 build_config.json
+# （实测在诱饵 CWD 下读到 {enabled: False, window_minutes: 45}，而非回落默认值）。
+_BUILD_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build_config.json")
+
+
 def _load_analysis_enabled():
     """从 build_config.json 读取 analysis_enabled 开关，文件缺失或损坏时默认开启。"""
     try:
-        with open("build_config.json", "r", encoding="utf-8") as f:
+        with open(_BUILD_CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
         return bool(cfg.get("analysis_enabled", True))
     except Exception:
@@ -112,7 +118,7 @@ ANALYSIS_ENABLED = _load_analysis_enabled()
 def _load_diverse_config():
     """从 build_config.json 读取 diverse 排序配置，文件缺失或损坏时返回默认值。"""
     try:
-        with open("build_config.json", "r", encoding="utf-8") as f:
+        with open(_BUILD_CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
         return {
             "enabled": bool(cfg.get("diverse_enabled", True)),
@@ -2322,7 +2328,14 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     window.ART = ART;
   }
   /* ── Sort ── */
-  var sortMode = localStorage.getItem('rss_sort_mode') || 'newest';
+  /* sortMode 白名单：localStorage 里的脏值（旧版本写入 / 手工篡改）必须在此规范化。
+     没有这一步，非法值会被默认分支一路吃下去，与 #sortSelect 的显示不一致，
+     且未来新增的 else-if 分支可能被脏值意外命中。 */
+  var SORT_MODES = ['newest','oldest','active','quality','diverse'];
+  function _normSortMode(v){
+    return (v && SORT_MODES.indexOf(v) >= 0) ? v : 'newest';
+  }
+  var sortMode = _normSortMode(localStorage.getItem('rss_sort_mode'));
   /* 时区安全日期比较【仅用于升序】（D3 修复：+08:00/Z 混合格式的字符串比较是时区盲的）；
      无日期沉底，两个无日期视为相等。
      注意：本函数的 NaN 分支是为升序写的，降序调用会反转语义（无日期置顶）。
@@ -5334,7 +5347,10 @@ def _tag_articles(sources_with_items):
             for pool in (title, summary):
                 if len(tags) >= 3:
                     break
-                tokens = [t for t in _tokenize_cached(pool) if len(t) >= 2 and not _is_numeric_unit_phrase(t)]
+                # strip 必须在长度判断之前：n-gram 切割会在中文与 ASCII 边界留下空格，
+                # 实测会产出 '完成 ' / '小米 ' / '美团 ' 这类带尾空格的标签。
+                tokens = [t.strip() for t in _tokenize_cached(pool)]
+                tokens = [t for t in tokens if len(t) >= 2 and not _is_numeric_unit_phrase(t)]
                 for tok, _ in collections.Counter(tokens).most_common(3):
                     if len(tags) >= 3:
                         break

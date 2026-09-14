@@ -195,22 +195,45 @@ it('D15 topic 模式不走打散', function () {
   ANALYSIS_DATA = null;
 });
 
-/* D16: 集成契约 — 非法 sortMode 回落 newest（不产生未定义分支） */
-it('D16 非法 sortMode 回落', function () {
+/* D16: 集成契约 — sortMode 白名单规范化非法值（不产生未定义分支）
+   旧版 D16 的空洞：赋值非法值后立刻覆盖成 newest，中间没有 applySort()，
+   非法值从未被消费；末条 ok(diverseOrder.length>0) 取自前半段，恒真。
+   现改为直接测白名单函数 + 让非法值真正流经 applySort()。 */
+it('D16 非法 sortMode 被白名单规范化', function () {
   ART.length = 0;
   ART.push(
     { t: 'old', sk: 'S1', date: '2026-09-14T08:00:00+08:00', ti: 2 },
     { t: 'new', sk: 'S2', date: '2026-09-14T12:00:00+08:00', ti: 2 }
   );
+  ok(typeof _normSortMode === 'function', 'D16a 存在 _normSortMode 白名单函数');
+  eq(_normSortMode('不存在的模式'), 'newest', 'D16b 非法值 → newest');
+  eq(_normSortMode(null), 'newest', 'D16c null → newest');
+  eq(_normSortMode(''), 'newest', 'D16d 空串 → newest');
+  eq(_normSortMode('diverse'), 'diverse', 'D16e 合法值 diverse 保留');
+  eq(_normSortMode('quality'), 'quality', 'D16f 合法值 quality 保留');
+  /* 非法值真正被消费，产出合法时间降序 */
+  sortMode = _normSortMode('不存在的模式');
+  eq(sortMode, 'newest', 'D16g 非法值经白名单后成为 newest');
+  applySort();
+  eq(ART.map(function (a) { return a.t; }).join(','), 'new,old', 'D16h 非法值消费后产出时间降序');
+  sortMode = 'newest';
+});
+
+/* D17: 刷新通道边界 — 条目缺 tags 字段时 diverse 不崩溃
+   （issue M2：T1 实时源注入的条目在构建期未知，可能不带 tags） */
+it('D17 条目缺 tags 字段时 diverse 不崩溃', function () {
+  ART.length = 0;
+  ART.push(
+    { t: 'a', sk: 'S1', date: '2026-09-14T12:00:00+08:00', ti: 2 },
+    { t: 'b', sk: 'S2', date: '2026-09-14T11:00:00+08:00', ti: 2, tags: ['x'] },
+    { t: 'c', sk: 'S1', date: '2026-09-14T10:00:00+08:00', ti: 2, tags: [] }
+  );
   sortMode = 'diverse';
   applySort();
-  var diverseOrder = ART.map(function (a) { return a.t; }).join(',');
-  sortMode = '不存在的模式';
-  /* 回落由声明处的白名单完成；此处验证回落值 newest 仍产出合法时间序 */
+  eq(ART.length, 3, 'D17a 缺 tags 时条目数不变');
+  ok(ART.every(function (a) { return typeof a.t === 'string'; }), 'D17b 条目结构完好');
+  eq(ART.map(function (a) { return a.t; }).sort().join(','), 'a,b,c', 'D17c 无条目丢失或重复');
   sortMode = 'newest';
-  applySort();
-  eq(ART.map(function (a) { return a.t; }).join(','), 'new,old', 'D16 newest 时间降序');
-  ok(diverseOrder.length > 0, 'D16b diverse 曾产出非空序列');
 });
 
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
