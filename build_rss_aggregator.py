@@ -6,6 +6,7 @@
 功能：信源分类筛选、全局搜索、标题/摘要翻译、响应式三端适配、主题切换。
 """
 import collections
+import functools
 import concurrent.futures
 import html as html_mod
 import datetime
@@ -4711,12 +4712,18 @@ def _tokenize(text):
     return tokens
 
 
+@functools.lru_cache(maxsize=65536)
+def _tokenize_cached(text):
+    """tokenize 结果缓存：D4 语料放大后同一文本多份复现，避免重复分词（rev8 P1-3）。"""
+    return tuple(_tokenize(text))
+
+
 def _tfidf_keywords(texts, top_n=50, per_doc_top=10):
     """从文本列表中提取全局 TF-IDF 关键词。返回 [(keyword, score), ...]。"""
     if not texts:
         return []
-    # 每篇文章的 token 集合
-    doc_tokens = [_tokenize(t) for t in texts]
+    # 每篇文章的 token 集合（缓存：重复语料只分词一次）
+    doc_tokens = [list(_tokenize_cached(t)) for t in texts]
     n_docs = len(doc_tokens)
     # DF: 每个 token 出现在多少篇文档中
     df = collections.Counter()
@@ -4752,6 +4759,7 @@ def _extract_keywords(rss_history, now_bj, unreliable_srcs=None):
     cutoff_24h = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=24)
     # 近 24h 文章用于热点提取
     recent_texts = []
+    recent_count = 0
     cat_texts = collections.defaultdict(list)
     for item in rss_history.values():
         pd_str = item.get('pub_date', '')
@@ -4770,6 +4778,8 @@ def _extract_keywords(rss_history, now_bj, unreliable_srcs=None):
         if not text:
             continue
         is_recent = pd >= cutoff_24h
+        if is_recent:
+            recent_count += 1  # 真实近24h条数（与语料复制解耦，rev8 P1-1）
         # D4 权重以语料份额计（精确 0.3）：正常 recent = W_BASE*W_RECENT 份 + W_BASE 份；
         # 不可信 = 正常 × UNRELIABLE_FACTOR/10（0.3 倍）
         if item.get('source_key', '') in unreliable:
@@ -4788,7 +4798,7 @@ def _extract_keywords(rss_history, now_bj, unreliable_srcs=None):
     for cat, texts in cat_texts.items():
         if len(texts) >= 3:
             by_cat[cat] = _tfidf_keywords(texts, top_n=20)
-    return {"global": global_kw, "by_cat": by_cat, "recent_count": len(recent_texts)}
+    return {"global": global_kw, "by_cat": by_cat, "recent_count": recent_count}
 
 
 def _score_sources(sources_with_items, rss_history):
@@ -5829,6 +5839,8 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
     if engine_on:
         try:
             _interval = float(ie_cfg.get("insight_heavy_interval_hours", 6))
+            if not math.isfinite(_interval) or _interval <= 0:
+                _interval = 6.0  # NaN 比较恒 False 会锁死轻量模式（rev8 P2-3）
         except (TypeError, ValueError):
             _interval = 6.0
         _prev_gen = (prev_analysis or {}).get("generated_at", "")
@@ -5843,7 +5855,7 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
                 if _pg.tzinfo:
                     _pg = _pg.astimezone(datetime.timezone(datetime.timedelta(hours=8))).replace(tzinfo=None)
                 heavy_due = (now_bj.replace(tzinfo=None) - _pg).total_seconds() >= _interval * 3600
-            except ValueError:
+            except (TypeError, ValueError):
                 heavy_due = True
     if engine_on and heavy_due:
         # ── 重分析：insight_engine (LlamaIndex) ──
@@ -5943,8 +5955,14 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
     # D3 轻量场：语义主题/深度洞察/RAGAS 等重字段沿用上次重分析，诚实标注 stale；
     # generated_at 保持上次重分析时间（前端据此展示真实新鲜度）
     # P1-2 修复：overlay 无条件复用——重分析失败（insight_engine 抛异常）时统计路径
-    # 也要沿用上次的语义主题/深度洞察，并诚实标注 stale，防止退化态无痕
+    # 也要沿用上次的语义主题/深度洞察，并诚实标注 stale，防止退化态无痕。
+    # rev8 P1-2：语义主题/簇结构/深度洞察/RAGAS 显式沿用 prev（统计聚类的 topics 键
+    # 恒存在会顶掉语义主题——spec D3 承诺 light 场主题数据不回退）
     if prev_analysis:
+        for _k in ("topics", "topic_clusters", "deep_insights", "ragas",
+                   "narrative", "cross_platform_semantic"):
+            if prev_analysis.get(_k) is not None:
+                analysis[_k] = prev_analysis[_k]
         for _k, _v in prev_analysis.items():
             if _k not in analysis and _k != "bad_date_sources":
                 analysis[_k] = _v
