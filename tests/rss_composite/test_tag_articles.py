@@ -82,6 +82,13 @@ B._tag_articles(src5)
 new_keys = set(src5[0]["items"][0].keys())
 ok(new_keys - original_keys == {"tags"}, "A5 仅新增 tags 字段，不修改其他字段")
 
+# A6 数值单位短语不得成为标签
+src8 = mk_src([("该公司完成 3 亿美元 融资 估值 上涨", "")])
+B._tag_articles(src8)
+tags8 = src8[0]["items"][0].get("tags", [])
+ok(not any(t in ("亿美元", "万元", "亿元", "亿美元融") for t in tags8),
+   "A6 数值单位短语不成为标签（实得 %r）" % (tags8,))
+
 print()
 print("=" * 74)
 print("B. 刷新通道字段兼容（t/s 契约）")
