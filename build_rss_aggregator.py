@@ -108,6 +108,22 @@ def _load_analysis_enabled():
 
 ANALYSIS_ENABLED = _load_analysis_enabled()
 
+
+def _load_diverse_config():
+    """从 build_config.json 读取 diverse 排序配置，文件缺失或损坏时返回默认值。"""
+    try:
+        with open("build_config.json", "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return {
+            "enabled": bool(cfg.get("diverse_enabled", True)),
+            "window_minutes": int(cfg.get("diverse_window_minutes", 120)),
+        }
+    except Exception:
+        return {"enabled": True, "window_minutes": 120}
+
+
+DIVERSE_CFG = _load_diverse_config()
+
 # ── 72 小时内容累积 ──
 RSS_HISTORY_FILE = "rss_history.json"
 RSS_HISTORY_HOURS = 72
@@ -2234,7 +2250,7 @@ def _build_header():
 """
 
 
-def _build_js(sources_with_items, build_ts_ms=0, analysis_json=''):
+def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_window_minutes=120):
     """Generate core JS for card wall + drawer reader."""
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
     # 内嵌 QR 生成库：国内移动端 jsdelivr/unpkg 常不可达且请求会长时间挂起，
@@ -4904,7 +4920,8 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     print("[数据分块] chunk0 %d 篇 / chunk1 %d 篇（共 %d）" % (n0, n1, n0 + n1))
 
 
-def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analysis_data=None):
+def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analysis_data=None,
+               diverse_window_minutes=120, diverse_enabled=True):
     """生成完整 HTML 页面 — 卡片墙 + 抽屉阅读器。"""
     # 构建洞察面板 HTML（仅当分析数据存在时显示按钮）
     insight_btn = ''
@@ -6696,7 +6713,9 @@ def main(mode="full"):
     except Exception as e:
         print("[标签] 提取失败，跳过: %s" % e, file=sys.stderr)
 
-    html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms, analysis_data=analysis_data)
+    html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms, analysis_data=analysis_data,
+                          diverse_window_minutes=DIVERSE_CFG["window_minutes"],
+                          diverse_enabled=DIVERSE_CFG["enabled"])
     _atomic_write_text(OUT, html_doc)
 
     # 数据分块：rss-data-0.js（首屏）/ rss-data-1.js（全量，后台合并）

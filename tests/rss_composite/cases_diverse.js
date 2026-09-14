@@ -152,6 +152,33 @@ it('D12 diverse 模式条目守恒', function () {
   ANALYSIS_DATA = null;
 });
 
+/* D13: 窗口=0 必须与纯时间降序逐条一致（V2 的可执行形态） */
+it('D13 窗口=0 与纯时间降序逐条一致', function () {
+  var arts = [];
+  for (var i = 0; i < 40; i++) {
+    arts.push({
+      t: 'a' + i,
+      sk: 'S' + (i % 6),
+      date: (i % 7 === 0) ? null : '2026-09-14T' + (10 + (i % 12)) + ':' + (i % 60) + ':00+08:00'
+    });
+  }
+  var got = weightedShuffle(arts, 0, _Q).map(function (a) { return a.t; });
+  var want = arts.slice().sort(function (a, b) { return _dateCmpDesc(a.date, b.date); })
+                        .map(function (a) { return a.t; });
+  eq(got, want, 'D13 窗口=0 输出 == 纯时间降序（含无日期沉底）');
+});
+
+/* D14: 任意窗口下条目集合守恒（打散不得吞掉或复制条目） */
+it('D14 窗口内条目集合守恒', function () {
+  var arts = [];
+  for (var i = 0; i < 30; i++) {
+    arts.push({ t: 'x' + i, sk: 'S' + (i % 3), date: '2026-09-14T10:' + (i % 50) + ':00+08:00' });
+  }
+  var got = weightedShuffle(arts, 120, { S0: 95, S1: 40, S2: 5 }).map(function (a) { return a.t; }).sort();
+  var want = arts.map(function (a) { return a.t; }).sort();
+  eq(got, want, 'D14 打散前后条目集合完全一致');
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);
