@@ -6688,6 +6688,14 @@ def main(mode="full"):
         except Exception as e:
             print("[热榜] 快照写入失败: %s" % e, file=sys.stderr)
 
+    # ── 为每篇文章提取话题标签（供前端 diverse/topic 模式消费）──
+    try:
+        _tag_articles(sources_with_items)
+        _tagged = sum(1 for s in sources_with_items for it in s.get("items", []) if it.get("tags"))
+        print("[标签] 已为 %d 篇文章提取话题标签" % _tagged)
+    except Exception as e:
+        print("[标签] 提取失败，跳过: %s" % e, file=sys.stderr)
+
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms, analysis_data=analysis_data)
     _atomic_write_text(OUT, html_doc)
 
