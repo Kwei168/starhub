@@ -493,6 +493,34 @@ it('D24 newest 模式同源连续 ≤3', function () {
   eq(ART.length, 20, 'D24b 条目守恒');
 });
 
+/* ── D20/D21/D22: _srcWeight tier 乘子测试 ────────────────────────────── */
+
+/* D20: _srcWeight tier 乘子 */
+it('D20 _srcWeight tier 乘子', function () {
+  ok(typeof _srcWeight === 'function', 'D20a _srcWeight 存在');
+  var w_t1 = _srcWeight({sk:'S1', ti:1}, {S1: 80});
+  var w_t3 = _srcWeight({sk:'S2', ti:3}, {S2: 80});
+  ok(w_t1 > w_t3, 'D20b T1 权重(' + w_t1 + ') > T3 权重(' + w_t3 + ')（同 quality=80）');
+  eq(w_t1, 120, 'D20c T1×80 = 80×1.5 = 120');
+  eq(w_t3, 80, 'D20d T3×80 = 80×1.0 = 80');
+  var w_t2 = _srcWeight({sk:'S3', ti:2}, {S3: 60});
+  eq(w_t2, 72, 'D20e T2×60 = 60×1.2 = 72');
+});
+
+/* D21: _srcWeight quality=0 回落默认 50 */
+it('D21 _srcWeight quality=0 用默认 50', function () {
+  var w = _srcWeight({sk:'ZERO', ti:3}, {ZERO: 0});
+  eq(w, 50, 'D21a quality=0 T3 → 默认 50×1.0 = 50');
+  var w_t1 = _srcWeight({sk:'ZERO', ti:1}, {ZERO: 0});
+  eq(w_t1, 75, 'D21b quality=0 T1 → 默认 50×1.5 = 75');
+});
+
+/* D22: _srcWeight quality 缺失用默认 50 */
+it('D22 _srcWeight quality 缺失用默认 50', function () {
+  var w = _srcWeight({sk:'MISSING', ti:3}, {});
+  eq(w, 50, 'D22 quality 缺失 → 默认 50');
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);
