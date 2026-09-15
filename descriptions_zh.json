@@ -416,5 +416,6 @@
  "hypit-ai/hypit": "使用人工智能代理克隆任何病毒视频。不仅仅是一个脚本，而是整个工作流程：交换面孔、文字、幕后花絮，在一个命令中发送 100 个变体，并获得 1 亿次观看。",
  "TencentCloud/Octop": "更智能、自托管的人工智能助手——多用户、多代理。",
  "agentscope-java/agentscope-java": "构建分布式、生产级、长期运行的代理。",
- "cloudflare/security-audit-skill": "用于多阶段安全审计的编码代理技能，具有独立验证、机器可读的结果"
+ "cloudflare/security-audit-skill": "用于多阶段安全审计的编码代理技能，具有独立验证、机器可读的结果",
+ "Crosstalk-Solutions/project-nomad": "NOMAD 项目是一个离线优先的知识和教育服务器。维基百科、数千本书、课程、地图和可选的本地人工智能，所有这些都在您拥有的硬件上运行，无需互联网。"
 }
