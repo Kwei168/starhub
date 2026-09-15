@@ -1647,11 +1647,50 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
     elif not LLAMA_INDEX_AVAILABLE:
         print("[insight_engine] index skipped: llama-index not available", file=sys.stderr)
 
-    # 5. Cluster topics — 使用预计算向量，避免重复调 API
-    topic_clusters = cluster_topics_embedding(
-        rss_texts, max_topics=top_topics, all_doc_texts=doc_texts,
-        pre_embeddings=rss_embeddings, embed_model_name=rss_embed_model
-    ) if rss_texts else []
+    # 5. Cluster topics — 按类别分组聚类，排除噪声源（twitter/podcast/youtube 不参与聚类，
+    #    但仍保留在 doc_texts 中供关键词提取和深度洞察使用）
+    _CLUSTER_NOISE_CATS = {'twitter', 'podcast', 'youtube'}
+    cluster_texts = []
+    cluster_embeds = []
+    cluster_cats = []
+    for i, t in enumerate(rss_texts):
+        m = re.match(r'^\[RSS/([^\]]+)\]', t)
+        cat = m.group(1) if m else 'unknown'
+        if cat in _CLUSTER_NOISE_CATS:
+            continue
+        cluster_texts.append(t)
+        if rss_embeddings and i < len(rss_embeddings):
+            cluster_embeds.append(rss_embeddings[i])
+        cluster_cats.append(cat)
+    # 按类别分组
+    _cat_groups = {}
+    for i, cat in enumerate(cluster_cats):
+        _cat_groups.setdefault(cat, []).append(i)
+    topic_clusters = []
+    _per_cat_max = max(3, top_topics // max(len(_cat_groups), 1))
+    for cat, indices in _cat_groups.items():
+        cat_texts = [cluster_texts[i] for i in indices]
+        cat_embeds = [cluster_embeds[i] for i in indices] if cluster_embeds else None
+        if len(cat_texts) < 2:
+            continue
+        cat_clusters = cluster_topics_embedding(
+            cat_texts, max_topics=_per_cat_max, all_doc_texts=doc_texts,
+            pre_embeddings=cat_embeds, embed_model_name=rss_embed_model
+        )
+        topic_clusters.extend(cat_clusters)
+    # 跨类别合并去重（按标签）+ 按 count 降序取 Top N
+    _merged = {}
+    for c in topic_clusters:
+        lbl = c["label"]
+        if lbl in _merged:
+            _merged[lbl]["items"].extend(c["items"])
+            _merged[lbl]["count"] = len(_merged[lbl]["items"])
+        else:
+            _merged[lbl] = {"label": lbl, "count": c["count"], "items": list(c["items"])}
+    topic_clusters = sorted(_merged.values(), key=lambda c: -c["count"])[:top_topics]
+    print(f"[insight_engine] topic clustering: {len(_cat_groups)} categories, "
+          f"{len(cluster_texts)} texts (excluded twitter/podcast/youtube), "
+          f"{len(topic_clusters)} clusters", file=sys.stderr)
 
     # 5. Cross-platform semantic
     cross_platform = cross_platform_semantic(hot_snapshot)
