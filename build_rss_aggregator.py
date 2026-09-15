@@ -443,6 +443,22 @@ def _accumulate_history(sources_with_items):
     global _LAST_UNRELIABLE_SRCS
     _LAST_UNRELIABLE_SRCS = set(_unreliable_srcs)
 
+    # 模式 C：同日期伪造检测（知乎日报/愆伏/梅之夏等）
+    _uniform_flagged = _detect_uniform_dates(
+        [_rss_history[k] for k in _rss_history],
+        min_items=5, threshold=0.8
+    )
+    if _uniform_flagged:
+        _unreliable_srcs |= _uniform_flagged
+        _LAST_UNRELIABLE_SRCS = set(_unreliable_srcs)
+        _names = [src_map[sk]["name"] for sk in _uniform_flagged if sk in src_map][:5]
+        print("[bad_date-C] 同日期伪造源 %d 个: %s" % (
+            len(_uniform_flagged), ", ".join(_names)))
+        # 立即标记条目
+        for item in _rss_history.values():
+            if item.get("source_key") in _uniform_flagged:
+                item["bad_date"] = True
+
     # 第二遍：时区校正 → 未来日期处置 → 标记 bad_date → 重组
     # 判伪条目的回拉位移先算好（按「源 + 抓取批次」分组，保序不折叠 —— 见 _plan_falsify_shifts）
     _cutoff_aware = cutoff.replace(tzinfo=_BJ_TZ)
@@ -922,6 +938,35 @@ def _parse_rss_date(s):
 
 
 _BJ_TZ = datetime.timezone(datetime.timedelta(hours=8))
+
+
+def _detect_uniform_dates(items, min_items=5, threshold=0.8):
+    """检测同日期伪造（bad_date 模式 C）。
+
+    同一源 ≥min_items 条条目中，超过 threshold 比例共享完全相同的 pub_date 字符串
+    → 判定为日期伪造，返回该源 key 集合。
+
+    典型场景：知乎日报 anyfeeder feed 无 pubDate，_fallback_date_iso 用 first_seen
+    填充 → 同批次所有条目获得完全相同的时间戳。
+    """
+    from collections import Counter, defaultdict
+    src_dates = defaultdict(list)
+    for item in items:
+        sk = item.get("source_key", "")
+        pd = item.get("pub_date", "")
+        if sk and pd:
+            src_dates[sk].append(pd)
+
+    flagged = set()
+    for sk, dates in src_dates.items():
+        if len(dates) < min_items:
+            continue
+        cnt = Counter(dates)
+        most_common_date, most_common_count = cnt.most_common(1)[0]
+        ratio = most_common_count / len(dates)
+        if ratio >= threshold:
+            flagged.add(sk)
+    return flagged
 
 
 def _parse_hist_dt(s):
