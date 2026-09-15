@@ -1703,6 +1703,9 @@ body.ai-open .back-top{opacity:0;pointer-events:none;}
 .r2-bm.on svg{fill:currentColor;}
 .chip.bm-chip{color:var(--muted);border-color:var(--line);}
 .chip.bm-chip.on{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand-strong);}
+.chip.disc-chip{border-style:dashed;color:#0891b2;border-color:#0891b2;}
+.chip.disc-chip.on{background:#ecfeff;border-color:#0891b2;color:#0e7490;}
+@media(prefers-color-scheme:dark){.chip.disc-chip{color:#22d3ee;border-color:#22d3ee;}.chip.disc-chip.on{background:#164e63;border-color:#22d3ee;color:#67e8f9;}}
 .chip .n { font-family:var(--mono); font-size:10px; opacity:.75; margin-left:3px; }
 /* A2 修复：模态焦点可见环 */
 [role="dialog"] :focus-visible,.share-modal :focus-visible{outline:2px solid var(--brand);outline-offset:2px;}
@@ -2699,11 +2702,24 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       var label=CAT_LABELS[c]||c, on=filter.type==='cat'&&filter.cats[c];
       h+='<button class="chip'+(on?' on':'')+'" data-c="'+c+'">'+label+' <span class="n">'+counts[c]+'</span></button>';
     });
+    /* ── 发现：长尾高质量源 ── */
+    var _discKeys=_discoverKeys();
+    var discCnt=0; ART.forEach(function(a){if(_discKeys[a.sk])discCnt++;});
+    if(discCnt>0){
+      var discOn=filter.type==='discover';
+      h+='<button class="chip disc-chip'+(discOn?' on':'')+'" data-c="__disc">\u{1f50d} \u53d1\u73b0 <span class="n">'+discCnt+'</span></button>';
+    }
     document.getElementById('chips').innerHTML=h;
     document.querySelectorAll('.chip').forEach(function(el){
       if(!el.dataset.c) return; /* \u65e0 data-c \u7684\u82af\u7247\uff08\u5982\u6536\u85cf\uff09\u4fdd\u7559\u5185\u8054 onclick\uff0c\u907f\u514d\u8986\u76d6\u6210 c=undefined */
       el.onclick=function(){
         var c=this.dataset.c, uo=filter.unreadOnly, bm=filter.filterBm;
+        /* 发现 chip：切换 discover 模式 */
+        if(c==='__disc'){
+          filter=filter.type==='discover'?{type:'all',cats:{},unreadOnly:uo,filterBm:bm}:{type:'discover',unreadOnly:uo,filterBm:bm};
+          curArt=null; wallLimit=WALL_STEP; renderChips(); renderWall(); renderPanel(); window.scrollTo({top:0}); updateTitle(); updateHash(); updateUnreadBtn(); updateBmChip();
+          return;
+        }
         var cats=filter.type==='cat'?Object.assign({},filter.cats):{};
         if(cats[c]) delete cats[c]; else cats[c]=true;
         var keys=Object.keys(cats);
@@ -2726,6 +2742,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     if(!h1)return;
     if(filter.type==='cat'){var labels=Object.keys(filter.cats).map(function(c){return CAT_LABELS[c]||c;});h1.textContent=labels.join(' + ');}
     else if(filter.type==='src'){var s=SRC_OBJ(filter.src);h1.textContent=s?s.name:'\u4fe1\u6e90';}
+    else if(filter.type==='discover'){h1.textContent='\u{1f50d} \u53d1\u73b0';}
     else h1.textContent='\u65f6\u95f4\u7ebf';
   }
   function updateMeta(){
@@ -2841,11 +2858,24 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   var globalSearch = '';
   var _searchSrcMatch = null; // 搜索匹配到的信源 key
   var _topicBigrams = null;   // 话题标签二元组（insightSearch 设置）
+  /* 长尾高质量源 key 集合：条目 ≤5 且 quality ≥60 */
+  function _discoverKeys(){
+    var srcCnt={};
+    ART.forEach(function(a){srcCnt[a.sk]=(srcCnt[a.sk]||0)+1;});
+    var qm=(ANALYSIS_DATA&&ANALYSIS_DATA.quality)?ANALYSIS_DATA.quality:{};
+    var ks={};
+    for(var sk in srcCnt){
+      if(srcCnt[sk]<=5 && (qm[sk]||0)>=60) ks[sk]=true;
+    }
+    return ks;
+  }
   function visibleArts(){
     var q = globalSearch;
+    var _dk=(filter.type==='discover')?_discoverKeys():null;
     return ART.filter(function(a){
       if(filter.type==='cat' && !filter.cats[a.c]) return false;
       if(filter.type==='src' && a.sk!==filter.src) return false;
+      if(filter.type==='discover' && !_dk[a.sk]) return false;
       if(filter.filterBm && !_bookmarks[artKey(a)]) return false;
       if(filter.unreadOnly && visited[artKey(a)]) return false;
       if(q) {
@@ -3486,7 +3516,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
 
   /* ── URL hash ── */
   function updateHash(){
-    var p='#view='+(filter.type==='cat'?'cat&c='+Object.keys(filter.cats).join(','):filter.type==='src'?'src&s='+encodeURIComponent(filter.src):'all');
+    var p='#view='+(filter.type==='cat'?'cat&c='+Object.keys(filter.cats).join(','):filter.type==='src'?'src&s='+encodeURIComponent(filter.src):filter.type==='discover'?'discover':'all');
     try{history.replaceState(null,'',p);}catch(e){}
   }
   function restoreFromHash(){
@@ -3494,6 +3524,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     var p={};h.split('&').forEach(function(kv){var s=kv.split('=');if(s[0])p[s[0]]=decodeURIComponent(s[1]||'');});
     if(p.view==='cat'&&p.c){var cats={};p.c.split(',').forEach(function(x){if(x)cats[x]=true;});filter={type:'cat',cats:cats};return true;}
     if(p.view==='src'&&p.s){filter={type:'src',src:p.s};return true;}
+    if(p.view==='discover'){filter={type:'discover'};return true;}
     return false;
   }
 
