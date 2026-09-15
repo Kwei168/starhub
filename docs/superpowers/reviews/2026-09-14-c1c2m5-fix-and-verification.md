@@ -288,4 +288,68 @@ $PY test_frontend_tz_regression.py                        # 全部通过
 | `test_insight_quality.py` | **既有红**（14 failures / 10 errors），全部关于 `insight_engine` 的 `guardrail` / `cluster_quality`「未接入 run_analysis」，与本轮改动无关（未触碰 `insight_engine.py`）。未修。 |
 | `build_rss_aggregator.py:2937` `SyntaxWarning: invalid escape sequence '\.'` | 既有告警（非 raw 字符串里的正则），输出噪音，语义无影响。未修。 |
 | `test_frontend_tz_regression.py` 中 `src`（git HEAD 内容）取后未用 | 死代码。未清理。 |
-| 改动提交 | 仍在工作区未提交（`git` 对象库在本机不可读，`git log` 报 `bad object HEAD`，无法生成基线 diff）。待确认。 |
+| 改动提交 | **已提交** `983ce4e`（14 files, +2023 / −54）。提交前先行修复了本机 `.git` 对象库损坏，过程见 §8。 |
+
+---
+
+## 8. 前置修复：本机 `.git` 对象库损坏
+
+提交前发现本仓库 `.git` 处于**不可用状态**，必须先恢复才能给出任何 commit 号。
+
+### 8.1 现象（T0）
+
+| 检验 | 结果 |
+|---|---|
+| `git rev-parse HEAD` | `8c8c0955...`（有值） |
+| `git log` / `git status` | `fatal: bad object HEAD` |
+| `git fsck` | rc=42，15898 行错误；`refs/heads/main` / `refs/stash` / `refs/remotes/origin/main` 全部 `invalid sha1 pointer` |
+| `.git/objects/pack/` | **3 个 `.idx`，只有 1 个 `.pack`** —— 两个 pack 的索引在、数据没了 |
+| `git count-objects -v` | `in-pack: 930`、`garbage: 2`、`loose objects: 0` |
+| `.git/refs/` | 目录整体缺失（已重建，非破坏性） |
+
+判定：一次 repack / gc 被中断（写好新 idx、删掉旧 pack、新 pack 未落地）。
+
+### 8.2 恢复步骤（本轮实际执行）
+
+1. **先抢救未提交改动** —— 把 34 个待交付文件复制到 `.deploy-tmp/_rescue/` 并记录 md5。
+   顺序上必须先做这步：之后任何 git 操作出问题，未提交内容都是唯一不可恢复的东西。
+2. **备份 `.git` 元数据** —— `packed-refs` / `HEAD` / `ORIG_HEAD` / `FETCH_HEAD` / `shallow` / `logs/`
+   复制到 `_rescue/_gitmeta/`，并记录 4 个待改 ref 的原值。
+3. **从远端补对象** —— `git fetch --depth=1 origin main`（非破坏：只增对象、不动工作区）。
+   远端 main 当时为 `c22fdf6681e19e47c4c4c4cb3e0939396691a5e4`（`chore: auto update stars 2026-09-14`）。
+   结果 `in-pack: 930 -> 1190`，远端对象可读。
+4. **重指 ref** —— `git update-ref refs/heads/main <远端 sha>` + 同步 `refs/remotes/origin/main`
+   + 确认 `HEAD -> refs/heads/main`。
+5. **对齐 index** —— `git read-tree HEAD`（只改 index，不触碰工作区文件）。
+6. **坏 ref 未删** —— `refs/original/refs/heads/main` 与 `refs/stash` 指向的对象已丢失，
+   本轮**保留不清理**（避免不可逆操作），留待决定。
+
+### 8.3 基线甄别（提交前必做的把关）
+
+HEAD 换成远端最新后，`git diff HEAD` 会**同时**包含「本轮的改动」和「远端 CI 领先于本地陈旧产物的差异」。
+此时 `git add -A` 会把 CI 的新构建产物回退成旧版。
+
+| 核验项 | 结论 |
+|---|---|
+| 远端基线是否含早前几轮的修复 | **含**（`_effective_pub_dt` / `_dateCmpDesc` / `_RSS_DATE_RE` / `pub_date_offset_min` / `_fallback_date_iso` / `_chrono_key` / `_plan_falsify_shifts` 全部在位） |
+| 远端基线是否含本轮修复 | **不含**（`SRC_GAP` / `_srcGap` / `_tagsOf` / `_tag_candidates` / `_is_tag_station` 均缺失） |
+| `build_rss_aggregator.py` 的 10 个 hunk 归属 | 逐 hunk 按**增删行**（不含上下文行）归类，全部落在 C1 / C2 / M5，无他人改动混入 |
+
+于是提交采用**逐个点名** `git add -- <file>`（14 个），并在 commit 前断言
+「暂存清单 == 白名单，无多余、无缺失」（实测 14 == 14）。
+
+### 8.4 未提交的内容（有意保留）
+
+| 类别 | 文件 | 原因 |
+|---|---|---|
+| CI 构建产物 | `analysis_snapshot.json`、`translations.json`、`rss-data-0/1.js`、`rss_api_snapshot.json`、`rss_history.json`、`hot_*.json`、`rss_trend_history.json`、`trending_snapshot.json`、`*.html`、`build_logs/` | 工作区版本**旧于**远端 CI 产物，提交即回退 |
+| 并行会话 | `insight_engine.py` | 另一会话正在改（洞察引擎质量优化） |
+| 探针脚本 | `_compare_rss_sources.py`、`.workbuddy/_probe*.py` 等 | 按 `.gitignore` 惯例不入库 |
+
+### 8.5 遗留状态与影响（必须知情）
+
+- **`git fetch --depth=1` 使本地历史被截为 1 层**：`git log` 目前只能看到 `c22fdf66` 与本轮提交。
+  远端历史完整，需要时可 `git fetch --unshallow` 补回（会拉全量历史）。
+- **未推送**：本地 `983ce4e` 领先远端 `c22fdf66` 一个提交。推送需处理两件事 ——
+  shallow 仓库的 push 语义，以及本机 git-over-HTTPS 的 TLS 拦截
+  （此前实测 `schannel: server closed abruptly`，而 `gh api` 正常）。

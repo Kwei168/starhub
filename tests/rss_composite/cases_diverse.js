@@ -456,6 +456,43 @@ it('E10 双源等量夹具严格交替', function () {
   ok(st.maxRun <= 1, 'E10b 双源严格交替，同源最长连续 ≤1（实得 ' + st.maxRun + '，源 ' + st.worst + '）');
 });
 
+/* ── D18/D24: _applyRunCap 集成测试（active / newest 模式）────────────── */
+
+/* D18: active 模式 _applyRunCap 生效 */
+it('D18 active 模式同源连续 ≤3', function () {
+  ART.length = 0;
+  // 8 条 SA + 6 条 SB + 6 条 SC = 20 条，异源足够打破连出
+  for (var i = 0; i < 8; i++)
+    ART.push({ t: 'A' + i, sk: 'SA', date: '2026-09-14T10:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 6; i++)
+    ART.push({ t: 'B' + i, sk: 'SB', date: '2026-09-14T09:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 6; i++)
+    ART.push({ t: 'C' + i, sk: 'SC', date: '2026-09-14T08:' + (i % 60) + ':00+08:00', ti: 2 });
+  sortMode = 'active';
+  applySort();
+  var st = skRun(ART);
+  ok(st.maxRun <= 3, 'D18 active 模式 maxRun ≤3（实得 ' + st.maxRun + '）');
+  eq(ART.length, 20, 'D18b 条目守恒');
+  sortMode = 'newest';
+});
+
+/* D24: newest 模式 _applyRunCap 生效 */
+it('D24 newest 模式同源连续 ≤3', function () {
+  ART.length = 0;
+  // 10 条 SX + 5 条 SY + 5 条 SZ = 20 条，3 源场景
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'X' + i, sk: 'SX', date: '2026-09-14T12:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 5; i++)
+    ART.push({ t: 'Y' + i, sk: 'SY', date: '2026-09-14T11:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 5; i++)
+    ART.push({ t: 'Z' + i, sk: 'SZ', date: '2026-09-14T10:' + (i % 60) + ':00+08:00', ti: 2 });
+  sortMode = 'newest';
+  applySort();
+  var st = skRun(ART);
+  ok(st.maxRun <= 3, 'D24 newest 模式 maxRun ≤3（实得 ' + st.maxRun + '）');
+  eq(ART.length, 20, 'D24b 条目守恒');
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);

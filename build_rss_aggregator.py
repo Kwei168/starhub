@@ -2381,6 +2381,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         if(sa!==sb) return _dateCmpDesc(sa,sb);
         return _dateCmpDesc(a.date,b.date);
       });
+      _applyRunCap(ART, 3);
     }
     /* 集成契约（对齐 docs/superpowers/plans/2026-09-14-composite-sort-spec.md Phase 5）：
        - sortMode 单值 → diverse 与 topic 天然互斥，不可能同时触发
@@ -2397,7 +2398,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       ART.length = 0;
       for(var _i=0;_i<_sh.length;_i++) ART.push(_sh[_i]);
     }
-    else ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
+    else {
+      ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
+      _applyRunCap(ART, 3);
+    }
     if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
       var qm=ANALYSIS_DATA.quality;
       ART.sort(function(a,b){ return (qm[b.sk]||0)-(qm[a.sk]||0); });
@@ -2431,6 +2435,44 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
      而且按 quality 加权采样会把首屏推向纯降序（前轮读数：首屏均值 99.26 vs
      时间序 82.20，本轮未复测），与「保持时间可读性」冲突。
      只有位置约束能给出可证的界。 */
+
+  /* 同源连续抑制（run cap）：扫描已排序数组，将同源连续超过 cap 的
+     多余条目与后续最近的异源条目交换。O(n) 时间，不改变数组长度或元素集合。
+     用于 active / newest / quality 模式，作为 weightedShuffle SRC_GAP
+     之外的轻量补充（diverse 模式不需要，已有 SRC_GAP=2）。 */
+  function _applyRunCap(arr, cap) {
+    if (!arr || arr.length <= cap) return;
+    var n = arr.length;
+    for (var pass = 0; pass < 3; pass++) {
+      var improved = false;
+      for (var i = cap; i < n; i++) {
+        if (arr[i].sk !== arr[i-1].sk) continue;
+        var runStart = i - 1;
+        while (runStart > 0 && arr[runStart-1].sk === arr[i].sk) runStart--;
+        var runLen = i - runStart + 1;
+        if (runLen <= cap) continue;
+        var swapped = false;
+        // 优先向前搜索（保持时间序）
+        for (var j = i + 1; j < Math.min(i + 15, n); j++) {
+          if (arr[j].sk !== arr[i].sk && (j === 0 || arr[j].sk !== arr[j-1].sk)) {
+            var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+            swapped = true; improved = true; break;
+          }
+        }
+        // 回退：向后搜索（不检查双重守卫，2 源场景必需）
+        if (!swapped) {
+          for (var j = i - 1; j >= 0; j--) {
+            if (arr[j].sk !== arr[i].sk) {
+              var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+              improved = true; break;
+            }
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  }
+
   var SRC_GAP = 2;
 
   /* 距末尾最近一次出现的距离；从未出现返回大值（恒可用）。
