@@ -6,7 +6,13 @@ on:
     - cron: "0 21 * * *"
     # UTC 2/6/10/14 = 北京 10/14/18/22 → 白天增量构建
     - cron: "0 2,6,10,14 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: 'Force full build (re-fetch all RSS sources)'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: write
@@ -44,14 +50,19 @@ jobs:
 
       - name: Determine build mode
         run: |
-          # UTC 21:00 (北京 05:00) → full，其余 → incremental
-          HOUR=$(date -u +%H)
-          if [ "$HOUR" = "21" ]; then
+          # workflow_dispatch 可强制 full；UTC 21:00 (北京 05:00) → full，其余 → incremental
+          if [ "${{ github.event.inputs.force_full }}" = "true" ]; then
             echo "MODE=full" >> $GITHUB_ENV
-            echo "构建模式: 全量 (full)"
+            echo "构建模式: 全量 (full) [forced by workflow_dispatch]"
           else
-            echo "MODE=incremental" >> $GITHUB_ENV
-            echo "构建模式: 增量 (incremental)"
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "21" ]; then
+              echo "MODE=full" >> $GITHUB_ENV
+              echo "构建模式: 全量 (full)"
+            else
+              echo "MODE=incremental" >> $GITHUB_ENV
+              echo "构建模式: 增量 (incremental)"
+            fi
           fi
 
       - name: Install insight engine dependencies
