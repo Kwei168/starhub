@@ -27,6 +27,7 @@ JS_DIVERSE = "tests/rss_composite/test_diverse_js.py"
 PY_TAG = "tests/rss_composite/test_tag_semantics.py"
 JS_TAGS = "tests/rss_composite/test_refresh_tags_js.py"
 PY_SNAP = "tests/rss_composite/test_snapshot_tags.py"
+PY_SCORE = "tests/rss_composite/test_score_sources_default.py"
 
 # (名称, [(原文, 替换为), ...], 测试文件, 期望变红的用例名片段, 输出标记)
 # 多点变异用列表表达：有些守卫是「双保险」（同一契约在两处实现），
@@ -101,6 +102,34 @@ MUTATIONS = [
      [("        _tag_articles(sources_with_items)",
        "        _save_api_snapshot(sources_with_items, meta=meta)\n        _tag_articles(sources_with_items)")],
      PY_SNAP, ["B4 _tag_articles() 必须先于 _save_api_snapshot()"], "[FAIL] "),
+
+    # ── RC：_applyRunCap 同源抑制（Phase 1）────────────────────────────────
+    ("RC-a active 模式 _applyRunCap 调用移除",
+     [("      _applyRunCap(ART, 3);\n    }\n    /* 集成契约",
+       "    }\n    /* 集成契约")],
+     JS_DIVERSE, ["D18 active 模式 maxRun"], "FAIL "),
+
+    ("RC-b newest 模式 _applyRunCap 调用移除",
+     [("      _applyRunCap(ART, 3);\n    }\n  }", "      /*removed*/\n    }\n  }")],
+     JS_DIVERSE, ["D24 newest"], "FAIL "),
+
+    # ── TM：_srcWeight tier 乘子（Phase 2）────────────────────────────────
+    ("TM-a tier 乘子退化为恒 1.0（T1/T2 优势消失）",
+     [("  var TIER_MULT = { 1: 1.5, 2: 1.2 };",
+       "  var TIER_MULT = { 1: 1.0, 2: 1.0 };")],
+     JS_DIVERSE, ["D20c", "D20d", "D20e"], "FAIL "),
+
+    # ── TI：tierInterleave diverse 守卫（Phase 2）─────────────────────────
+    # 注：tierInterleave 只在 _mergeChunk/_mergeRemoteSources 后调用，
+    # 单元测试 harness 不触发合并流程，故无法通过单测变异验证。
+    # 该守卫由集成测试（线上页面实测）覆盖，不纳入变异测试。
+
+    # ── SS：_score_sources tier 默认分（Phase 2）──────────────────────────
+    ("SS-a 无历史源回退为 0 分（505 源 quality=0 复现）",
+     [("            _tier = src.get('tier', 3)\n            _default = {1: 60, 2: 40}.get(_tier, 25)",
+       "            _tier = src.get('tier', 3)\n            _default = 0")],
+     PY_SCORE,
+     ["SS-1 T1 源无历史", "SS-2 T2 源无历史", "SS-3 T3 源无历史"], "[PASS] "),
 ]
 
 
@@ -121,7 +150,7 @@ def main():
     base_src = os.path.join(TMP, "baseline.py")
     io.open(base_src, "w", encoding="utf-8").write(src)
     print("基线：未变异源码")
-    for rel in (JS_DIVERSE, PY_TAG, JS_TAGS, PY_SNAP):
+    for rel in (JS_DIVERSE, PY_TAG, JS_TAGS, PY_SNAP, PY_SCORE):
         out = run_suite(base_src, rel)
         red = ("failed" in out and ", 0 failed" not in out)
         print("  %-46s %s" % (rel, "红 ← 基线就红了，终止" if red else "全绿"))
