@@ -856,7 +856,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
      且未来新增的 else-if 分支可能被脏值意外命中。 */
   var SORT_MODES = ['newest','oldest','active','quality','diverse'];
   function _normSortMode(v){
-    return (v && SORT_MODES.indexOf(v) >= 0) ? v : 'newest';
+    return (v && SORT_MODES.indexOf(v) >= 0) ? v : 'diverse';
   }
   var sortMode = _normSortMode(localStorage.getItem('rss_sort_mode'));
   /* 时区安全日期比较【仅用于升序】（D3 修复：+08:00/Z 混合格式的字符串比较是时区盲的）；
