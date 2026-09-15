@@ -604,9 +604,12 @@ it('F4 _applyRunCap 缺省 families 参数', function () {
   ART.length = 0;
   for (var i = 0; i < 10; i++)
     ART.push({ t: 'X' + i, sk: 'SX', date: '2026-09-14T12:0' + (i % 10) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 3; i++)
+    ART.push({ t: 'Y' + i, sk: 'SY', date: '2026-09-14T11:0' + i + ':00+08:00', ti: 2 });
   _applyRunCap(ART, 3);  // 不传 families
   var st = skRun(ART);
   ok(st.maxRun <= 3, 'F4 缺省 families 仍正常 cap（实得 ' + st.maxRun + '）');
+  eq(ART.length, 13, 'F4b 条目守恒');
 });
 
 /* F5: NodeSeek 单源族 cap ≤ 4 */

@@ -2428,7 +2428,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         if(sa!==sb) return _dateCmpDesc(sa,sb);
         return _dateCmpDesc(a.date,b.date);
       });
-      _applyRunCap(ART, 3);
+      _applyRunCap(ART, 3, SOURCE_FAMILIES);
     }
     /* 集成契约（对齐 docs/superpowers/plans/2026-09-14-composite-sort-spec.md Phase 5）：
        - sortMode 单值 → diverse 与 topic 天然互斥，不可能同时触发
@@ -2446,11 +2446,11 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     else if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
       var qm=ANALYSIS_DATA.quality;
       ART.sort(function(a,b){ return (qm[b.sk]||0)-(qm[a.sk]||0); });
-      _applyRunCap(ART, 5);
+      _applyRunCap(ART, 5, SOURCE_FAMILIES);
     }
     else {
       ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
-      _applyRunCap(ART, 3);
+      _applyRunCap(ART, 3, SOURCE_FAMILIES);
     }
   }
   var _sortEl = document.getElementById('sortSelect');
@@ -2482,37 +2482,82 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
      时间序 82.20，本轮未复测），与「保持时间可读性」冲突。
      只有位置约束能给出可证的界。 */
 
+  /* 源族群定义：同族源共享打散配额，防止 V2EX 4 子源交替出现霸屏。
+     key = source_key, value = family_key。未列出的源不参与族群 cap。 */
+  var SOURCE_FAMILIES = {
+    'v2ex_all_50': 'v2ex', 'v2ex_creative_52': 'v2ex',
+    'v2ex_play_53': 'v2ex', 'v2ex技术_44': 'v2ex',
+    'nodeseek_54': 'nodeseek'
+  };
+  /* 族群级 cap：family_key → 最大连续条数。未列出的族用单源 cap 值。 */
+  var FAMILY_CAPS = { 'v2ex': 6, 'nodeseek': 4 };
+
   /* 同源连续抑制（run cap）：扫描已排序数组，将同源连续超过 cap 的
      多余条目与后续最近的异源条目交换。O(n) 典型 / O(n²) 最坏（3-pass 有界），
      不改变数组长度或元素集合。
+     Level 1: 单源 cap（原有逻辑，用 _gk 替代直接 sk 比较）
+     Level 2: 族群 cap（families[sk] 存在时，用 FAMILY_CAPS[gk] 作为上限）
      用于 active / newest / quality 模式，作为 weightedShuffle SRC_GAP
      之外的轻量补充（diverse 模式不需要，已有 SRC_GAP=2）。 */
-  function _applyRunCap(arr, cap) {
+  function _applyRunCap(arr, cap, families) {
     if (!arr || arr.length <= cap) return;
+    families = families || {};
+    var _gk = function(sk) { return families[sk] || sk; };
     var n = arr.length;
     for (var pass = 0; pass < 3; pass++) {
       var improved = false;
       for (var i = cap; i < n; i++) {
-        if (arr[i].sk !== arr[i-1].sk) continue;
-        var runStart = i - 1;
-        while (runStart > 0 && arr[runStart-1].sk === arr[i].sk) runStart--;
-        var runLen = i - runStart + 1;
-        if (runLen <= cap) continue;
-        var swapped = false;
-        // 优先向前搜索（保持时间序）
-        for (var j = i + 1; j < Math.min(i + 15, n); j++) {
-          if (arr[j].sk !== arr[i].sk && (j === 0 || arr[j].sk !== arr[j-1].sk)) {
-            var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-            swapped = true; improved = true; break;
+        var sk = arr[i].sk;
+        var gk = _gk(sk);
+
+        // ── Level 1: 单源 cap ──
+        if (arr[i].sk === arr[i-1].sk) {
+          var runStart = i - 1;
+          while (runStart > 0 && arr[runStart-1].sk === sk) runStart--;
+          var runLen = i - runStart + 1;
+          if (runLen > cap) {
+            var swapped = false;
+            for (var j = i + 1; j < Math.min(i + 15, n); j++) {
+              if (_gk(arr[j].sk) !== gk && (j === 0 || _gk(arr[j].sk) !== _gk(arr[j-1].sk))) {
+                var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+                swapped = true; improved = true; break;
+              }
+            }
+            if (!swapped) {
+              for (var j = i - 1; j >= 0; j--) {
+                if (_gk(arr[j].sk) !== gk) {
+                  var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+                  improved = true; break;
+                }
+              }
+            }
+            continue;
           }
         }
-        // 回退：向后搜索（不检查双重守卫，2 源场景必需；
-          // 多 pass 迭代会逐步消解此处可能制造的新相邻对）
-        if (!swapped) {
-          for (var j = i - 1; j >= 0; j--) {
-            if (arr[j].sk !== arr[i].sk) {
-              var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-              improved = true; break;
+
+        // ── Level 2: 族群 cap ──
+        if (families[sk]) {
+          var famCap = (typeof FAMILY_CAPS !== 'undefined' && FAMILY_CAPS[gk]) || cap;
+          if (_gk(arr[i-1].sk) === gk) {
+            var fStart = i - 1;
+            while (fStart > 0 && _gk(arr[fStart-1].sk) === gk) fStart--;
+            var fLen = i - fStart + 1;
+            if (fLen > famCap) {
+              var fSwapped = false;
+              for (var j = i + 1; j < Math.min(i + 20, n); j++) {
+                if (_gk(arr[j].sk) !== gk) {
+                  var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+                  fSwapped = true; improved = true; break;
+                }
+              }
+              if (!fSwapped) {
+                for (var j = i - 1; j >= 0; j--) {
+                  if (_gk(arr[j].sk) !== gk) {
+                    var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+                    improved = true; break;
+                  }
+                }
+              }
             }
           }
         }
