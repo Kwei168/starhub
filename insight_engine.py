@@ -897,8 +897,8 @@ def _extract_cluster_label(texts, all_doc_texts=None):
             if word_score[best_word] >= max(2, n * 0.2):
                 return best_word
 
-    # ── Tier 4: 回退（最短标题截断，最多10字）──
-    return max(cleaned, key=len)[:10]
+    # ── Tier 4: 回退（最短标题截断，最多20字）──
+    return max(cleaned, key=len)[:20]
 
 
 def _fallback_cluster(texts, max_topics=15, threshold=0.5, all_doc_texts=None):
@@ -1149,6 +1149,89 @@ def _is_recent(item, hours=24):
         except (ValueError, TypeError, OSError):
             continue
     return True  # assume recent if no date field
+
+
+# ────────────────── Task 4.5: LLM label refinement ───────────
+def _refine_labels_with_index(topic_clusters, llm, child_vecs=None,
+                               child_nodes=None, parent_docs=None):
+    """用 index 检索完整文章上下文 + LLM 生成语义标签。
+
+    复用"小索引大窗口"机制：对每个话题簇，检索相关全文后让 LLM
+    生成简洁中文标签，替代纯统计提取（避免英文单词/截断碎片）。
+    无 index/LLM 时保持原统计标签不变。
+    """
+    if not topic_clusters:
+        return topic_clusters
+    if isinstance(llm, MockLLM):
+        return topic_clusters
+    if not (child_vecs and child_nodes and parent_docs):
+        return topic_clusters
+
+    # 只对"弱标签"做 LLM 精炼：纯英文 / 截断过短 / 无中文
+    def _needs_refine(label):
+        has_cn = bool(re.search(r'[\u4e00-\u9fff]', label))
+        if has_cn and len(label) > 6:
+            return False  # 中文标签且够长，跳过
+        return True
+
+    targets = [(i, c) for i, c in enumerate(topic_clusters)
+               if _needs_refine(c.get('label', ''))]
+    if not targets:
+        return topic_clusters
+
+    # 批量嵌入查询文本（与 generate_deep_insights 同模式）
+    _q_texts = []
+    for idx, cluster in targets:
+        items = cluster.get('items', [])
+        label = cluster.get('label', '')
+        query_parts = [label] if label else []
+        query_parts.extend(items[:3])
+        _q_texts.append(" ".join(query_parts))
+
+    try:
+        q_vec_list, _ = _get_embeddings(_q_texts)
+    except Exception:
+        q_vec_list = None
+    if not q_vec_list or len(q_vec_list) != len(_q_texts):
+        return topic_clusters
+
+    refined_count = 0
+    for (cluster_idx, cluster), qvec in zip(targets, q_vec_list):
+        if not qvec:
+            continue
+        items = cluster.get('items', [])
+        orig_label = cluster.get('label', '')
+        ctx = _retrieve_with_context(parent_docs, child_vecs, child_nodes,
+                                     qvec, top_k=5, context_radius=2)
+        if not ctx and items:
+            ctx = "\n".join(items[:5])
+        if not ctx:
+            continue
+
+        prompt = (
+            "从以下上下文提取一个简洁的中文话题标签（4-15字）。\n"
+            "要求：概括核心话题，使用中文，不要引号或JSON格式，直接输出标签文本。\n"
+            "禁止：英文、解释性文字、超过15字。\n\n"
+            f"上下文：\n{ctx[:2000]}"
+        )
+        try:
+            result = llm.complete(prompt, temperature=0.2, max_tokens=30)
+            if result and isinstance(result, str):
+                new_label = result.strip().strip('"\'「」『』').strip()
+                # 验证：3-20 字，必须含中文（防止 LLM 返回英文）
+                has_cn = bool(re.search(r'[\u4e00-\u9fff]', new_label))
+                if 3 <= len(new_label) <= 20 and has_cn:
+                    topic_clusters[cluster_idx]['label'] = new_label
+                    print(f"[insight_engine] label refined: "
+                          f"{orig_label!r} → {new_label!r}", file=sys.stderr)
+                    refined_count += 1
+        except Exception as exc:
+            print(f"[insight_engine] label refinement error: {exc}",
+                  file=sys.stderr)
+
+    print(f"[insight_engine] label refinement: {refined_count}/{len(targets)} "
+          f"labels refined via index+LLM", file=sys.stderr)
+    return topic_clusters
 
 
 # ────────────────── Task 5: generate_deep_insights ───────────
@@ -1706,6 +1789,13 @@ def run_analysis(hot_snapshot, rss_history, trending_data, config,
                 rising.append({"word": w, "rise": prev_rank - rank, "current_rank": rank})
         rising.sort(key=lambda x: -x["rise"])
         rising = rising[:15]
+
+    # 6. LLM 标签精炼 — 用 index 检索全文 + LLM 生成语义标签
+    topic_clusters = _refine_labels_with_index(
+        topic_clusters, llm,
+        child_vecs=child_vecs, child_nodes=child_nodes,
+        parent_docs=parent_docs
+    )
 
     # 7. Deep insights — 使用层级索引检索 + 大窗口上下文
     deep_insights = generate_deep_insights(
