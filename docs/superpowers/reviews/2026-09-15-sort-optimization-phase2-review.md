@@ -1,96 +1,84 @@
 # 对抗性审查报告：RSS 排序优化 Phase 2
 
 日期：2026-09-15
-审查范围：5 commits（95ea1ed → 7566989）
-审查方法：手动代码审查 + 变异测试 16/16 + 全量回归 145/145
+审查范围：983ce4e → 0c4b057（6 commits, 8 files, +648/-15 lines）
+审查方法：按 `requesting-code-review` 技能模板执行
+Spec: `docs/superpowers/specs/2026-09-15-rss-sort-optimization-spec.md`
 
 ---
 
-## 审查结论
+### Strengths
 
-**整体评级：PASS（附 2 条 Medium 观察）**
+1. **TDD 纪律严格**：每个功能都遵循 RED→GREEN→COMMIT 循环，测试先于实现。新增 4 个测试文件（cases_run_cap.js, test_run_cap.py, test_score_sources_default.py）共 36 个新断言，覆盖核心行为。
 
-所有 Critical/High 级别问题均未发现。16 个变异体全部被测试捕获，145 项回归测试全绿。
+2. **变异测试覆盖率高**：16/16 变异体全部 CAUGHT（从 12/12 扩展到 16/16），证明新增守卫均有测试鉴别力。`mutation_check.py:107-164` 的锚点缺失检测机制（显式跳过而非静默半变异）是优秀的工程实践。
 
----
+3. **_applyRunCap 算法设计合理**：多 pass 迭代（硬限 3 次）+ 早期终止（`if (!improved) break`）+ 向前/向后双向搜索回退。`build_rss_aggregator.py:2444-2475` 边界条件完备，无越界风险。
 
-## 逐项分析
+4. **else-if 链重构干净**：`build_rss_aggregator.py:2399-2409` 将 quality 从独立 if 改为 else-if 链的一部分，消除了分支穿透。ANALYSIS_DATA 缺失时正确降级到 newest 模式。
 
-### 1. _applyRunCap 算法正确性
+5. **远程刷新三处修复形成闭环**：concat 替换 unshift（O(n²)→O(n)）+ 日期钳制 + window.ART 同步。`build_rss_aggregator.py:3610-3616` 的引用同步逻辑正确。
 
-**结论：正确，无死循环风险**
-
-- 外层 `for (pass = 0; pass < 3; pass++)` 硬限 3 次迭代 → 不可能死循环
-- `if (!improved) break;`（L2473）提供早期终止 → 实际 pass 数通常 <3
-- 向前搜索边界 `j < Math.min(i + 15, n)` → n 在循环中不变 → 无越界
-- 向后搜索 `j = i-1; j >= 0` → 下界明确 → 无越界
-- 交换操作 `arr[i] ↔ arr[j]` → i,j 均在 [0, n) 内 → 元素集合守恒
-
-### 2. _srcWeight tier 乘子
-
-**结论：正确**
-
-- `TIER_MULT` 定义在函数外（L2486），不重复创建 → 无性能问题
-- `qm[x.sk] > 0` 条件确保 quality=0 回落到 50 → 与 _score_sources tier 默认分互补
-- `TIER_MULT[x.ti] || 1.0` → T3（ti=3）不在对象中 → 回落 1.0 → 正确
-
-### 3. applySort else-if 链
-
-**结论：正确，无分支遗漏**
-
-- quality 模式条件 `sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality`
-- 若 ANALYSIS_DATA 缺失 → 条件为 false → 落入 else（newest + cap=3）→ 合理降级
-
-### 4. _mergeRemoteSources concat + window.ART
-
-**结论：正确**
-
-- `ART = added.concat(ART)` 创建新数组 → 引用变更
-- `window.ART = ART`（L3616）同步全局引用 → 外部消费者可见
-- 所有闭包通过模块级 `var ART` 访问 → 重新赋值后全局一致
-
-### 5. CSS 兼容性
-
-**结论：无冲突**
-
-- `.card-tags` 使用 `display:flex; flex-wrap:wrap; gap:4px` → 独立容器，不影响现有布局
-- `.ctag` 使用 `color:var(--brand)` + `color-mix()` → 跟随主题变量，dark mode 自动适配
+6. **CSS 样式与主题系统集成**：`.ctag` 使用 `color:var(--brand)` + `color-mix(in srgb, var(--brand) 10%, transparent)`，dark mode 自动适配，无硬编码颜色。
 
 ---
 
-## 观察项
+### Issues
 
-### Medium-1：2 源极端场景 _applyRunCap 效果有限
+#### Critical (Must Fix)
 
-**现象：** 2 源 50/50 分布下，swap 算法无法将 maxRun 降至 cap。
-**证据：** D24 夹具从 2 源改为 3 源后才通过。
-**影响：** 539 源真实数据下，2 源极端场景概率趋零。
-**建议：** 记录为已知限制，不修。若未来出现 2 源霸屏投诉，可引入 round-robin 回退。
+无。
 
-### Medium-2：向后搜索不检查双重守卫
+#### Important (Should Fix)
 
-**现象：** L2464-2470 的向后搜索只检查 `arr[j].sk !== arr[i].sk`，不检查 `arr[j].sk !== arr[j-1].sk`。
-**影响：** 可能在交换位置制造新的相邻同源对。但多 pass 迭代会逐步消解。
-**建议：** 3-pass 上限已足够收敛，无需额外守卫（会增加复杂度）。
+1. **`_applyRunCap` 注释声称 O(n) 但实际最坏 O(n²)**
+   - File: `build_rss_aggregator.py:2441`
+   - Issue: 注释写"O(n) 时间"，但向后搜索回退（L2464-2470）在内层循环中可扫描 O(n) 个元素，外层 3-pass × 内层 O(n) = O(n²) 最坏情况。
+   - Why it matters: 注释给出错误的复杂度保证，误导后续维护者。
+   - Fix: 将注释改为"O(n) 典型 / O(n²) 最坏（3-pass 有界）"。
+
+2. **D24 夹具从 2 源改为 3 源——2 源场景无测试覆盖**
+   - File: `tests/rss_composite/cases_diverse.js:480-493`
+   - Issue: 原始 D24 用 2 源 50/50 夹具，因 _applyRunCap 无法解决 2 源场景而改为 3 源。2 源极端场景现在完全没有集成测试。
+   - Why it matters: 虽然 539 源数据下 2 源场景概率极低，但这是算法已知限制的盲区，应有显式测试记录行为（即使断言的是"尽力而为"而非"达标"）。
+   - Fix: 添加 D24-2src 测试，断言 maxRun 从 15 降低到 ≤10（不要求 ≤3，但验证算法确实有改善）。
+
+#### Minor (Nice to Have)
+
+1. **`_applyRunCap` 向后搜索可加注释说明为何不检查双重守卫**
+   - File: `build_rss_aggregator.py:2463`
+   - Issue: 注释"不检查双重守卫，2 源场景必需"是正确的，但缺少解释为什么这样做是安全的（因为多 pass 迭代会逐步消解新产生的相邻对）。
+   - Fix: 补充注释："多 pass 迭代会逐步消解此处可能制造的新相邻对"。
+
+2. **`TIER_MULT` 可加 `const` 或 `Object.freeze` 防止意外修改**
+   - File: `build_rss_aggregator.py:2486`
+   - Issue: `var TIER_MULT = { 1: 1.5, 2: 1.2 }` 是可变对象，后续代码可能意外修改。
+   - Fix: 在 ES5 环境下无法用 const，但可加注释 `/* @const */` 表明意图。低优先级。
+
+3. **`_score_sources` 的 `inferred: True` 字段在前端无消费**
+   - File: `build_rss_aggregator.py:5443`
+   - Issue: Python 端写入 `inferred: True` 标记，但前端 `renderWall` 和 `renderPanel` 均未读取该字段，用户无法区分"实测分"和"推断分"。
+   - Fix: 可在信源健康度总览中用不同图标/颜色标记推断分。归入未来改进。
+
+4. **远程日期钳制用 `new Date(Date.now()).toISOString()` 格式与原始日期格式不一致**
+   - File: `build_rss_aggregator.py:3591`
+   - Issue: 原始日期可能是 `2026-09-15T10:00:00+08:00`（带时区偏移），钳制后变为 UTC ISO 格式。虽然排序正确，但显示时可能因时区差异产生微小偏移。
+   - Fix: 低优先级，当前行为可接受。若需改进，可用 `a.date` 的原始格式替换日期部分。
 
 ---
 
-## 变异测试覆盖率评估
+### Recommendations
 
-| 变异方向 | 覆盖状态 |
-|----------|----------|
-| _applyRunCap 调用移除（active/newest） | ✅ RC-a/b |
-| _srcWeight tier 乘子退化 | ✅ TM-a |
-| tierInterleave diverse 守卫 | ⚠️ 集成覆盖（单测不可达） |
-| _score_sources 默认分回退 | ✅ SS-a |
-| weightedShuffle SRC_GAP | ✅ C1-a/b/c |
-| tags 三通道穿透 | ✅ M5-a/b/c/d |
-| 标签语义提取 | ✅ C2-a/b/c/d/e |
+1. **构建验证**：修改后应运行 `python build_rss_aggregator.py` 生成新的 `rss-aggregator.html`，确认无 Python→JS 嵌入错误。当前 CI 应在部署时自动完成此步骤。
 
-**遗漏方向：** _mergeRemoteSources 日期钳制（L3587-3592）无变异测试。原因：需要构造带未来日期的远程数据，harness 不支持模拟 fetch。由集成测试覆盖。
+2. **性能基准**：建议在 `applySort` 后添加 `performance.now()` 计时日志（仅 debug 模式），验证 NFR1（12,000 条 < 50ms）在实际数据上成立。
+
+3. **tierInterleave 守卫的集成测试**：当前 tierInterleave 的 diverse 守卫只在合并/刷新路径生效，单元测试 harness 不可达。建议未来考虑在 `cases_refresh_tags.js` 中添加模拟合并流程的集成测试。
 
 ---
 
-## 最终结论
+### Assessment
 
-所有改动逻辑正确、边界安全、性能可控。16/16 变异检出率证明测试具备鉴别力。建议合并。
+**Ready to merge: Yes**
+
+**Reasoning:** 核心实现逻辑正确，测试覆盖充分（145 tests + 16/16 mutations），所有 Critical/High 问题均不存在。2 条 Important 级别问题（注释复杂度不准确、2 源场景测试缺失）不影响功能正确性，可后续修复。代码质量高，设计决策有据可查。
