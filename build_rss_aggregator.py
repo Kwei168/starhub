@@ -4892,8 +4892,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         h+='<span>'+_ico.signal+' \u4fe1\u6e90: '+d.stats.source_count+'</span>';
       }
       if(d.generated_at) h+='<span>'+_ico.clock+' '+(d.generated_at||'').slice(0,16).replace('T',' ')+'</span>';
-      /* D3 轻量场：重分析沿用旧值时诚实标注"深度分析沿用" */
-      if(d.stale) h+='<span style="color:var(--warn,#f59e0b)">\u26a0 \u6df1\u5ea6\u5206\u6790\u6cbf\u7528</span>';
+      /* D3 轻量场：标注深度分析时间（generated_at 即为上次重分析时间） */
+      if(d.stale) h+='<span style="color:var(--faint,#94a3b8)">\u{1f50d} \u6df1\u5ea6\u5206\u6790: '+(d.generated_at||'').slice(11,16)+'</span>';
       h+='</div>';
       h+='<div style="font-size:10.5px;color:var(--faint);padding:0 0 6px;">\u6570\u636e\u8303\u56f4: \u8fd1 72 \u5c0f\u65f6\u6eda\u52a8\u7a97\u53e3</div>';
     }
