@@ -1703,6 +1703,8 @@ button:focus-visible, .chip:focus-visible, .card:focus-visible, a:focus-visible 
 .card-title { font-family:var(--display); font-size:15.5px; font-weight:700; line-height:1.45; margin-bottom:7px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; color:var(--unread); transition:color .15s; }
 .card:hover .card-title { color:var(--brand-strong); }
 .card-summary { font-size:12.5px; color:var(--muted); line-height:1.7; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+.card-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.ctag { font-size:10px; color:var(--brand); background:color-mix(in srgb, var(--brand) 10%, transparent); border-radius:4px; padding:1px 6px; line-height:1.6; white-space:nowrap; }
 .card-foot { display:flex; align-items:center; gap:6px; margin-top:11px; padding-top:9px; border-top:1px solid var(--line); font-size:11px; color:var(--faint); }
 .src-dot { width:8px; height:8px; border-radius:999px; flex:none; background:var(--sc); }
 [data-theme="dark"] .src-dot { filter:brightness(1.7) saturate(.85); }
@@ -2887,6 +2889,15 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       h+='<a class="ext-btn" href="'+esc(a.u)+'" target="_blank" rel="noopener" title="\u539f\u7ad9" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg></a></div>';
       h+='<h3 class="card-title">'+highlightEsc(a.t,globalSearch)+'</h3>';
       if(a.s) h+='<p class="card-summary">'+highlightEsc(a.s,globalSearch)+'</p>';
+      if(a.tags && a.tags.length){
+        h+='<div class="card-tags">';
+        for(var _ti=0;_ti<Math.min(a.tags.length,3);_ti++){
+          if(_ti>0) h+=' ';
+          h+='<span class="ctag">'+esc(a.tags[_ti])+'</span>';
+        }
+        if(a.tags.length>3) h+='<span class="ctag">+' + (a.tags.length-3) + '</span>';
+        h+='</div>';
+      }
       h+='<div class="card-foot"><span class="src-dot" style="--sc:'+a.sc+'"></span><span class="src-name">'+esc(a.src)+'</span>';
       h+='<span class="foot-meta"><button class="copy-btn" data-k="'+esc(k)+'" title="\u590d\u5236\u6807\u9898\u4e0e\u94fe\u63a5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>\u590d\u5236</button><button class="share-btn" data-k="'+esc(k)+'" title="\u5206\u4eab\u6587\u7ae0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button><span>'+estRead(a)+'</span></span></div>';
       h+='</article>';
