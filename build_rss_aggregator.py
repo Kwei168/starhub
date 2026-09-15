@@ -2388,8 +2388,6 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
        - diverse 只重排窗口内次序；tierInterleave() 由合并/刷新路径在其之后调用，不受影响
        - topic 分支（由主题聚类方案实现）不得调用 weightedShuffle，主题视图自带分桶逻辑 */
     else if(sortMode==='diverse'){
-      // 先时间降序，再信誉打散
-      ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
       var _qMap = (ANALYSIS_DATA && ANALYSIS_DATA.quality) ? ANALYSIS_DATA.quality : {};
       var _win = (typeof DIVERSE_WINDOW !== 'undefined') ? DIVERSE_WINDOW : 120;
       /* 原地替换而非重新绑定 ART：window.ART / 各闭包持有的是同一个数组引用，
@@ -2482,8 +2480,11 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     return (at === undefined) ? 1e9 : (len - at);
   }
 
+  var TIER_MULT = { 1: 1.5, 2: 1.2 };
   function _srcWeight(x, qm) {
-    return (qm[x.sk] !== undefined ? qm[x.sk] : 50);
+    var q = (qm[x.sk] !== undefined && qm[x.sk] > 0) ? qm[x.sk] : 50;
+    var tm = TIER_MULT[x.ti] || 1.0;
+    return q * tm;
   }
 
   function weightedShuffle(articles, windowMinutes, qualityMap) {
@@ -3551,7 +3552,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       /* EV-16 修复：后台合并后仅对新增内容交织，首屏已见内容不换位 */
       if(added>0){buildArt();
         var _oldLimit=wallLimit;
-        tierInterleave();
+        if(sortMode!=='diverse') tierInterleave();
         wallLimit=Math.min(ART.length,Math.max(wallLimit,120));
         renderChips();renderWall();renderPanel();
         /* 恢复用户已滚动到的位置，避免已见内容换位 */
@@ -3591,7 +3592,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       /* 不再对 added 单独预排序：紧接着的 applySort() 会对整个 ART 重排，
          预排序对最终顺序无影响（原为 localeCompare，已随口径统一移除） */
       applySort();
-      tierInterleave();
+      if(sortMode!=='diverse') tierInterleave();
       wallLimit=Math.min(ART.length, Math.max(wallLimit, WALL_STEP));
       return added.length;
     }catch(e){ return 0; }
@@ -5412,7 +5413,15 @@ def _score_sources(sources_with_items, rss_history):
         s = src_stats.get(sk, {'total': 0, 'has_summary': 0, 'has_fullcontent': 0, 'bad_date_count': 0, 'total_with_date': 0})
         n = s['total']
         if n == 0:
-            result[sk] = {'score': 0, 'metrics': {}, 'article_count': 0}
+            # 72h 历史无数据：用 tier 推断默认分（新增源/低频源/被跳过源）
+            _tier = src.get('tier', 3)
+            _default = {1: 60, 2: 40}.get(_tier, 25)
+            result[sk] = {
+                'score': _default,
+                'metrics': {},
+                'article_count': 0,
+                'inferred': True,
+            }
             continue
         freshness = min(1.0, n / 10.0)              # 72h 内文章数 / 10 篇满分
         coverage = s['has_summary'] / n if n > 0 else 0
