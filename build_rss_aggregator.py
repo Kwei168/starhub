@@ -2396,13 +2396,14 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       ART.length = 0;
       for(var _i=0;_i<_sh.length;_i++) ART.push(_sh[_i]);
     }
+    else if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
+      var qm=ANALYSIS_DATA.quality;
+      ART.sort(function(a,b){ return (qm[b.sk]||0)-(qm[a.sk]||0); });
+      _applyRunCap(ART, 5);
+    }
     else {
       ART.sort(function(a,b){ return _dateCmpDesc(a.date,b.date); });
       _applyRunCap(ART, 3);
-    }
-    if(sortMode==='quality' && ANALYSIS_DATA && ANALYSIS_DATA.quality){
-      var qm=ANALYSIS_DATA.quality;
-      ART.sort(function(a,b){ return (qm[b.sk]||0)-(qm[a.sk]||0); });
     }
   }
   var _sortEl = document.getElementById('sortSelect');
@@ -3572,6 +3573,13 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
           if(!it||!it.u||it.u==='#') return;
           var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
                  time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date, dfb:!!it.date_fallback, tags:_tagsOf(it)};
+          // 远程通道日期钳制：未来日期回拉到 now
+          if (a.date) {
+            var _at = new Date(a.date).getTime();
+            if (!isNaN(_at) && _at > Date.now()) {
+              a.date = new Date(Date.now()).toISOString();
+            }
+          }
           if(!a.t) return;
           var k=artKey(a);
           if(known[k]) return;
@@ -3588,12 +3596,13 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         if(sortMode!=='quality' && _head>0 && _bad*2>_head){ applySort(); renderChips(); renderWall(); renderPanel(); }
         return 0;
       }
-      for(var i=added.length-1;i>=0;i--) ART.unshift(added[i]);
+      ART = added.concat(ART);
       /* 不再对 added 单独预排序：紧接着的 applySort() 会对整个 ART 重排，
          预排序对最终顺序无影响（原为 localeCompare，已随口径统一移除） */
       applySort();
       if(sortMode!=='diverse') tierInterleave();
       wallLimit=Math.min(ART.length, Math.max(wallLimit, WALL_STEP));
+      window.ART = ART;
       return added.length;
     }catch(e){ return 0; }
   }

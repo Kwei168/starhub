@@ -521,6 +521,25 @@ it('D22 _srcWeight quality 缺失用默认 50', function () {
   eq(w, 50, 'D22 quality 缺失 → 默认 50');
 });
 
+/* D25: quality 模式 _applyRunCap 生效 */
+it('D25 quality 模式同源连续 ≤5', function () {
+  ART.length = 0;
+  for (var i = 0; i < 12; i++)
+    ART.push({ t: 'Q' + i, sk: 'SQ', date: '2026-09-14T10:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 4; i++)
+    ART.push({ t: 'R' + i, sk: 'SR', date: '2026-09-14T09:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 4; i++)
+    ART.push({ t: 'T' + i, sk: 'ST', date: '2026-09-14T08:' + (i % 60) + ':00+08:00', ti: 2 });
+  sortMode = 'quality';
+  ANALYSIS_DATA = { quality: { SQ: 90, SR: 90, ST: 90 } };
+  applySort();
+  var st = skRun(ART);
+  ok(st.maxRun <= 5, 'D25 quality 模式 maxRun ≤5（实得 ' + st.maxRun + '）');
+  eq(ART.length, 20, 'D25b 条目守恒');
+  sortMode = 'newest';
+  ANALYSIS_DATA = null;
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);
