@@ -5019,29 +5019,37 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       });
       h+='</div></div>';
     }
-    // 话题趋势（跨周期轨迹）
+    // 话题趋势（跨周期轨迹）— 只展示有轨迹信号的话题，与「今日话题」差异化
     var topicTraj=(d.rss_trajectories&&d.rss_trajectories.topics)||{};
     if(d.topics&&d.topics.length&&Object.keys(topicTraj).length>0){
-      h+='<div class="ib-section ib-trend"><div class="ib-trend-title">\U0001f4c8 \u8bdd\u9898\u8d8b\u52bf</div><div class="ib-trend-list">';
-      d.topics.slice(0,10).forEach(function(t){
+      var trendTopics=[];
+      d.topics.forEach(function(t){
         var tl=(t.label||(t.labels&&t.labels.length?t.labels.join(' '):''));
-        var traj=topicTraj[tl]||{};
-        var lc=traj.lifecycle||'emerging';
-        var cnt=t.count||0;
-        var arrow='', arrowCls='';
-        if(lc==='hot'){arrow='\U0001f525';arrowCls='t-hot';}
-        else if(lc==='emerging'){arrow='\u2b06';arrowCls='t-up';}
-        else if(lc==='cooling'){arrow='\u2b07';arrowCls='t-down';}
-        else if(lc==='cold'){arrow='\u2744';arrowCls='t-down';}
-        var lcLabel={emerging:'\u65b0\u5174',hot:'\u706b\u7206',cooling:'\u964d\u6e29',cold:'\u51b7\u5374'}[lc]||lc;
-        h+='<div class="ib-trend-item" data-kw="'+esc(tl)+'" onclick="insightSearch(this.dataset.kw)">';
-        h+='<span class="ib-trend-label">'+esc(tl)+'</span>';
-        h+='<span class="ib-trend-count">'+cnt+'\u7bc7</span>';
-        if(arrow) h+='<span class="ib-trend-arrow '+arrowCls+'">'+arrow+'</span>';
-        h+='<span class="ib-trend-lc lc-'+lc+'">'+lcLabel+'</span>';
-        h+='</div>';
+        var traj=topicTraj[tl];
+        if(traj&&(traj.lifecycle||traj.latest_count)) trendTopics.push({topic:t,label:tl,traj:traj});
       });
-      h+='</div></div>';
+      trendTopics.sort(function(a,b){return (b.traj.latest_count||0)-(a.traj.latest_count||0);});
+      if(trendTopics.length>0){
+        h+='<div class="ib-section ib-trend"><div class="ib-trend-title">\U0001f4c8 \u8bdd\u9898\u8d8b\u52bf</div><div class="ib-trend-list">';
+        trendTopics.slice(0,8).forEach(function(item){
+          var t=item.topic,tl=item.label,traj=item.traj;
+          var lc=traj.lifecycle||'emerging';
+          var cnt=traj.latest_count||t.count||0;
+          var arrow='', arrowCls='';
+          if(lc==='hot'){arrow='\U0001f525';arrowCls='t-hot';}
+          else if(lc==='emerging'){arrow='\u2b06';arrowCls='t-up';}
+          else if(lc==='cooling'){arrow='\u2b07';arrowCls='t-down';}
+          else if(lc==='cold'){arrow='\u2744';arrowCls='t-down';}
+          var lcLabel={emerging:'\u65b0\u5174',hot:'\u706b\u7206',cooling:'\u964d\u6e29',cold:'\u51b7\u5374'}[lc]||lc;
+          h+='<div class="ib-trend-item" data-kw="'+esc(tl)+'" onclick="insightSearch(this.dataset.kw)">';
+          h+='<span class="ib-trend-label">'+esc(tl)+'</span>';
+          h+='<span class="ib-trend-count">'+cnt+'\u7bc7</span>';
+          if(arrow) h+='<span class="ib-trend-arrow '+arrowCls+'">'+arrow+'</span>';
+          h+='<span class="ib-trend-lc lc-'+lc+'">'+lcLabel+'</span>';
+          h+='</div>';
+        });
+        h+='</div></div>';
+      }
     }
     // 跨平台共振
     if(d.cross_platform&&d.cross_platform.length){
