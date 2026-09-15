@@ -38,6 +38,8 @@ from insight_engine import (
     _evaluate_insight_quality,
     _self_correct_insights,
     _evaluate_and_correct,
+    _refine_labels_with_index,
+    _extract_cluster_label,
 )
 
 
@@ -739,6 +741,56 @@ class TestRAGASEvaluation(unittest.TestCase):
         self.assertIn("narrative", result)
         # eval_result should have scores (even if no index)
         self.assertIsInstance(eval_result, dict)
+
+
+class TestLabelRefinement(unittest.TestCase):
+    """Task 4.5: LLM label refinement via index + large window."""
+
+    def test_mock_llm_returns_unchanged(self):
+        """MockLLM should skip refinement, labels unchanged."""
+        llm = MockLLM()
+        clusters = [{"label": "built", "count": 3, "items": ["item1", "item2"]}]
+        result = _refine_labels_with_index(clusters, llm,
+                                           child_vecs=[[0.1]*5],
+                                           child_nodes=[MagicMock()],
+                                           parent_docs={"p1": "doc"})
+        self.assertEqual(result[0]["label"], "built")
+
+    def test_no_index_returns_unchanged(self):
+        """Without index components, labels should remain unchanged."""
+        llm = MagicMock()
+        clusters = [{"label": "google", "count": 2, "items": ["item1"]}]
+        result = _refine_labels_with_index(clusters, llm)
+        self.assertEqual(result[0]["label"], "google")
+        llm.complete.assert_not_called()
+
+    def test_good_chinese_label_skipped(self):
+        """Labels with Chinese chars and len > 6 should not be refined."""
+        llm = MagicMock()
+        clusters = [{"label": "人工智能发展趋势", "count": 3, "items": ["i1"]}]
+        result = _refine_labels_with_index(clusters, llm,
+                                           child_vecs=[[0.1]*5],
+                                           child_nodes=[MagicMock()],
+                                           parent_docs={"p1": "doc"})
+        self.assertEqual(result[0]["label"], "人工智能发展趋势")
+        llm.complete.assert_not_called()
+
+    def test_empty_clusters(self):
+        """Empty cluster list should return empty."""
+        result = _refine_labels_with_index([], MagicMock(),
+                                           child_vecs=[[0.1]],
+                                           child_nodes=[MagicMock()],
+                                           parent_docs={"p1": "d"})
+        self.assertEqual(result, [])
+
+    def test_tier4_truncation_20_chars(self):
+        """Tier 4 fallback should truncate at 20 chars, not 10."""
+        # All English text → Tier 1/2 skip (no Chinese), Tier 3 needs frequency
+        # With single item, Tier 3 won't fire (needs >=2 frequency)
+        texts = ["This is a very long english title about artificial intelligence"]
+        label = _extract_cluster_label(texts)
+        self.assertLessEqual(len(label), 20)
+        self.assertGreater(len(label), 10)  # Would have been 10 before
 
 
 if __name__ == "__main__":
