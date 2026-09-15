@@ -568,7 +568,7 @@ it('F1 SOURCE_FAMILIES 定义', function () {
 it('F2 V2EX 族群合计 cap', function () {
   ART.length = 0;
   // 构造 V2EX 4 子源各 5 条 + 异源 5 条 = 25 条
-  var v2exSrcs = ['v2ex_all_50', 'v2ex_creative_52', 'v2ex_play_53', 'v2ex技术_44'];
+  var v2exSrcs = ['v2ex_all_50', 'v2ex技术_44'];
   for (var s = 0; s < v2exSrcs.length; s++)
     for (var i = 0; i < 5; i++)
       ART.push({ t: 'V' + s + '_' + i, sk: v2exSrcs[s], date: '2026-09-14T12:0' + (s * 5 + i % 5) + ':00+08:00', ti: 2 });
@@ -583,7 +583,7 @@ it('F2 V2EX 族群合计 cap', function () {
     else famRun = 0;
   }
   ok(famMax <= 6, 'F2 V2EX 族群最长连续 ≤6（实得 ' + famMax + '）');
-  eq(ART.length, 25, 'F2b 条目守恒');
+  eq(ART.length, 15, 'F2b 条目守恒');
 });
 
 /* F3: 无 family 定义的源退化为单源 cap（向后兼容） */
@@ -633,7 +633,7 @@ it('F5 NodeSeek 族群 cap', function () {
 /* F6: 条目守恒 + 集合守恒（族群 cap 不得丢篇或复制） */
 it('F6 族群 cap 条目守恒', function () {
   ART.length = 0;
-  var v2exSrcs = ['v2ex_all_50', 'v2ex_creative_52', 'v2ex_play_53', 'v2ex技术_44'];
+  var v2exSrcs = ['v2ex_all_50', 'v2ex技术_44'];
   for (var s = 0; s < v2exSrcs.length; s++)
     for (var i = 0; i < 8; i++)
       ART.push({ t: 'V' + s + '_' + i, sk: v2exSrcs[s], date: '2026-09-14T12:0' + ((s * 8 + i) % 60) + ':00+08:00', ti: 2 });
@@ -642,7 +642,7 @@ it('F6 族群 cap 条目守恒', function () {
   var before = ART.map(function(a){ return a.t; }).sort().join(',');
   _applyRunCap(ART, 3, SOURCE_FAMILIES);
   var after = ART.map(function(a){ return a.t; }).sort().join(',');
-  eq(ART.length, 42, 'F6a 42 条进 42 条出');
+  eq(ART.length, 26, 'F6a 26 条进 26 条出');
   eq(before, after, 'F6b 条目集合完全一致');
 });
 

@@ -2485,8 +2485,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   /* 源族群定义：同族源共享打散配额，防止 V2EX 4 子源交替出现霸屏。
      key = source_key, value = family_key。未列出的源不参与族群 cap。 */
   var SOURCE_FAMILIES = {
-    'v2ex_all_50': 'v2ex', 'v2ex_creative_52': 'v2ex',
-    'v2ex_play_53': 'v2ex', 'v2ex技术_44': 'v2ex',
+    'v2ex_all_50': 'v2ex', 'v2ex技术_44': 'v2ex',
     'nodeseek_54': 'nodeseek'
   };
   /* 族群级 cap：family_key → 最大连续条数。未列出的族用单源 cap 值。 */
