@@ -555,6 +555,94 @@ it('D25 quality 模式同源连续 ≤5', function () {
   ANALYSIS_DATA = null;
 });
 
+/* ── F 段：族群配额（source family cap）────────────────────────────────── */
+
+/* F1: SOURCE_FAMILIES 存在且为对象 */
+it('F1 SOURCE_FAMILIES 定义', function () {
+  ok(typeof SOURCE_FAMILIES === 'object', 'F1 SOURCE_FAMILIES 是对象');
+  eq(SOURCE_FAMILIES['v2ex_all_50'], 'v2ex', 'F1b v2ex_all_50 → v2ex');
+  eq(SOURCE_FAMILIES['nodeseek_54'], 'nodeseek', 'F1c nodeseek_54 → nodeseek');
+});
+
+/* F2: _applyRunCap 族级 cap — V2EX 4 子源合计 ≤ familyCap */
+it('F2 V2EX 族群合计 cap', function () {
+  ART.length = 0;
+  // 构造 V2EX 4 子源各 5 条 + 异源 5 条 = 25 条
+  var v2exSrcs = ['v2ex_all_50', 'v2ex_creative_52', 'v2ex_play_53', 'v2ex技术_44'];
+  for (var s = 0; s < v2exSrcs.length; s++)
+    for (var i = 0; i < 5; i++)
+      ART.push({ t: 'V' + s + '_' + i, sk: v2exSrcs[s], date: '2026-09-14T12:0' + (s * 5 + i % 5) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 5; i++)
+    ART.push({ t: 'O' + i, sk: 'OTHER_' + i, date: '2026-09-14T11:0' + i + ':00+08:00', ti: 2 });
+  _applyRunCap(ART, 3, SOURCE_FAMILIES);
+  // 检查：V2EX 族群连续条目不超过 familyCap（默认 6）
+  var famRun = 0, famMax = 0;
+  for (var i = 0; i < ART.length; i++) {
+    var gk = SOURCE_FAMILIES[ART[i].sk] || ART[i].sk;
+    if (gk === 'v2ex') { famRun++; if (famRun > famMax) famMax = famRun; }
+    else famRun = 0;
+  }
+  ok(famMax <= 6, 'F2 V2EX 族群最长连续 ≤6（实得 ' + famMax + '）');
+  eq(ART.length, 25, 'F2b 条目守恒');
+});
+
+/* F3: 无 family 定义的源退化为单源 cap（向后兼容） */
+it('F3 无 family 退化为单源 cap', function () {
+  ART.length = 0;
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'A' + i, sk: 'SA', date: '2026-09-14T12:0' + (i % 10) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 5; i++)
+    ART.push({ t: 'B' + i, sk: 'SB', date: '2026-09-14T11:0' + (i % 10) + ':00+08:00', ti: 2 });
+  _applyRunCap(ART, 3, SOURCE_FAMILIES);
+  var st = skRun(ART);
+  ok(st.maxRun <= 3, 'F3 非 family 源 maxRun ≤3（实得 ' + st.maxRun + '）');
+  eq(ART.length, 15, 'F3b 条目守恒');
+});
+
+/* F4: _applyRunCap 第三参数缺省时向后兼容 */
+it('F4 _applyRunCap 缺省 families 参数', function () {
+  ART.length = 0;
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'X' + i, sk: 'SX', date: '2026-09-14T12:0' + (i % 10) + ':00+08:00', ti: 2 });
+  _applyRunCap(ART, 3);  // 不传 families
+  var st = skRun(ART);
+  ok(st.maxRun <= 3, 'F4 缺省 families 仍正常 cap（实得 ' + st.maxRun + '）');
+});
+
+/* F5: NodeSeek 单源族 cap ≤ 4 */
+it('F5 NodeSeek 族群 cap', function () {
+  ART.length = 0;
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'N' + i, sk: 'nodeseek_54', date: '2026-09-14T12:0' + (i % 10) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 5; i++)
+    ART.push({ t: 'M' + i, sk: 'OTHER_' + i, date: '2026-09-14T11:0' + i + ':00+08:00', ti: 2 });
+  _applyRunCap(ART, 3, SOURCE_FAMILIES);
+  // NodeSeek 是单源族，familyCap 应 ≤ 4
+  var nsRun = 0, nsMax = 0;
+  for (var i = 0; i < ART.length; i++) {
+    if (ART[i].sk === 'nodeseek_54') { nsRun++; if (nsRun > nsMax) nsMax = nsRun; }
+    else nsRun = 0;
+  }
+  ok(nsMax <= 4, 'F5 NodeSeek 连续 ≤4（实得 ' + nsMax + '）');
+  eq(ART.length, 15, 'F5b 条目守恒');
+});
+
+/* F6: 条目守恒 + 集合守恒（族群 cap 不得丢篇或复制） */
+it('F6 族群 cap 条目守恒', function () {
+  ART.length = 0;
+  var v2exSrcs = ['v2ex_all_50', 'v2ex_creative_52', 'v2ex_play_53', 'v2ex技术_44'];
+  for (var s = 0; s < v2exSrcs.length; s++)
+    for (var i = 0; i < 8; i++)
+      ART.push({ t: 'V' + s + '_' + i, sk: v2exSrcs[s], date: '2026-09-14T12:0' + ((s * 8 + i) % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'O' + i, sk: 'OTHER_' + (i % 5), date: '2026-09-14T11:0' + i + ':00+08:00', ti: 2 });
+  var before = ART.map(function(a){ return a.t; }).sort().join(',');
+  _applyRunCap(ART, 3, SOURCE_FAMILIES);
+  var after = ART.map(function(a){ return a.t; }).sort().join(',');
+  eq(ART.length, 42, 'F6a 42 条进 42 条出');
+  eq(before, after, 'F6b 条目集合完全一致');
+});
+
 console.log('\nRESULT: ' + PASS + ' passed, ' + FAIL + ' failed');
 if (FAIL) { console.log('FAILED: ' + FAILED_NAMES.join(' | ')); process.exit(1); }
 process.exit(0);
