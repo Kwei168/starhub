@@ -2707,7 +2707,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     var discCnt=0; ART.forEach(function(a){if(_discKeys[a.sk])discCnt++;});
     if(discCnt>0){
       var discOn=filter.type==='discover';
-      h+='<button class="chip disc-chip'+(discOn?' on':'')+'" data-c="__disc">\u{1f50d} \u53d1\u73b0 <span class="n">'+discCnt+'</span></button>';
+      h+='<button class="chip disc-chip'+(discOn?' on':'')+'" data-c="__disc">\U0001f50d \u53d1\u73b0 <span class="n">'+discCnt+'</span></button>';
     }
     document.getElementById('chips').innerHTML=h;
     document.querySelectorAll('.chip').forEach(function(el){
@@ -2742,7 +2742,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     if(!h1)return;
     if(filter.type==='cat'){var labels=Object.keys(filter.cats).map(function(c){return CAT_LABELS[c]||c;});h1.textContent=labels.join(' + ');}
     else if(filter.type==='src'){var s=SRC_OBJ(filter.src);h1.textContent=s?s.name:'\u4fe1\u6e90';}
-    else if(filter.type==='discover'){h1.textContent='\u{1f50d} \u53d1\u73b0';}
+    else if(filter.type==='discover'){h1.textContent='\U0001f50d \u53d1\u73b0';}
     else h1.textContent='\u65f6\u95f4\u7ebf';
   }
   function updateMeta(){
