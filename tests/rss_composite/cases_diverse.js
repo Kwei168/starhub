@@ -493,6 +493,21 @@ it('D24 newest 模式同源连续 ≤3', function () {
   eq(ART.length, 20, 'D24b 条目守恒');
 });
 
+/* D24-2src: 2 源极端场景 _applyRunCap 尽力而为（不要求 ≤3，但验证有改善） */
+it('D24-2src 2 源 50/50 _applyRunCap 尽力改善', function () {
+  ART.length = 0;
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'X' + i, sk: 'SX', date: '2026-09-14T12:' + (i % 60) + ':00+08:00', ti: 2 });
+  for (var i = 0; i < 10; i++)
+    ART.push({ t: 'Y' + i, sk: 'SY', date: '2026-09-14T11:' + (i % 60) + ':00+08:00', ti: 2 });
+  sortMode = 'newest';
+  applySort();
+  var st = skRun(ART);
+  ok(st.maxRun < 10, 'D24-2src 2 源 maxRun 从 10 降低（实得 ' + st.maxRun + '）');
+  eq(ART.length, 20, 'D24-2srcb 条目守恒');
+  sortMode = 'newest';
+});
+
 /* ── D20/D21/D22: _srcWeight tier 乘子测试 ────────────────────────────── */
 
 /* D20: _srcWeight tier 乘子 */

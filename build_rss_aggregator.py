@@ -2438,7 +2438,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
      只有位置约束能给出可证的界。 */
 
   /* 同源连续抑制（run cap）：扫描已排序数组，将同源连续超过 cap 的
-     多余条目与后续最近的异源条目交换。O(n) 时间，不改变数组长度或元素集合。
+     多余条目与后续最近的异源条目交换。O(n) 典型 / O(n²) 最坏（3-pass 有界），
+     不改变数组长度或元素集合。
      用于 active / newest / quality 模式，作为 weightedShuffle SRC_GAP
      之外的轻量补充（diverse 模式不需要，已有 SRC_GAP=2）。 */
   function _applyRunCap(arr, cap) {
@@ -2460,7 +2461,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
             swapped = true; improved = true; break;
           }
         }
-        // 回退：向后搜索（不检查双重守卫，2 源场景必需）
+        // 回退：向后搜索（不检查双重守卫，2 源场景必需；
+          // 多 pass 迭代会逐步消解此处可能制造的新相邻对）
         if (!swapped) {
           for (var j = i - 1; j >= 0; j--) {
             if (arr[j].sk !== arr[i].sk) {
