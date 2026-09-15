@@ -28,6 +28,7 @@ PY_TAG = "tests/rss_composite/test_tag_semantics.py"
 JS_TAGS = "tests/rss_composite/test_refresh_tags_js.py"
 PY_SNAP = "tests/rss_composite/test_snapshot_tags.py"
 PY_SCORE = "tests/rss_composite/test_score_sources_default.py"
+PY_DATE_UNIFORM = "tests/rss_composite/test_date_uniform.py"
 
 # (名称, [(原文, 替换为), ...], 测试文件, 期望变红的用例名片段, 输出标记)
 # 多点变异用列表表达：有些守卫是「双保险」（同一契约在两处实现），
@@ -105,12 +106,12 @@ MUTATIONS = [
 
     # ── RC：_applyRunCap 同源抑制（Phase 1）────────────────────────────────
     ("RC-a active 模式 _applyRunCap 调用移除",
-     [("      _applyRunCap(ART, 3);\n    }\n    /* 集成契约",
+     [("      _applyRunCap(ART, 3, SOURCE_FAMILIES);\n    }\n    /* 集成契约",
        "    }\n    /* 集成契约")],
      JS_DIVERSE, ["D18 active 模式 maxRun"], "FAIL "),
 
     ("RC-b newest 模式 _applyRunCap 调用移除",
-     [("      _applyRunCap(ART, 3);\n    }\n  }", "      /*removed*/\n    }\n  }")],
+     [("      _applyRunCap(ART, 3, SOURCE_FAMILIES);\n    }\n  }", "      /*removed*/\n    }\n  }")],
      JS_DIVERSE, ["D24 newest"], "FAIL "),
 
     # ── TM：_srcWeight tier 乘子（Phase 2）────────────────────────────────
@@ -130,6 +131,24 @@ MUTATIONS = [
        "            _tier = src.get('tier', 3)\n            _default = 0")],
      PY_SCORE,
      ["SS-1 T1 源无历史", "SS-2 T2 源无历史", "SS-3 T3 源无历史"], "[PASS] "),
+
+    # ── DU：同日期伪造检测（Phase 3）────────────────────────────────
+    ("DU-a 同日期检测阈值被放宽到 100%（80% 源漏检）",
+     [("        if ratio >= threshold:",
+       "        if ratio >= 1.0001:")],
+     PY_DATE_UNIFORM,
+     ["DU-7"], "FAIL "),
+
+    # ── FC：族群配额（Phase 3）──────────────────────────────────────
+    ("FC-a SOURCE_FAMILIES 为空对象（族群 cap 失效）",
+     [("  var SOURCE_FAMILIES = {\n    'v2ex_all_50': 'v2ex',",
+       "  var SOURCE_FAMILIES = {\n    /* removed */")],
+     JS_DIVERSE, ["F1"], "FAIL "),
+
+    ("FC-b _applyRunCap 不接收 families 参数",
+     [("  function _applyRunCap(arr, cap, families) {",
+       "  function _applyRunCap(arr, cap) {")],
+     JS_DIVERSE, ["F2"], "FAIL "),
 ]
 
 
@@ -150,7 +169,7 @@ def main():
     base_src = os.path.join(TMP, "baseline.py")
     io.open(base_src, "w", encoding="utf-8").write(src)
     print("基线：未变异源码")
-    for rel in (JS_DIVERSE, PY_TAG, JS_TAGS, PY_SNAP, PY_SCORE):
+    for rel in (JS_DIVERSE, PY_TAG, JS_TAGS, PY_SNAP, PY_SCORE, PY_DATE_UNIFORM):
         out = run_suite(base_src, rel)
         red = ("failed" in out and ", 0 failed" not in out)
         print("  %-46s %s" % (rel, "红 ← 基线就红了，终止" if red else "全绿"))
