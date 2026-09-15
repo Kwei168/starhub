@@ -461,7 +461,7 @@ export default async function handler(req, res) {
 
     // T1 英文源实时翻译
     const t1EnKeys = new Set([
-      'agihunt_0', 'openclaw_commits_14', 'hn_newest_56',
+      'agihunt_0', 'hn_newest_56',
       'hn_ai_7', 'hackernews_6', 'hn_show_58',
       'arxiv_ai_4', 'arxiv_ml_5', 'arxiv_nlp_6',
     ]);
