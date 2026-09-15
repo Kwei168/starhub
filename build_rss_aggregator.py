@@ -4203,26 +4203,50 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   // （api/translate mode:'bulk'：GTX 尽力 → Agnes 限量）。引擎分流策略（用户定版）：Agnes 仅留
   // 给全文/摘要按钮（mode:'full'）与兜底，绝不作为批量主力。
   var TR_API = 'https://starhub-refresh.vercel.app/api/translate';
-  /* 浏览器端 GTX 批量直译：并发 3，返回与 texts 等长的译文数组（失败为 ''，由调用方决定服务端兜底） */
+  // 浏览器 GTX 断路器：连续 2 批全败 → 判定 CORS 完全不可用，后续批次跳过直连，
+  // 全部由调用方走服务端 API 兜底（避免每批 8s 超时无意义等待）
+  var _bgtxDead=false, _bgtxFailStreak=0;
+  // 客户端翻译缓存：localStorage 持久化，回访用户直接命中，不再发任何翻译请求
+  var _trCache=(function(){
+    try{return JSON.parse(localStorage.getItem('_trCache')||'{}');}catch(e){return {};}
+  })();
+  function _saveTrCache(){
+    try{var s=JSON.stringify(_trCache);if(s.length<400000)localStorage.setItem('_trCache',s);}catch(e){}
+  }
+  /* 浏览器端 GTX 批量直译：并发 3，返回与 texts 等长的译文数组（失败为 ''，由调用方决定服务端兜底）
+     + 客户端缓存命中直接返回 + 断路器触发后跳过直连 */
   function _browserGtx(texts){
-    var out=[],i=0,done=0;
-    for(var k=0;k<texts.length;k++) out.push('');
+    var out=[],uncached=[],uncachedIdx=[];
+    // ① 客户端缓存命中：直接填入，不发请求
+    for(var k=0;k<texts.length;k++){
+      var key=String(texts[k]).slice(0,200),hit=_trCache[key];
+      if(hit){out[k]=hit;}else{out[k]='';uncached.push(texts[k]);uncachedIdx.push(k);}
+    }
+    if(!uncached.length) return Promise.resolve(out);
+    // ② 断路器已触发：直接返回空串，由调用方走服务端兜底
+    if(_bgtxDead) return Promise.resolve(out);
+
+    var i=0,done=0,batchFail=true;
     return new Promise(function(resolve){
-      if(!texts.length){ resolve(out); return; }
       function one(){
-        if(i>=texts.length) return;
+        if(i>=uncached.length) return;
         var idx=i++;
         var ctrl=(typeof AbortController==='function')?new AbortController():null;
         var tmr=ctrl?setTimeout(function(){ctrl.abort();},8000):null;
-        fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(String(texts[idx]).slice(0,500)),{signal:ctrl?ctrl.signal:undefined})
+        fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(String(uncached[idx]).slice(0,500)),{signal:ctrl?ctrl.signal:undefined})
         .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('gtx '+r.status)); })
         .then(function(j){
           var tr=((j[0]||[]).map(function(x){ return (x&&x[0])||''; }).join('')||'').trim();
-          if(tr) out[idx]=tr;
+          if(tr){ out[uncachedIdx[idx]]=tr; _trCache[String(uncached[idx]).slice(0,200)]=tr; batchFail=false; }
         }).catch(function(){ if(tmr)clearTimeout(tmr); })
-        .then(function(){ done++; if(done>=texts.length){ resolve(out); } else { one(); } });
+        .then(function(){ done++; if(done>=uncached.length){
+          if(batchFail){ _bgtxFailStreak++; if(_bgtxFailStreak>=2) _bgtxDead=true; }
+          else{ _bgtxFailStreak=0; }
+          _saveTrCache();
+          resolve(out);
+        } else { one(); } });
       }
-      for(var w=0;w<Math.min(3,texts.length);w++) one();
+      for(var w=0;w<Math.min(3,uncached.length);w++) one();
     });
   }
   function _translateAfItems(){
