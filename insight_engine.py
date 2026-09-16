@@ -50,6 +50,10 @@ _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 _EMBED_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emb_cache.json")
 _EMBED_CACHE_MAX = 5000  # 向量条数上限，超限按插入序淘汰最旧
 
+# ────────────────── RAGAS 历史日志 ──────────────────
+_RAGAS_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ragas_history.jsonl")
+_RAGAS_HISTORY_MAX_LINES = 200  # 滚动窗口，超限截掉最旧条目
+
 
 def _embed_cache_load(model_name):
     """读取嵌入缓存。返回 (cache_model, vectors_dict)；文件缺失/损坏/模型不匹配 → 空缓存。"""
@@ -1628,7 +1632,44 @@ def _evaluate_and_correct(llm, deep_insights, topic_clusters,
                   f"self-correcting...", file=sys.stderr)
             current = _self_correct_insights(llm, current, context_text, eval_result, keywords)
 
+    # 记录 RAGAS 历史日志
+    _log_ragas_result(eval_result, iteration, threshold, keywords)
+
     return current, eval_result
+
+
+def _log_ragas_result(eval_result, final_iteration, threshold, keywords=None):
+    """将 RAGAS 评估结果追加写入 ragas_history.jsonl，便于持续追踪与优化。"""
+    try:
+        entry = {
+            "ts": datetime.now(BJT).isoformat(),
+            "overall": eval_result.get("overall"),
+            "context_coverage": eval_result.get("context_coverage"),
+            "faithfulness": eval_result.get("faithfulness"),
+            "relevance": eval_result.get("relevance"),
+            "feedback": eval_result.get("feedback", ""),
+            "iterations": final_iteration,
+            "threshold": threshold,
+            "passed": eval_result.get("overall", 0) >= threshold,
+            "top_keywords": (keywords or [])[:5],
+        }
+        # 追加写入
+        with open(_RAGAS_HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # 滚动截断：超过上限时保留最新 N 条
+        try:
+            with open(_RAGAS_HISTORY_FILE, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            if len(lines) > _RAGAS_HISTORY_MAX_LINES:
+                with open(_RAGAS_HISTORY_FILE, "w", encoding="utf-8") as f:
+                    f.writelines(lines[-_RAGAS_HISTORY_MAX_LINES:])
+        except Exception:
+            pass
+        print(f"[insight_engine] RAGAS history logged → {_RAGAS_HISTORY_FILE}",
+              file=sys.stderr)
+    except Exception as e:
+        print(f"[insight_engine] RAGAS history log failed: {e}",
+              file=sys.stderr)
 
 
 # ────────────────── Topic metadata builder ──────────────────
