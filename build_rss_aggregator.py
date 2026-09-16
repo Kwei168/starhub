@@ -1696,10 +1696,10 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
 
 
 def _translate_source_items(items):
-    """翻译单个源的全部条目（在翻译线程池中执行）：标题/摘要走既有降级链，附相对时间与 ISO 日期。"""
+    """翻译单个源的全部条目（在翻译线程池中执行）：仅翻译标题，摘要保留原文。附相对时间与 ISO 日期。"""
     for it in items:
         it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
-        it["summary_zh"] = _translate_to_zh(it.get("summary", "")) if it.get("summary") else ""
+        # 摘要不再构建时翻译，前端按需走浏览器 GTX
         it["time_str"] = _fmt_rel_time(it.get("pub_date"))
         # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
         pd = it.get("pub_date")
@@ -3016,7 +3016,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         var have={}; data.items.forEach(function(it){if(it.u&&it.u!=='#')have[it.u]=1;});
         var oldItems=src.items.filter(function(it){return !it.link||!have[it.link];});
         var newItems=data.items.map(function(it){
-          return {title_zh:it.t||'',summary_zh:it.s||'',link:it.u||'#',pub_date:it.d||'',fc:it.fc||'',image:it.img||'',mu:it.mu||'',mt:it.mt||''};
+          return {title_zh:it.t_zh||it.t||'',summary_zh:it.s||'',link:it.u||'#',pub_date:it.d||'',fc:it.fc||'',image:it.img||'',mu:it.mu||'',mt:it.mt||''};
         });
         src.items=newItems.concat(oldItems);
         buildArt(); renderChips(); renderWall(); renderPanel();
@@ -3934,7 +3934,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         if(!s||!s.items||!s.items.length) return;
         s.items.forEach(function(it){
           if(!it||!it.u||it.u==='#') return;
-          var a={t:it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
+          var a={t:it.t_zh||it.t||'', s:it.s||'', src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
                  time:_fmtRel(it.d), date:it.d||'', u:it.u, fc:it.fc||'', img:it.img||'', mu:it.mu||'', mt:it.mt||'', bad_date:!!it.bad_date, dfb:!!it.date_fallback, tags:_tagsOf(it)};
           // 远程通道日期钳制：未来日期回拉到 now
           if (a.date) {
