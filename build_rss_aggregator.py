@@ -72,6 +72,7 @@ ANALYSIS_SNAPSHOT_FILE = "analysis_snapshot.json"
 SOURCE_QUALITY_FILE = "source_quality.json"
 RSS_TREND_HISTORY_FILE = "rss_trend_history.json"  # RSS 内容趋势历史（保留 14 天）
 TRENDING_SNAPSHOT_FILE = "trending_snapshot.json"  # GitHub Trending 数据
+INSIGHT_TRACKING_FILE = "insight_tracking_history.jsonl"  # 洞察板块全量追踪日志
 # 中英文停用词表（关键词提取时过滤）
 _STOP_WORDS_ZH = set("的了是在我有和就不人都一个上也这到说们为你会对" +
     "他就是那要被她它自己什么没有可以已经还是或者虽然但是因此如果" +
@@ -6747,6 +6748,90 @@ def _save_source_quality(quality_data):
         print("[分析] 信源评分保存失败: %s" % e, file=sys.stderr)
 
 
+def _log_insight_tracking(analysis_data, mode="incremental"):
+    """将洞察板块全量追踪数据追加写入 insight_tracking_history.jsonl。
+
+    覆盖 RAGAS 评分、洞察文本、关键词、话题、统计指标与构建元信息，
+    确保「日志所见即用户所见」。14 天滚动窗口，原子写入，异常安全。
+    """
+    try:
+        now_bj = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+        ragas = analysis_data.get("_ragas_eval", {})
+        summary = analysis_data.get("summary", {})
+        stats = analysis_data.get("stats", {})
+        meta = analysis_data.get("meta", {})
+        topic_clusters = analysis_data.get("topic_clusters", [])
+        kw_global = analysis_data.get("keywords", {}).get("global", [])
+
+        entry = {
+            # 时间戳与构建模式
+            "ts": now_bj.isoformat(),
+            "mode": mode,
+            # RAGAS 评估维度
+            "overall": ragas.get("overall"),
+            "context_coverage": ragas.get("context_coverage"),
+            "faithfulness": ragas.get("faithfulness"),
+            "relevance": ragas.get("relevance"),
+            "feedback": ragas.get("feedback", ""),
+            "iterations": ragas.get("iterations"),
+            "threshold": ragas.get("threshold"),
+            "passed": (ragas.get("overall", 0) >= ragas.get("threshold", 0.6))
+                      if ragas.get("overall") is not None else None,
+            # 关键词与话题
+            "top_keywords": [w for w, _ in kw_global[:10]],
+            "topic_labels": [c.get("label", "") for c in topic_clusters[:15]],
+            # 洞察文本（前 500 字符，与 analysis_snapshot 一致）
+            "narrative": (analysis_data.get("narrative") or "")[:500],
+            "core_trends": (summary.get("core_trends") or "")[:500],
+            "rss_insights": (summary.get("rss_insights") or "")[:500],
+            "outlook": (summary.get("outlook") or "")[:500],
+            # 统计指标
+            "stats": {
+                "total_articles": stats.get("total_articles", 0),
+                "recent_count": stats.get("recent_count", 0),
+                "source_count": stats.get("source_count", 0),
+            },
+            # 构建元信息
+            "meta": {
+                "llm_provider": meta.get("llm_provider", ""),
+                "embed_model": meta.get("embed_model", ""),
+                "elapsed_seconds": meta.get("elapsed_seconds", 0),
+            },
+            "stale": analysis_data.get("stale", False),
+        }
+
+        # 加载现有记录
+        lines = []
+        if os.path.exists(INSIGHT_TRACKING_FILE):
+            try:
+                with open(INSIGHT_TRACKING_FILE, "r", encoding="utf-8") as f:
+                    lines = [l for l in f.readlines() if l.strip()]
+            except Exception:
+                lines = []
+
+        # 追加新记录
+        lines.append(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # 14 天滚动窗口：淘汰过期条目
+        cutoff = (now_bj - datetime.timedelta(days=14)).isoformat()
+        filtered = []
+        for line in lines:
+            try:
+                rec = json.loads(line)
+                if rec.get("ts", "") >= cutoff:
+                    filtered.append(line)
+            except json.JSONDecodeError:
+                continue
+        lines = filtered
+
+        # 原子写入
+        _atomic_write_text(INSIGHT_TRACKING_FILE, "".join(lines))
+        print("[分析] 洞察追踪日志已记录 → %s (保留 %d 条)"
+              % (INSIGHT_TRACKING_FILE, len(lines)))
+    except Exception as e:
+        print("[分析] 洞察追踪日志失败: %s" % e, file=sys.stderr)
+
+
 # ── 热榜轨迹追踪 ──
 
 def _accumulate_hot_history(hot_snapshot, now_bj):
@@ -7230,8 +7315,13 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
                         ie_result.get("keywords", {}))
                 quality = _score_sources(sources_with_items, _rss_history)
                 _save_source_quality(quality)
+                # 保存 RAGAS 评估数据（在 quality 被信源质量分覆盖前）
+                _ragas_raw = ie_result.get("quality", {})
+                if isinstance(_ragas_raw, dict) and "overall" in _ragas_raw:
+                    ie_result["_ragas_eval"] = _ragas_raw
                 ie_result["quality"] = {sk: v["score"] for sk, v in quality.items()}
                 _save_analysis_snapshot(ie_result)
+                _log_insight_tracking(ie_result, mode)
                 print("[分析] insight_engine (LlamaIndex) 重分析完成")
                 return ie_result
         except ImportError:
@@ -7319,6 +7409,12 @@ def _run_analysis(sources_with_items, now_bj, hot_snapshot=None, hot_history=Non
     analysis['cross_category'] = cross_category
     # 重新保存（含轨迹和跨分类数据）
     _save_analysis_snapshot(analysis)
+    # 轻量模式：从旧分析中提取 RAGAS 评估数据
+    if prev_analysis and "_ragas_eval" not in analysis:
+        _prev_q = prev_analysis.get("quality", {})
+        if isinstance(_prev_q, dict) and "overall" in _prev_q:
+            analysis["_ragas_eval"] = _prev_q
+    _log_insight_tracking(analysis, mode)
     elapsed = round(time.time() - t0, 1)
     n_kw_traj = len(rss_trajectories.get('keywords', {}))
     n_topic_traj = len(rss_trajectories.get('topics', {}))
