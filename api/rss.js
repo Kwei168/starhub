@@ -5,7 +5,6 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { createHash } from 'crypto';
 
 const FETCH_TIMEOUT = 5000;     // 单源超时 5s（从8s降低以加快失败速度）
 const CONCURRENCY = 20;         // 20 路并发（从10提高到20以加快速度）
@@ -78,24 +77,31 @@ async function translateBatchViaApi(texts) {
   return results;
 }
 
-async function translateTitlesForSources(formattedSources) {
-  // 收集所有英文标题（去重）
+async function translateTitlesForSources(formattedSources, snapshotTrans) {
+  // 收集所有英文标题（去重），跳过快照中已有翻译的条目
   const titleSet = new Map();  // title → [items]
+  let skipped = 0;
   for (const src of formattedSources) {
     for (const it of src.items) {
       const t = it.t || '';
-      if (t && !isChinese(t) && !titleSet.has(t)) {
-        titleSet.set(t, []);
+      if (!t || isChinese(t)) continue;
+      // 查快照翻译：同 URL 的条目在构建时已翻译 → 直接复用
+      if (snapshotTrans) {
+        const cached = snapshotTrans.get(it.u);
+        if (cached && cached !== t) {
+          it.t_zh = cached;
+          skipped++;
+          continue;
+        }
       }
-      if (t && !isChinese(t)) {
-        titleSet.get(t).push(it);
-      }
+      if (!titleSet.has(t)) titleSet.set(t, []);
+      titleSet.get(t).push(it);
     }
   }
-  if (titleSet.size === 0) return;
-
+  if (skipped > 0) console.log(`[rss] Snapshot reuse: ${skipped} titles already translated`);
   const uniqueTitles = [...titleSet.keys()];
-  console.log(`[rss] Translating ${uniqueTitles.length} unique English titles via /api/translate`);
+  if (uniqueTitles.length === 0) return;
+  console.log(`[rss] Translating ${uniqueTitles.length} new English titles via /api/translate`);
 
   const translated = await translateBatchViaApi(uniqueTitles);
   let count = 0;
@@ -108,7 +114,7 @@ async function translateTitlesForSources(formattedSources) {
       count++;
     }
   }
-  console.log(`[rss] Translation done: ${count}/${uniqueTitles.length} titles translated`);
+  console.log(`[rss] Translation done: ${count}/${uniqueTitles.length} new titles translated`);
 }
 
 // ── 加载 API 快照（构建时生成的 72h 累积数据） ──
@@ -124,24 +130,6 @@ function loadSnapshot() {
     console.log('[rss] Snapshot not found, falling back to live fetch');
     return null;
   }
-}
-
-// ── 加载翻译缓存 ──
-
-function loadTransCache() {
-  try {
-    const p = join(process.cwd(), 'translations.json');
-    const cache = JSON.parse(readFileSync(p, 'utf-8'));
-    console.log(`[rss] Loaded ${Object.keys(cache).length} translation cache entries`);
-    return cache;
-  } catch (err) {
-    console.log('[rss] Translation cache not found, using empty cache');
-    return {};
-  }
-}
-
-function md5(text) {
-  return createHash('md5').update(text, 'utf-8').digest('hex');
 }
 
 // ── 加载源列表 ──
@@ -524,6 +512,20 @@ export default async function handler(req, res) {
 
       const results = await fetchAllBatched(batchSources);
 
+      // 加载快照翻译索引（URL → 已翻译标题），避免重复翻译构建时已翻译的条目
+      let snapshotTrans = null;
+      try {
+        const snap = loadSnapshot();
+        if (snap && snap.sources) {
+          snapshotTrans = new Map();
+          for (const src of snap.sources) {
+            for (const it of (src.items || [])) {
+              if (it.u && it.t) snapshotTrans.set(it.u, it.t);
+            }
+          }
+        }
+      } catch (e) { /* 快照不可用时跳过复用 */ }
+
       // 格式化返回（与快照格式对齐）
       const formattedSources = results.map(src => ({
         key: src.key,
@@ -546,9 +548,9 @@ export default async function handler(req, res) {
       const totalItems = formattedSources.reduce((n, s) => n + s.items.length, 0);
       console.log(`[rss] Batch ${batchIdx} done: ${formattedSources.length} sources, ${totalItems} items`);
 
-      // 标题翻译：调用 /api/translate（完整降级链 Agnes → Zen → GTX → MyMemory）
+      // 标题翻译：复用快照已有翻译，仅翻译构建后新发布的条目
       try {
-        await translateTitlesForSources(formattedSources);
+        await translateTitlesForSources(formattedSources, snapshotTrans);
       } catch (e) {
         console.error('[rss] Title translation failed (non-fatal):', e.message);
       }
@@ -622,7 +624,6 @@ export default async function handler(req, res) {
     
     // Fallback: 实时抓取 RSS（仅当快照不存在或 refresh=1 时）
     const sources = loadSources();
-    const transCache = loadTransCache();  // 加载翻译缓存
     const snapshot = loadSnapshot();
     const snapshotMap = {};
     if (snapshot && snapshot.sources) {
@@ -638,52 +639,12 @@ export default async function handler(req, res) {
 
     const t1Results = await fetchAllBatched(t1Sources);
 
-    // T1 英文源实时翻译
-    const t1EnKeys = new Set([
-      'agihunt_0', 'hn_newest_56',
-      'hn_ai_7', 'hackernews_6', 'hn_show_58',
-      'arxiv_ai_4', 'arxiv_ml_5', 'arxiv_nlp_6',
-    ]);
-    const translateEndpoints = [
-      (text) => `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text.substring(0, 500))}`,
-      (text) => `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(0, 500))}&langpair=en|zh-CN`,
-      (text) => `https://translate.googleapis.com/translate_a/single?client=dict-chrome&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.substring(0, 500))}`,
-    ];
-
-    async function translateText(text) {
-      if (!text || !/[a-zA-Z]/.test(text)) return null;
-      const hash = md5(text);
-      if (transCache[hash]) return transCache[hash];
-      for (const makeUrl of translateEndpoints) {
-        try {
-          const res = await fetch(makeUrl(text), { signal: AbortSignal.timeout(3000) });
-          if (!res.ok) continue;
-          const data = await res.json();
-          let result = null;
-          if (Array.isArray(data) && data[0]) {
-            result = data[0].map(seg => seg[0]).join('');
-          } else if (data && data.responseData) {
-            result = data.responseData.translatedText;
-          }
-          if (result && result !== text) {
-            transCache[hash] = result;
-            return result;
-          }
-        } catch { /* try next endpoint */ }
-      }
-      return null;
+    // T1 英文源标题翻译（复用 batch 同一逻辑：/api/translate 降级链，只翻译标题）
+    try {
+      await translateTitlesForSources(t1Results);
+    } catch (e) {
+      console.error('[rss] T1 title translation failed (non-fatal):', e.message);
     }
-
-    // 翻译 T1 英文源的文章标题和摘要
-    const translatePromises = [];
-    for (const src of t1Results) {
-      if (!t1EnKeys.has(src.key)) continue;
-      for (const item of (src.items || [])) {
-        if (item.t) translatePromises.push(translateText(item.t).then(r => { if (r) item.t = stripHtml(r); }));
-        if (item.s) translatePromises.push(translateText(item.s).then(r => { if (r) item.s = stripHtml(r); }));
-      }
-    }
-    await Promise.all(translatePromises);
 
     // 日期过滤：只保留最近 72 小时的文章
     const cutoff = new Date(now - 72 * 60 * 60 * 1000);
@@ -699,6 +660,7 @@ export default async function handler(req, res) {
       items: filterItems(src.items).map(item => ({
         ...item,
         t: stripHtml(item.t || ''),
+        t_zh: item.t_zh || '',
         s: truncate(stripHtml(item.s || ''), 200),
       })),
     })).concat(otherSources.map(src => {
