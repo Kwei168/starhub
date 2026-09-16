@@ -212,10 +212,17 @@ def _atomic_write_text(path, text):
 
 def _strip_oss_signature(text):
     """剥离 URL 中的 OSS/云存储签名参数，防止 GitHub Push Protection 误报密钥泄露。
-    移除 OSSAccessKeyId、Signature、Expires、X-Amz-* 等查询参数。"""
+    移除 OSSAccessKeyId、Signature、Expires、X-Amz-* 等查询参数。
+    同时处理 HTML 编码（&amp; / &#38;）的查询参数分隔符。"""
     if not text or not isinstance(text, str):
         return text
-    text = re.sub(r'[?&](OSSAccessKeyId|Signature|Expires|X-Amz-[A-Za-z0-9-]+)=[^&\s"\'<>]*', '', text)
+    # 匹配 ? 或 & 或 &amp; 或 &#38; 后面的签名参数
+    _sep = r'(?:[?&]|&amp;|&#38;)'
+    _params = r'(?:OSSAccessKeyId|Signature|Expires|X-Amz-[A-Za-z0-9-]+)=[^&\s"\'<>;]*'
+    text = re.sub(_sep + _params, '', text)
+    # 清理残留
+    text = re.sub(r'\?&amp;', '?', text)
+    text = re.sub(r'\?&#38;', '?', text)
     text = re.sub(r'\?&', '?', text)
     text = re.sub(r'&&', '&', text)
     text = re.sub(r'\?[\"\'>\s]', '', text)
