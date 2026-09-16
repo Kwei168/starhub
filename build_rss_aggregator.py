@@ -136,6 +136,14 @@ RSS_HISTORY_HOURS = 72
 _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, summary, summary_zh, pub_date, time_str}}
 _LAST_UNRELIABLE_SRCS = set()  # D4：最近一场 bad_date 审计判定的不可信日期源（关键词降权消费）
 
+# ── Fix 4: T4 长尾层常量 ──
+# T4 源：低优先级/长尾源，使用更宽松的跳过阈值和更短的历史保留窗口
+# 目的：给频繁失败的低优先级源更多恢复机会，同时避免它们占用过多历史空间
+_TIER4_SKIP_THRESHOLD_SEC = 30 * 60   # T4 源增量跳过阈值：30 分钟（T2=1h, T3=2h）
+_TIER4_HISTORY_HOURS = 48              # T4 源历史保留窗口：48h（默认 72h）
+_TIER_PROMOTION_THRESHOLD = 3          # 连续 3 次成功抓取后自动升级到 T3
+_tier4_success_streak = {}             # {source_key: 连续成功次数}
+
 # ── 翻译统计 
 _TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
 # GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
@@ -387,12 +395,20 @@ def _accumulate_history(sources_with_items):
         if _rs["key"] not in _src_url_map or not _src_url_map[_rs["key"]]:
             _src_url_map[_rs["key"]] = _rs.get("url", "")
     src_map = {}
+    # Fix 2: 保留当次抓取结果，避免被空壳替换
+    # 先用当次抓取的 items 初始化 src_map，后续历史回填时按 link 去重补充
+    _fetch_items_by_key = {}
+    for src in sources_with_items:
+        _items = src.get("items", [])
+        if _items:
+            _fetch_items_by_key[src["key"]] = {it.get("link", ""): it for it in _items if it.get("link")}
     for src in sources_with_items:
         _bb = 'bestblogs.dev' in (_src_url_map.get(src["key"]) or '')
+        _fetched = src.get("items", [])
         src_map[src["key"]] = {
             "key": src["key"], "name": src["name"],
             "cat": src.get("cat", "other"), "color": src.get("color", "#6366f1"),
-            "tier": src.get("tier", 3), "items": [],
+            "tier": src.get("tier", 3), "items": list(_fetched),
         }
         if _bb:
             src_map[src["key"]]["bb"] = True
@@ -505,6 +521,10 @@ def _accumulate_history(sources_with_items):
                 entry["pub_date"] = _fb
                 entry["date_fallback"] = True
             entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
+            # Fix 2: 去重 — 跳过当次抓取已存在的同链接条目
+            _link = entry.get("link", "")
+            if _link and sk in _fetch_items_by_key and _link in _fetch_items_by_key[sk]:
+                continue
             src_map[sk]["items"].append(entry)
 
     if _n_tz_fixed or _n_falsified:
@@ -7284,18 +7304,30 @@ def main(mode="full"):
             if prev:
                 try:
                     prev_time = datetime.datetime.fromisoformat(prev)
-                    threshold = 1 * 3600 if tier <= 2 else 2 * 3600
-                    if (now - prev_time).total_seconds() < threshold:
-                        skipped_count += 1
-                        # 从历史索引填充跳过的 T2/T3 源（避免空 items 导致历史数据流失）
-                        _results[_i] = {
-                            "key": key, "name": src["name"], "cat": src["cat"],
-                            "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
-                            "items": _hist_by_key.get(key, []),
-                            "tier": tier,
-                        }
-                        _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_cached", "items": len(_hist_by_key.get(key, []))})
-                        continue
+                    # Fix 4: T4 源使用更宽松的跳过阈值
+                    if tier == 4:
+                        threshold_sec = _TIER4_SKIP_THRESHOLD_SEC
+                    elif tier <= 2:
+                        threshold_sec = 1 * 3600
+                    else:
+                        threshold_sec = 2 * 3600
+                    if (now - prev_time).total_seconds() < threshold_sec:
+                        # Fix 1: 增量跳过陷阱修复
+                        # 如果源从未成功抓取（无历史数据且无 prev 记录），强制重抓
+                        # 避免源永远无法从“空状态”恢复
+                        if not _hist_by_key.get(key) and not prev:
+                            pass  # 强制重抓，不跳过
+                        else:
+                            skipped_count += 1
+                            # 从历史索引填充跳过的 T2/T3 源（避免空 items 导致历史数据流失）
+                            _results[_i] = {
+                                "key": key, "name": src["name"], "cat": src["cat"],
+                                "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
+                                "items": _hist_by_key.get(key, []),
+                                "tier": tier,
+                            }
+                            _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_cached", "items": len(_hist_by_key.get(key, []))})
+                            continue
                 except (ValueError, TypeError):
                     pass
         _to_fetch.append((_i, src))
@@ -7358,6 +7390,15 @@ def main(mode="full"):
             if status == "ok":
                 ok_count += 1
                 last_fetch[key] = now.isoformat()
+                # Fix 4: T4 源连续成功后自动升级到 T3
+                if tier == 4:
+                    _tier4_success_streak[key] = _tier4_success_streak.get(key, 0) + 1
+                    if _tier4_success_streak[key] >= _TIER_PROMOTION_THRESHOLD:
+                        src["tier"] = 3
+                        print("[T4升级] %s 连续 %d 次成功 → 升级到 T3" % (src["name"], _tier4_success_streak[key]))
+                        del _tier4_success_streak[key]
+                else:
+                    _tier4_success_streak[key] = 0  # 非 T4 源重置连续计数
                 # 翻译交给独立线程池有界并发；完成顺序不影响最终产物顺序
                 if items:
                     _trans_futs.append(_trans_pool.submit(_translate_source_items, items))
@@ -7398,6 +7439,9 @@ def main(mode="full"):
 
     # 累积到 72 小时历史，用累积数据替换当次抓取
     _history_before = len(_rss_history)
+    # Fix 3: 保存抓取阶段数字，避免被历史重组覆写导致日志口径不一致
+    _items_fetched = total_items
+    _sources_with_data_before = sum(1 for s in sources_with_items if s.get("items"))
     sources_with_items, total_items = _accumulate_history(sources_with_items)
     _history_after = len(_rss_history)
 
@@ -7484,7 +7528,7 @@ def main(mode="full"):
         s.setdefault("tier", 3)
     _atomic_write_json("rss_sources.json", RSS_SOURCES, ensure_ascii=False, separators=(",", ":"))
 
-    print("[RSS聚合] 生成完成 → %s（%d 源成功，共 %d 篇）" % (OUT, ok_count, total_items))
+    print("[RSS聚合] 生成完成 → %s（%d 源成功，抓取 %d 篇，快照 %d 篇）" % (OUT, ok_count, _items_fetched, _snapshot_items))
 
     # 打印翻译统计
     print("[翻译统计] 缓存命中: %d, Agnes: %d, Zen: %d, Google: %d, MyMemory: %d, Dict: %d, 跳过: %d, 失败: %d" % (
@@ -7505,9 +7549,10 @@ def main(mode="full"):
         "duration_s": _build_duration,
         "sources_total": len(RSS_SOURCES),
         "sources_fetched": ok_count,
+        "sources_with_data": _sources_with_data_before,
         "sources_skipped": skipped_count,
         "sources_failed": failed_count,
-        "items_fetched": total_items,
+        "items_fetched": _items_fetched,
         "items_snapshot": _snapshot_items,
         "history_before": _history_before,
         "history_after": _history_after,
