@@ -556,6 +556,12 @@ def _save_api_snapshot(sources_with_items, meta=None):
     按 ~80MB 上限拆分为 rss_api_snapshot.json + rss_api_snapshot_1.json ...，
     避免超过 GitHub 100MB 单文件限制。"""
     MAX_SNAPSHOT_BYTES = 80 * 1024 * 1024
+
+    # ── 快照级去重：清理历史累积中的残留重复 ──
+    # 历史数据可能包含修复前抓取的重复条目（如 V2EX #replyN）
+    for src in sources_with_items:
+        src["items"] = _dedup_source_items(src.get("items", []), src.get("key", ""))
+
     snapshot_sources = []
     for src in sources_with_items:
         items = []
