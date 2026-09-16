@@ -401,42 +401,54 @@ function dedupSourceItems(items, sourceKey) {
     return true;
   });
 
-  // Pass 3: 标题归一化去重（48h 窗口保护）
-  const isWechat = items.length > 0 && (items[0].link || '').includes('mp.weixin.qq.com');
-  const normTitle = (t) => (t || '').replace(/\s+/g, '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').slice(0, 50);
+  // Pass 3: 内容去重
+  const isWechat = items.slice(0, 5).some(it => (it.link || '').includes('mp.weixin.qq.com'));
+  const normText = (t) => (t || '').replace(/\s+/g, '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').slice(0, 80);
   const wechatBiz = (link) => {
     const m = (link || '').match(/__biz=([A-Za-z0-9=]+)/);
     return m ? m[1] : '';
   };
 
-  const seenTitles = new Map(); // key → pub_date
-  return items.filter(it => {
-    const title = (it.title || '').trim();
-    if (!title) return true;
+  if (isWechat) {
+    // 微信策略：标题+摘要都相同才视为重复
+    const seenContent = new Set();
+    return items.filter(it => {
+      const title = (it.title || '').trim();
+      if (!title) return true;
+      const summary = (it.summary || '').trim();
+      const link = it.link || '';
+      const dedupKey = wechatBiz(link) + '|' + normText(title) + '|' + normText(summary);
+      if (seenContent.has(dedupKey)) return false;
+      seenContent.add(dedupKey);
+      return true;
+    });
+  } else {
+    // 其他源：标题归一化去重（48h 窗口保护）
+    const normTitle = (t) => (t || '').replace(/\s+/g, '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').slice(0, 50);
+    const seenTitles = new Map(); // key → pub_date
+    return items.filter(it => {
+      const title = (it.title || '').trim();
+      if (!title) return true;
+      const link = it.link || '';
+      const pubDate = it.pub_date || '';
+      const dedupKey = normTitle(title);
 
-    const link = it.link || '';
-    const pubDate = it.pub_date || '';
-    const dedupKey = isWechat
-      ? wechatBiz(link) + '|' + normTitle(title)
-      : normTitle(title);
-
-    if (seenTitles.has(dedupKey)) {
-      const prevDate = seenTitles.get(dedupKey);
-      if (pubDate && prevDate) {
-        const pdCur = new Date(pubDate).getTime();
-        const pdPrev = new Date(prevDate).getTime();
-        if (!isNaN(pdCur) && !isNaN(pdPrev) && Math.abs(pdCur - pdPrev) > 48 * 3600 * 1000) {
-          // 超过 48h，视为不同文章
-          seenTitles.set(dedupKey, pubDate);
-          return true;
+      if (seenTitles.has(dedupKey)) {
+        const prevDate = seenTitles.get(dedupKey);
+        if (pubDate && prevDate) {
+          const pdCur = new Date(pubDate).getTime();
+          const pdPrev = new Date(prevDate).getTime();
+          if (!isNaN(pdCur) && !isNaN(pdPrev) && Math.abs(pdCur - pdPrev) > 48 * 3600 * 1000) {
+            seenTitles.set(dedupKey, pubDate);
+            return true;
+          }
         }
+        return false;
       }
-      return false; // 窗口内重复
-    }
-
-    seenTitles.set(dedupKey, pubDate);
-    return true;
-  });
+      seenTitles.set(dedupKey, pubDate);
+      return true;
+    });
+  }
 }
 
 // ── 单源抓取 ──
