@@ -944,28 +944,50 @@ def _tfidf_keywords(texts, top_n=30):
     _STOP_2G = {'的', '了', '是', '在', '和', '与', '及', '等', '为', '也',
                 '不', '就', '都', '而', '但', '从', '到', '对', '中', '上',
                 '下', '有', '被', '把', '让', '向', '往', '以', '于', '其',
-                '个', '后', '前', '新', '更', '最', '已', '将', '能', '可'}
+                '个', '后', '前', '新', '更', '最', '已', '将', '能', '可',
+                # 日期/时间碎片
+                '月日', '年月', '日年月', '时分', '秒分',
+                # 无意义组合
+                '地址', '网址', '链接', '点击', '查看', '阅读', '原文'}
     _STOP_EN = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
                 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
                 'can', 'could', 'may', 'might', 'shall', 'should', 'must',
                 'not', 'no', 'but', 'and', 'or', 'if', 'then', 'than',
                 'for', 'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from',
-                'as', 'into', 'about', 'this', 'that', 'it', 'its'}
+                'as', 'into', 'about', 'this', 'that', 'it', 'its',
+                'via', 'items', 'item', 'news', 'post', 'posts'}
+
+    def _is_valid_keyword(w):
+        """过滤含空格、特殊字符或无意义片段的关键词。"""
+        if not w or len(w) < 2:
+            return False
+        # 含空格 → 拒绝（如 "月 日"、"址  "）
+        if ' ' in w or '\u3000' in w:
+            return False
+        # 含特殊符号 → 拒绝（如 "文 ·"、"评论:"）
+        if re.search(r'[·:：.,，;；!?！？()（）\[\]【】]', w):
+            return False
+        # 纯数字 → 拒绝
+        if w.isdigit():
+            return False
+        return True
+
     counter = Counter()
     for text in texts[:200]:
-        # Chinese 2-grams
-        cn_chars = re.findall(r'[\u4e00-\u9fff]', text)
-        for i in range(len(cn_chars) - 1):
-            gram = cn_chars[i] + cn_chars[i + 1]
-            if gram not in _STOP_2G:
-                counter[gram] += 1
+        # Chinese 2-grams（只取连续中文字符）
+        cn_fragments = re.findall(r'[\u4e00-\u9fff]+', text)
+        for frag in cn_fragments:
+            for i in range(len(frag) - 1):
+                gram = frag[i] + frag[i + 1]
+                if gram not in _STOP_2G:
+                    counter[gram] += 1
         # English words
         en_words = re.findall(r'[a-zA-Z]{3,}', text)
         for w in en_words:
             wl = w.lower()
             if wl not in _STOP_EN:
                 counter[wl] += 1
-    return [w for w, _ in counter.most_common(top_n)]
+    return [w for w, _ in counter.most_common(top_n) if _is_valid_keyword(w)]
 
 
 def extract_keywords_llm(llm, texts, top_n=30, max_retries=2):
@@ -1234,6 +1256,30 @@ def _refine_labels_with_index(topic_clusters, llm, child_vecs=None,
     return topic_clusters
 
 
+def _clean_llm_hedging(text):
+    """移除 LLM 输出中的 hedging 语言和推脱性文字。
+
+    例如：
+    - "OpenAI GPT-6 Astra、DeepSeek 等实体不存在" → 移除
+    - "以上为上下文中可验证的信息，其他厂商动态因上下文未覆盖无法确认" → 移除
+    - "根据检索上下文" → 保留（有实际内容）
+    """
+    if not text:
+        return text
+    # 移除"实体不存在"类型的无意义声明
+    text = re.sub(r'[^。]*实体不存在[^。]*。?', '', text)
+    # 移除"无法确认"类型的推脱语句
+    text = re.sub(r'[^。]*(?:无法确认|无法验证|未覆盖|未包含)[^。]*。?', '', text)
+    # 移除"以上为"类型的总结性推脱
+    text = re.sub(r'以上为[^。]*。?', '', text)
+    # 移除"因上下文"类型的推脱
+    text = re.sub(r'因上下文[^。]*。?', '', text)
+    # 清理多余标点
+    text = re.sub(r'。{2,}', '。', text)
+    text = text.strip()
+    return text
+
+
 # ────────────────── Task 5: generate_deep_insights ───────────
 def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=None,
                            parent_docs=None, keywords=None):
@@ -1362,6 +1408,11 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     narrative = narrative.strip() if narrative and re.search(r'[\u4e00-\u9fff]', narrative) else ""
 
     # 组装结果（不再 fallback 复制，各字段独立生成）
+    # 后处理：移除 hedging 语言
+    core_trends = _clean_llm_hedging(core_trends)
+    rss_insights = _clean_llm_hedging(rss_insights)
+    narrative = _clean_llm_hedging(narrative)
+
     if narrative or core_trends or rss_insights:
         return _normalize_deep_insights({
             "narrative": narrative,

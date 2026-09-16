@@ -5889,7 +5889,36 @@ _TECH_DICT = sorted({
 
 # 已知无意义双字组合（滑动窗口回退时过滤）
 _NOISE_BIGRAMS = {'军一', '核被', '审一', '已故', '人称', '据报',
-                  '的的', '了了', '是是', '在在', '有有', '和和'}
+                  '的的', '了了', '是是', '在在', '有有', '和和',
+                  # 日期/时间碎片
+                  '月日', '年月', '日年', '时分', '秒分',
+                  # 无意义组合
+                  '地址', '网址', '链接', '点击', '查看', '阅读', '原文'}
+
+
+def _is_valid_ngram(word):
+    """判断 n-gram 是否有意义（质量过滤）。"""
+    if not word or len(word) < 2:
+        return False
+    # 排除连续相同字符（被被、一一、审审）
+    if len(set(word)) == 1:
+        return False
+    # 排除停用词
+    if word in _STOP_WORDS:
+        return False
+    # 排除已知无意义组合
+    if word in _NOISE_BIGRAMS:
+        return False
+    # 含空格 → 拒绝（如 "月 日"、"址  "）
+    if ' ' in word or '\u3000' in word:
+        return False
+    # 含特殊符号 → 拒绝（如 "文 ·"、"评论:"）
+    if re.search(r'[·:：.,，;；!?！？()（）\[\]【】{}<>]', word):
+        return False
+    # 纯数字 → 拒绝
+    if word.isdigit():
+        return False
+    return True
 
 
 def _has_repeated_chars(text, min_repeats=2, min_run=2):
@@ -5900,20 +5929,6 @@ def _has_repeated_chars(text, min_repeats=2, min_run=2):
         if text[i] == text[i + 1] and '\u4e00' <= text[i] <= '\u9fff':
             count += 1
     return count >= min_repeats
-
-
-def _is_valid_ngram(word):
-    """判断 n-gram 是否有意义（质量过滤）。"""
-    # 排除连续相同字符（被被、一一、审审）
-    if len(set(word)) == 1:
-        return False
-    # 排除停用词
-    if word in _STOP_WORDS:
-        return False
-    # 排除已知无意义组合
-    if word in _NOISE_BIGRAMS:
-        return False
-    return True
 
 
 def _tokenize(text):
@@ -6388,6 +6403,23 @@ def _extract_meaningful_phrase(title, max_len=14):
     return title[:max_len]
 
 
+def _clean_topic_label(label, max_len=20):
+    """清洗话题标签：截断过长标签、移除未完成引号、去除尾部标点。"""
+    if not label:
+        return ''
+    # 限制最大长度
+    if len(label) > max_len:
+        label = label[:max_len].rstrip()
+    # 移除未完成的引号（截断导致的）
+    label = re.sub(r'["\'"\'「『【\(（]$', '', label)
+    # 移除尾部标点
+    label = re.sub(r'[，。：；！？,\.:;!?\s]+$', '', label)
+    # 如果标签太短或为空，返回空
+    if len(label) < 2:
+        return ''
+    return label
+
+
 def _extract_topic_label_from_titles(cluster_articles):
     """从簇内文章标题中提取语义通顺的话题标签。
 
@@ -6689,6 +6721,9 @@ def _cluster_topics(rss_history, now_bj, max_topics=20, min_cluster=3):
             continue
         # ── 标题召回机制：优先从标题中提取语义通顺的标签 ──
         label, labels = _extract_topic_label_from_titles(cl['articles'])
+        # 清洗标签
+        label = _clean_topic_label(label)
+        labels = [_clean_topic_label(lb) for lb in labels if _clean_topic_label(lb)]
         # 如果标题召回失败，回退到原始 token 频率逻辑
         if not label:
             title_counter = collections.Counter()
