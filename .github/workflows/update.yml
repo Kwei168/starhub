@@ -120,9 +120,9 @@ jobs:
           else
             git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)"
             # 普通 push；cancel-in-progress:true 保证无并发
-            # 如果 remote 在 fetch 后被更新，pull --rebase 吸收后重试，无需 force
+            # 如果 remote 在 fetch 后被更新，reset --soft 吸收后重试，无需 force
             git push || {
-              echo "Push failed, remote changed. Trying rebase retry..."
+              echo "Push failed, remote changed. Trying fast retry..."
               git fetch origin main
               # git reset --soft 保留工作区（含构建产物），将 HEAD 对齐到最新 origin/main
               git reset --soft origin/main
