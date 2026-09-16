@@ -50,6 +50,10 @@ _last_embed_model = None  # 记录最近一次成功的 embedding 模型名
 _EMBED_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emb_cache.json")
 _EMBED_CACHE_MAX = 5000  # 向量条数上限，超限按插入序淘汰最旧
 
+# ────────────────── RAGAS 历史日志 ──────────────────
+_RAGAS_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ragas_history.jsonl")
+_RAGAS_HISTORY_MAX_LINES = 200  # 滚动窗口，超限截掉最旧条目
+
 
 def _embed_cache_load(model_name):
     """读取嵌入缓存。返回 (cache_model, vectors_dict)；文件缺失/损坏/模型不匹配 → 空缓存。"""
@@ -1308,11 +1312,13 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     outlook = struct_parsed.get("outlook", "") if isinstance(struct_parsed, dict) else ""
 
     # 2) core_trends —— 整体市场/技术格局概览
+    _kw_core = f"关键词（必须紧扣）：{', '.join(keywords[:10]) if keywords else '无'}\n\n" if keywords else ""
     prompt_core = (
         "基于以下检索上下文，用一段200字以内的中文分析整体市场与技术格局的核心态势。\n"
         "聚焦：哪些技术/产品/公司正在主导方向？竞争格局如何？\n"
         "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
         "只返回纯文本，不要 JSON，不要字段名。\n\n"
+        f"{_kw_core}"
         f"检索上下文：\n{combined_context[:4000]}"
     )
     sys_core = "你是科技情报分析师。直接输出分析结论，不要解释。"
@@ -1324,11 +1330,13 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     core_trends = core_trends.strip() if core_trends and re.search(r'[\u4e00-\u9fff]', core_trends) else ""
 
     # 3) rss_insights —— 侧重技术趋势、论文、开源动态
+    _kw_rss = f"关键词（必须紧扣）：{', '.join(keywords[:10]) if keywords else '无'}\n\n" if keywords else ""
     prompt_rss = (
         "基于以下检索上下文，用一段200字以内的中文分析技术趋势与开源动态。\n"
         "聚焦：有哪些新的技术路线、开源项目、论文或架构创新？对行业有什么影响？\n"
         "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
         "只返回纯文本，不要 JSON，不要字段名。\n\n"
+        f"{_kw_rss}"
         f"检索上下文：\n{combined_context[:4000]}"
     )
     sys_rss = "你是科技情报分析师。直接输出分析结论，不要解释。"
@@ -1340,11 +1348,13 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     rss_insights = rss_insights.strip() if rss_insights and re.search(r'[\u4e00-\u9fff]', rss_insights) else ""
 
     # 4) narrative —— 串联核心事件的故事线
+    _kw_narr = f"关键词（必须紧扣）：{', '.join(keywords[:10]) if keywords else '无'}\n\n" if keywords else ""
     prompt_narr = (
         "基于以下检索上下文，用一段200字以内的中文串联核心事件，讲一个完整的故事线。\n"
         "聚焦：事件之间的因果/时间关系是什么？整体叙事脉络如何？\n"
         "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
         "只返回纯文本，不要 JSON，不要字段名。\n\n"
+        f"{_kw_narr}"
         f"检索上下文：\n{combined_context[:4000]}"
     )
     sys_narr = "你是科技情报分析师。直接输出分析结论，不要解释。"
@@ -1505,12 +1515,13 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
     outlook = struct_parsed.get("outlook", deep_insights.get("outlook", "")) if isinstance(struct_parsed, dict) else deep_insights.get("outlook", "")
 
     # 2) core_trends 修正
+    _kw_core_c = f"\n【关键词（必须紧扣）】：{kw_str}" if kw_str != "无" else ""
     prompt_core = (
         "之前的洞察质量不达标，请根据反馈重新分析整体市场与技术格局的核心态势。\n"
         f"【薄弱维度】：{'; '.join(low_dims)}\n"
         f"【反馈】：{feedback}\n"
         "聚焦：哪些技术/产品/公司正在主导方向？竞争格局如何？200字以内。\n"
-        f"{forbid}\n\n检索上下文：\n{ctx}"
+        f"{forbid}{_kw_core_c}\n\n检索上下文：\n{ctx}"
     )
     core_trends = ""
     for _a in range(3):
@@ -1520,12 +1531,13 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
     core_trends = core_trends.strip() if core_trends and re.search(r'[\u4e00-\u9fff]', core_trends) else deep_insights.get("core_trends", "")
 
     # 3) rss_insights 修正
+    _kw_rss_c = f"\n【关键词（必须紧扣）】：{kw_str}" if kw_str != "无" else ""
     prompt_rss = (
         "之前的洞察质量不达标，请根据反馈重新分析技术趋势与开源动态。\n"
         f"【薄弱维度】：{'; '.join(low_dims)}\n"
         f"【反馈】：{feedback}\n"
         "聚焦：有哪些新的技术路线、开源项目、论文或架构创新？200字以内。\n"
-        f"{forbid}\n\n检索上下文：\n{ctx}"
+        f"{forbid}{_kw_rss_c}\n\n检索上下文：\n{ctx}"
     )
     rss_insights = ""
     for _a in range(3):
@@ -1535,12 +1547,13 @@ def _self_correct_insights(llm, deep_insights, context_text, evaluation, keyword
     rss_insights = rss_insights.strip() if rss_insights and re.search(r'[\u4e00-\u9fff]', rss_insights) else deep_insights.get("rss_insights", "")
 
     # 4) narrative 修正
+    _kw_narr_c = f"\n【关键词（必须紧扣）】：{kw_str}" if kw_str != "无" else ""
     prompt_narr = (
         "之前的洞察质量不达标，请根据反馈重新串联核心事件的故事线。\n"
         f"【薄弱维度】：{'; '.join(low_dims)}\n"
         f"【反馈】：{feedback}\n"
         "聚焦：事件之间的因果/时间关系是什么？200字以内。\n"
-        f"{forbid}\n\n检索上下文：\n{ctx}"
+        f"{forbid}{_kw_narr_c}\n\n检索上下文：\n{ctx}"
     )
     narrative = ""
     for _a in range(3):
@@ -1619,7 +1632,44 @@ def _evaluate_and_correct(llm, deep_insights, topic_clusters,
                   f"self-correcting...", file=sys.stderr)
             current = _self_correct_insights(llm, current, context_text, eval_result, keywords)
 
+    # 记录 RAGAS 历史日志
+    _log_ragas_result(eval_result, iteration, threshold, keywords)
+
     return current, eval_result
+
+
+def _log_ragas_result(eval_result, final_iteration, threshold, keywords=None):
+    """将 RAGAS 评估结果追加写入 ragas_history.jsonl，便于持续追踪与优化。"""
+    try:
+        entry = {
+            "ts": datetime.now(BJT).isoformat(),
+            "overall": eval_result.get("overall"),
+            "context_coverage": eval_result.get("context_coverage"),
+            "faithfulness": eval_result.get("faithfulness"),
+            "relevance": eval_result.get("relevance"),
+            "feedback": eval_result.get("feedback", ""),
+            "iterations": final_iteration,
+            "threshold": threshold,
+            "passed": eval_result.get("overall", 0) >= threshold,
+            "top_keywords": (keywords or [])[:5],
+        }
+        # 追加写入
+        with open(_RAGAS_HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # 滚动截断：超过上限时保留最新 N 条
+        try:
+            with open(_RAGAS_HISTORY_FILE, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            if len(lines) > _RAGAS_HISTORY_MAX_LINES:
+                with open(_RAGAS_HISTORY_FILE, "w", encoding="utf-8") as f:
+                    f.writelines(lines[-_RAGAS_HISTORY_MAX_LINES:])
+        except Exception:
+            pass
+        print(f"[insight_engine] RAGAS history logged → {_RAGAS_HISTORY_FILE}",
+              file=sys.stderr)
+    except Exception as e:
+        print(f"[insight_engine] RAGAS history log failed: {e}",
+              file=sys.stderr)
 
 
 # ────────────────── Topic metadata builder ──────────────────
