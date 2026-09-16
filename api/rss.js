@@ -390,7 +390,19 @@ async function fetchOne(source) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     
     const xml = await res.text();
-    const items = parseFeed(xml, source.key, 30);
+    let items = parseFeed(xml, source.key, 30);
+
+    // V2EX 去重：同一帖子多个回复仅 #replyN 不同，剥离锚点按 link 去重
+    if (source.key && source.key.includes('v2ex')) {
+      const seen = new Set();
+      items = items.filter(it => {
+        const link = (it.link || '').replace(/#reply\d+$/, '');
+        if (seen.has(link)) return false;
+        seen.add(link);
+        it.link = link;
+        return true;
+      });
+    }
     
     // 成功：更新滚动缓存
     const cached = {
