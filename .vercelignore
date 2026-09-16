@@ -1,2 +1,42 @@
+# ── 构建产物（GitHub Actions 生成，不进 Vercel）──
 rss_history.json
 rss_cache.json
+rss-data-*.js
+rss_api_snapshot*.json
+hot_history.json
+hot_snapshot.json
+analysis_snapshot.json
+translations.json
+trending_snapshot.json
+source_quality.json
+rss_trend_history.json
+known_categories.json
+descriptions_zh.json
+
+# ── 每日深度洞察构建产物 ──
+daily-insight.json
+daily_insight_history.json
+daily_insight_snapshot.json
+daily_insight_tracking_history.jsonl
+daily_insight_faiss.index
+daily_insight_chunks.json
+emb_cache.json
+
+# ── 本地/CI 临时目录 ──
+.deploy-tmp/
+.workbuddy/
+.zcode/
+__pycache__/
+.pytest_cache/
+build_logs/
+tests/
+docs/
+
+# ── Python 脚本（CI 运行，Vercel 不需要）──
+*.py
+
+# ── 其他 ──
+*.lock
+nul
+package.json
+node_modules/
