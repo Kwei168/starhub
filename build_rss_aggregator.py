@@ -691,6 +691,206 @@ def _pick_item_image(it, desc_raw, content_raw):
         return ""
 
 
+# ── XGO (Twitter/X) 信源内容清洗 ──────────────────────────────
+_XGO_TWEET_TEXT_RE = re.compile(
+    r"<div[^>]*\bwhite-space:\s*pre-wrap[^>]*>([\s\S]*?)</div>",
+    re.IGNORECASE,
+)
+_XGO_ENGAGEMENT_RE = re.compile(
+    r"💬|🔄|❤️|👀|📊|⚡\s*Powered\s+by\s+xgo\.ing|View\s+(?:Quoted\s+)?Tweet\s*🔗|🔗\s*View",
+    re.IGNORECASE,
+)
+
+
+def _is_xgo_content(text):
+    """检测是否为 xgo.ing Twitter/X 代理的推文 HTML"""
+    if not text:
+        return False
+    return ("xgo.ing" in text or "Powered by xgo" in text) and "white-space: pre-wrap" in text
+
+
+def _clean_xgo_content(text):
+    """清洗 xgo.ing 推文 HTML：仅保留推文正文与引用推文文本，移除互动数据/头像/页脚"""
+    if not text:
+        return ""
+    # 1. 提取所有推文文本块（white-space: pre-wrap 的 div）
+    blocks = _XGO_TWEET_TEXT_RE.findall(text)
+    if not blocks:
+        return ""
+    parts = []
+    for block in blocks:
+        # 移除 "View Quoted Tweet" / "View on Twitter" 链接
+        block = re.sub(
+            r"<a[^>]*>[^<]*View\s+(?:Quoted\s+)?Tweet[^<]*</a>",
+            "",
+            block,
+            flags=re.IGNORECASE,
+        )
+        # 移除剩余 HTML 标签
+        plain = re.sub(r"<[^>]+>", "", block)
+        plain = html_mod.unescape(plain).strip()
+        if plain:
+            parts.append(plain)
+    return "\n\n".join(parts)
+
+
+def _extract_tweet_media(text):
+    """从 xgo.ing 推文 HTML 中提取真实推文媒体图片（排除 profile_images 头像）"""
+    if not text:
+        return ""
+    for m in _IMG_SRC_RE.finditer(text):
+        src = html_mod.unescape(m.group(1)).strip()
+        if not re.match(r"^https?://", src, re.IGNORECASE):
+            continue
+        # 跳过 profile_images（用户头像），仅保留 /media/ 和 tweet_video_thumb
+        if "profile_images" in src:
+            continue
+        if "/media/" in src or "tweet_video_thumb" in src:
+            return src
+    return ""
+
+
+# ── 图片质量自动升级系统 ──────────────────────────────────────
+# 规则注册表：新增 CDN 只需在此追加一行
+# 格式: (域名子串, 匹配正则, 替换模板)
+_IMG_UPGRADE_RULES = [
+    # Phys.org CDN: /tmb/ 是 90×90 缩略图，/800/ 是 800px 高清图
+    ("scx1.b-cdn.net",     r"/tmb/",                              r"/800/"),
+    # BBC ichef CDN: /240/ (6KB) → /624/ (30KB)，路径中数字即像素宽度
+    ("ichef.bbci.co.uk",   r"/240/",                              r"/624/"),
+    # Twitter/X 头像: _normal (48×48) → _400x400
+    ("pbs.twimg.com",      r"_normal\.(jpg|png|gif)$",             r"_400x400.\1"),
+]
+
+# 需要回调函数的特殊规则（简单字符串替换无法正确处理）
+def _bbc_aspect_upgrade(url):
+    """BBC NxM → 624xH，保持原始宽高比"""
+    def _replace(m):
+        old_w, old_h = int(m.group(1)), int(m.group(2))
+        new_h = round(old_h * 624 / old_w)
+        return f"/{624}x{new_h}/"
+    return re.sub(r"/(\d{2,4})x(\d{2,4})/", _replace, url)
+
+def _query_width_upgrade(url):
+    """保留原始查询参数分隔符（? 或 &），避免产生双 ?"""
+    def _replace(m):
+        sep = m.group(1)  # 保留原始 ? 或 &
+        return f"{sep}width=640"
+    return re.sub(r"([?&])width=\d+", _replace, url)
+
+_IMG_UPGRADE_SPECIAL = [
+    # BBC ichef: NxM 尺寸保持宽高比
+    ("ichef.bbci.co.uk", _bbc_aspect_upgrade),
+    # Reddit / Guardian: width=N 查询参数升级
+    ("redd.it",          _query_width_upgrade),
+    ("i.guim.co.uk",    _query_width_upgrade),
+]
+
+# 升级追踪（线程安全，供构建审计使用）
+_img_upgrade_log = []
+_img_upgrade_lock = threading.Lock()
+
+
+def _upgrade_img_url(url):
+    """升级已知低分辨率图片 URL 到高清版本，并记录升级事件"""
+    if not url:
+        return url
+    original = url
+    # 简单规则：正则替换
+    for domain_match, pattern, replacement in _IMG_UPGRADE_RULES:
+        if domain_match in url:
+            new_url = re.sub(pattern, replacement, url)
+            if new_url != url:
+                url = new_url
+    # 特殊规则：回调函数（保持宽高比/查询参数完整性）
+    for domain_match, func in _IMG_UPGRADE_SPECIAL:
+        if domain_match in url:
+            new_url = func(url)
+            if new_url != url:
+                url = new_url
+    if url != original:
+        with _img_upgrade_lock:
+            _img_upgrade_log.append({"from": original, "to": url})
+    return url
+
+
+# ── 通用缩略图检测器（发现未知 CDN 的低分辨率模式）──
+# 策略：仅检测高置信度模式（查询参数小尺寸 + 缩略图关键词），
+# 不做路径数字段匹配（日期 /15/、hash /25/ 等误报率极高）。
+# 新 CDN 的缩略图由构建审计发现后，手动加入 _IMG_UPGRADE_RULES 即可。
+_THUMB_QUERY_RE = re.compile(r"[?&](?:w|h|width|height|size)=(\d+)", re.IGNORECASE)
+_THUMB_KEYWORD_RE = re.compile(
+    r"/(?:thumb|thumbnail|tiny|mini|avatar)(?:[/.]|$)"
+    r"|_normal\.(?:jpg|png|gif)",
+    re.IGNORECASE,
+)
+# 排除误报：日期路径、商品图、emoji、大尺寸参数、/display/ 路径等
+_THUMB_EXCLUDE_RE = re.compile(
+    r"/(?:19|20)\d{2}/"       # 年份路径
+    r"|s\d{3,4}x\d{3,4}"     # 商品图 s1440x1440
+    r"|/emoji/"               # emoji 图标
+    r"|width=\d{4,}"          # 大尺寸参数 width=800+
+    r"|/display/",            # France24 等 /display/ 路径
+    re.IGNORECASE,
+)
+
+
+def _detect_lowres_img(url):
+    """通用检测：URL 是否疑似缩略图（用于审计告警，不修改 URL）"""
+    if not url:
+        return None
+    if _THUMB_EXCLUDE_RE.search(url):
+        return None
+    # 查询参数中的小尺寸（≤300）
+    m = _THUMB_QUERY_RE.search(url)
+    if m:
+        num = int(m.group(1))
+        if num <= 300:
+            return f"query ={num}"
+    # 缩略图关键词
+    if _THUMB_KEYWORD_RE.search(url):
+        return "thumb keyword"
+    return None
+
+
+def _audit_image_quality(sources_with_items):
+    """构建时图片质量审计：报告升级统计与未解决的疑似低分辨率图片"""
+    total_imgs = 0
+    upgraded_count = len(_img_upgrade_log)
+    # 按域名统计升级分布
+    upgrade_by_domain = collections.Counter()
+    for ev in _img_upgrade_log:
+        domain = ev["from"].split("/")[2] if ev["from"].startswith("http") else "unknown"
+        upgrade_by_domain[domain] += 1
+    # 扫描所有图片，检测未升级的疑似缩略图
+    suspect = []  # (source_name, url, reason)
+    suspect_by_source = collections.Counter()
+    for src in sources_with_items:
+        src_name = src.get("name", "")
+        for it in src.get("items", []):
+            img = it.get("image", "")
+            if not img:
+                continue
+            total_imgs += 1
+            reason = _detect_lowres_img(img)
+            if reason:
+                suspect.append((src_name, img, reason))
+                suspect_by_source[src_name] += 1
+    # 输出报告
+    print(f"[图片审计] 总计 {total_imgs} 张, 已升级 {upgraded_count} 张")
+    if upgrade_by_domain:
+        for domain, count in upgrade_by_domain.most_common(10):
+            print(f"  升级: {domain} ({count} 张)")
+    if suspect:
+        print(f"[图片审计] ⚠ {len(suspect)} 张疑似低分辨率（{len(suspect_by_source)} 个源）:")
+        for src_name, count in suspect_by_source.most_common(20):
+            sample = next(u for s, u, _ in suspect if s == src_name)
+            print(f"  {src_name}: {count} 张 — {sample[:90]}")
+    else:
+        print("[图片审计] ✓ 无残留低分辨率图片")
+    return {"total": total_imgs, "upgraded": upgraded_count, "suspect": len(suspect)}
+
+
 _SAFE_TAGS = re.compile(
     r"^(/?(p|br|img|a|b|i|em|strong|h[1-6]|ul|ol|li|blockquote|pre|code"
     r"|figure|figcaption|table|tr|td|th|thead|tbody|span|div|hr|sup|sub|dl|dt|dd"
@@ -1558,7 +1758,7 @@ def _fetch_rss(source, timeout=None):
             media_url, media_type = _pick_item_media(e)
             items.append({
                 "title": title, "link": link, "summary": _truncate(desc),
-                "full_content": full_content, "image": _pick_item_image(e, summary_raw, content_raw),
+                "full_content": full_content, "image": _upgrade_img_url(_pick_item_image(e, summary_raw, content_raw)),
                 "pub_date": _parse_iso(pub), "source": name, "source_key": source["key"],
                 "cat": source["cat"],
                 "media_url": media_url, "media_type": media_type,
@@ -1593,21 +1793,31 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
     if not link:
         link = (it.get("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about") or "").strip()
     desc_raw = it.findtext("description") or ""
-    desc = _strip_html(desc_raw)
     pub = (it.findtext("pubDate") or "").strip()
     # RSS 1.0 RDF: date is in dc:date
     if not pub:
         pub = (it.findtext("{http://purl.org/dc/elements/1.1/}date") or "").strip()
     dc_content = "{http://purl.org/rss/1.0/modules/content/}"
     content_raw = it.findtext(dc_content + "encoded") or ""
-    content_encoded = _deep_clean_html(_sanitize_html(content_raw))
-    full_content = content_encoded if len(content_encoded) > len(desc) else ""
     if not title or not link:
         return
     media_url, media_type = _pick_item_media(it)
+    # ── XGO (Twitter/X) 信源专门清洗 ──
+    # xgo.ing 代理的 description 包含完整 HTML 卡片（推文正文 + 引用推文 +
+    # 头像 + 互动数据 + 页脚），直接 _strip_html 会把所有噪音混入摘要。
+    if _is_xgo_content(desc_raw):
+        cleaned = _clean_xgo_content(desc_raw)
+        desc = cleaned or _strip_html(desc_raw)
+        full_content = ""  # 推文正文已在 desc 中，无需全文加载
+        img = _extract_tweet_media(desc_raw)
+    else:
+        desc = _strip_html(desc_raw)
+        content_encoded = _deep_clean_html(_sanitize_html(content_raw))
+        full_content = content_encoded if len(content_encoded) > len(desc) else ""
+        img = _upgrade_img_url(_pick_item_image(it, desc_raw, content_raw))
     items.append({
         "title": title, "link": link, "summary": _truncate(desc),
-        "full_content": full_content, "image": _pick_item_image(it, desc_raw, content_raw),
+        "full_content": full_content, "image": img,
         "pub_date": _parse_rss_date(pub) or _parse_iso(pub), "source": source_name, "source_key": source_key,
         "cat": cat,
         "media_url": media_url, "media_type": media_type,
@@ -7148,6 +7358,12 @@ def main(mode="full"):
     _history_before = len(_rss_history)
     sources_with_items, total_items = _accumulate_history(sources_with_items)
     _history_after = len(_rss_history)
+
+    # ── 图片质量审计（自动发现低分辨率缩略图）──
+    try:
+        _audit_image_quality(sources_with_items)
+    except Exception as e:
+        print("[图片审计] 审计失败，跳过: %s" % e, file=sys.stderr)
 
     # ── 智能分析流水线（关键词 / 话题 / AI 摘要 / 信源评分 / 热榜轨迹 / 跨平台） ──
     analysis_data = None
