@@ -7528,6 +7528,7 @@ def main(mode="full"):
         s.setdefault("tier", 3)
     _atomic_write_json("rss_sources.json", RSS_SOURCES, ensure_ascii=False, separators=(",", ":"))
 
+    _snapshot_items = sum(len(s.get("items", [])) for s in sources_with_items)
     print("[RSS聚合] 生成完成 → %s（%d 源成功，抓取 %d 篇，快照 %d 篇）" % (OUT, ok_count, _items_fetched, _snapshot_items))
 
     # 打印翻译统计
@@ -7542,7 +7543,6 @@ def main(mode="full"):
 
     # ── 写入构建日志 ──
     _build_duration = round(time.time() - _build_start, 1)
-    _snapshot_items = sum(len(s.get("items", [])) for s in sources_with_items)
     build_logger.append({
         "type": "build",
         "mode": mode,
