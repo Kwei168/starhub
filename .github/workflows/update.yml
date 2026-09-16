@@ -144,6 +144,21 @@ jobs:
             }
           fi
 
+      - name: Prune large build artifacts before Vercel deploy
+        run: |
+          # 构建产物只供 GitHub Pages 加载，Vercel 只需要 api/ + HTML 入口 + vercel.json
+          # 直接删除避免 .vercelignore glob 不可靠导致 367MB 上传超限
+          rm -f rss-data-*.js rss_api_snapshot*.json
+          rm -f rss_cache.json rss_history.json hot_history.json hot_snapshot.json
+          rm -f analysis_snapshot.json translations.json trending_snapshot.json
+          rm -f source_quality.json rss_trend_history.json known_categories.json descriptions_zh.json
+          rm -f daily-insight.json daily_insight_history.json daily_insight_snapshot.json
+          rm -f daily_insight_tracking_history.jsonl daily_insight_faiss.index daily_insight_chunks.json
+          rm -f emb_cache.json
+          rm -rf .deploy-tmp .workbuddy .zcode __pycache__ .pytest_cache build_logs docs
+          echo "Pruned. Remaining size:"
+          du -sh .
+
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
