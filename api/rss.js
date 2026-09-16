@@ -10,6 +10,7 @@ import { createHash } from 'crypto';
 const FETCH_TIMEOUT = 5000;     // 单源超时 5s（从8s降低以加快失败速度）
 const CONCURRENCY = 20;         // 20 路并发（从10提高到20以加快速度）
 const CACHE_TTL = 5 * 60 * 1000;  // 服务端缓存 5 分钟
+const BATCH_SIZE = 200;          // 分批刷新每批源数量（200源 × 20并发 ≈ 10s/批）
 const UA = 'starhub-rss-aggregator/1.0';
 
 // 滚动缓存：每个源保留上次成功抓取的数据
@@ -386,6 +387,83 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ total: metaTotal });
+  }
+
+  // ── 分批实时抓取端点：前端 refresh 时逐批拉取 T2/T3/T4 源 ──
+  // GET /api/rss?batch=0  → 第 0 批（源 0-199）
+  // GET /api/rss?batch=1  → 第 1 批（源 200-399）
+  // GET /api/rss?batch_info=1 → 返回批次元信息（总批次数、源总数）
+  if (req.query && req.query.batch_info === '1') {
+    try {
+      const sources = loadSources();
+      const nonT1 = sources.filter(s => s.tier !== 1);
+      const totalBatches = Math.ceil(nonT1.length / BATCH_SIZE);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({
+        totalSources: nonT1.length,
+        batchSize: BATCH_SIZE,
+        totalBatches: totalBatches,
+      });
+    } catch (err) {
+      console.error('[rss] batch_info error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  if (req.query && req.query.batch !== undefined) {
+    try {
+      const batchIdx = parseInt(req.query.batch, 10);
+      if (isNaN(batchIdx) || batchIdx < 0) {
+        return res.status(400).json({ error: 'invalid batch index' });
+      }
+      const sources = loadSources();
+      const nonT1 = sources.filter(s => s.tier !== 1);
+      const start = batchIdx * BATCH_SIZE;
+      const end = Math.min(start + BATCH_SIZE, nonT1.length);
+      if (start >= nonT1.length) {
+        return res.status(404).json({ error: 'batch out of range' });
+      }
+      const batchSources = nonT1.slice(start, end);
+      const totalBatches = Math.ceil(nonT1.length / BATCH_SIZE);
+      console.log(`[rss] Batch ${batchIdx}/${totalBatches}: fetching ${batchSources.length} sources (${start}-${end - 1})`);
+
+      const results = await fetchAllBatched(batchSources);
+
+      // 格式化返回（与快照格式对齐）
+      const formattedSources = results.map(src => ({
+        key: src.key,
+        name: src.name,
+        cat: src.cat,
+        color: src.color,
+        tier: nonT1.find(s => s.key === src.key)?.tier || 3,
+        items: (src.items || []).map(it => ({
+          t: stripHtml(it.t || ''),
+          u: it.u || '#',
+          s: truncate(stripHtml(it.s || ''), 200),
+          d: it.d || '',
+          fc: it.fc || '',
+          img: it.img || '',
+          mu: it.mu || '',
+          mt: it.mt || '',
+        })),
+      }));
+
+      const totalItems = formattedSources.reduce((n, s) => n + s.items.length, 0);
+      console.log(`[rss] Batch ${batchIdx} done: ${formattedSources.length} sources, ${totalItems} items`);
+
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-RSS-Batch', `${batchIdx}/${totalBatches}`);
+      return res.status(200).json({
+        batch: batchIdx,
+        totalBatches: totalBatches,
+        sources: formattedSources,
+      });
+    } catch (err) {
+      console.error('[rss] Batch fetch error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   }
 
   // 单源实时抓取端点：前端点开某个信源时调用，返回该源最新内容
