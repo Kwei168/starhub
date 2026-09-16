@@ -702,13 +702,13 @@ def main(mode="full"):
 
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     repos = fetch_stars(token)
-    if repos is None:
-        print("拉取 star 失败，保持现有 index.html 不变")
-        return
+    stars_ok = repos is not None
+    if not stars_ok:
+        print("::error::[Star] 拉取 star 失败（可能 API 限流），index.html 保持不变")
 
     cat_label = {c["key"]: c["label"] for c in CATS}
     out = []
-    for r in repos:
+    for r in (repos or []):
         fn = r.get("full_name")
         if not fn:
             continue
@@ -753,47 +753,48 @@ def main(mode="full"):
             "categoryLabel": cat_label[cat],
         })
 
-    trending = build_trending(token, desc_zh)
+    if stars_ok:
+        trending = build_trending(token, desc_zh)
 
-    # AI 态势一句话：构建时生成，注入涨星榜区域
-    ai_summary = ""
-    if cfg.get("ai_summary_enabled", True):
-        print("[AI摘要] enabled, rising=%d" % len(trending.get("rising", [])))
-        ai_summary = generate_ai_summary(trending.get("rising", [])[:10]) or ""
-    else:
-        print("[AI摘要] 已禁用 (ai_summary_enabled=false)")
+        # AI 态势一句话：构建时生成，注入涨星榜区域
+        ai_summary = ""
+        if cfg.get("ai_summary_enabled", True):
+            print("[AI摘要] enabled, rising=%d" % len(trending.get("rising", [])))
+            ai_summary = generate_ai_summary(trending.get("rising", [])[:10]) or ""
+        else:
+            print("[AI摘要] 已禁用 (ai_summary_enabled=false)")
 
-    feed = fetch_following_events(token)
+        feed = fetch_following_events(token)
 
-    template = open("template.html", encoding="utf-8").read()
-    updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-    # AI 摘要占位符替换：非空则渲染为带样式的摘要条，空则不显示
-    if ai_summary:
-        ai_summary_html = ('<div class="ai-summary">'
-                           '<span class="ai-summary-icon">AI</span>'
-                           '<span class="ai-summary-text">' + ai_summary + '</span></div>')
-    else:
-        ai_summary_html = ""
-    html = (template
-            .replace("__DATA__", _safe_json(out))
-            .replace("__CATS__", _safe_json(CATS))
-            .replace("__LANGS__", _safe_json(LANG_COLORS))
-            .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
-            .replace("__TRENDING__", _safe_json(trending))
-            .replace("__FEED__", _safe_json(feed))
-            .replace("__UPDATED__", updated)
-            .replace("__AI_SUMMARY__", ai_summary_html))
+        template = open("template.html", encoding="utf-8").read()
+        updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+        # AI 摘要占位符替换：非空则渲染为带样式的摘要条，空则不显示
+        if ai_summary:
+            ai_summary_html = ('<div class="ai-summary">'
+                               '<span class="ai-summary-icon">AI</span>'
+                               '<span class="ai-summary-text">' + ai_summary + '</span></div>')
+        else:
+            ai_summary_html = ""
+        html = (template
+                .replace("__DATA__", _safe_json(out))
+                .replace("__CATS__", _safe_json(CATS))
+                .replace("__LANGS__", _safe_json(LANG_COLORS))
+                .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
+                .replace("__TRENDING__", _safe_json(trending))
+                .replace("__FEED__", _safe_json(feed))
+                .replace("__UPDATED__", updated)
+                .replace("__AI_SUMMARY__", ai_summary_html))
 
-    open("index.html", "w", encoding="utf-8").write(html)
-    json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    json.dump(desc_zh, open("descriptions_zh.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        open("index.html", "w", encoding="utf-8").write(html)
+        json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        json.dump(desc_zh, open("descriptions_zh.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
-    # AI 晨报：读取 ai_daily.json 生成 ai-daily.html（独立页面）
-    try:
-        import build_ai_daily
-        build_ai_daily.main()
-    except Exception as e:
-        print("[AI晨报] 生成失败: %s" % e, file=sys.stderr)
+        # AI 晨报：读取 ai_daily.json 生成 ai-daily.html（独立页面）
+        try:
+            import build_ai_daily
+            build_ai_daily.main()
+        except Exception as e:
+            print("[AI晨报] 生成失败: %s" % e, file=sys.stderr)
 
     # RSS 聚合页：生成 rss-aggregator.html（独立页面）
     # 有意取舍（对抗性审查两轮确认）：RSS 失败只打 ::error:: 注解不改变退出码——
@@ -808,6 +809,10 @@ def main(mode="full"):
         print("::error::[RSS聚合] 生成失败:\n%s" % traceback.format_exc(), file=sys.stderr)
 
     print("更新完成：共 %d 个项目" % len(out))
+
+    # star 拉取失败 → 非零退出码，让 workflow 正确报错（RSS 已在上方独立运行）
+    if not stars_ok:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
