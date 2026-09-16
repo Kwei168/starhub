@@ -2205,40 +2205,82 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     _lastTotal=ART.length;
     if(n>0){
       renderChips(); renderWall(); renderPanel();
-      toast('已更新 '+n+' 篇新文章');
-    } else if(manual){
-      toast('已是最新内容');
     }
+    return n;
   }
+  /* Fix P2: 分批实时刷新 —— T1 实时 + T2/T3 分批抓取，逐批合并渲染 */
+  var _API_BASE='https://starhub-refresh.vercel.app/api/rss';
   window.refreshRss=function(manual){
     if(manual===undefined) manual=true;
-    if(_refreshing){ if(manual) toast('正在检查更新…'); return; }
+    if(_refreshing){ if(manual) toast('正在刷新中…'); return; }
     _refreshing=true;
     var btn=document.getElementById('refreshBtn');
     if(btn) btn.classList.add('loading');
-    if(manual) toast('正在后台检查更新…');
-    var settled=false;
+    if(manual) toast('正在实时刷新…');
+    var totalAdded=0, done=false;
     var ctrl=window.AbortController?new AbortController():null;
-    var timer=setTimeout(function(){ if(settled) return; settled=true; if(ctrl) ctrl.abort(); _refreshing=false; if(btn) btn.classList.remove('loading'); if(manual) toast('检查超时，请稍后重试'); }, 30000);
-    fetch('https://starhub-refresh.vercel.app/api/rss', ctrl?{signal:ctrl.signal}:{}).then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    }).then(function(j){
-      if(settled) return; settled=true;
+    /* 整体超时 3 分钟（T1 + 多批 T2/T3） */
+    var timer=setTimeout(function(){
+      if(done) return; done=true;
+      if(ctrl) ctrl.abort(); _refreshing=false;
+      if(btn) btn.classList.remove('loading');
+      if(manual) toast(totalAdded>0?'已更新 '+totalAdded+' 篇（部分批次超时）':'刷新超时');
+      if(totalAdded>0){ renderChips(); renderWall(); renderPanel(); }
+    }, 180000);
+    function fetchJson(url){
+      return fetch(url, ctrl?{signal:ctrl.signal}:{}).then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      });
+    }
+    /* Step 1: T1 实时刷新 */
+    fetchJson(_API_BASE+'?refresh=1').then(function(j){
+      if(done) return;
+      totalAdded+=_applyRemote(j, false);
+      _lastTotal=ART.length;
+      if(totalAdded>0){ renderChips(); renderWall(); renderPanel(); }
+      /* Step 2: 获取批次信息 */
+      return fetchJson(_API_BASE+'?batch_info=1');
+    }).then(function(info){
+      if(done) return;
+      if(!info||!info.totalBatches) throw new Error('no batch info');
+      if(manual) toast('T1 完成，正在抓取 T2/T3（0/'+info.totalBatches+' 批）…');
+      /* Step 3: 逐批抓取 T2/T3 */
+      var chain=Promise.resolve();
+      for(var b=0;b<info.totalBatches;b++){
+        (function(batchIdx){
+          chain=chain.then(function(){
+            if(done) return;
+            return fetchJson(_API_BASE+'?batch='+batchIdx).then(function(bj){
+              if(done) return;
+              var n=_applyRemote(bj, false);
+              totalAdded+=n;
+              _lastTotal=ART.length;
+              if(n>0){ renderChips(); renderWall(); renderPanel(); }
+              if(manual) toast('实时刷新 '+((batchIdx+1)*100/info.totalBatches).toFixed(0)+'%…');
+            });
+          });
+        })(b);
+      }
+      return chain;
+    }).then(function(){
+      if(done) return; done=true;
       clearTimeout(timer); _refreshing=false;
       if(btn) btn.classList.remove('loading');
-      _applyRemote(j, manual);
-    }).catch(function(){
-      if(settled) return; settled=true;
+      if(manual) toast(totalAdded>0?'已更新 '+totalAdded+' 篇新文章':'已是最新内容');
+    }).catch(function(err){
+      if(done) return; done=true;
       clearTimeout(timer); _refreshing=false;
       if(btn) btn.classList.remove('loading');
-      if(manual) toast('检查更新失败，请稍后重试');
+      console.warn('[refreshRss] error:', err);
+      if(manual) toast(totalAdded>0?'已更新 '+totalAdded+' 篇（部分失败）':'刷新失败，请稍后重试');
+      if(totalAdded>0){ renderChips(); renderWall(); renderPanel(); }
     });
   };
   /* 自动刷新：每 5 分钟用轻量 meta 接口探测新构建，仅当有新内容时才拉取合并（页面隐藏时跳过） */
   setInterval(function(){
     if(document.hidden || _refreshing) return;
-    fetch('https://starhub-refresh.vercel.app/api/rss?meta=1').then(function(r){ return r.ok?r.json():null; }).then(function(m){
+    fetch(_API_BASE+'?meta=1').then(function(r){ return r.ok?r.json():null; }).then(function(m){
       if(!m || typeof m.total!=='number') return;
       if(m.total>_lastTotal) window.refreshRss(false);
     }).catch(function(){});
