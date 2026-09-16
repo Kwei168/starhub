@@ -1830,6 +1830,22 @@ def _fetch_rss(source, timeout=None):
             for it in root.findall(".//" + rdf_ns + "item"):
                 _parse_rss_item(it, name, source["key"], source["cat"], items)
 
+    # V2EX 去重：同一帖子的每个回复都是独立条目（仅 #replyN 不同），
+    # 剥离锚点后按 link 去重，保留首条（最早回复）
+    if "v2ex" in source["key"]:
+        _seen_v2ex = set()
+        _deduped = []
+        for it in items:
+            _link = re.sub(r"#reply\d+$", "", it["link"])
+            if _link not in _seen_v2ex:
+                _seen_v2ex.add(_link)
+                it["link"] = _link
+                _deduped.append(it)
+        if len(_deduped) < len(items):
+            print("[V2EX] 去重: %d → %d 条（剥离 #replyN 锚点）"
+                  % (len(items), len(_deduped)))
+        items = _deduped
+
     # 写入缓存
     _rss_cache[key] = {
         "items": items[:ITEMS_PER_SOURCE],
