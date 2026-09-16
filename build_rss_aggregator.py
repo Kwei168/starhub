@@ -210,6 +210,18 @@ def _atomic_write_text(path, text):
     os.replace(tmp, path)
 
 
+def _strip_oss_signature(text):
+    """剥离 URL 中的 OSS/云存储签名参数，防止 GitHub Push Protection 误报密钥泄露。
+    移除 OSSAccessKeyId、Signature、Expires、X-Amz-* 等查询参数。"""
+    if not text or not isinstance(text, str):
+        return text
+    text = re.sub(r'[?&](OSSAccessKeyId|Signature|Expires|X-Amz-[A-Za-z0-9-]+)=[^&\s"\'<>]*', '', text)
+    text = re.sub(r'\?&', '?', text)
+    text = re.sub(r'&&', '&', text)
+    text = re.sub(r'\?[\"\'>\s]', '', text)
+    return text
+
+
 def _save_caches():
     """保存翻译和 RSS 缓存（RSS 缓存写盘前裁剪过期条目，防止文件无限膨胀）"""
     try:
@@ -568,8 +580,8 @@ def _save_api_snapshot(sources_with_items, meta=None):
         for it in src.get("items", []):
             item = {
                 "t": it.get("title_zh", "") or it.get("title", ""),
-                "u": it.get("link", "#"),
-                "s": it.get("summary_zh", "") or it.get("summary", ""),
+                "u": _strip_oss_signature(it.get("link", "#")),
+                "s": _strip_oss_signature(it.get("summary_zh", "") or it.get("summary", "")),
                 "d": it.get("pub_date", ""),
             }
             if it.get("bad_date"):
@@ -581,13 +593,13 @@ def _save_api_snapshot(sources_with_items, meta=None):
                 item["tags"] = _tags
             fc = it.get("full_content", "")
             if fc:
-                item["fc"] = fc[:50000]
+                item["fc"] = _strip_oss_signature(fc[:50000])
             img = it.get("image", "")
             if img:
-                item["img"] = img
+                item["img"] = _strip_oss_signature(img)
             mu = it.get("media_url", "")
             if mu:
-                item["mu"] = mu
+                item["mu"] = _strip_oss_signature(mu)
                 item["mt"] = it.get("media_type", "")
             items.append(item)
         snapshot_sources.append({
@@ -7820,6 +7832,30 @@ def main(mode="full"):
                     _hist_upgraded += 1
     if _hist_upgraded:
         print("[图片升级] 历史缓存补升级 %d 张" % _hist_upgraded)
+
+    # ── 剥离云存储签名参数（防止 GitHub Push Protection 拦截推送）──
+    # 在快照/历史/数据分块写入前统一清洗，一处覆盖全部输出路径
+    _oss_stripped = 0
+    for _src in sources_with_items:
+        for _it in _src.get("items", []):
+            for _k in ("link", "summary", "summary_zh", "full_content", "image", "media_url"):
+                _old_v = _it.get(_k)
+                if _old_v:
+                    _new_v = _strip_oss_signature(_old_v)
+                    if _new_v != _old_v:
+                        _it[_k] = _new_v
+                        _oss_stripped += 1
+    # _rss_history 在 _accumulate_history 中创建了独立 dict 副本，需单独清洗
+    for _link, _hit in _rss_history.items():
+        for _k in ("link", "summary", "summary_zh", "full_content", "image", "media_url"):
+            _old_v = _hit.get(_k)
+            if _old_v:
+                _new_v = _strip_oss_signature(_old_v)
+                if _new_v != _old_v:
+                    _hit[_k] = _new_v
+                    _oss_stripped += 1
+    if _oss_stripped:
+        print("[签名剥离] 已剥离 %d 处云存储签名参数" % _oss_stripped)
 
     # ── 图片质量审计（自动发现低分辨率缩略图）──
     try:
