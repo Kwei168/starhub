@@ -7401,6 +7401,19 @@ def main(mode="full"):
     sources_with_items, total_items = _accumulate_history(sources_with_items)
     _history_after = len(_rss_history)
 
+    # ── 历史回流图片补升级（历史缓存中的旧 URL 未经 _upgrade_img_url）──
+    _hist_upgraded = 0
+    for _src in sources_with_items:
+        for _it in _src.get("items", []):
+            _old_img = _it.get("image", "")
+            if _old_img:
+                _new_img = _upgrade_img_url(_old_img)
+                if _new_img != _old_img:
+                    _it["image"] = _new_img
+                    _hist_upgraded += 1
+    if _hist_upgraded:
+        print("[图片升级] 历史缓存补升级 %d 张" % _hist_upgraded)
+
     # ── 图片质量审计（自动发现低分辨率缩略图）──
     try:
         _audit_image_quality(sources_with_items)
