@@ -119,28 +119,27 @@ jobs:
             echo "No changes, skip commit."
           else
             git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)"
-            # 基于最新 remote 构建，直接 push；cancel-in-progress:true 保证无并发
-            # --force-with-lease 作为最后安全网：如果 remote 在 fetch 后被他人更新则拒绝
-            git push --force-with-lease || {
-              echo "Lease check failed, remote changed. Trying fast retry first..."
+            # 普通 push；cancel-in-progress:true 保证无并发
+            # 如果 remote 在 fetch 后被更新，pull --rebase 吸收后重试，无需 force
+            git push || {
+              echo "Push failed, remote changed. Trying rebase retry..."
               git fetch origin main
-              # 快速重试：构建产物仍然有效，只需吸收 remote 的新 commit（如 summary 更新）
               # git reset --soft 保留工作区（含构建产物），将 HEAD 对齐到最新 origin/main
               git reset --soft origin/main
-              # 重新 stage 所有产物 + 日志（现在也包含 remote 带来的 summary 等变更）
+              # 重新 stage 所有产物 + 日志（现在也包含 remote 带来的变更）
               git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
-              if git push --force-with-lease; then
-                echo "Fast retry succeeded — no re-fetch needed."
+              if git push; then
+                echo "Rebase retry succeeded — no re-fetch needed."
               else
-                echo "Fast retry also failed. Falling back to full rebuild..."
+                echo "Rebase retry also failed. Falling back to full rebuild..."
                 git reset --hard origin/main
                 python fetch_and_build.py $MODE
                 git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py
                 if [ -f hot_history.json ]; then git add hot_history.json; fi
                 git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
-                git push --force-with-lease
+                git push
               fi
             }
           fi
