@@ -7669,10 +7669,10 @@ def main(mode="full"):
                     else:
                         threshold_sec = 2 * 3600
                     if (now - prev_time).total_seconds() < threshold_sec:
-                        # Fix 1: 增量跳过陷阱修复
-                        # 如果源从未成功抓取（无历史数据且无 prev 记录），强制重抓
-                        # 避免源永远无法从“空状态”恢复
-                        if not _hist_by_key.get(key) and not prev:
+                        # Fix 1v2: 无历史数据的源强制重抓（无论是否有 prev 记录）
+                        # 场景：源上次抓取返回 0 条 → prev 有值但 _hist_by_key 为空
+                        # 旧版 `and not prev` 在 if prev: 块内永远 False → 死代码
+                        if not _hist_by_key.get(key):
                             pass  # 强制重抓，不跳过
                         else:
                             skipped_count += 1
