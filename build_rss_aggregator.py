@@ -1742,6 +1742,105 @@ def _translate_source_items(items):
 
 # ──────────────────────────── RSS 抓取 ────────────────────────────
 
+def _dedup_source_items(items, source_key):
+    """单源内去重：URL 归一化 + 标题重复检测。
+
+    处理三类重复：
+    1. V2EX #replyN 锚点（同一帖子多回复）
+    2. 微信公众号重复群发（同 __biz + 标题，不同 mid/sn）
+    3. 通用 URL 变体（http/www、tracking 参数、fragment）
+    48h 窗口保护：同一标题在不同天出现视为不同文章（如每日专栏）。
+    """
+    if len(items) < 2:
+        return items
+
+    orig_count = len(items)
+
+    # ── Pass 1: URL 归一化 ──
+    for it in items:
+        link = it.get("link", "")
+        # V2EX: 剥离 #replyN
+        if "v2ex" in source_key:
+            link = re.sub(r"#reply\d+$", "", link)
+        # 通用: 剥离尾部 fragment（#xxx）和常见 tracking 参数
+        link = re.sub(r"#(?!reply\d+$)[^#]*$", "", link)  # 保留 #replyN 给上面处理
+        link = re.sub(r"[?&](utm_source|utm_medium|utm_campaign|utm_content|at_medium|at_campaign)=[^&]*", "", link)
+        link = re.sub(r"[?&]$", "", link)  # 尾部空参数
+        it["link"] = link
+
+    # ── Pass 2: 完全相同 URL 去重（保留首条）──
+    seen_urls = {}
+    url_deduped = []
+    for it in items:
+        link = it.get("link", "")
+        if link and link in seen_urls:
+            continue
+        if link:
+            seen_urls[link] = True
+        url_deduped.append(it)
+    items = url_deduped
+
+    # ── Pass 3: 标题归一化去重（48h 窗口保护）──
+    # 微信公众号: __biz + 标题 作为去重键
+    # 其他源: 归一化标题作为去重键
+    is_wechat = "mp.weixin.qq.com" in (items[0].get("link", "") if items else "")
+
+    def _norm_title(t):
+        t = re.sub(r"\s+", "", t).lower()
+        t = re.sub(r"[^\w\u4e00-\u9fff]", "", t)
+        return t[:50]
+
+    def _wechat_biz(link):
+        m = re.search(r"__biz=([A-Za-z0-9=]+)", link)
+        return m.group(1) if m else ""
+
+    seen_titles = {}  # key → pub_date
+    title_deduped = []
+    for it in items:
+        title = (it.get("title") or "").strip()
+        if not title:
+            title_deduped.append(it)
+            continue
+
+        link = it.get("link", "")
+        pub_date = it.get("pub_date", "")
+
+        if is_wechat:
+            dedup_key = _wechat_biz(link) + "|" + _norm_title(title)
+        else:
+            dedup_key = _norm_title(title)
+
+        if dedup_key in seen_titles:
+            # 检查是否在 48h 窗口内
+            prev_date = seen_titles[dedup_key]
+            if pub_date and prev_date:
+                try:
+                    pd_cur = datetime.datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                    pd_prev = datetime.datetime.fromisoformat(prev_date.replace("Z", "+00:00"))
+                    diff_hours = abs((pd_cur - pd_prev).total_seconds()) / 3600
+                    if diff_hours > 48:
+                        # 超过 48h，视为不同文章（如每日专栏）
+                        title_deduped.append(it)
+                        seen_titles[dedup_key] = pub_date  # 更新时间窗口
+                        continue
+                except (ValueError, AttributeError):
+                    pass
+            # 窗口内重复，跳过
+            continue
+
+        seen_titles[dedup_key] = pub_date
+        title_deduped.append(it)
+
+    items = title_deduped
+
+    removed = orig_count - len(items)
+    if removed > 0:
+        print("[去重] %s: %d → %d 条（移除 %d 条重复）"
+              % (source_key, orig_count, len(items), removed))
+
+    return items
+
+
 def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None):
     headers = dict(UA)
     if accept:
@@ -1830,21 +1929,8 @@ def _fetch_rss(source, timeout=None):
             for it in root.findall(".//" + rdf_ns + "item"):
                 _parse_rss_item(it, name, source["key"], source["cat"], items)
 
-    # V2EX 去重：同一帖子的每个回复都是独立条目（仅 #replyN 不同），
-    # 剥离锚点后按 link 去重，保留首条（最早回复）
-    if "v2ex" in source["key"]:
-        _seen_v2ex = set()
-        _deduped = []
-        for it in items:
-            _link = re.sub(r"#reply\d+$", "", it["link"])
-            if _link not in _seen_v2ex:
-                _seen_v2ex.add(_link)
-                it["link"] = _link
-                _deduped.append(it)
-        if len(_deduped) < len(items):
-            print("[V2EX] 去重: %d → %d 条（剥离 #replyN 锚点）"
-                  % (len(items), len(_deduped)))
-        items = _deduped
+    # ── 通用去重阶段 ──
+    items = _dedup_source_items(items, source["key"])
 
     # 写入缓存
     _rss_cache[key] = {

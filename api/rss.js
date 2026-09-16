@@ -374,6 +374,71 @@ function parseFeed(xml, sourceKey, maxItems) {
   return items;
 }
 
+// ── 单源内去重 ──
+
+function dedupSourceItems(items, sourceKey) {
+  if (!items || items.length < 2) return items;
+
+  // Pass 1: URL 归一化
+  for (const it of items) {
+    let link = it.link || '';
+    // V2EX: 剥离 #replyN
+    if (sourceKey && sourceKey.includes('v2ex')) {
+      link = link.replace(/#reply\d+$/, '');
+    }
+    // 通用: 剥离 tracking 参数
+    link = link.replace(/[?&](utm_source|utm_medium|utm_campaign|utm_content|at_medium|at_campaign)=[^&]*/g, '');
+    link = link.replace(/[?&]$/, '');
+    it.link = link;
+  }
+
+  // Pass 2: 相同 URL 去重
+  const seenUrls = new Set();
+  items = items.filter(it => {
+    const link = it.link || '';
+    if (!link || seenUrls.has(link)) return false;
+    seenUrls.add(link);
+    return true;
+  });
+
+  // Pass 3: 标题归一化去重（48h 窗口保护）
+  const isWechat = items.length > 0 && (items[0].link || '').includes('mp.weixin.qq.com');
+  const normTitle = (t) => (t || '').replace(/\s+/g, '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').slice(0, 50);
+  const wechatBiz = (link) => {
+    const m = (link || '').match(/__biz=([A-Za-z0-9=]+)/);
+    return m ? m[1] : '';
+  };
+
+  const seenTitles = new Map(); // key → pub_date
+  return items.filter(it => {
+    const title = (it.title || '').trim();
+    if (!title) return true;
+
+    const link = it.link || '';
+    const pubDate = it.pub_date || '';
+    const dedupKey = isWechat
+      ? wechatBiz(link) + '|' + normTitle(title)
+      : normTitle(title);
+
+    if (seenTitles.has(dedupKey)) {
+      const prevDate = seenTitles.get(dedupKey);
+      if (pubDate && prevDate) {
+        const pdCur = new Date(pubDate).getTime();
+        const pdPrev = new Date(prevDate).getTime();
+        if (!isNaN(pdCur) && !isNaN(pdPrev) && Math.abs(pdCur - pdPrev) > 48 * 3600 * 1000) {
+          // 超过 48h，视为不同文章
+          seenTitles.set(dedupKey, pubDate);
+          return true;
+        }
+      }
+      return false; // 窗口内重复
+    }
+
+    seenTitles.set(dedupKey, pubDate);
+    return true;
+  });
+}
+
 // ── 单源抓取 ──
 
 async function fetchOne(source) {
@@ -392,17 +457,8 @@ async function fetchOne(source) {
     const xml = await res.text();
     let items = parseFeed(xml, source.key, 30);
 
-    // V2EX 去重：同一帖子多个回复仅 #replyN 不同，剥离锚点按 link 去重
-    if (source.key && source.key.includes('v2ex')) {
-      const seen = new Set();
-      items = items.filter(it => {
-        const link = (it.link || '').replace(/#reply\d+$/, '');
-        if (seen.has(link)) return false;
-        seen.add(link);
-        it.link = link;
-        return true;
-      });
-    }
+    // 单源内去重：URL 归一化 + 标题重复检测
+    items = dedupSourceItems(items, source.key);
     
     // 成功：更新滚动缓存
     const cached = {
@@ -642,6 +698,13 @@ export default async function handler(req, res) {
             s: truncate(stripHtml(item.s || ''), 200),
           })),
         }));
+        // 兜底翻译：构建时翻译失败（熔断/限流/超时）的英文标题，在快照服务时补翻
+        // 已翻译的标题 t 已是中文 → isChinese 判定跳过；仅英文标题走 /api/translate
+        try {
+          await translateTitlesForSources(snapshot.sources, null);
+        } catch (e) {
+          console.error('[rss] Snapshot title translation failed (non-fatal):', e.message);
+        }
         const total = snapshot.sources.reduce((n, s) => n + s.items.length, 0);
         console.log(`[rss] Serving snapshot: ${snapshot.sources.length} sources, ${total} items`);
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
