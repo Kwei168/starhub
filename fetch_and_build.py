@@ -810,10 +810,6 @@ def main(mode="full"):
 
     print("更新完成：共 %d 个项目" % len(out))
 
-    # star 拉取失败 → 非零退出码，让 workflow 正确报错（RSS 已在上方独立运行）
-    if not stars_ok:
-        sys.exit(1)
-
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "full"
