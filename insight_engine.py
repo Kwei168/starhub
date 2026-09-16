@@ -1280,6 +1280,48 @@ def _clean_llm_hedging(text):
     return text
 
 
+# ────────────────── 统一 System Prompt（借鉴 TrendRadar 最佳实践） ───────────
+_SYS_ANALYST_PROMPT = (
+    "你是一名高级科技情报分析师。你的核心能力是从海量碎片化信息中提炼核心逻辑，"
+    "识别被大众忽略的弱信号。\n\n"
+    "## 核心思维模型\n"
+    "1. 见微知著：从散点关键词和话题中寻找底层共性叙事（如多条新闻共同指向'AI应用落地'）。\n"
+    "2. 交叉验证：RSS 专业视角与大众热榜的差异往往隐藏认知套利机会。\n"
+    "3. 反直觉思考：当全网叫好时寻找风险，当全网恐慌时寻找机会。拒绝平庸共识。\n\n"
+    "## 核心原则\n"
+    "1. 直击要害：拒绝'综上所述'、'众所周知'等废话，直接输出结论。\n"
+    "2. 逻辑闭环：不仅描述'发生了什么'，必须解释'为什么发生'以及'未来会怎样'。\n"
+    "3. 去情绪化：可以分析舆论情绪，但你的分析必须冷静、客观。\n\n"
+    "## 防幻觉约束\n"
+    "- 只分析检索上下文中实际存在的内容，直接输出结论。\n"
+    "- 正确示例：'Google 推出 Agent Platform 企业级评估服务，标志着 Agent 工程化进入系统化阶段。'\n"
+    "- 错误示例：'根据检索上下文，未能找到关于 Agent 评估的充分信息。'\n"
+    "- 禁止编造上下文中未出现的事实。"
+)
+
+# ────────────────── 平台调性映射（Platform DNA） ───────────
+_PLATFORM_DNA = {
+    'tech': '技术社区(英文/前沿)',
+    'cn_tech': '中文技术媒体(产业/应用)',
+    'v2ex': '开发者社区(技术/吐槽)',
+    'hackernews': '技术社区(英文/前沿)',
+    'zhihu': '知识社区(深度/批判)',
+    'weixin': '自媒体(垂直/深度)',
+    'arxiv': '学术论文(理论/前沿)',
+    'papers': '学术论文(理论/前沿)',
+    '36kr': '科技媒体(商业/创业)',
+    'startup': '创业媒体(融资/产品)',
+    'weibo': '社交媒体(情绪/传播)',
+    'douyin': '短视频(视觉/传播快)',
+    'rss': 'RSS订阅(专业/垂直)',
+}
+
+
+def _enrich_platform_tag(cat):
+    """将简短分类标签扩展为带调性描述的标签，供 LLM 感知数据源差异。"""
+    return _PLATFORM_DNA.get(cat, cat)
+
+
 # ────────────────── Task 5: generate_deep_insights ───────────
 def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=None,
                            parent_docs=None, keywords=None):
@@ -1334,15 +1376,18 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
         "- causal_chains: 因果链条数组，如 [\"A→B→C\"]\n"
         "- signals: 异动信号数组，每项含 signal 和 confidence\n"
         "- outlook: 一段100字以内的前瞻研判\n\n"
-        "绝对禁止：\n"
-        "- 禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字\n"
-        "- 禁止提及任何关键词在上下文中缺失\n"
-        "- 禁止编造上下文中未出现的事实\n"
-        "正确做法：只分析检索上下文中实际存在的内容，直接输出结论。\n\n"
+        "## 输出要求\n"
+        "- 每个因果链必须是 A→B→C 格式，描述事件间的因果关系\n"
+        "- 每个信号必须包含具体的升温话题或异常波动\n"
+        "- outlook 必须给出具体建议，禁止'建议持续关注'等空话\n\n"
+        "## 正确示例\n"
+        "causal_chains: [\"OpenAI发布Agent Platform→企业级评估需求爆发→Agent工程化进入系统化阶段\"]\n"
+        "signals: [{\"signal\": \"Agent评估服务升温(+15位)\", \"confidence\": 0.85}]\n"
+        "outlook: \"Agent基础设施竞争加剧，关注评估标准统一化进程\"\n\n"
         f"关键词（仅供参考）：{', '.join(keywords[:15]) if keywords else '无'}\n\n"
         f"检索上下文：\n{combined_context[:4000]}"
     )
-    sys_struct = "你是科技情报分析师。只返回 JSON。"
+    sys_struct = _SYS_ANALYST_PROMPT + "\n\n只返回 JSON，不要解释。"
     struct_result = None
     for _a in range(3):
         struct_result = llm.complete(prompt_struct, system_prompt=sys_struct, temperature=0.3, max_tokens=600)
@@ -1356,14 +1401,20 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     # 2) core_trends —— 整体市场/技术格局概览
     _kw_core = f"关键词（必须紧扣）：{', '.join(keywords[:10]) if keywords else '无'}\n\n" if keywords else ""
     prompt_core = (
-        "基于以下检索上下文，用一段200字以内的中文分析整体市场与技术格局的核心态势。\n"
-        "聚焦：哪些技术/产品/公司正在主导方向？竞争格局如何？\n"
-        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "基于以下检索上下文，用200字以内中文分析核心态势。\n\n"
+        "## 写法要求\n"
+        "1. 第一句话定性（使用'主导'/'分化'/'拐点'/'加速'等判断词）\n"
+        "2. 用【宏观主线】+【微观佐证】结构串联\n"
+        "3. 每个论点必须引用上下文中的具体事实\n"
+        "4. 禁止'综上所述'、'值得关注'等空话\n\n"
+        "## 正确示例\n"
+        "'Agent工程化进入系统化阶段。【宏观主线】OpenAI、Google、Anthropic 同步推出企业级 Agent 评估服务，"
+        "标志从'能用'到'可观测'的拐点。【微观佐证】1.LangSmith 发布 Trace Analytics 2.CrewAI 集成 OpenTelemetry'\n\n"
         "只返回纯文本，不要 JSON，不要字段名。\n\n"
         f"{_kw_core}"
         f"检索上下文：\n{combined_context[:4000]}"
     )
-    sys_core = "你是科技情报分析师。直接输出分析结论，不要解释。"
+    sys_core = _SYS_ANALYST_PROMPT + "\n\n直接输出分析结论，不要解释。"
     core_trends = ""
     for _a in range(3):
         core_trends = llm.complete(prompt_core, system_prompt=sys_core, temperature=0.4, max_tokens=400)
@@ -1374,14 +1425,20 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     # 3) rss_insights —— 侧重技术趋势、论文、开源动态
     _kw_rss = f"关键词（必须紧扣）：{', '.join(keywords[:10]) if keywords else '无'}\n\n" if keywords else ""
     prompt_rss = (
-        "基于以下检索上下文，用一段200字以内的中文分析技术趋势与开源动态。\n"
-        "聚焦：有哪些新的技术路线、开源项目、论文或架构创新？对行业有什么影响？\n"
-        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "基于以下检索上下文，用200字以内中文分析技术趋势与开源动态。\n\n"
+        "## 写法要求\n"
+        "1. 聚焦硬核增量：新技术路线、开源项目、论文、架构创新\n"
+        "2. 用【认知纠偏】+【硬核增量】结构\n"
+        "3. 必须指出专业视角如何修正大众热搜的误区\n"
+        "4. 禁止平铺直叙罗列事件\n\n"
+        "## 正确示例\n"
+        "'【认知纠偏】大众关注 Agent 功能演示，但 arXiv 论文显示评估方法论才是真正瓶颈。"
+        "【硬核增量】1.AgentBench 提出多维度评估框架 2.OpenTelemetry 发布 Agent 扩展规范'\n\n"
         "只返回纯文本，不要 JSON，不要字段名。\n\n"
         f"{_kw_rss}"
         f"检索上下文：\n{combined_context[:4000]}"
     )
-    sys_rss = "你是科技情报分析师。直接输出分析结论，不要解释。"
+    sys_rss = _SYS_ANALYST_PROMPT + "\n\n直接输出分析结论，不要解释。"
     rss_insights = ""
     for _a in range(3):
         rss_insights = llm.complete(prompt_rss, system_prompt=sys_rss, temperature=0.4, max_tokens=400)
@@ -1392,14 +1449,21 @@ def generate_deep_insights(llm, topic_clusters, child_vecs=None, child_nodes=Non
     # 4) narrative —— 串联核心事件的故事线
     _kw_narr = f"关键词（必须紧扣）：{', '.join(keywords[:10]) if keywords else '无'}\n\n" if keywords else ""
     prompt_narr = (
-        "基于以下检索上下文，用一段200字以内的中文串联核心事件，讲一个完整的故事线。\n"
-        "聚焦：事件之间的因果/时间关系是什么？整体叙事脉络如何？\n"
-        "绝对禁止说'检索上下文未包含'、'无法生成'、'建议提供'等解释性文字。\n"
+        "基于以下检索上下文，用200字以内中文串联核心事件的故事线。\n\n"
+        "## 写法要求\n"
+        "1. 必须呈现事件之间的因果/时间关系\n"
+        "2. 用'起因→发展→转折→结果'或类似叙事结构\n"
+        "3. 每个节点必须引用上下文中的具体事件\n"
+        "4. 禁止平铺罗列，必须有逻辑串联\n\n"
+        "## 正确示例\n"
+        "'Agent 工程化浪潮始于 OpenAI 发布 Assistants API，但企业落地遭遇'黑箱'困境。"
+        "转折点是 Google 推出 Agent Space 企业版，首次引入可观测性。随后 Anthropic 跟进发布 Claude Agent SDK，"
+        "竞争焦点从'功能演示'转向'可评估、可审计'。'\n\n"
         "只返回纯文本，不要 JSON，不要字段名。\n\n"
         f"{_kw_narr}"
         f"检索上下文：\n{combined_context[:4000]}"
     )
-    sys_narr = "你是科技情报分析师。直接输出分析结论，不要解释。"
+    sys_narr = _SYS_ANALYST_PROMPT + "\n\n直接输出分析结论，不要解释。"
     narrative = ""
     for _a in range(3):
         narrative = llm.complete(prompt_narr, system_prompt=sys_narr, temperature=0.4, max_tokens=400)
