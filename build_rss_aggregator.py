@@ -1743,13 +1743,15 @@ def _translate_source_items(items):
 # ──────────────────────────── RSS 抓取 ────────────────────────────
 
 def _dedup_source_items(items, source_key):
-    """单源内去重：URL 归一化 + 标题重复检测。
+    """单源内去重：URL 归一化 + 内容重复检测。
 
     处理三类重复：
     1. V2EX #replyN 锚点（同一帖子多回复）
-    2. 微信公众号重复群发（同 __biz + 标题，不同 mid/sn）
-    3. 通用 URL 变体（http/www、tracking 参数、fragment）
-    48h 窗口保护：同一标题在不同天出现视为不同文章（如每日专栏）。
+    2. 微信公众号重复群发（同 __biz + 标题 + 摘要，不同 mid/sn）
+    3. 通用 URL 变体（tracking 参数、fragment）
+
+    微信公众号策略：标题+摘要都相同才视为重复（避免误删每日专栏）。
+    其他源策略：标题归一化去重（48h 窗口保护每日专栏）。
     """
     if len(items) < 2:
         return items
@@ -1762,10 +1764,10 @@ def _dedup_source_items(items, source_key):
         # V2EX: 剥离 #replyN
         if "v2ex" in source_key:
             link = re.sub(r"#reply\d+$", "", link)
-        # 通用: 剥离尾部 fragment（#xxx）和常见 tracking 参数
-        link = re.sub(r"#(?!reply\d+$)[^#]*$", "", link)  # 保留 #replyN 给上面处理
+        # 通用: 剥离尾部 fragment 和常见 tracking 参数
+        link = re.sub(r"#(?!reply\d+$)[^#]*$", "", link)
         link = re.sub(r"[?&](utm_source|utm_medium|utm_campaign|utm_content|at_medium|at_campaign)=[^&]*", "", link)
-        link = re.sub(r"[?&]$", "", link)  # 尾部空参数
+        link = re.sub(r"[?&]$", "", link)
         it["link"] = link
 
     # ── Pass 2: 完全相同 URL 去重（保留首条）──
@@ -1780,58 +1782,78 @@ def _dedup_source_items(items, source_key):
         url_deduped.append(it)
     items = url_deduped
 
-    # ── Pass 3: 标题归一化去重（48h 窗口保护）──
-    # 微信公众号: __biz + 标题 作为去重键
-    # 其他源: 归一化标题作为去重键
-    is_wechat = "mp.weixin.qq.com" in (items[0].get("link", "") if items else "")
+    # ── Pass 3: 内容去重 ──
+    # 检测是否微信源
+    is_wechat = any("mp.weixin.qq.com" in (it.get("link", "") or "") for it in items[:5])
 
-    def _norm_title(t):
+    def _norm_text(t):
+        """归一化文本：去空白、小写、去标点"""
         t = re.sub(r"\s+", "", t).lower()
         t = re.sub(r"[^\w\u4e00-\u9fff]", "", t)
-        return t[:50]
+        return t[:80]
 
     def _wechat_biz(link):
         m = re.search(r"__biz=([A-Za-z0-9=]+)", link)
         return m.group(1) if m else ""
 
-    seen_titles = {}  # key → pub_date
-    title_deduped = []
-    for it in items:
-        title = (it.get("title") or "").strip()
-        if not title:
-            title_deduped.append(it)
-            continue
+    if is_wechat:
+        # 微信策略：标题+摘要都相同才视为重复
+        seen_content = {}  # key → True
+        content_deduped = []
+        for it in items:
+            title = (it.get("title") or "").strip()
+            summary = (it.get("summary") or "").strip()
+            link = it.get("link", "")
 
-        link = it.get("link", "")
-        pub_date = it.get("pub_date", "")
+            if not title:
+                content_deduped.append(it)
+                continue
 
-        if is_wechat:
-            dedup_key = _wechat_biz(link) + "|" + _norm_title(title)
-        else:
+            # 去重键：__biz + 归一化标题 + 归一化摘要
+            dedup_key = _wechat_biz(link) + "|" + _norm_text(title) + "|" + _norm_text(summary)
+
+            if dedup_key in seen_content:
+                continue  # 标题+摘要都相同，真重复
+
+            seen_content[dedup_key] = True
+            content_deduped.append(it)
+        items = content_deduped
+    else:
+        # 其他源：标题归一化去重（48h 窗口保护）
+        def _norm_title(t):
+            t = re.sub(r"\s+", "", t).lower()
+            t = re.sub(r"[^\w\u4e00-\u9fff]", "", t)
+            return t[:50]
+
+        seen_titles = {}  # key → pub_date
+        title_deduped = []
+        for it in items:
+            title = (it.get("title") or "").strip()
+            if not title:
+                title_deduped.append(it)
+                continue
+
+            pub_date = it.get("pub_date", "")
             dedup_key = _norm_title(title)
 
-        if dedup_key in seen_titles:
-            # 检查是否在 48h 窗口内
-            prev_date = seen_titles[dedup_key]
-            if pub_date and prev_date:
-                try:
-                    pd_cur = datetime.datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
-                    pd_prev = datetime.datetime.fromisoformat(prev_date.replace("Z", "+00:00"))
-                    diff_hours = abs((pd_cur - pd_prev).total_seconds()) / 3600
-                    if diff_hours > 48:
-                        # 超过 48h，视为不同文章（如每日专栏）
-                        title_deduped.append(it)
-                        seen_titles[dedup_key] = pub_date  # 更新时间窗口
-                        continue
-                except (ValueError, AttributeError):
-                    pass
-            # 窗口内重复，跳过
-            continue
+            if dedup_key in seen_titles:
+                prev_date = seen_titles[dedup_key]
+                if pub_date and prev_date:
+                    try:
+                        pd_cur = datetime.datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                        pd_prev = datetime.datetime.fromisoformat(prev_date.replace("Z", "+00:00"))
+                        diff_hours = abs((pd_cur - pd_prev).total_seconds()) / 3600
+                        if diff_hours > 48:
+                            title_deduped.append(it)
+                            seen_titles[dedup_key] = pub_date
+                            continue
+                    except (ValueError, AttributeError):
+                        pass
+                continue
 
-        seen_titles[dedup_key] = pub_date
-        title_deduped.append(it)
-
-    items = title_deduped
+            seen_titles[dedup_key] = pub_date
+            title_deduped.append(it)
+        items = title_deduped
 
     removed = orig_count - len(items)
     if removed > 0:
