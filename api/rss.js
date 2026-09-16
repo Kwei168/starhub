@@ -123,8 +123,25 @@ function loadSnapshot() {
   try {
     const p = join(process.cwd(), 'rss_api_snapshot.json');
     const snap = JSON.parse(readFileSync(p, 'utf-8'));
+    const totalChunks = snap._total_chunks || 1;
+
+    // 合并分块快照（rss_api_snapshot.json + rss_api_snapshot_1.json ...）
+    if (totalChunks > 1) {
+      for (let i = 1; i < totalChunks; i++) {
+        try {
+          const cp = join(process.cwd(), `rss_api_snapshot_${i}.json`);
+          const cs = JSON.parse(readFileSync(cp, 'utf-8'));
+          if (cs.sources && cs.sources.length) {
+            snap.sources = snap.sources.concat(cs.sources);
+          }
+        } catch (e) {
+          console.warn(`[rss] Failed to load snapshot chunk ${i}:`, e.message);
+        }
+      }
+    }
+
     const total = (snap.sources || []).reduce((n, s) => n + (s.items || []).length, 0);
-    console.log(`[rss] Loaded snapshot: ${(snap.sources || []).length} sources, ${total} items`);
+    console.log(`[rss] Loaded snapshot: ${(snap.sources || []).length} sources, ${total} items (${totalChunks} chunks)`);
     return snap;
   } catch (err) {
     console.log('[rss] Snapshot not found, falling back to live fetch');

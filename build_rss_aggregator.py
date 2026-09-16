@@ -551,7 +551,10 @@ def _load_snapshot_meta():
 
 
 def _save_api_snapshot(sources_with_items, meta=None):
-    """生成 API 快照 JSON，供 /api/rss 直接返回，避免实时抓取丢失历史累积数据"""
+    """生成 API 快照 JSON（分块），供 /api/rss 直接返回，避免实时抓取丢失历史累积数据。
+    按 ~80MB 上限拆分为 rss_api_snapshot.json + rss_api_snapshot_1.json ...，
+    避免超过 GitHub 100MB 单文件限制。"""
+    MAX_SNAPSHOT_BYTES = 80 * 1024 * 1024
     snapshot_sources = []
     for src in sources_with_items:
         items = []
@@ -564,12 +567,8 @@ def _save_api_snapshot(sources_with_items, meta=None):
             }
             if it.get("bad_date"):
                 item["bad_date"] = True
-            # 日期缺失，d 由 first_seen 降级而来 → 前端需区分展示（「收录」而非「发布」）
             if it.get("date_fallback"):
                 item["date_fallback"] = True
-            # 话题标签（issue M5）：此前白名单只有 t/u/s/d，tags 在快照层就被丢掉，
-            # 打标结果成为死数据。仅非空时写入 —— 无标签条目连键都不出现，
-            # 不为空值付体积（快照 item 只有 4~5 个字段，占比比 chunk0 更敏感）。
             _tags = it.get("tags")
             if _tags:
                 item["tags"] = _tags
@@ -589,16 +588,49 @@ def _save_api_snapshot(sources_with_items, meta=None):
             "cat": src.get("cat", "other"), "color": src.get("color", "#6366f1"),
             "tier": src.get("tier", 3), "items": items,
         })
-    snapshot = {
-        "t": _now_bj().isoformat(),
-        "sources": snapshot_sources,
-    }
-    if meta:
-        snapshot["meta"] = meta
+
+    # 估算每源体积，按体积均匀分桶
+    src_sizes = []
+    for s in snapshot_sources:
+        try:
+            sz = len(json.dumps(s, ensure_ascii=False).encode("utf-8"))
+        except Exception:
+            sz = 1024
+        src_sizes.append(sz)
+    total_bytes = sum(src_sizes)
+    n_chunks = max(1, (total_bytes + MAX_SNAPSHOT_BYTES - 1) // MAX_SNAPSHOT_BYTES)
+
+    buckets = [[] for _ in range(n_chunks)]
+    bucket_sizes = [0] * n_chunks
+    for i, (s, sz) in enumerate(zip(snapshot_sources, src_sizes)):
+        min_idx = bucket_sizes.index(min(bucket_sizes))
+        buckets[min_idx].append(s)
+        bucket_sizes[min_idx] += sz
+
+    total_items = sum(len(s["items"]) for s in snapshot_sources)
     try:
-        _atomic_write_json("rss_api_snapshot.json", snapshot, ensure_ascii=False)
-        total_items = sum(len(s["items"]) for s in snapshot_sources)
-        print("[快照] 保存 API 快照: %d 源, %d 篇" % (len(snapshot_sources), total_items))
+        for idx, bucket in enumerate(buckets):
+            fname = "rss_api_snapshot.json" if idx == 0 else "rss_api_snapshot_%d.json" % idx
+            chunk_data = {"t": _now_bj().isoformat(), "sources": bucket}
+            if idx == 0 and meta:
+                chunk_data["meta"] = meta
+                chunk_data["_total_chunks"] = n_chunks
+            _atomic_write_json(fname, chunk_data, ensure_ascii=False)
+            size_mb = bucket_sizes[idx] / 1024 / 1024
+            print("[快照] %s: %d 源 %.1f MB" % (fname, len(bucket), size_mb))
+
+        # 清理旧的多余快照文件
+        import glob
+        for old_file in glob.glob("rss_api_snapshot_*.json"):
+            try:
+                num = int(old_file.replace("rss_api_snapshot_", "").replace(".json", ""))
+                if num >= n_chunks:
+                    os.remove(old_file)
+                    print("[快照] 清理旧文件: %s" % old_file)
+            except ValueError:
+                pass
+
+        print("[快照] 保存 API 快照: %d 源 %d 篇 (%d 块)" % (len(snapshot_sources), total_items, n_chunks))
     except Exception as e:
         print("[快照] 保存失败: %s" % e, file=sys.stderr)
 
@@ -3770,19 +3802,34 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     buildArt();
     renderChips(); renderWall(); renderPanel(); updateTitle(); updateUnreadBtn(); updateBmBtn();
     _bootFinish();
-    /* 让首屏先稳定可交互，再在空闲时解析 25MB 的 chunk1，避免后台加载反过来卡住主线程 */
+    /* 让首屏先稳定可交互，再在空闲时依次加载后台分块 chunk1/2/3...，避免一次性加载阻塞主线程 */
     var _loadRest=function(){
-      loadChunk(1).then(function(){
-        /* P2 加固：onload 不等于数据完好（截断/CDN 损坏/错误页 200 也会 onload）。
-           __CHUNKS[1] 缺失时告警 + 提示刷新，不再无痕假成功 */
-        if(!(window.__CHUNKS&&window.__CHUNKS[1])){
-          console.warn('[starhub] chunk1 onload 但 __CHUNKS[1] 缺失（文件截断或内容异常）');
-          toast('剩余内容数据异常，刷新页面可重试');
-          return;
-        }
-        var n=_mergeChunk(window.__CHUNKS&&window.__CHUNKS[1]);
-        if(n>0)toast('\u5df2\u52a0\u8f7d\u5168\u90e8 '+ART.length+' \u7bc7\u5185\u5bb9\uff08\u65b0\u589e '+n+' \u7bc7\uff09');
-      }).catch(function(e){console.warn('[starhub] chunk1 加载失败:', e);});
+      var _loaded=0;
+      var _loadNext=function(idx){
+        loadChunk(idx).then(function(){
+          if(window.__CHUNKS&&window.__CHUNKS[idx]){
+            var n=_mergeChunk(window.__CHUNKS[idx]);
+            _loaded+=n;
+          }
+          // 尝试加载下一个 chunk
+          _loadNext(idx+1);
+        }).catch(function(e){
+          // chunk 不存在或加载失败
+          if(idx===1){
+            // chunk1 是必需的，缺失则警告
+            if(!(window.__CHUNKS&&window.__CHUNKS[1])){
+              console.warn('[starhub] chunk1 onload 但 __CHUNKS[1] 缺失（文件截断或内容异常）');
+              toast('剩余内容数据异常，刷新页面可重试');
+              return;
+            }
+          }
+          // 所有 chunk 加载完成
+          if(_loaded>0){
+            toast('已加载全部 '+ART.length+' 篇内容（新增 '+_loaded+' 篇）');
+          }
+        });
+      };
+      _loadNext(1);
     };
     if(window.requestIdleCallback)window.requestIdleCallback(_loadRest,{timeout:5000});
     else setTimeout(_loadRest,1200);
@@ -5476,22 +5523,74 @@ def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     return chunk0, chunk1
 
 def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
-    """写出 rss-data-0.js / rss-data-1.js（与 OUT 同目录），页面经 script 标签加载。"""
+    """写出 rss-data-0.js + rss-data-{1..N}.js（与 OUT 同目录），页面经 script 标签加载。
+    chunk1 按 ~80MB 上限自动拆分，避免超过 GitHub 100MB 单文件限制。"""
     out_dir = os.path.dirname(os.path.abspath(OUT)) or "."
     chunk0, chunk1 = _split_data_chunks(sources, chunk0_size)
 
     def _dump(obj):
         return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
+    # chunk0: 首屏
     with open(os.path.join(out_dir, "rss-data-0.js"), "w", encoding="utf-8") as f:
         f.write("/* StarHub data chunk 0 (first screen) - auto generated, do not edit */\n")
         f.write("(window.__CHUNKS=window.__CHUNKS||[])[0]=" + _dump({"sources": chunk0}) + ";\n")
-    with open(os.path.join(out_dir, "rss-data-1.js"), "w", encoding="utf-8") as f:
-        f.write("/* StarHub data chunk 1 (background merge) - auto generated, do not edit */\n")
-        f.write("(window.__CHUNKS=window.__CHUNKS||[])[1]=" + _dump({"sources": chunk1}) + ";\n")
     n0 = sum(len(s.get("items", [])) for s in chunk0)
-    n1 = sum(len(s.get("items", [])) for s in chunk1)
-    print("[数据分块] chunk0 %d 篇 / chunk1 %d 篇（共 %d）" % (n0, n1, n0 + n1))
+
+    # chunk1+: 按 ~80MB 上限拆分，避免 GitHub 100MB 限制
+    MAX_CHUNK_BYTES = 80 * 1024 * 1024
+    n1_total = sum(len(s.get("items", [])) for s in chunk1)
+    if not chunk1:
+        # 无剩余数据，写空 chunk1
+        with open(os.path.join(out_dir, "rss-data-1.js"), "w", encoding="utf-8") as f:
+            f.write("/* StarHub data chunk 1 - auto generated, do not edit */\n")
+            f.write("(window.__CHUNKS=window.__CHUNKS||[])[1]={sources:[]};\n")
+        print("[数据分块] chunk0 %d 篇 / chunk1 0 篇（共 %d）" % (n0, n0))
+        return
+
+    # 估算每源 JSON 体积，按体积均匀分桶
+    src_sizes = []
+    for s in chunk1:
+        try:
+            sz = len(json.dumps(s, ensure_ascii=False).encode("utf-8"))
+        except Exception:
+            sz = 1024
+        src_sizes.append(sz)
+    total_bytes = sum(src_sizes)
+    n_chunks = max(1, (total_bytes + MAX_CHUNK_BYTES - 1) // MAX_CHUNK_BYTES)
+    target_per_chunk = total_bytes / n_chunks
+
+    buckets = [[] for _ in range(n_chunks)]
+    bucket_sizes = [0] * n_chunks
+    for i, (s, sz) in enumerate(zip(chunk1, src_sizes)):
+        # 放入当前最小的桶
+        min_idx = bucket_sizes.index(min(bucket_sizes))
+        buckets[min_idx].append(s)
+        bucket_sizes[min_idx] += sz
+
+    for idx, bucket in enumerate(buckets):
+        chunk_idx = idx + 1
+        fname = "rss-data-%d.js" % chunk_idx
+        with open(os.path.join(out_dir, fname), "w", encoding="utf-8") as f:
+            f.write("/* StarHub data chunk %d (background merge) - auto generated, do not edit */\n" % chunk_idx)
+            f.write("(window.__CHUNKS=window.__CHUNKS||[])[%d]=" % chunk_idx + _dump({"sources": bucket}) + ";\n")
+        n_items = sum(len(s.get("items", [])) for s in bucket)
+        size_mb = bucket_sizes[idx] / 1024 / 1024
+        print("[数据分块] %s: %d 源 %d 篇 %.1f MB" % (fname, len(bucket), n_items, size_mb))
+
+    # 清理旧的多余 chunk 文件（如果上次构建分了更多块）
+    import glob
+    for old_file in glob.glob(os.path.join(out_dir, "rss-data-*.js")):
+        basename = os.path.basename(old_file)
+        try:
+            num = int(basename.replace("rss-data-", "").replace(".js", ""))
+            if num > n_chunks:
+                os.remove(old_file)
+                print("[数据分块] 清理旧文件: %s" % basename)
+        except ValueError:
+            pass
+
+    print("[数据分块] chunk0 %d 篇 / %d 个后台块 %d 篇（共 %d）" % (n0, n_chunks, n1_total, n0 + n1_total))
 
 
 def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analysis_data=None,
