@@ -113,7 +113,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/
+          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py
           if [ -f hot_history.json ]; then git add hot_history.json; fi
           if git diff --cached --quiet; then
             echo "No changes, skip commit."
@@ -128,7 +128,7 @@ jobs:
               # git reset --soft 保留工作区（含构建产物），将 HEAD 对齐到最新 origin/main
               git reset --soft origin/main
               # 重新 stage 所有产物 + 日志（现在也包含 remote 带来的 summary 等变更）
-              git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/
+              git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
               if git push --force-with-lease; then
@@ -137,7 +137,7 @@ jobs:
                 echo "Fast retry also failed. Falling back to full rebuild..."
                 git reset --hard origin/main
                 python fetch_and_build.py $MODE
-                git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/
+                git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py
                 if [ -f hot_history.json ]; then git add hot_history.json; fi
                 git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
                 git push --force-with-lease
