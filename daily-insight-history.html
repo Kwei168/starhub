@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>每日深度洞察 · 历史</title>
+<style>
+:root {
+  --bg:#faf8f4; --card:#fffdf9; --ink:#1f1c17; --muted:#6f6860;
+  --line:#e4ddd0; --accent:#30891A; --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+}
+[data-theme="dark"] {
+  --bg:#101114; --card:#17191d; --ink:#e9e6df; --muted:#a49c90; --line:#2a2d33; --accent:#5bc23e;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--body);background:var(--bg);color:var(--ink);line-height:1.65;padding:20px;max-width:900px;margin:0 auto;}
+h1{font-size:1.5em;margin-bottom:16px;}
+select{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font-size:14px;margin-bottom:20px;}
+.day-theme{font-size:1.1em;color:var(--accent);margin-bottom:16px;padding:10px;background:var(--card);border-radius:8px;border-left:3px solid var(--accent);}
+.event-card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:12px;}
+.event-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.status-badge{color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;}
+.resonance-badge{font-size:12px;padding:2px 6px;border-radius:4px;background:rgba(255,100,0,.1);}
+.score{margin-left:auto;font-weight:bold;color:var(--accent);}
+.event-label{font-size:1.1em;margin-bottom:6px;}
+.event-summary{color:var(--muted);margin-bottom:8px;font-size:0.95em;}
+.event-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.src-tag{font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(0,0,0,.06);color:var(--muted);}
+.cat-badge{font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(48,137,26,.1);color:var(--accent);}
+.deep{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
+.deep h4{font-size:0.95em;color:var(--accent);margin-bottom:8px;}
+.deep-section{margin-bottom:10px;}
+.deep-section strong{display:block;font-size:0.85em;color:var(--muted);margin-bottom:2px;}
+.deep-section p{font-size:0.95em;line-height:1.7;}
+.deep-section blockquote{font-style:italic;padding:8px 12px;border-left:3px solid var(--accent);background:rgba(48,137,26,.04);margin:4px 0;}
+.confidence{font-size:12px;color:var(--muted);margin-top:4px;}
+</style>
+</head>
+<body>
+<h1>📊 每日深度洞察 · 历史</h1>
+<select id="daySelect" onchange="switchDay(this.value)">
+<option value="day-2026-09-16">2026-09-16 (2 事件)</option>
+</select>
+
+<section id="day-2026-09-16" class="day-section" >
+  <div class="day-theme">📌 测试主题</div>
+  
+<article class="event-card">
+  <div class="event-header">
+    <span class="status-badge" style="background:#2563eb">新事件</span>
+    <span class="resonance-badge">📱 消费级</span>
+    <span class="score">0.0</span>
+  </div>
+  <h3 class="event-label">OpenAI GPT-5 发布</h3>
+  <p class="event-summary"></p>
+  <div class="event-meta"><span class="src-tag">hot</span> <span class="src-tag">rss</span> <span class="cat-badge">weibo</span></div>
+  
+</article>
+
+<article class="event-card">
+  <div class="event-header">
+    <span class="status-badge" style="background:#2563eb">新事件</span>
+    <span class="resonance-badge">📱 消费级</span>
+    <span class="score">0.0</span>
+  </div>
+  <h3 class="event-label">不同事件 1</h3>
+  <p class="event-summary"></p>
+  <div class="event-meta"><span class="src-tag">hot</span> <span class="src-tag">rss</span> <span class="cat-badge">weibo</span></div>
+  
+</article>
+</section>
+<script>
+function switchDay(id){
+  document.querySelectorAll('.day-section').forEach(function(s){s.style.display='none';});
+  var el=document.getElementById(id);
+  if(el)el.style.display='block';
+}
+</script>
+</body>
+</html>

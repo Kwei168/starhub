@@ -11,5 +11,6 @@
   "insight_top_keywords": 30,
   "insight_top_topics": 15,
   "diverse_enabled": true,
-  "diverse_window_minutes": 120
+  "diverse_window_minutes": 120,
+  "daily_insight_enabled": true
 }

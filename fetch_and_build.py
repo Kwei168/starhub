@@ -667,7 +667,8 @@ def fetch_following_events(token):
             last_dt = _cn_dt((evs[-1].get("created_at") or ""))
             if last_dt is None or last_dt < cutoff:
                 break
-            time.sleep(1)  # 限流：GitHub 建议相邻请求间隔 ≥1s，避免二级速率限制
+            time.sleep(1)  # 限流：同一用户分页间 ≥1s，避免二级速率限制
+        time.sleep(0.5)  # 限流：不同用户间 ≥0.5s，防止连续请求触发 GitHub 二级速率限制 (403)
     feed.sort(key=lambda x: (x.get("date", ""), x.get("time", "")), reverse=True)
     return feed
 
@@ -807,6 +808,14 @@ def main(mode="full"):
         import traceback
         # ::error:: 注解让它出现在 Actions 摘要里——禁止"绿色成功但 RSS 产物缺失"的假成功
         print("::error::[RSS聚合] 生成失败:\n%s" % traceback.format_exc(), file=sys.stderr)
+
+    # 每日深度洞察：RAG 管线（在 RSS 聚合之后，依赖 rss_history.json）
+    try:
+        import build_daily_insight
+        build_daily_insight.main()
+    except Exception:
+        import traceback
+        print("::error::[每日洞察] 生成失败:\n%s" % traceback.format_exc(), file=sys.stderr)
 
     print("更新完成：共 %d 个项目" % len(out))
 
