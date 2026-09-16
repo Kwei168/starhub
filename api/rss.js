@@ -17,6 +17,100 @@ const UA = 'starhub-rss-aggregator/1.0';
 let rollingCache = new Map();  // key → { items, lastModified }
 let fullCache = { t: 0, v: null };  // 完整响应缓存
 
+// ── 标题翻译（调用同项目 /api/translate，复用完整降级链：Agnes → Zen → GTX → MyMemory） ──
+let transCache = new Map();  // text → translated（进程内缓存，避免重复调用）
+
+function isChinese(text) {
+  if (!text) return true;
+  let cn = 0;
+  for (const c of text) { if (c >= '\u4e00' && c <= '\u9fff') cn++; }
+  return cn > text.length * 0.3;
+}
+
+function getTransBaseUrl() {
+  // 优先用 VERCEL_URL 环境变量，回退到已知生产域名
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'https://starhub-refresh.vercel.app';
+}
+
+async function translateBatchViaApi(texts) {
+  // 过滤已翻译和中文
+  const pending = [];
+  const results = new Array(texts.length);
+  for (let i = 0; i < texts.length; i++) {
+    const t = texts[i];
+    if (!t || isChinese(t)) { results[i] = t; continue; }
+    if (transCache.has(t)) { results[i] = transCache.get(t); continue; }
+    pending.push(i);
+  }
+  if (pending.length === 0) return results;
+
+  // 分批调用 /api/translate（MAX_TEXTS=20）
+  const baseUrl = getTransBaseUrl();
+  const MAX_BATCH = 20;
+  for (let i = 0; i < pending.length; i += MAX_BATCH) {
+    const chunk = pending.slice(i, i + MAX_BATCH);
+    const chunkTexts = chunk.map(idx => texts[idx]);
+    try {
+      const r = await fetch(`${baseUrl}/api/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Origin': 'https://starhub-refresh.vercel.app' },
+        body: JSON.stringify({ texts: chunkTexts, mode: 'bulk' }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        if (j.translations) {
+          for (let k = 0; k < chunk.length; k++) {
+            const zh = j.translations[k] || texts[chunk[k]];
+            results[chunk[k]] = zh;
+            transCache.set(texts[chunk[k]], zh);
+          }
+          continue;
+        }
+      }
+    } catch (e) {
+      console.error('[rss] translate API call failed:', e.message);
+    }
+    // 翻译失败，保留原文
+    for (const idx of chunk) { results[idx] = texts[idx]; }
+  }
+  return results;
+}
+
+async function translateTitlesForSources(formattedSources) {
+  // 收集所有英文标题（去重）
+  const titleSet = new Map();  // title → [items]
+  for (const src of formattedSources) {
+    for (const it of src.items) {
+      const t = it.t || '';
+      if (t && !isChinese(t) && !titleSet.has(t)) {
+        titleSet.set(t, []);
+      }
+      if (t && !isChinese(t)) {
+        titleSet.get(t).push(it);
+      }
+    }
+  }
+  if (titleSet.size === 0) return;
+
+  const uniqueTitles = [...titleSet.keys()];
+  console.log(`[rss] Translating ${uniqueTitles.length} unique English titles via /api/translate`);
+
+  const translated = await translateBatchViaApi(uniqueTitles);
+  let count = 0;
+  for (let i = 0; i < uniqueTitles.length; i++) {
+    const zh = translated[i];
+    if (zh && zh !== uniqueTitles[i]) {
+      for (const it of titleSet.get(uniqueTitles[i])) {
+        it.t_zh = zh;
+      }
+      count++;
+    }
+  }
+  console.log(`[rss] Translation done: ${count}/${uniqueTitles.length} titles translated`);
+}
+
 // ── 加载 API 快照（构建时生成的 72h 累积数据） ──
 
 function loadSnapshot() {
@@ -451,6 +545,13 @@ export default async function handler(req, res) {
 
       const totalItems = formattedSources.reduce((n, s) => n + s.items.length, 0);
       console.log(`[rss] Batch ${batchIdx} done: ${formattedSources.length} sources, ${totalItems} items`);
+
+      // 标题翻译：调用 /api/translate（完整降级链 Agnes → Zen → GTX → MyMemory）
+      try {
+        await translateTitlesForSources(formattedSources);
+      } catch (e) {
+        console.error('[rss] Title translation failed (non-fatal):', e.message);
+      }
 
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
