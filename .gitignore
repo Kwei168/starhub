@@ -17,6 +17,20 @@ _adv*
 _agnes_batch_test.py
 _check_js_temp.js
 _fix_quotes.py
+_gh_*
+_check_*
+_compare_*
+_batch_*
+_verify_*
+
+# 构建中间产物（CI 生成，体积大，不进仓库）
+daily_insight_snapshot.json
+source_quality.json
+
+# 工具/IDE 本地产物
+.workbuddy/
+.zcode/
+nul
 
 # D1 嵌入向量缓存（~8MB/5000 条，CI 用 actions/cache 持久化，不进仓库）
 emb_cache.json
