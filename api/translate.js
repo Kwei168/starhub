@@ -1,9 +1,9 @@
 // Vercel Serverless Function：运行时翻译网关
-// 降级链（对齐构建时 build_rss_aggregator.py 的 _translate_to_zh）：
-//   Agnes(多key轮询) → OpenCode Zen(3模型轮询) → Google GTX → MyMemory
+// 降级链（快优先：GTX/MyMemory 1-3s，LLM 10-25s 仅作兜底）：
+//   Google GTX → MyMemory → Agnes(多key轮询) → OpenCode Zen(3模型轮询)
 //   + 全端点熔断（连续5次全败暂停5分钟）
 // 模式：
-//   mode:'full' —— 全文/摘要按钮（低频高价值），Agnes 主力，完整降级
+//   mode:'full' —— 全文/摘要按钮（低频高价值），GTX 主力，完整降级
 //   mode:'bulk' —— 批量补翻兜底（浏览器 GTX CORS 全灭时涌入），完整降级链，Agnes 限额30条
 // 用法：POST /api/translate  { "texts": ["..."], "mode": "full"|"bulk" }
 //        → 200 { ok: true, engine: "agnes"|"zen"|"gtx"|"mymemory"|...", translations: ["..."] }
@@ -207,10 +207,25 @@ function recordTransFailure() {
   }
 }
 
-// ── 统一降级链：Agnes(多key) → Zen(3模型) → GTX → MyMemory ──
+// ── 统一降级链：GTX → MyMemory → Agnes(多key) → Zen(3模型) ──
+// 快优先：GTX/MyMemory 通常 1-3s 完成，LLM 需 10-25s 仅作兜底
 async function translateWithFallback(text) {
   if (isTransBlocked()) return { zh: '', engine: 'blocked' };
-  // 1) Agnes（多 key 轮询）
+  // 1) Google GTX（快，1-3s，免费无限制）
+  try {
+    const zh = await translateGtxRetry(text);
+    setCache(text.slice(0, 200), zh);
+    recordTransSuccess();
+    return { zh, engine: 'gtx' };
+  } catch (e) { /* 降级 */ }
+  // 2) MyMemory（快，1-3s，免费兜底）
+  try {
+    const zh = await translateMyMemory(text);
+    setCache(text.slice(0, 200), zh);
+    recordTransSuccess();
+    return { zh, engine: 'mymemory' };
+  } catch (e) { /* 降级 */ }
+  // 3) Agnes（LLM，10-15s，有配额限制）
   if (AGNES_KEYS.length) {
     try {
       const zh = await translateOne(text, AGNES_KEYS);
@@ -219,26 +234,12 @@ async function translateWithFallback(text) {
       return { zh, engine: 'agnes' };
     } catch (e) { /* 降级 */ }
   }
-  // 2) OpenCode Zen（3 模型轮询）
+  // 4) OpenCode Zen（LLM，15-25s，免费模型可能被封）
   try {
     const zh = await translateZen(text);
     setCache(text.slice(0, 200), zh);
     recordTransSuccess();
     return { zh, engine: 'zen' };
-  } catch (e) { /* 降级 */ }
-  // 3) Google GTX（尽力而为）
-  try {
-    const zh = await translateGtxRetry(text);
-    setCache(text.slice(0, 200), zh);
-    recordTransSuccess();
-    return { zh, engine: 'gtx' };
-  } catch (e) { /* 降级 */ }
-  // 4) MyMemory（免费兜底）
-  try {
-    const zh = await translateMyMemory(text);
-    setCache(text.slice(0, 200), zh);
-    recordTransSuccess();
-    return { zh, engine: 'mymemory' };
   } catch (e) { /* 全败 */ }
   recordTransFailure();
   return { zh: '', engine: 'fail' };

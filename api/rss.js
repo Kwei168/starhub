@@ -16,7 +16,7 @@ const UA = 'starhub-rss-aggregator/1.0';
 let rollingCache = new Map();  // key → { items, lastModified }
 let fullCache = { t: 0, v: null };  // 完整响应缓存
 
-// ── 标题翻译（调用同项目 /api/translate，复用完整降级链：Agnes → Zen → GTX → MyMemory） ──
+// ── 标题翻译（调用同项目 /api/translate，降级链：GTX → MyMemory → Agnes → Zen） ──
 let transCache = new Map();  // text → translated（进程内缓存，避免重复调用）
 
 function isChinese(text) {
