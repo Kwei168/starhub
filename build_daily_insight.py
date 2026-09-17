@@ -1490,9 +1490,17 @@ def _deduplicate_after_phase1(clusters):
         return clusters
 
     def _simple_tokens(title):
-        """去重专用分词：只按空格/标点切分，不拆中文 n-gram。"""
-        parts = re.split(r'[\s,，。！？!?、；:：\"\"\'\'（）()\[\]{}|/\\·\-]+', (title or "").lower())
-        return {p for p in parts if p and len(p) >= 2}
+        """去重专用分词：英文按词切分 + 中文按 character bigrams。"""
+        text = (title or "").lower()
+        tokens = set()
+        # 提取英文单词（连续 ASCII 字符，≥2 字母）
+        for w in re.findall(r'[a-z0-9]{2,}', text):
+            tokens.add(w)
+        # 提取中文字符 bigrams（覆盖中文语义重叠）
+        cjk = re.findall(r'[\u4e00-\u9fff]', text)
+        for k in range(len(cjk) - 1):
+            tokens.add(cjk[k] + cjk[k + 1])
+        return tokens
 
     merged = []
     used = set()
