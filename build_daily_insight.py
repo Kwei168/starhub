@@ -118,7 +118,7 @@ VECTOR_CACHE_FILE = "daily_insight_vectors.npy"  # numpy 向量缓存（增量 e
 RETRIEVAL_TOP_K = 80   # 向量检索每查询返回数（扩大检索提升覆盖率）
 RRF_K = 60             # RRF 融合常数
 BM25_ENABLED = True     # BM25 混合检索开关
-MAX_EMBED_CHUNKS = 30000  # 最大 embedding chunk 数（超出按时间截断 RSS）
+MAX_EMBED_CHUNKS = 8000   # 最大 embedding chunk 数（首次构建上限，后续增量补充）
 INSIGHT_RSS_HOURS = 168   # 每日洞察取最近 N 小时的 RSS（7 天窗口，支持跨天趋势检测）
 
 # ── RAGAS 质量评估参数 ──
@@ -568,15 +568,27 @@ def _embed_chunks(texts):
                     "Content-Type": "application/json",
                 },
             )
-            try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                batch_vecs = [d["embedding"] for d in data.get("data", [])]
-                all_vecs.extend(batch_vecs)
-            except Exception as exc:
-                print("[每日洞察] SiliconFlow embed 批次 %d 失败: %s" % (i, exc),
-                      file=sys.stderr)
-                ok = False
+            # 重试循环：处理 401/429 等瞬时错误
+            for _retry in range(4):  # 最多重试 3 次
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    batch_vecs = [d["embedding"] for d in data.get("data", [])]
+                    all_vecs.extend(batch_vecs)
+                    break  # 成功，跳出重试
+                except Exception as exc:
+                    if _retry < 3:
+                        _wait = 5 * (2 ** _retry)  # 5s, 10s, 20s
+                        print("[每日洞察] SiliconFlow embed 批次 %d 重试 %d/3 "
+                              "(%s), 等 %ds" % (i, _retry + 1, exc, _wait),
+                              file=sys.stderr)
+                        time.sleep(_wait)
+                    else:
+                        print("[每日洞察] SiliconFlow embed 批次 %d 最终失败: %s" % (
+                              i, exc), file=sys.stderr)
+                        ok = False
+                        break
+            if not ok:
                 break
 
         if ok and len(all_vecs) == len(texts) and all_vecs:
