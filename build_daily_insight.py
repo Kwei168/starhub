@@ -1311,40 +1311,69 @@ def _parse_json(text):
 
 
 def _robust_parse_json(text):
-    """增强 JSON 解析：处理截断、前后缀噪音、括号缺失。"""
+    """增强 JSON 解析：处理截断、前后缀噪音、括号缺失。支持对象和数组。"""
     if not text:
         return None
     # 先用标准解析
     parsed = _parse_json(text)
-    if isinstance(parsed, dict):
+    if isinstance(parsed, (dict, list)):
         return parsed
-    # 提取 { 到最后一个 } 之间的内容
+    # 提取 { 到最后一个 } 之间的内容（对象）
     start = text.find('{')
     end = text.rfind('}')
     if start >= 0 and end > start:
         candidate = text[start:end + 1]
         try:
             result = json.loads(candidate)
-            if isinstance(result, dict):
+            if isinstance(result, (dict, list)):
+                return result
+        except json.JSONDecodeError:
+            pass
+    # 提取 [ 到最后一个 ] 之间的内容（数组）
+    astart = text.find('[')
+    aend = text.rfind(']')
+    if astart >= 0 and aend > astart:
+        candidate = text[astart:aend + 1]
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, list):
                 return result
         except json.JSONDecodeError:
             pass
     # 补全缺失的括号（处理截断 JSON）
+    # 优先处理数组（自审等场景返回数组）
+    if astart >= 0 and (start < 0 or astart < start):
+        candidate = text[astart:]
+        candidate = re.sub(r',\s*"[^"]*$', '', candidate)
+        candidate = re.sub(r',\s*\d+\.?\d*$', '', candidate)
+        # 先补全内部对象
+        opens = candidate.count('{') - candidate.count('}')
+        if opens > 0:
+            candidate = candidate.rstrip(', \t\r\n') + '}' * opens
+        # 再补全数组
+        arr_opens = candidate.count('[') - candidate.count(']')
+        if arr_opens > 0:
+            candidate = candidate.rstrip('} \t\r\n') + ']' * arr_opens
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, list):
+                return result
+        except json.JSONDecodeError:
+            pass
+    # 对象截断处理
     if start >= 0:
         candidate = text[start:]
-        # 移除尾部不完整字符串值
         candidate = re.sub(r',\s*"[^"]*$', '', candidate)
         candidate = re.sub(r',\s*\d+\.?\d*$', '', candidate)
         opens = candidate.count('{') - candidate.count('}')
         if opens > 0:
             candidate = candidate.rstrip(', \t\r\n') + '}' * opens
-        # 补全数组括号
         arr_opens = candidate.count('[') - candidate.count(']')
         if arr_opens > 0:
             candidate = candidate.rstrip('} \t\r\n') + ']' * arr_opens + '}'
         try:
             result = json.loads(candidate)
-            if isinstance(result, dict):
+            if isinstance(result, (dict, list)):
                 return result
         except json.JSONDecodeError:
             pass
@@ -1810,11 +1839,11 @@ def _self_review_phase1(llm, events, material_text):
         {"role": "system", "content": "你是 AI 行业分析师。只返回 JSON 数组。"},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.2, max_tokens=2000)
+    result = llm.complete(messages, temperature=0.2, max_tokens=3000)
     parsed = _robust_parse_json(result)
 
     if not isinstance(parsed, list):
-        print("[每日洞察] Phase 1 自审: 解析失败，保留原版", file=sys.stderr)
+        print("[每日洞察] Phase 1 自审: 解析失败（返回类型=%s），保留原版" % type(parsed).__name__, file=sys.stderr)
         return events
 
     corrected_count = 0
