@@ -812,29 +812,47 @@ def _hybrid_retrieve(index, chunks, queries, top_k=RETRIEVAL_TOP_K):
                     except Exception as exc:
                         print("[每日洞察] FAISS 搜索异常，降级为 BM25: %s" % exc, file=sys.stderr)
 
-    # ── 2) BM25 检索 ──
+    # ── 2) BM25 检索（窗口限制：非 RSS 优先 + 近期 RSS 补满） ──
     if BM25_AVAILABLE and BM25_ENABLED:
-        corpus = [c.get("text", "").split() for c in chunks]
-        if corpus:
-            bm25 = BM25Okapi(corpus)
+        non_rss_for_bm25 = [c for c in chunks if c.get("source_type") != "rss"]
+        rss_for_bm25 = [c for c in chunks if c.get("source_type") == "rss"]
+        rss_for_bm25.sort(key=lambda c: c.get("pub_date", ""), reverse=True)
+        bm25_budget = max(0, BM25_WINDOW - len(non_rss_for_bm25))
+        bm25_window = non_rss_for_bm25 + rss_for_bm25[:bm25_budget]
+        if bm25_budget == 0:
+            print("[每日洞察] BM25 警告: 非RSS(%d) >= WINDOW(%d), RSS预算=0" % (
+                len(non_rss_for_bm25), BM25_WINDOW))
+
+        bm25_id_to_pos = {}
+        bm25_pos_to_chunk = {}
+        bm25_corpus = []
+        for pos, c in enumerate(bm25_window):
+            cid = c["chunk_id"]
+            if cid not in bm25_id_to_pos:
+                bm25_id_to_pos[cid] = len(bm25_corpus)
+                bm25_pos_to_chunk[len(bm25_corpus)] = c
+                bm25_corpus.append(c.get("text", "").split())
+
+        if bm25_corpus:
+            bm25 = BM25Okapi(bm25_corpus)
             for query_text in queries:
                 q_tokens = query_text[:500].split()
                 if not q_tokens:
                     continue
                 bm_scores = bm25.get_scores(q_tokens)
-                # 取 top-k by BM25
                 top_indices = _np.argsort(bm_scores)[::-1][:top_k]
                 for rank, idx in enumerate(top_indices):
                     if bm_scores[idx] <= 0:
                         break
-                    cid = chunks[idx]["chunk_id"]
+                    c = bm25_pos_to_chunk[idx]
+                    cid = c["chunk_id"]
                     rrf = 1.0 / (RRF_K + rank + 1)
                     if cid in scores:
                         scores[cid]["rrf"] += rrf
                         scores[cid]["bm25"] = float(bm_scores[idx])
                     else:
                         scores[cid] = {
-                            "chunk": chunks[idx], "rrf": rrf,
+                            "chunk": c, "rrf": rrf,
                             "vec_sim": 0.0, "bm25": float(bm_scores[idx]),
                         }
 

@@ -331,5 +331,54 @@ print("常量检查: INSIGHT_RSS_HOURS=%d, MAX_EMBED_CHUNKS=%d, BM25_WINDOW=%d" 
     B.INSIGHT_RSS_HOURS, B.MAX_EMBED_CHUNKS, B.BM25_WINDOW))
 print("[PASS] 常量配置正确")
 
+# ── 测试 12: BM25 窗口化 ──
+print("\n=== 测试 12: BM25 窗口化 ===")
+if B.FAISS_AVAILABLE and B.BM25_AVAILABLE:
+    import numpy as np
+
+    mock_chunks = []
+    mock_vecs = []
+    for i in range(5000):
+        mock_chunks.append({
+            "chunk_id": "hot_%05d" % i,
+            "source_type": "hot",
+            "source": "weibo",
+            "title": "热榜条目 %d" % i,
+            "url": "", "text": "热榜测试文本 关键词Alpha %d" % i,
+            "pub_date": "",
+            "content_hash": "h_%016d" % i,
+        })
+        mock_vecs.append(np.random.rand(B.EMBED_DIM).astype(np.float32))
+    for i in range(10000):
+        mock_chunks.append({
+            "chunk_id": "rss_%05d" % i,
+            "source_type": "rss",
+            "source": "test_feed",
+            "title": "RSS条目 %d" % i,
+            "url": "", "text": "RSS测试文本 关键词Beta %d" % i,
+            "pub_date": "2026-09-%02dT10:00:00+08:00" % (1 + i % 7),
+            "content_hash": "r_%016d" % i,
+        })
+        mock_vecs.append(np.random.rand(B.EMBED_DIM).astype(np.float32))
+
+    all_vecs = np.vstack(mock_vecs)
+    norms = np.linalg.norm(all_vecs, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    all_vecs = all_vecs / norms
+    index = B._build_faiss_index(all_vecs)
+
+    queries = ["关键词Alpha 热榜搜索"]
+    results = B._hybrid_retrieve(index, mock_chunks, queries, top_k=80)
+
+    hot_hits = [r for r in results if r["source_type"] == "hot"]
+    print("总检索结果: %d, 其中 hot: %d, rss: %d" % (
+        len(results), len(hot_hits), len(results) - len(hot_hits)))
+    assert len(results) > 0, "应有检索结果"
+    assert len(hot_hits) > 0, "BM25 应能匹配 hot chunks 的关键词Alpha"
+    print("BM25_WINDOW=%d, 总 chunks=%d" % (B.BM25_WINDOW, len(mock_chunks)))
+    print("[PASS] BM25 窗口化检索正确")
+else:
+    print("[SKIP] FAISS/BM25 不可用，跳过窗口化测试")
+
 print("\n" + "=" * 50)
 print("全部测试通过！(RAG 管线 + RAGAS + 增量向量缓存)")
