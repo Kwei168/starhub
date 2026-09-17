@@ -380,5 +380,235 @@ if B.FAISS_AVAILABLE and B.BM25_AVAILABLE:
 else:
     print("[SKIP] FAISS/BM25 不可用，跳过窗口化测试")
 
+# ── 测试 9: TrustJudge 优化（Judge LLM + CoT prompt + 交叉验证 + 元数据） ──
+print("\n=== 测试 9: TrustJudge 优化 ===")
+
+# 9a) _MimoLLM 初始化
+mimo = B._MimoLLM()
+assert mimo.model == "mimo-v2.5-free", "默认模型应为 mimo-v2.5-free"
+assert mimo.timeout == 60, "默认超时应为 60s"
+assert mimo.api_key == "public", "默认 API key 应为 public"
+print("_MimoLLM 初始化: model=%s, timeout=%d" % (mimo.model, mimo.timeout))
+
+# 9b) _MimoLLM 自定义参数
+mimo_custom = B._MimoLLM(model="custom-model", timeout=120, api_key="test-key")
+assert mimo_custom.model == "custom-model"
+assert mimo_custom.timeout == 120
+assert mimo_custom.api_key == "test-key"
+print("_MimoLLM 自定义参数正确")
+
+# 9c) _FallbackJudgeLLM 首选模型成功
+class _FakeLLM:
+    def __init__(self, result, model="fake"):
+        self._result = result
+        self.model = model
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        return self._result
+
+primary = _FakeLLM('{"scores": {"context_coverage": 0.8}}', "mimo-v2.5-free")
+fallback = _FakeLLM('{"scores": {"context_coverage": 0.6}}', "agnes-2.5-flash")
+fj = B._FallbackJudgeLLM(primary, fallback)
+result = fj.complete([{"role": "user", "content": "test"}])
+assert result == '{"scores": {"context_coverage": 0.8}}', "应返回首选模型结果"
+assert len(fj._call_log) == 1, "应有 1 条调用日志"
+assert fj._call_log[0]["model"] == "mimo-v2.5-free"
+assert fj._call_log[0]["fallback"] is False
+assert fj._call_log[0]["elapsed_s"] >= 0
+print("_FallbackJudgeLLM 首选成功: model=%s, fallback=%s" % (
+    fj._call_log[0]["model"], fj._call_log[0]["fallback"]))
+
+# 9d) _FallbackJudgeLLM 降级逻辑
+class _FailLLM:
+    def __init__(self, model="fail"):
+        self.model = model
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        return ""
+
+fail_primary = _FailLLM("fail-model")
+fallback_ok = _FakeLLM('{"fallback": true}', "agnes-2.5-flash")
+fj2 = B._FallbackJudgeLLM(fail_primary, fallback_ok)
+result2 = fj2.complete([{"role": "user", "content": "test"}])
+assert result2 == '{"fallback": true}', "首选失败时应降级到备用模型"
+assert len(fj2._call_log) == 1
+assert fj2._call_log[0]["fallback"] is True
+assert fj2._call_log[0]["model"] == "agnes-2.5-flash"
+print("_FallbackJudgeLLM 降级成功: fallback=%s, model=%s" % (
+    fj2._call_log[0]["fallback"], fj2._call_log[0]["model"]))
+
+# 9e) _weighted_avg_scores 加权平均
+v1 = {
+    "context_coverage": 0.8, "faithfulness": 0.9, "relevance": 0.7,
+    "overall": 0.8,
+    "feedback": "v1反馈",
+    "weak_events": [1, 3],
+    "confidences": {"coverage": "high", "faithfulness": "high", "relevance": "high"},
+}
+v2 = {
+    "context_coverage": 0.6, "faithfulness": 0.7, "relevance": 0.5,
+    "overall": 0.6,
+    "feedback": "v2反馈",
+    "weak_events": [2, 3],
+    "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"},
+}
+merged = B._weighted_avg_scores(v1, v2)
+# v1 置信度高 (weight=1.5*3=4.5)，v2 置信度低 (weight=0.5*3=1.5)
+# cov = (0.8*4.5 + 0.6*1.5) / (4.5+1.5) = (3.6+0.9)/6.0 = 0.75
+assert abs(merged["context_coverage"] - 0.75) < 0.01, "加权平均 coverage 应接近 0.75, got %.3f" % merged["context_coverage"]
+assert "v1反馈" in merged["feedback"] and "v2反馈" in merged["feedback"], "反馈应合并"
+assert set(merged["weak_events"]) == {1, 2, 3}, "weak_events 应去重合并"
+print("_weighted_avg_scores: cov=%.2f (期望0.75), feedback合并正确, weak_events去重正确" % merged["context_coverage"])
+
+# 9f) _evaluate_report_quality 新 prompt 格式解析（含 scores 子对象 + confidences）
+mock_json = json.dumps({
+    "reasoning": {
+        "coverage": {"evidence_points": ["a", "b"], "covered": ["a"], "missed": ["b"], "confidence": "high"},
+        "faithfulness": {"claims": [{"claim": "x", "status": "supported"}], "confidence": "medium"},
+        "relevance": {"key_topics": ["t1"], "matched": ["t1"], "unmatched": [], "confidence": "low"},
+    },
+    "scores": {"context_coverage": 0.85, "faithfulness": 0.92, "relevance": 0.73},
+    "feedback": "测试改进建议",
+    "weak_events": [2],
+})
+class _MockJudgeLLM:
+    def __init__(self, result):
+        self._result = result
+        self.model = "mock-judge"
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        return self._result
+
+mock_llm = _MockJudgeLLM(mock_json)
+eval_result = B._evaluate_report_quality(mock_llm, events, "测试", "mock context")
+assert eval_result is not None, "应成功解析新 prompt 格式"
+assert eval_result["context_coverage"] == 0.85, "应从 scores 子对象读取 coverage"
+assert eval_result["faithfulness"] == 0.92, "应从 scores 子对象读取 faithfulness"
+assert eval_result["relevance"] == 0.73, "应从 scores 子对象读取 relevance"
+assert eval_result["confidences"]["coverage"] == "high", "应提取 coverage 置信度"
+assert eval_result["confidences"]["faithfulness"] == "medium", "应提取 faithfulness 置信度"
+assert eval_result["confidences"]["relevance"] == "low", "应提取 relevance 置信度"
+assert eval_result["weak_events"] == [2], "应解析 weak_events"
+assert eval_result["feedback"] == "测试改进建议", "应解析 feedback"
+print("新 prompt 格式解析: scores子对象OK, confidences OK, reasoning OK")
+
+# 9g) 旧格式兼容性（无 scores 子对象）
+old_json = json.dumps({"context_coverage": 0.7, "faithfulness": 0.8, "relevance": 0.6, "feedback": "old"})
+mock_llm_old = _MockJudgeLLM(old_json)
+eval_old = B._evaluate_report_quality(mock_llm_old, events, "测试", "mock context")
+assert eval_old is not None, "旧格式应兼容"
+assert eval_old["context_coverage"] == 0.7, "旧格式应从顶层读取"
+assert eval_old["confidences"]["coverage"] == "medium", "旧格式无置信度应默认 medium"
+print("旧格式兼容: 顶层字段OK, 默认置信度OK")
+
+# 9h) prompt 变体选择
+assert "RAG 质量评估专家" in B._RAGAS_JUDGE_PROMPT, "V1 prompt 应存在"
+assert "RAG 质量审计专家" in B._RAGAS_JUDGE_PROMPT_V2, "V2 prompt 应存在"
+assert "推理步骤" in B._RAGAS_JUDGE_PROMPT, "V1 应包含推理步骤"
+assert "审计" in B._RAGAS_JUDGE_PROMPT_V2, "V2 应为反向审计视角"
+print("Prompt 变体: V1(正向)OK, V2(反向)OK")
+
+# 9i) 评估元数据写入
+mock_llm_meta = _MockJudgeLLM(mock_json)
+config_with_cv = {"daily_insight_cross_validation": False}
+eval_meta_result = B._ragas_evaluate_and_correct(
+    mock_llm_meta, events, "测试", mock_retrieved_ragas, config_with_cv)
+assert "meta" in eval_meta_result[1], "eval_result 应包含 meta 字段"
+meta = eval_meta_result[1]["meta"]
+assert meta["judge_model"] == "mock-judge", "meta 应记录 judge_model"
+assert meta["prompt_variants"] == 1, "未启用交叉验证时 prompt_variants=1"
+assert isinstance(meta["call_log"], list), "call_log 应为列表"
+assert meta["temperature"] == 0.2, "temperature 应为 0.2"
+print("评估元数据: judge_model=%s, variants=%d, temp=%.1f" % (
+    meta["judge_model"], meta["prompt_variants"], meta["temperature"]))
+
+# 9i-2) 交叉验证流程：两个 prompt 变体都被调用
+class _CountingMockLLM:
+    def __init__(self, result_template, model="counting-mock"):
+        self._template = result_template
+        self.model = model
+        self._call_log = []
+        self.call_count = 0
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        self.call_count += 1
+        return self._template
+
+counting_llm = _CountingMockLLM(mock_json)
+config_cv_on = {"daily_insight_cross_validation": True}
+cv_clusters, cv_eval = B._ragas_evaluate_and_correct(
+    counting_llm, events, "测试", mock_retrieved_ragas, config_cv_on)
+assert "cross_validation" in cv_eval, "启用交叉验证时应有 cross_validation 字段"
+assert "v1_overall" in cv_eval["cross_validation"], "应有 v1_overall"
+assert "v2_overall" in cv_eval["cross_validation"], "应有 v2_overall"
+assert cv_eval["meta"]["prompt_variants"] == 2, "交叉验证时 prompt_variants=2"
+assert counting_llm.call_count >= 2, "交叉验证应至少调用 LLM 2 次 (v1+v2), got %d" % counting_llm.call_count
+print("交叉验证流程: call_count=%d, v1=%.2f, v2=%.2f, avg=%.2f" % (
+    counting_llm.call_count,
+    cv_eval["cross_validation"]["v1_overall"],
+    cv_eval["cross_validation"]["v2_overall"],
+    cv_eval["overall"]))
+
+# 9j) _write_insight_json 带元数据
+B._write_insight_json(events, "测试主题", False, {
+    "overall": 0.82, "context_coverage": 0.78,
+    "faithfulness": 0.85, "relevance": 0.83,
+    "feedback": "测试反馈",
+    "meta": {"judge_model": "mimo-v2.5-free", "prompt_variants": 2,
+             "call_log": [{"model": "mimo", "elapsed_s": 1.5, "fallback": False}],
+             "temperature": 0.2},
+})
+with open(B.INSIGHT_FILE, "r", encoding="utf-8") as f:
+    insight_meta = json.load(f)
+assert "meta" in insight_meta["quality"], "quality 应包含 meta 子字段"
+assert insight_meta["quality"]["meta"]["judge_model"] == "mimo-v2.5-free"
+assert insight_meta["quality"]["meta"]["prompt_variants"] == 2
+print("JSON 输出元数据: meta.judge_model OK, meta.prompt_variants OK")
+
+# 9k) 对抗性: _init_judge_llm 非 mimo provider 返回纯 agnes (无 FallbackJudgeLLM 包装)
+old_provider = os.environ.get("AGNES_API_KEY", "")
+os.environ["AGNES_API_KEY"] = "test-key-for-init"
+plain_result = B._init_judge_llm({"daily_insight_judge_provider": "agnes"})
+assert plain_result is not None, "agnes provider 应返回非 None"
+assert not isinstance(plain_result, B._FallbackJudgeLLM), "非 mimo provider 不应使用 FallbackJudgeLLM 包装"
+assert isinstance(plain_result, B._LLM), "应返回 _LLM 实例"
+print("_init_judge_llm(agnes): 返回纯 _LLM, 无冗余包装")
+
+# 9l) 对抗性: CV 中一个变体失败时 prompt_variants 准确反映实际运行数
+class _FailOnceLLM:
+    def __init__(self, model="fail-once"):
+        self.model = model
+        self._call_log = []
+        self._n = 0
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        self._n += 1
+        if self._n == 1:
+            return ""  # v1 失败
+        return mock_json  # v2 成功
+
+fail_once = _FailOnceLLM()
+cv_partial_cfg = {"daily_insight_cross_validation": True}
+_, cv_partial = B._ragas_evaluate_and_correct(
+    fail_once, events, "测试", mock_retrieved_ragas, cv_partial_cfg)
+assert cv_partial["meta"]["prompt_variants"] == 1, "一个变体失败时 prompt_variants 应为 1, got %d" % cv_partial["meta"]["prompt_variants"]
+print("对抗性 CV 部分失败: prompt_variants=%d (准确)" % cv_partial["meta"]["prompt_variants"])
+
+# 9m) 对抗性: CV 中两个变体都失败时 prompt_variants 也为 1
+class _AlwaysFailLLM:
+    def __init__(self, model="always-fail"):
+        self.model = model
+        self._call_log = []
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        return ""
+
+always_fail = _AlwaysFailLLM()
+_, cv_fail = B._ragas_evaluate_and_correct(
+    always_fail, events, "测试", mock_retrieved_ragas, {"daily_insight_cross_validation": True})
+assert cv_fail["meta"]["prompt_variants"] == 1, "两路均失败时 prompt_variants 应为 1"
+print("对抗性 CV 全部失败: prompt_variants=%d (准确)" % cv_fail["meta"]["prompt_variants"])
+
+if old_provider:
+    os.environ["AGNES_API_KEY"] = old_provider
+else:
+    os.environ.pop("AGNES_API_KEY", None)
+
+print("[PASS] TrustJudge 优化功能全部正确 (含对抗性审查修复)")
+
 print("\n" + "=" * 50)
-print("全部测试通过！(RAG 管线 + RAGAS + 增量向量缓存)")
+print("全部测试通过！(RAG 管线 + RAGAS + 增量向量缓存 + TrustJudge 优化)")
