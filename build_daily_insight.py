@@ -1299,15 +1299,38 @@ def _parse_json(text):
         except json.JSONDecodeError:
             pass
     # 尝试提取 { ... } 或 [ ... ]
-    for start, end in [('{', '}'), ('[', ']')]:
+    # 如果文本以 [ 开头，优先数组提取（避免截断数组被误解析为对象）
+    stripped = text.lstrip()
+    if stripped.startswith('['):
+        bracket_order = [('[', ']'), ('{', '}')]
+    else:
+        bracket_order = [('{', '}'), ('[', ']')]
+    for start, end in bracket_order:
         si = text.find(start)
         ei = text.rfind(end)
         if si >= 0 and ei > si:
             try:
-                return json.loads(text[si:ei + 1])
+                result = json.loads(text[si:ei + 1])
+                # 数组场景（文本以 [ 开头）的对象提取结果不返回，留给截断修复
+                if stripped.startswith('[') and start == '{':
+                    continue
+                return result
             except json.JSONDecodeError:
                 pass
     return None
+
+
+def _close_brackets(candidate):
+    """用栈追踪计算未闭合的括号序列，返回正确的闭合字符串。"""
+    stack = []
+    for c in candidate:
+        if c in '{[':
+            stack.append(c)
+        elif c == '}' and stack and stack[-1] == '{':
+            stack.pop()
+        elif c == ']' and stack and stack[-1] == '[':
+            stack.pop()
+    return ''.join('}' if c == '{' else ']' for c in reversed(stack))
 
 
 def _robust_parse_json(text):
@@ -1321,11 +1344,12 @@ def _robust_parse_json(text):
     # 提取 { 到最后一个 } 之间的内容（对象）
     start = text.find('{')
     end = text.rfind('}')
-    if start >= 0 and end > start:
+    _stripped = text.lstrip()
+    if start >= 0 and end > start and not _stripped.startswith('['):
         candidate = text[start:end + 1]
         try:
             result = json.loads(candidate)
-            if isinstance(result, (dict, list)):
+            if isinstance(result, dict):
                 return result
         except json.JSONDecodeError:
             pass
@@ -1341,42 +1365,77 @@ def _robust_parse_json(text):
         except json.JSONDecodeError:
             pass
     # 补全缺失的括号（处理截断 JSON）
+    # 策略1：找最后一个完整闭合 } 截断
+    # 策略2：找最后一个 : 截断（处理无 } 的深度截断）
+
     # 优先处理数组（自审等场景返回数组）
     if astart >= 0 and (start < 0 or astart < start):
-        candidate = text[astart:]
-        candidate = re.sub(r',\s*"[^"]*$', '', candidate)
-        candidate = re.sub(r',\s*\d+\.?\d*$', '', candidate)
-        # 先补全内部对象
-        opens = candidate.count('{') - candidate.count('}')
-        if opens > 0:
-            candidate = candidate.rstrip(', \t\r\n') + '}' * opens
-        # 再补全数组
-        arr_opens = candidate.count('[') - candidate.count(']')
-        if arr_opens > 0:
-            candidate = candidate.rstrip('} \t\r\n') + ']' * arr_opens
-        try:
-            result = json.loads(candidate)
-            if isinstance(result, list):
-                return result
-        except json.JSONDecodeError:
-            pass
+        # 策略1a：找最后一个 }
+        last_obj_end = text.rfind('}')
+        if last_obj_end > astart:
+            candidate = text[astart:last_obj_end + 1]
+            candidate = candidate.rstrip(', \t\r\n')
+            candidate += _close_brackets(candidate)
+            try:
+                result = json.loads(candidate)
+                if isinstance(result, list):
+                    return result
+            except json.JSONDecodeError:
+                pass
+        # 策略2a：找最后一个 : 截断（深度截断，无完整 }）
+        # 找上一个完整 key-value 对的结束位置
+        last_colon = text.rfind(':')
+        if last_colon > astart:
+            prev_colon = text.rfind(':', astart, last_colon)
+            if prev_colon >= astart:
+                # 在 prev_colon 后找 "value" 对
+                vq1 = text.find('"', prev_colon + 1, last_colon)
+                if vq1 >= 0:
+                    vq2 = text.find('"', vq1 + 1, last_colon)
+                    if vq2 >= 0:
+                        candidate = text[astart:vq2 + 1]
+                        candidate = candidate.rstrip(', \t\r\n')
+                        candidate += _close_brackets(candidate)
+                        try:
+                            result = json.loads(candidate)
+                            if isinstance(result, list):
+                                return result
+                        except json.JSONDecodeError:
+                            pass
+
     # 对象截断处理
     if start >= 0:
-        candidate = text[start:]
-        candidate = re.sub(r',\s*"[^"]*$', '', candidate)
-        candidate = re.sub(r',\s*\d+\.?\d*$', '', candidate)
-        opens = candidate.count('{') - candidate.count('}')
-        if opens > 0:
-            candidate = candidate.rstrip(', \t\r\n') + '}' * opens
-        arr_opens = candidate.count('[') - candidate.count(']')
-        if arr_opens > 0:
-            candidate = candidate.rstrip('} \t\r\n') + ']' * arr_opens + '}'
-        try:
-            result = json.loads(candidate)
-            if isinstance(result, (dict, list)):
-                return result
-        except json.JSONDecodeError:
-            pass
+        # 策略1b：找最后一个 }
+        last_obj_end = text.rfind('}')
+        if last_obj_end > start:
+            candidate = text[start:last_obj_end + 1]
+            candidate = candidate.rstrip(', \t\r\n')
+            candidate += _close_brackets(candidate)
+            try:
+                result = json.loads(candidate)
+                if isinstance(result, (dict, list)):
+                    return result
+            except json.JSONDecodeError:
+                pass
+        # 策略2b：找最后一个 : 截断（深度截断）
+        # 找上一个完整 key-value 对的结束位置
+        last_colon = text.rfind(':')
+        if last_colon > start:
+            prev_colon = text.rfind(':', start, last_colon)
+            if prev_colon >= start:
+                vq1 = text.find('"', prev_colon + 1, last_colon)
+                if vq1 >= 0:
+                    vq2 = text.find('"', vq1 + 1, last_colon)
+                    if vq2 >= 0:
+                        candidate = text[start:vq2 + 1]
+                        candidate = candidate.rstrip(', \t\r\n')
+                        candidate += _close_brackets(candidate)
+                        try:
+                            result = json.loads(candidate)
+                            if isinstance(result, (dict, list)):
+                                return result
+                        except json.JSONDecodeError:
+                            pass
     return None
 
 
@@ -1528,7 +1587,38 @@ def _deduplicate_after_phase1(clusters):
                 used.add(j)
         merged.append(ci)
     if len(merged) < len(clusters):
-        print("[每日洞察] Phase 1 后去重: %d → %d 个事件" % (len(clusters), len(merged)))
+        print("[每日洞察] Phase 1 后去重(label): %d → %d 个事件" % (len(clusters), len(merged)))
+
+    # 第二轮：summary 相似度去重（捕获 label 不同但主题相同的事件）
+    if len(merged) >= 2:
+        merged2 = []
+        used2 = set()
+        for i in range(len(merged)):
+            if i in used2:
+                continue
+            ci = merged[i]
+            for j in range(i + 1, len(merged)):
+                if j in used2:
+                    continue
+                cj = merged[j]
+                si = _simple_tokens(ci.get("summary", "") or ci.get("label", ""))
+                sj = _simple_tokens(cj.get("summary", "") or cj.get("label", ""))
+                if (len(si & sj) >= 3
+                    and _jaccard(si, sj) >= 0.25
+                    and ci.get("category") == cj.get("category")):
+                    # 合并：保留高分事件的 label/summary
+                    ci["items"].extend(cj.get("items", []))
+                    ci["source_types"] = ci.get("source_types", set()) | cj.get("source_types", set())
+                    if cj.get("score", 0) > ci.get("score", 0):
+                        ci["label"] = cj.get("label", ci.get("label", ""))
+                        ci["summary"] = cj.get("summary", ci.get("summary", ""))
+                    ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
+                    used2.add(j)
+            merged2.append(ci)
+        if len(merged2) < len(merged):
+            print("[每日洞察] Phase 1 后去重(summary): %d → %d 个事件" % (len(merged), len(merged2)))
+        merged = merged2
+
     return merged
 
 
