@@ -424,5 +424,6 @@
  "Tencent/BrowserSkill": "让 AI 代理使用您真实登录的浏览器，而不会中断您的工作。 CLI + 扩展，可跨任何支持 shell 的 AI 代理实现浏览器自动化。",
  "arnegiacomo/fugleramme": "适用于 Raspberry Pi 的电子墨水鸟框架 - 通过音频实时鸟类检测，完全本地 AI，渲染为真实的手工切割 1800 年代鸟类插图。",
  "rowboatlabs/rowboat": "开源人工智能同事，有记忆",
- "devagrawal09/jev-review": "使用 TypeSafe Jev 构建的分阶段代码审查工作流程和本地仪表板。"
+ "devagrawal09/jev-review": "使用 TypeSafe Jev 构建的分阶段代码审查工作流程和本地仪表板。",
+ "cline/cline": "作为 SDK、IDE 扩展或 CLI 助手的自主编码代理。"
 }
