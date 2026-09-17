@@ -2686,6 +2686,112 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
 
 # ──────────────────── 构建质量追踪日志 ────────────────────
 
+class PipelineTracer:
+    """端到端 LLM 调用追踪器。"""
+
+    def __init__(self):
+        self.stages = {}
+        self.llm_calls = []
+        self.meta = {}
+
+    def set_meta(self, **kwargs):
+        """设置构建元信息。"""
+        self.meta.update(kwargs)
+
+    def trace_queries(self, rss_count, hot_count, aihot_count, agihunt_count,
+                      chunks_total, queries_count, retrieved_top_k):
+        """Stage 1: 查询构建。"""
+        self.stages["queries"] = {
+            "source_counts": {"rss": rss_count, "hot": hot_count,
+                              "aihot": aihot_count, "agihunt": agihunt_count},
+            "chunks_total": chunks_total,
+            "queries_count": queries_count,
+            "retrieved_top_k": retrieved_top_k,
+        }
+
+    def trace_clustering(self, method, threshold, before_count, after_count,
+                         events_summary):
+        """Stage 2: 聚类与事件组装。"""
+        self.stages["clustering"] = {
+            "method": method,
+            "threshold": threshold,
+            "before_count": before_count,
+            "after_count": after_count,
+            "events": events_summary,
+        }
+
+    def trace_llm_call(self, phase, event_idx, prompt_text, model_name,
+                       temperature, max_tokens, raw_response, parse_ok,
+                       parsed_result, token_usage=None):
+        """记录单次 LLM 调用。异常安全。"""
+        try:
+            # 确保 parsed_result 可序列化
+            safe_result = parsed_result
+            try:
+                json.dumps(parsed_result, ensure_ascii=False, default=str)
+            except Exception:
+                safe_result = str(parsed_result)
+
+            self.llm_calls.append({
+                "phase": phase,
+                "event_idx": event_idx,
+                "model": model_name,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "prompt_chars": len(prompt_text) if prompt_text else 0,
+                "prompt_preview": (prompt_text or "")[:5000],
+                "raw_response_preview": (raw_response or "")[:3000],
+                "parse_ok": parse_ok,
+                "parsed_summary": safe_result,
+                "token_usage": token_usage,
+            })
+        except Exception:
+            pass  # 异常安全：不影响主流程
+
+    def trace_self_review(self, issues_found, corrected_indices):
+        """Stage 5: 自审环节。"""
+        self.stages["self_review"] = {
+            "issues": issues_found,
+            "corrected_indices": corrected_indices,
+        }
+
+    def trace_ragas(self, iterations_log):
+        """Stage 6: RAGAS 评估-修正闭环。"""
+        self.stages["ragas"] = {"iterations": iterations_log}
+
+    def trace_bubble(self, read_profile, candidates, selected):
+        """Stage 7: 破茧栏选择。"""
+        self.stages["bubble_breaker"] = {
+            "read_profile": read_profile,
+            "candidates": candidates,
+            "selected": selected,
+        }
+
+    def trace_output(self, event_count, has_analysis_count, inject_html_len):
+        """Stage 8: 输出与注入。"""
+        self.stages["output"] = {
+            "event_count": event_count,
+            "has_analysis_count": has_analysis_count,
+            "inject_html_chars": inject_html_len,
+        }
+
+    def flush(self):
+        """输出完整追踪日志到 JSONL。"""
+        now_bj = _now_bj()
+        entry = {
+            "ts": now_bj.isoformat(),
+            "date": now_bj.strftime("%Y-%m-%d"),
+            "meta": self.meta,
+            "stages": self.stages,
+            "llm_calls": self.llm_calls,
+        }
+        try:
+            _log_tracking_entry(entry)
+        except Exception:
+            pass  # 异常安全
+        return entry
+
+
 def _log_tracking_entry(entry):
     """将构建追踪数据追加写入 daily_insight_tracking_history.jsonl。
 
