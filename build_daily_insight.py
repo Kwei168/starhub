@@ -1049,9 +1049,11 @@ def _compute_dual_heat(cluster, hot_snapshot):
     for it in items:
         src = it.get("source_type", "")
         if src == "agihunt":
-            agihunt_contrib += it.get("hot", 0) / 100.0
+            # P3 修复：系数从 /100 调整为 /50，提升 agihunt 信号强度
+            agihunt_contrib += it.get("hot", 0) / 50.0
         elif src == "aihot":
-            aihot_contrib += it.get("score", 0) / 15.0
+            # P3 修复：系数从 /15 调整为 /8，提升 aihot 信号强度
+            aihot_contrib += it.get("score", 0) / 8.0
     score_a = min(10.0, min(5.0, agihunt_contrib) + min(5.0, aihot_contrib))
 
     # ── 参照系 B: 中文生态信号 (0-10) ──
@@ -1453,10 +1455,11 @@ def _deduplicate_after_phase1(clusters):
     for i in range(len(clusters)):
         if i in used:
             continue
+        ci = clusters[i]  # 修复：在内层循环前初始化 ci，避免最后一个事件重复
         for j in range(i + 1, len(clusters)):
             if j in used:
                 continue
-            ci, cj = clusters[i], clusters[j]
+            cj = clusters[j]
             if (ci.get("category") == cj.get("category")
                 and ci.get("category", "")  # 空 category 不去重
                 and len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
