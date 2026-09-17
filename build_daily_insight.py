@@ -125,7 +125,8 @@ VECTOR_CACHE_FILE = "daily_insight_vectors.npy"  # numpy 向量缓存（增量 e
 RETRIEVAL_TOP_K = 80   # 向量检索每查询返回数（扩大检索提升覆盖率）
 RRF_K = 60             # RRF 融合常数
 BM25_ENABLED = True     # BM25 混合检索开关
-MAX_EMBED_CHUNKS = 8000   # 最大 embedding chunk 数（首次构建上限，后续增量补充）
+MAX_EMBED_CHUNKS = 30000   # 最大 embedding chunk 数（扩容至全量覆盖）
+BM25_WINDOW = 10000         # BM25 检索窗口上限（非 RSS 优先纳入，剩余给近期 RSS）
 INSIGHT_RSS_HOURS = 168   # 每日洞察取最近 N 小时的 RSS（7 天窗口，支持跨天趋势检测）
 
 # ── RAGAS 质量评估参数 ──
@@ -1849,11 +1850,21 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
         {"role": "system", "content": _SYSTEM_PROMPT_P2},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.3, max_tokens=3000)
-    parsed = _robust_parse_json(result)
+    result = None
+    parsed = None
+    for _attempt in range(2):
+        result = llm.complete(messages, temperature=0.3, max_tokens=3000)
+        parsed = _robust_parse_json(result)
+        if parsed:
+            break
+        if _attempt == 0:
+            print("[每日洞察] Phase 2 第1次解析失败，重试（事件: %s）" % cluster.get("id", "?"),
+                  file=sys.stderr)
     if not parsed:
-        print("[每日洞察] Phase 2 LLM 输出解析失败（事件: %s）" % cluster.get("id", "?"),
-              file=sys.stderr)
+        # 记录原始输出便于诊断
+        _raw_preview = (result or "")[:300].replace("\n", "\\n")
+        print("[每日洞察] Phase 2 LLM 输出解析失败（事件: %s），原始输出前300字: %s" % (
+              cluster.get("id", "?"), _raw_preview), file=sys.stderr)
         return {"status": "degraded", "reason": "llm_parse_failed",
                 "event_reconstruction": "", "impact_analysis": "",
                 "source_divergence": "", "quote": "", "outlook": "",
