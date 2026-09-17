@@ -114,11 +114,12 @@ CHUNK_SIZE = 300       # 目标 chunk token 数
 CHUNK_OVERLAP = 50     # chunk 重叠 token 数
 FAISS_INDEX_FILE = "daily_insight_faiss.index"
 FAISS_META_FILE = "daily_insight_chunks.json"
+VECTOR_CACHE_FILE = "daily_insight_vectors.npy"  # numpy 向量缓存（增量 embedding）
 RETRIEVAL_TOP_K = 80   # 向量检索每查询返回数（扩大检索提升覆盖率）
 RRF_K = 60             # RRF 融合常数
 BM25_ENABLED = True     # BM25 混合检索开关
-MAX_EMBED_CHUNKS = 5000  # 最大 embedding chunk 数（超出按时间截断 RSS）
-INSIGHT_RSS_HOURS = 24   # 每日洞察只取最近 N 小时的 RSS（72h 是给聚合器前端用的）
+MAX_EMBED_CHUNKS = 30000  # 最大 embedding chunk 数（超出按时间截断 RSS）
+INSIGHT_RSS_HOURS = 168   # 每日洞察取最近 N 小时的 RSS（7 天窗口，支持跨天趋势检测）
 
 # ── RAGAS 质量评估参数 ──
 RAGAS_ENABLED = True          # RAGAS 评估-修正闭环开关
@@ -424,6 +425,9 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
                     source_key="", extra=None):
         cid = "chunk_%05d" % chunk_counter[0]
         chunk_counter[0] += 1
+        # 内容指纹：用于跨构建去重，判断 chunk 是否已缓存向量
+        hash_input = "%s|%s|%s|%s" % (source_type, source, title, text[:200])
+        content_hash = hashlib.md5(hash_input.encode("utf-8")).hexdigest()[:16]
         c = {
             "chunk_id": cid,
             "source_type": source_type,
@@ -433,6 +437,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
             "url": url,
             "text": text[:2000],
             "pub_date": pub_date,
+            "content_hash": content_hash,
         }
         if extra:
             c.update(extra)
@@ -655,6 +660,66 @@ def _load_index():
     except Exception as exc:
         print("[每日洞察] 索引加载失败: %s" % exc, file=sys.stderr)
         return None, []
+
+
+# ──────────────────── RAG: 向量缓存（增量 embedding） ────────────────────
+
+def _load_vector_cache():
+    """加载旧 chunks + 旧向量缓存。
+
+    返回 (chunks, vectors_np, embed_model)：
+    - chunks: list[dict]，每个含 content_hash 字段
+    - vectors_np: numpy float32 矩阵 shape=(N, dim)，或 None
+    - embed_model: 模型名称字符串
+
+    文件不存在或加载失败时返回 ([], None, "")。
+    """
+    if not FAISS_AVAILABLE:
+        return [], None, ""
+    if not os.path.exists(VECTOR_CACHE_FILE) or not os.path.exists(FAISS_META_FILE):
+        return [], None, ""
+    try:
+        with open(FAISS_META_FILE, "r", encoding="utf-8") as f:
+            chunks = json.load(f)
+        vectors = _np.load(VECTOR_CACHE_FILE)
+        # 维度校验：若模型切换导致维度不同，清空缓存
+        if vectors.shape[1] != EMBED_DIM:
+            print("[每日洞察] 向量缓存维度(%d)与当前模型(%d)不匹配，清空缓存" % (
+                vectors.shape[1], EMBED_DIM), file=sys.stderr)
+            return [], None, ""
+        # 数量一致性校验
+        if len(chunks) != vectors.shape[0]:
+            print("[每日洞察] 向量缓存数量不一致(chunks=%d, vecs=%d)，清空缓存" % (
+                len(chunks), vectors.shape[0]), file=sys.stderr)
+            return [], None, ""
+        # 提取 embed_model（从 chunks 元数据中读取，或默认值）
+        embed_model = ""
+        if chunks and "embed_model" in chunks[0]:
+            embed_model = chunks[0]["embed_model"]
+        print("[每日洞察] 加载向量缓存: %d chunks, %d 维" % (len(chunks), vectors.shape[1]))
+        return chunks, vectors, embed_model
+    except Exception as exc:
+        print("[每日洞察] 向量缓存加载失败: %s" % exc, file=sys.stderr)
+        return [], None, ""
+
+
+def _save_vector_cache(chunks, vectors, embed_model):
+    """保存 chunks 元数据 + 向量到磁盘。
+
+    - chunks → FAISS_META_FILE (JSON)
+    - vectors → VECTOR_CACHE_FILE (numpy .npy)
+    """
+    try:
+        # 为每个 chunk 写入 embed_model 字段（便于未来维度校验）
+        for c in chunks:
+            c["embed_model"] = embed_model or ""
+        _atomic_write_json(FAISS_META_FILE, chunks)
+        _np.save(VECTOR_CACHE_FILE + ".tmp", vectors.astype(_np.float32))
+        os.replace(VECTOR_CACHE_FILE + ".tmp", VECTOR_CACHE_FILE)
+        print("[每日洞察] 向量缓存保存: %d chunks, shape=%s" % (
+            len(chunks), vectors.shape))
+    except Exception as exc:
+        print("[每日洞察] 向量缓存保存失败: %s" % exc, file=sys.stderr)
 
 
 # ──────────────────── RAG: 混合检索 ────────────────────
@@ -2140,33 +2205,93 @@ def main():
     _stats_chunks_raw = len(chunks)
     _stats_filtered = len(rss_clean) + len(hot_clean) + len(aihot_clean) + len(agihunt_clean)
 
-    # 1.5) 截断：超出 MAX_EMBED_CHUNKS 时按时间保留 RSS chunks
-    if len(chunks) > MAX_EMBED_CHUNKS:
-        rss_chunks = [c for c in chunks if c.get("source_type") == "rss"]
-        other_chunks = [c for c in chunks if c.get("source_type") != "rss"]
-        # RSS 按发布时间降序
-        rss_chunks.sort(key=lambda c: c.get("pub_date", ""), reverse=True)
-        budget = MAX_EMBED_CHUNKS - len(other_chunks)
-        if budget < 100:
-            budget = 100  # 至少保留 100 个 RSS chunks
-        rss_chunks = rss_chunks[:budget]
-        chunks = rss_chunks + other_chunks
-        print("[每日洞察] 截断至 %d chunks (RSS %d + 其他 %d)" % (
-            len(chunks), len(rss_chunks), len(other_chunks)))
+    # 1.5) 增量追加：加载旧缓存 → 合并去重 → 截断 → 仅新增 embedding
+    old_chunks, old_vecs, old_model = _load_vector_cache()
+    old_hash_set = {c.get("content_hash", "") for c in old_chunks}
+    today_hash_set = {c.get("content_hash", "") for c in chunks}
+    # 合并：旧 chunks + 今日新 chunks（去重 by content_hash）
+    # 旧缓存中仍出现在今日数据里的保留（未过期），不再出现的也保留（由截断控制淘汰）
+    new_only = [c for c in chunks if c.get("content_hash", "") not in old_hash_set]
+    merged_chunks = old_chunks + new_only
+    print("[每日洞察] 增量合并: 旧 %d + 新增 %d = %d (去重后)" % (
+        len(old_chunks), len(new_only), len(merged_chunks)))
 
-    # 2) Embedding + FAISS 索引
-    chunk_texts = [c.get("text", "")[:1000] for c in chunks]
-    vectors, embed_model = _embed_chunks(chunk_texts)
+    # 1.6) 截断：超出 MAX_EMBED_CHUNKS 时按时间保留 RSS chunks
+    if len(merged_chunks) > MAX_EMBED_CHUNKS:
+        rss_mc = [c for c in merged_chunks if c.get("source_type") == "rss"]
+        other_mc = [c for c in merged_chunks if c.get("source_type") != "rss"]
+        rss_mc.sort(key=lambda c: c.get("pub_date", ""), reverse=True)
+        budget = MAX_EMBED_CHUNKS - len(other_mc)
+        if budget < 100:
+            budget = 100
+        rss_mc = rss_mc[:budget]
+        merged_chunks = rss_mc + other_mc
+        print("[每日洞察] 截断至 %d chunks (RSS %d + 其他 %d)" % (
+            len(merged_chunks), len(rss_mc), len(other_mc)))
+
+    # 1.7) 识别需要 embedding 的 chunks（hash 不在旧缓存中的）
+    cached_map = {}  # content_hash → index in old_vecs
+    for i, c in enumerate(old_chunks):
+        h = c.get("content_hash", "")
+        if h:
+            cached_map[h] = i
+    need_embed = [c for c in merged_chunks if c.get("content_hash", "") not in cached_map]
+    cached_count = len(merged_chunks) - len(need_embed)
+    print("[每日洞察] 向量缓存命中 %d, 需新增 embedding %d" % (cached_count, len(need_embed)))
+
+    # 1.8) 仅对新增 chunks 调 Embedding API
+    new_vecs_list = []
+    embed_model = old_model
+    if need_embed:
+        need_texts = [c.get("text", "")[:1000] for c in need_embed]
+        new_vecs_result, new_model = _embed_chunks(need_texts)
+        if new_vecs_result:
+            new_vecs_list = new_vecs_result
+            embed_model = new_model or old_model
+        else:
+            print("[每日洞察] 新增 embedding 失败，尝试降级到旧缓存", file=sys.stderr)
+
+    # 1.9) 组装全量向量矩阵
+    all_vecs = None
+    if old_vecs is not None and len(old_chunks) > 0:
+        # 按 merged_chunks 顺序组装：命中缓存的用旧向量，新增的用新计算
+        vec_rows = []
+        new_vec_idx = 0
+        for c in merged_chunks:
+            h = c.get("content_hash", "")
+            if h in cached_map and old_vecs is not None:
+                vec_rows.append(old_vecs[cached_map[h]])
+            elif new_vec_idx < len(new_vecs_list):
+                vec_rows.append(_np.array(new_vecs_list[new_vec_idx], dtype=_np.float32))
+                new_vec_idx += 1
+            else:
+                # 异常：既无缓存也无新向量，用零向量占位
+                vec_rows.append(_np.zeros(EMBED_DIM, dtype=_np.float32))
+        all_vecs = _np.vstack(vec_rows)
+    elif new_vecs_list:
+        # 无旧缓存，全量新计算
+        all_vecs = _np.array(new_vecs_list, dtype=_np.float32)
+
+    # 2) 重建 FAISS 索引 + 保存向量缓存
     index = None
-    if vectors:
-        index = _build_faiss_index(vectors)
-        _save_index(index, chunks)
+    _used_merged = False  # 标记 index 是否与 merged_chunks 对齐
+    if all_vecs is not None and len(all_vecs) > 0:
+        index = _build_faiss_index(all_vecs)
+        _save_vector_cache(merged_chunks, all_vecs, embed_model)
+        # 同步写入 FAISS 索引文件（chunks JSON 已由 _save_vector_cache 写入）
+        try:
+            if FAISS_AVAILABLE:
+                _faiss.write_index(index, FAISS_INDEX_FILE + ".tmp")
+                os.replace(FAISS_INDEX_FILE + ".tmp", FAISS_INDEX_FILE)
+                print("[每日洞察] FAISS 索引持久化: %s" % FAISS_INDEX_FILE)
+        except Exception as exc:
+            print("[每日洞察] FAISS 索引保存失败: %s" % exc, file=sys.stderr)
+        _used_merged = True
     else:
-        print("[每日洞察] Embedding 失败，尝试加载旧索引", file=sys.stderr)
-        index, chunks = _load_index()
+        print("[每日洞察] 无可用向量，尝试加载旧索引降级", file=sys.stderr)
+        index, fallback_chunks = _load_index()
         if not index:
             print("[每日洞察] 无可用索引，跳过生成", file=sys.stderr)
-            # 降级记录
             try:
                 _log_tracking_entry(_build_tracking_entry(
                     ragas_eval={}, clusters=[], theme="", elapsed=round(time.time() - t0, 1),
@@ -2177,6 +2302,13 @@ def main():
             except Exception:
                 pass
             return False
+    # 后续流程：index 必须与 chunks 对齐
+    # 正常路径用 merged_chunks（与新建 index 对齐）
+    # 降级路径用 fallback_chunks（与旧 index 对齐）
+    if _used_merged:
+        chunks = merged_chunks
+    else:
+        chunks = fallback_chunks
 
     # 3) 构建查询：AGI Hunt Top20 + AIHOT Top20 标题
     queries = []
