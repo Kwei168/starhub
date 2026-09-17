@@ -27,6 +27,11 @@ try:
     import numpy as _np
     FAISS_AVAILABLE = True
 except ImportError:
+    _faiss = None
+    try:
+        import numpy as _np
+    except ImportError:
+        _np = None
     FAISS_AVAILABLE = False
 
 try:
@@ -38,6 +43,8 @@ except ImportError:
 # ── 常量 ──
 BJT = datetime.timezone(datetime.timedelta(hours=8))
 NOW_BJ = None  # 在 main() 中初始化
+SEMANTIC_CLUSTER_THRESHOLD = 0.75  # 语义聚类余弦相似度阈值
+MAX_QUERIES = 40  # 查询总数上限
 
 # ── 数据文件路径 ──
 RSS_HISTORY_FILE = "rss_history.json"
@@ -854,10 +861,50 @@ def _rerank(retrieved, hot_snapshot):
     return retrieved
 
 
+def _build_queries(hot_clean, agihunt_clean, aihot_clean, retrieved_chunks=None):
+    """混合查询构建：AGI Hunt + AIHOT + 热榜 + 伪查询，去重后截断到 MAX_QUERIES。"""
+    queries = []
+    seen = set()
+
+    def _add(text):
+        t = text.strip()
+        if t and t not in seen:
+            seen.add(t)
+            queries.append(t)
+
+    # AGI Hunt Top15
+    agihunt_sorted = sorted(agihunt_clean, key=lambda x: x.get("hot", 0), reverse=True)
+    for it in agihunt_sorted[:15]:
+        _add(it.get("title", ""))
+
+    # AIHOT Top15
+    for it in aihot_clean[:15]:
+        _add(it.get("title", ""))
+
+    # 热榜 Top15
+    for it in hot_clean[:15]:
+        _add(it.get("title", ""))
+
+    # 伪查询 Top10（从已检索 chunks 的 title 截取）
+    if retrieved_chunks:
+        for c in retrieved_chunks[:30]:
+            if len(queries) >= MAX_QUERIES:
+                break
+            _add(c.get("title", "")[:50])
+
+    # 回退：若全无，用热榜
+    if not queries:
+        for it in hot_clean[:20]:
+            _add(it.get("title", ""))
+
+    return queries[:MAX_QUERIES]
+
+
 # ──────────────────── RAG: 事件组装 ────────────────────
 
 def _assemble_events(reranked_chunks):
-    """将检索排序后的 chunks 按 Jaccard 标题相似度聚类为事件。"""
+    """将检索排序后的 chunks 按语义相似度聚类为事件。
+    优先使用向量余弦相似度（embedding），失败时降级为 Jaccard 标题匹配。"""
     if not reranked_chunks:
         return []
 
@@ -874,30 +921,35 @@ def _assemble_events(reranked_chunks):
             "best_score": c.get("final_score", 0),
         })
 
-    # 贪心合并：Jaccard >= 阈值
-    merged = True
-    while merged:
-        merged = False
-        new_events = []
-        used = set()
-        for i, ei in enumerate(events):
-            if i in used:
-                continue
-            for j in range(i + 1, len(events)):
-                if j in used:
+    # 优先语义聚类
+    semantic_ok = False
+    if FAISS_AVAILABLE and _np is not None and len(events) >= 2:
+        semantic_ok = _semantic_merge(events)
+
+    if not semantic_ok:
+        # Jaccard 降级
+        merged = True
+        while merged:
+            merged = False
+            new_events = []
+            used = set()
+            for i, ei in enumerate(events):
+                if i in used:
                     continue
-                ej = events[j]
-                sim = _jaccard(ei["tokens"], ej["tokens"])
-                if sim >= JACCARD_EVENT_THRESHOLD:
-                    # 合并 j → i
-                    ei["items"].extend(ej["items"])
-                    ei["source_types"] |= ej["source_types"]
-                    ei["tokens"] |= ej["tokens"]
-                    ei["best_score"] = max(ei["best_score"], ej["best_score"])
-                    used.add(j)
-                    merged = True
-            new_events.append(ei)
-        events = new_events
+                for j in range(i + 1, len(events)):
+                    if j in used:
+                        continue
+                    ej = events[j]
+                    sim = _jaccard(ei["tokens"], ej["tokens"])
+                    if sim >= JACCARD_EVENT_THRESHOLD:
+                        ei["items"].extend(ej["items"])
+                        ei["source_types"] |= ej["source_types"]
+                        ei["tokens"] |= ej["tokens"]
+                        ei["best_score"] = max(ei["best_score"], ej["best_score"])
+                        used.add(j)
+                        merged = True
+                new_events.append(ei)
+            events = new_events
 
     # 丢弃只有 1 个 chunk 且分数极低的孤立事件
     if len(events) > MAX_EVENTS * 2:
@@ -919,6 +971,50 @@ def _assemble_events(reranked_chunks):
 
     print("[每日洞察] 事件组装: %d 个事件 (从 %d chunks)" % (len(events), len(reranked_chunks)))
     return events
+
+
+def _semantic_merge(events):
+    """用向量余弦相似度做贪心合并。成功返回 True，失败返回 False。"""
+    try:
+        titles = []
+        for e in events:
+            titles.append(e.get("label", ""))
+
+        vecs = _embed_chunks(titles)
+        if isinstance(vecs, tuple):
+            vecs = vecs[0]
+        if vecs is None or len(vecs) != len(events):
+            return False
+
+        mat = _np.array(vecs, dtype="float32")
+        norms = _np.linalg.norm(mat, axis=1, keepdims=True)
+        norms = _np.where(norms == 0, 1, norms)
+        mat = mat / norms
+
+        used = set()
+        for i in range(len(events)):
+            if i in used:
+                continue
+            for j in range(i + 1, len(events)):
+                if j in used:
+                    continue
+                sim = float(_np.dot(mat[i], mat[j]))
+                if sim >= SEMANTIC_CLUSTER_THRESHOLD:
+                    events[i]["items"].extend(events[j]["items"])
+                    events[i]["source_types"] |= events[j]["source_types"]
+                    events[i]["tokens"] |= events[j]["tokens"]
+                    events[i]["best_score"] = max(events[i]["best_score"], events[j]["best_score"])
+                    used.add(j)
+
+        # 移除被合并的事件
+        result = [e for idx, e in enumerate(events) if idx not in used]
+        events.clear()
+        events.extend(result)
+        print("[每日洞察] 语义聚类: %d → %d 个事件" % (len(vecs), len(events)))
+        return True
+    except Exception as exc:
+        print("[每日洞察] 语义聚类失败，降级 Jaccard: %s" % exc, file=sys.stderr)
+        return False
 
 
 # ──────────────────── RAG: 综合打分（事件级） ────────────────────
@@ -992,7 +1088,8 @@ def _score_events(clusters, hot_snapshot):
         cluster["signal"] = {
             "breadth": round(breadth, 1),
             "depth": round(depth, 1),
-            "heat": round(min(10, len(hot_platforms) * 2.5), 1),
+            "heat": round(min(10, sum(3 if p in HOT_T1 else 2 if p in HOT_T2 else 1
+                                       for p in hot_platforms)), 1),
             "novelty": round(novelty_dim, 1),
         }
         cluster["resonance"] = resonance
@@ -1149,10 +1246,56 @@ def _build_event_material(cluster):
 
 # ── Phase 1 LLM：全事件摘要 + 主题导语 ──
 
-_SYSTEM_PROMPT_P1 = """你是一位 AI 行业资深分析师，为科技媒体撰写每日深度报告。
-风格要求：事实驱动、数据具体、观点有据、避免空泛。
-所有陈述必须严格基于提供的素材。禁止使用你自己的知识补充素材中没有的信息。
-如果素材中缺少某个关键数据，在 summary 中标注[信息不足]，而不是自行填补。
+_SYSTEM_PROMPT_P1 = """
+(C) Context: 你是一位 AI 行业资深分析师，为科技媒体撰写每日深度报告。
+你的读者是 AI 从业者和科技决策者，他们需要在 5 分钟内掌握今日 AI 领域最重要的动态。
+
+(O) Objective: 为每个事件生成结构化摘要，并用一句话概括今日主线。
+你的输出将直接展示在 AI 日报页面上，面向数万读者。
+
+(S) Style: 报纸编辑风格——简洁、有力、信息密度高。
+写法要求：
+1. 第一句话定性（使用“主导”“分化”“拐点”“加速”等判断词）
+2. 用【宏观主线】+【微观佐证】结构串联
+3. 每个论点必须引用素材中的具体事实和数据
+4. 禁止平铺直叙罗列事件
+
+(T) Tone: 事实驱动、数据具体、观点有据。禁止空泛描述。
+
+(A) Audience: AI 从业者、科技媒体编辑、技术决策者。
+
+(R) Response: 严格输出 JSON，格式如下：
+{"theme": "一句话今日主题", "events": [{"event_num": 1, "label": "...", "category": "...", "summary": "...", "significance": "...", "key_links": [...]}]}
+
+## 正确示例
+{
+  "theme": "从 Agent 评估标准之争，到可观测性工具涌现，再到企业级审计需求爆发，判断 AI 工程化进入系统化阶段",
+  "events": [{
+    "event_num": 1,
+    "label": "三大平台同步发布企业级 Agent 评估服务",
+    "category": "ai-products",
+    "summary": "OpenAI、Google、Anthropic 在同一天发布企业级 Agent 评估服务。OpenAI 的 Agent Analytics 支持 Trace 级别追踪，Google 的 AgentBench Enterprise 提供标准化评测集，Anthropic 的 Claude Observability 集成 OpenTelemetry。",
+    "significance": "标志 Agent 从‘能用’到‘可观测’的拐点，企业级部署的核心障碍从功能转向可评估性。",
+    "key_links": ["https://..."]
+  }]
+}
+
+## 核心信源 DNA
+- 36氪: 产业视角，关注商业模式和融资
+- 虎嗅: 商业评论，偏批判性分析
+- 微博热搜: 舆论风向，反映公众情绪
+- 知乎: 深度讨论，技术社区视角
+- B站: 年轻用户视角，关注消费级应用
+- Hacker News: 技术极客视角，关注底层创新
+- Product Hunt: 产品视角，关注用户体验
+- arXiv: 学术视角，关注方法论突破
+
+## 禁用表达
+“值得关注”“引发讨论”“未来可期”“拭目以待”“不难预见”
+每句话必须有信息增量，不允许空话。
+
+所有陈述必须严格基于提供的素材。禁止使用你自己的知识补充。
+如果素材中缺少某个关键数据，在 summary 中标注[信息不足]。
 只输出严格 JSON，不要输出任何思考过程或解释。"""
 
 
@@ -1294,16 +1437,49 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
 
 # ── Phase 2 LLM：Top N 深度解读 ──
 
-_SYSTEM_PROMPT_P2 = """你是一位资深 AI 行业分析师，正在撰写每日深度报告的核心事件解读。
-你的分析必须基于提供的素材，不能编造素材中没有的信息。
-如果素材中有矛盾数据，必须在分析中指出。
-只输出严格 JSON，不要输出任何思考过程或解释。"""
+_SYSTEM_PROMPT_P2 = """
+(C) Context: 你是一位资深 AI 行业分析师，正在撰写每日深度报告的核心事件解读。
+读者是 AI 从业者和科技决策者，他们已看过事件摘要，需要更深层的分析。
+
+(O) Objective: 对单个事件进行深度解读，包括事件还原、影响分析、信源分歧和后续展望。
+你的分析将直接展示在 AI 日报的深度解读栏。
+
+(S) Style: 分析师报告风格——严谨、分层、有据可查。
+写法要求：
+1. event_reconstruction 按时间线叙述，包含具体数据（日期/金额/人数）
+2. impact_analysis 分短期/中期/长期三个层次
+3. source_divergence 具体指出哪个源持什么角度
+4. quote 必须是素材原文，不要编造
+
+(T) Tone: 专业、客观、基于事实。如果素材中有矛盾数据，必须在分析中指出。
+
+(A) Audience: AI 从业者、科技媒体编辑、技术决策者。
+
+(R) Response: 严格输出 JSON：
+{"event_reconstruction": "...", "impact_analysis": "...", "source_divergence": "...", "quote": "...", "outlook": "...", "confidence": "high|medium|low"}
+
+## 正确示例
+{
+  "event_reconstruction": "9月15日，OpenAI宣布完成100亿美元D轮融资，由软银领投，估值达2000亿美元。资金将用于AGI研发和基础设施建设。",
+  "impact_analysis": "短期：AI赛道融资标杆再创新高，竞争对手融资压力加大。中期：软银大举入场改变AI投资格局。长期：2000亿估值倒逼OpenAI加速商业化。",
+  "source_divergence": "36氪关注商业模式，虎嗅质疑估值泡沫，HN讨论技术路线。",
+  "quote": "资金将用于AGI研发和基础设施建设",
+  "outlook": "预计Q4将看到OpenAI企业版产品加速落地。",
+  "confidence": "high"
+}
+
+## 禁用表达
+“值得关注”“引发讨论”“未来可期”“拭目以待”“不难预见”
+每句话必须有信息增量，不允许空话。所有陈述必须基于素材。"""
 
 
 def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
     """Phase 2: 单个事件的深度解读。"""
     if not llm:
-        return None
+        return {"status": "degraded", "reason": "llm_unavailable",
+                "event_reconstruction": "", "impact_analysis": "",
+                "source_divergence": "", "quote": "", "outlook": "",
+                "confidence": "low"}
 
     material = _build_event_material(cluster)
     prompt = """今天是 %s。请深度解读以下事件。
@@ -1353,8 +1529,156 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
     if not parsed:
         print("[每日洞察] Phase 2 LLM 输出解析失败（事件: %s）" % cluster.get("id", "?"),
               file=sys.stderr)
-        return None
+        return {"status": "degraded", "reason": "llm_parse_failed",
+                "event_reconstruction": "", "impact_analysis": "",
+                "source_divergence": "", "quote": "", "outlook": "",
+                "confidence": "low"}
+    parsed["status"] = "ok"
     return parsed
+
+
+# ──────────────────── Phase 3 自审环节：Phase 1 输出质量检查 ────────────────────
+
+_BANNED_PHRASES = [
+    "值得关注", "引发讨论", "未来可期", "拭目以待", "不难预见",
+    "令人期待", "意义重大", "影响深远", "引发广泛关注", "备受关注",
+    "引人注目", "引发热议", "成为焦点",
+]
+
+
+def _review_event_quality(events):
+    """检查 Phase 1 事件输出的质量问题，返回问题列表。"""
+    issues = []
+    for evt in events:
+        eid = evt.get("id", "?")
+        summary = evt.get("summary", "")
+        significance = evt.get("significance", "")
+        text = summary + significance
+
+        for phrase in _BANNED_PHRASES:
+            if phrase in text:
+                issues.append("事件%s 含空话「%s」" % (eid, phrase))
+
+        has_data = bool(re.search(r'\d+[%％亿万美元人民币$€]|\d{2,}', summary))
+        if not has_data and len(summary) > 10:
+            issues.append("事件%s summary 缺少具体数据" % eid)
+
+        if 0 < len(summary) < 20:
+            issues.append("事件%s summary 过短（%d字）" % (eid, len(summary)))
+
+    return issues
+
+
+def _self_review_phase1(llm, events, material_text):
+    """Phase 1 自审环节：检查输出质量，有问题时请求 LLM 修正。最多 1 次。"""
+    if not llm or not events:
+        return events
+
+    issues = _review_event_quality(events)
+    if not issues:
+        print("[每日洞察] Phase 1 自审: 质量合格 (%d 个事件, 0 问题)" % len(events))
+        return events
+
+    print("[每日洞察] Phase 1 自审: 发现 %d 个问题，请求 LLM 修正..." % len(issues),
+          file=sys.stderr)
+
+    events_json = json.dumps(
+        [{"id": e.get("id", ""), "label": e.get("label", ""),
+          "summary": e.get("summary", ""), "significance": e.get("significance", "")}
+         for e in events[:8]],
+        ensure_ascii=False, indent=2)
+
+    prompt = """请检查并修正以下事件摘要的质量问题。
+
+【问题清单】：
+%s
+
+【事件列表】：
+%s
+
+【原始素材参考】：
+%s
+
+修正要求：
+1. 消除所有空泛表达
+2. 确保 summary 包含具体数据
+3. 所有事实必须基于素材
+4. 以 JSON 数组返回修正后的事件，保持 id 不变
+5. 仅修改有问题的字段
+
+输出格式：[{"id": "e1", "label": "...", "summary": "...", "significance": "..."}]""" % (
+        "\n".join("- " + iss for iss in issues[:10]),
+        events_json, material_text[:2000])
+
+    messages = [
+        {"role": "system", "content": "你是 AI 行业分析师。只返回 JSON 数组。"},
+        {"role": "user", "content": prompt},
+    ]
+    result = llm.complete(messages, temperature=0.2, max_tokens=1500)
+    parsed = _parse_json(result)
+
+    if not isinstance(parsed, list):
+        print("[每日洞察] Phase 1 自审: 解析失败，保留原版", file=sys.stderr)
+        return events
+
+    corrected_count = 0
+    id_to_fixed = {p.get("id"): p for p in parsed if isinstance(p, dict)}
+    for evt in events:
+        eid = evt.get("id", "")
+        if eid in id_to_fixed:
+            fixed = id_to_fixed[eid]
+            for field in ("label", "summary", "significance"):
+                if fixed.get(field) and len(fixed[field]) > len(evt.get(field, "") or ""):
+                    evt[field] = fixed[field]
+                    corrected_count += 1
+
+    print("[每日洞察] Phase 1 自审: 修正 %d 个字段" % corrected_count)
+    return events
+
+
+# ──────────────────── 破茧栏：反信息茧房 ────────────────────
+
+def _build_read_profile(history):
+    """从过去 7 天历史中统计用户常读 category 分布。"""
+    profile = {}
+    days = history.get("days", [])
+    for day in days[-7:]:
+        for evt in day.get("events", []):
+            cat = evt.get("category", "")
+            if cat:
+                profile[cat] = profile.get(cat, 0) + 1
+    return profile
+
+
+def _select_bubble_events(clusters, read_profile, top_n=5):
+    """选取与常读 category 交集最小的事件作为破茧栏。"""
+    if not clusters or not read_profile:
+        sorted_c = sorted(clusters, key=lambda c: c.get("score", 0))
+        return sorted_c[:top_n]
+
+    max_freq = max(read_profile.values()) if read_profile else 1
+    scored = []
+    for c in clusters:
+        cat = c.get("category", "")
+        freq = read_profile.get(cat, 0)
+        novelty = 1.0 - (freq / max_freq) if max_freq > 0 else 1.0
+        scored.append((c, novelty))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    result = []
+    for c, novelty in scored[:top_n]:
+        cat = c.get("category", "")
+        reason = "与你常读的 %s 领域不同" % ", ".join(
+            k for k, v in sorted(read_profile.items(), key=lambda x: -x[1])[:2]
+        ) if read_profile else "信息增量"
+        result.append({
+            "label": c.get("label", ""),
+            "summary": c.get("summary", ""),
+            "category": cat,
+            "score": c.get("score", 0),
+            "reason": reason,
+        })
+    return result
 
 
 # ──────────────────── RAGAS: 质量评估与自我修正 ────────────────────
@@ -1671,7 +1995,7 @@ def _update_history(clusters, theme):
 
 # ──────────────────── Phase 3: 输出 JSON ────────────────────
 
-def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None):
+def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None, bubble_breaker=None):
     events = []
     for c in clusters:
         # 构建 articles 列表：每条素材的关键信息
@@ -1705,6 +2029,7 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None):
         "date": NOW_BJ.strftime("%Y-%m-%d"),
         "theme": theme,
         "events": events,
+        "bubble_breaker": bubble_breaker or [],
         "stats": {
             "total_events": len(events),
             "has_analysis": has_analysis,
@@ -1735,7 +2060,7 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None):
 # ──────────────────── Phase 4: 历史页面 ────────────────────
 
 def _build_history_html():
-    """生成 daily-insight-history.html。"""
+    """生成 daily-insight-history.html。视觉风格与 ai-daily.html 报纸风格对齐。"""
     history = _load_history()
     days = history.get("days", [])
     if not days:
@@ -1759,71 +2084,66 @@ def _build_history_html():
         events_html = []
         for evt in d.get("events", []):
             status = evt.get("status", "new")
-            status_colors = {
-                "new": "#2563eb", "ongoing": "#0891b2",
-                "escalating": "#dc2626", "faded": "#6b7280",
-            }
-            status_color = status_colors.get(status, "#6b7280")
             status_labels = {
-                "new": "新事件", "ongoing": "持续", "escalating": "升级", "faded": "消退",
+                "new": "新", "ongoing": "持续", "escalating": "升级", "faded": "消退",
             }
             resonance = evt.get("resonance", "")
             resonance_labels = {
-                "breakout": "🔥 破圈", "tech_hot": "⚡ 技术热",
-                "niche": "🎯 垂直", "consumer": "📱 消费级",
+                "breakout": "破圈", "tech_hot": "技术热",
+                "niche": "垂直", "consumer": "消费级",
             }
 
             deep = evt.get("deep_analysis") or {}
             deep_html = ""
             if deep:
                 deep_html = '''
-<div class="deep">
-  <h4>深度解读</h4>
-  <div class="deep-section"><strong>事件还原</strong><p>%s</p></div>
-  <div class="deep-section"><strong>影响分析</strong><p>%s</p></div>
-  <div class="deep-section"><strong>信源分歧</strong><p>%s</p></div>
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>%s</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>%s</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>%s</p></div>
   %s
-  <div class="deep-section"><strong>后续展望</strong><p>%s</p></div>
-  <span class="confidence">置信度: %s</span>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>%s</p></div>
+  <span class="di-conf">置信度: %s</span>
 </div>''' % (
                     _esc(deep.get("event_reconstruction", "")),
                     _esc(deep.get("impact_analysis", "")),
                     _esc(deep.get("source_divergence", "")),
-                    ('<div class="deep-section"><strong>金句</strong><blockquote>%s</blockquote></div>'
+                    ('<div class="di-deep-sec"><strong>金句</strong><blockquote>%s</blockquote></div>'
                      % _esc(deep["quote"])) if deep.get("quote") else "",
                     _esc(deep.get("outlook", "")),
                     _esc(deep.get("confidence", "")),
                 )
 
             sources_tags = " ".join(
-                '<span class="src-tag">%s</span>' % _esc(s) for s in evt.get("sources", [])
+                '<span class="di-src">%s</span>' % _esc(s) for s in evt.get("sources", [])
             )
 
             events_html.append('''
-<article class="event-card">
-  <div class="event-header">
-    <span class="status-badge" style="background:%s">%s</span>
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">%s</span>
     %s
-    <span class="score">%.1f</span>
+    <span class="di-score">%.1f</span>
   </div>
-  <h3 class="event-label">%s</h3>
-  <p class="event-summary">%s</p>
-  <div class="event-meta">%s %s</div>
+  <h3 class="di-label">%s</h3>
+  <p class="di-summary">%s</p>
+  <div class="di-meta">%s %s</div>
   %s
 </article>''' % (
-                status_color, status_labels.get(status, status),
-                ('<span class="resonance-badge">%s</span>' % resonance_labels.get(resonance, resonance)) if resonance else "",
+                status_labels.get(status, status),
+                ('<span class="di-resonance">%s</span>' % resonance_labels.get(resonance, resonance)) if resonance else "",
                 evt.get("score", 0),
                 _esc(evt.get("label", "")),
                 _esc(evt.get("summary", "")),
                 sources_tags,
-                '<span class="cat-badge">%s</span>' % _esc(evt.get("category", "")) if evt.get("category") else "",
+                '<span class="di-cat">%s</span>' % _esc(evt.get("category", "")) if evt.get("category") else "",
                 deep_html,
             ))
 
         day_sections.append('''
 <section id="day-%s" class="day-section" style="display:none">
-  <div class="day-theme">📌 %s</div>
+  <div class="day-theme">%s</div>
   %s
 </section>''' % (date, theme, "\n".join(events_html)))
 
@@ -1835,55 +2155,177 @@ def _build_history_html():
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>每日深度洞察 · 历史</title>
 <style>
 :root {
-  --bg:#faf8f4; --card:#fffdf9; --ink:#1f1c17; --muted:#6f6860;
-  --line:#e4ddd0; --accent:#30891A; --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --bg:#faf8f4; --card:#fffdf9; --card-2:#f3efe6;
+  --ink:#1f1c17; --muted:#6f6860; --faint:#857e74;
+  --line:#e4ddd0; --line-strong:#b9b0a2;
+  --accent:#30891A; --accent-ink:#256d13; --accent-weak:rgba(48,137,26,.08);
+  --display:"Georgia","Times New Roman","Songti SC","SimSun","STSong",serif;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
 }
 [data-theme="dark"] {
-  --bg:#101114; --card:#17191d; --ink:#e9e6df; --muted:#a49c90; --line:#2a2d33; --accent:#5bc23e;
+  --bg:#101114; --card:#17191d; --card-2:#1d2026;
+  --ink:#e9e6df; --muted:#a49c90; --faint:#7d776d;
+  --line:#2a2d33; --line-strong:#4a4e57;
+  --accent:#5bc23e; --accent-ink:#a3e88f; --accent-weak:rgba(91,194,62,.12);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:var(--body);background:var(--bg);color:var(--ink);line-height:1.65;padding:20px;max-width:900px;margin:0 auto;}
-h1{font-size:1.5em;margin-bottom:16px;}
-select{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font-size:14px;margin-bottom:20px;}
-.day-theme{font-size:1.1em;color:var(--accent);margin-bottom:16px;padding:10px;background:var(--card);border-radius:8px;border-left:3px solid var(--accent);}
-.event-card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:12px;}
-.event-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
-.status-badge{color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;}
-.resonance-badge{font-size:12px;padding:2px 6px;border-radius:4px;background:rgba(255,100,0,.1);}
-.score{margin-left:auto;font-weight:bold;color:var(--accent);}
-.event-label{font-size:1.1em;margin-bottom:6px;}
-.event-summary{color:var(--muted);margin-bottom:8px;font-size:0.95em;}
-.event-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
-.src-tag{font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(0,0,0,.06);color:var(--muted);}
-.cat-badge{font-size:11px;padding:1px 6px;border-radius:3px;background:rgba(48,137,26,.1);color:var(--accent);}
-.deep{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
-.deep h4{font-size:0.95em;color:var(--accent);margin-bottom:8px;}
-.deep-section{margin-bottom:10px;}
-.deep-section strong{display:block;font-size:0.85em;color:var(--muted);margin-bottom:2px;}
-.deep-section p{font-size:0.95em;line-height:1.7;}
-.deep-section blockquote{font-style:italic;padding:8px 12px;border-left:3px solid var(--accent);background:rgba(48,137,26,.04);margin:4px 0;}
-.confidence{font-size:12px;color:var(--muted);margin-top:4px;}
+html{scroll-behavior:smooth;scroll-padding-top:24px;}
+body{
+  font-family:var(--body);background:var(--bg);color:var(--ink);
+  line-height:1.65;-webkit-font-smoothing:antialiased;font-size:15px;
+}
+a{color:inherit;text-decoration:none;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px;}
+.paper{max-width:980px;margin:0 auto;padding:0 20px 64px;}
+
+/* top bar */
+.topbar{display:flex;align-items:center;gap:10px;padding:14px 0 4px;}
+.back{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;
+  background:var(--card);border:1px solid var(--line);font-size:13px;transition:all .15s;
+}
+.back:hover{border-color:var(--accent);color:var(--accent-ink);}
+.topbar .spacer{flex:1;}
+.theme-btn{
+  width:36px;height:36px;border-radius:999px;background:var(--card);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);
+  transition:all .15s;
+}
+.theme-btn:hover{border-color:var(--accent);color:var(--accent-ink);}
+.theme-btn svg{width:16px;height:16px;}
+
+/* masthead */
+.masthead{text-align:center;padding:26px 0 0;}
+.mast-rule{display:flex;align-items:center;gap:14px;margin:0 0 4px;}
+.mast-rule::before,.mast-rule::after{content:"";flex:1;height:1px;background:var(--line-strong);}
+.mast-meta{font-size:11.5px;letter-spacing:.14em;color:var(--muted);font-weight:500;white-space:nowrap;}
+.mast-title{
+  font-family:var(--display);font-size:clamp(28px,5vw,42px);font-weight:700;
+  letter-spacing:.06em;line-height:1.15;margin:6px 0 2px;
+}
+.mast-sub{font-size:12.5px;color:var(--muted);letter-spacing:.1em;}
+.mast-strip{
+  margin-top:14px;padding:8px 12px;border-top:3px double var(--line-strong);border-bottom:1px solid var(--line-strong);
+  font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 18px;justify-content:center;
+}
+.mast-strip b{color:var(--ink);font-weight:600;}
+
+/* day nav */
+.day-nav{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:6px 22px;
+  padding:14px 0 4px;font-size:13px;
+}
+.day-nav select{
+  padding:6px 12px;border:1px solid var(--line);border-radius:999px;
+  background:var(--card);color:var(--ink);font-size:13px;font-family:var(--body);
+}
+
+/* day section */
+.day-section{margin:34px 0;}
+.day-theme{
+  font-family:var(--display);font-size:1.1em;color:var(--accent-ink);margin-bottom:16px;
+  padding:10px 14px;border-left:3px solid var(--accent);background:var(--card-2);
+}
+
+/* event cards */
+.di-card{padding:14px 0;border-bottom:1px solid var(--line);}
+.di-card:last-child{border-bottom:none;}
+.di-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.di-status{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 6px;letter-spacing:.05em;}
+.di-resonance{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 5px;}
+.di-score{margin-left:auto;font-weight:bold;color:var(--accent);font-size:0.85em;font-family:var(--display);}
+.di-label{font-family:var(--display);font-size:1.05em;font-weight:700;margin-bottom:4px;line-height:1.4;}
+.di-summary{color:var(--muted);font-size:0.88em;margin-bottom:6px;line-height:1.7;}
+.di-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
+.di-src{font-size:10px;padding:1px 5px;border:1px solid var(--line);color:var(--faint);}
+.di-cat{font-size:10px;padding:1px 5px;color:var(--accent-ink);border:1px solid var(--accent);}
+
+/* deep analysis */
+.di-deep{margin-top:10px;padding:10px 0 10px 16px;border-left:2px solid var(--line-strong);font-size:0.88em;}
+.di-deep-title{font-family:var(--display);font-weight:700;font-size:0.95em;margin-bottom:6px;color:var(--ink);}
+.di-deep-sec{margin-bottom:10px;}
+.di-deep-sec strong{display:block;font-size:0.85em;color:var(--muted);margin-bottom:2px;}
+.di-deep-sec p{font-size:0.95em;line-height:1.7;}
+.di-deep-sec blockquote{font-style:italic;padding:6px 10px;border-left:2px solid var(--accent);color:var(--muted);margin:4px 0;}
+.di-conf{font-size:10px;color:var(--faint);}
+
+/* footer */
+.foot{
+  margin-top:40px;padding-top:14px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;
+}
+
+@media (max-width:760px){
+  .paper{padding:0 14px 48px;}
+  .mast-title{letter-spacing:.03em;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto;}
+  *{transition:none!important;animation:none!important;}
+}
 </style>
+<script>try{var _t=localStorage.getItem('wb_starhub_theme_v1')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=_t;}catch(e){}</script>
 </head>
 <body>
-<h1>📊 每日深度洞察 · 历史</h1>
-<select id="daySelect" onchange="switchDay(this.value)">
+<div class="paper">
+
+  <div class="topbar">
+    <a class="back" href="ai-daily.html">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+      返回日报
+    </a>
+    <div class="spacer"></div>
+    <button class="theme-btn" id="btnTheme" title="切换明暗主题" aria-label="切换明暗主题">
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/></svg>
+    </button>
+  </div>
+
+  <header class="masthead">
+    <div class="mast-rule"><span class="mast-meta">每日深度洞察</span><span class="mast-meta">历史归档</span></div>
+    <h1 class="mast-title">深度洞察<span style="color:var(--accent)"> · </span>历史</h1>
+    <div class="mast-sub">共 %d 天记录 &nbsp;·&nbsp; 事件聚合与趋势追踪</div>
+    <div class="mast-strip">
+      <span>自动生成</span>
+      <span>数据源 <b>AIHOT</b> · 多平台聚合 · 内容版权归原作者</span>
+    </div>
+  </header>
+
+  <nav class="day-nav" aria-label="日期选择">
+    <select id="daySelect" onchange="switchDay(this.value)">
 %s
-</select>
+    </select>
+  </nav>
+
 %s
+
+  <footer class="foot">
+    <span>每日深度洞察 · 历史归档</span>
+    <span><a href="ai-daily.html">返回今日日报</a></span>
+  </footer>
+</div>
 <script>
 function switchDay(id){
   document.querySelectorAll('.day-section').forEach(function(s){s.style.display='none';});
   var el=document.getElementById(id);
   if(el)el.style.display='block';
 }
+(function(){
+  var btn=document.getElementById('btnTheme');
+  btn.addEventListener('click',function(){
+    var cur=document.documentElement.dataset.theme;
+    var next=cur==='dark'?'light':'dark';
+    document.documentElement.dataset.theme=next;
+    try{localStorage.setItem('wb_starhub_theme_v1',next);}catch(e){}
+  });
+})();
 </script>
 </body>
-</html>''' % (date_options, "\n".join(day_sections))
+</html>''' % (len(days), date_options, "\n".join(day_sections))
 
     try:
         with open(HISTORY_HTML, "w", encoding="utf-8") as f:
@@ -1898,7 +2340,30 @@ function switchDay(id){
 _AI_DAILY_FILE = "ai-daily.html"
 
 
-def _inject_into_ai_daily(clusters, theme):
+# ──────────────────── 破茧栏 HTML 构建 ────────────────────
+
+def _build_bubble_html(bubble_breaker):
+    """将破茧栏数据渲染为报纸风格 HTML 段。"""
+    if not bubble_breaker:
+        return ""
+    cards = []
+    for item in bubble_breaker:
+        cards.append('''
+<div class="di-bubble-card">
+  <div class="di-bubble-label">%s</div>
+  <div class="di-bubble-summary">%s</div>
+  <div class="di-bubble-reason">%s</div>
+</div>''' % (_esc(item.get("label", "")),
+             _esc(item.get("summary", "")),
+             _esc(item.get("reason", ""))))
+    return '''
+<div class="di-bubble">
+  <div class="di-bubble-title">\u7834\u8327\u680f \u00b7 \u4fe1\u606f\u589e\u91cf</div>
+  %s
+</div>''' % "\n".join(cards)
+
+
+def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
     """将洞察子板块注入已生成的 ai-daily.html（在 <footer> 之前插入）。"""
     if not os.path.exists(_AI_DAILY_FILE):
         print("[每日洞察] ai-daily.html 不存在，跳过注入", file=sys.stderr)
@@ -1920,18 +2385,13 @@ def _inject_into_ai_daily(clusters, theme):
     # 构建事件卡片
     cards_html = []
     for evt in clusters:
-        status_colors = {
-            "new": "#2563eb", "ongoing": "#0891b2",
-            "escalating": "#dc2626", "faded": "#6b7280",
-        }
         status_labels = {
-            "new": "新事件", "ongoing": "持续", "escalating": "升级", "faded": "消退",
+            "new": "新", "ongoing": "持续", "escalating": "升级", "faded": "消退",
         }
         resonance_labels = {
-            "breakout": "\U0001f525 破圈", "tech_hot": "\u26a1 技术热",
-            "niche": "\U0001f3af 垂直", "consumer": "\U0001f4f1 消费级",
+            "breakout": "破圈", "tech_hot": "技术热",
+            "niche": "垂直", "consumer": "消费级",
         }
-        sc = status_colors.get(evt.get("status", "new"), "#6b7280")
         sl = status_labels.get(evt.get("status", "new"), "")
         rl = resonance_labels.get(evt.get("resonance", ""), "")
         deep = evt.get("deep_analysis") or {}
@@ -1941,19 +2401,19 @@ def _inject_into_ai_daily(clusters, theme):
             '<span class="di-src">%s</span>' % _esc(s) for s in evt.get("source_types", [])
         )
 
-        # 深度解读（可折叠）
+        # 深度解读（缩进式排版，非折叠）
         deep_html = ""
-        if deep:
+        if deep and deep.get("status") != "degraded":
             deep_html = '''
-<details class="di-deep"><summary>深度解读</summary>
-<div class="di-deep-body">
+<div class="di-deep">
+<p class="di-deep-title">深度解读</p>
 <p><b>事件还原</b><br>%s</p>
 <p><b>影响分析</b><br>%s</p>
 <p><b>信源分歧</b><br>%s</p>
 %s
 <p><b>后续展望</b><br>%s</p>
 <p class="di-conf">置信度: %s</p>
-</div></details>''' % (
+</div>''' % (
                 _esc(deep.get("event_reconstruction", "")),
                 _esc(deep.get("impact_analysis", "")),
                 _esc(deep.get("source_divergence", "")),
@@ -1965,7 +2425,7 @@ def _inject_into_ai_daily(clusters, theme):
         cards_html.append('''
 <div class="di-card">
   <div class="di-head">
-    <span class="di-status" style="background:%s">%s</span>
+    <span class="di-status">%s</span>
     %s
     <span class="di-score">%.1f</span>
   </div>
@@ -1974,7 +2434,7 @@ def _inject_into_ai_daily(clusters, theme):
   <div class="di-meta">%s <span class="di-cat">%s</span></div>
   %s
 </div>''' % (
-            sc, sl,
+            sl,
             ('<span class="di-resonance">%s</span>' % rl) if rl else "",
             evt.get("score", 0),
             _esc(evt.get("label", "")),
@@ -1984,35 +2444,44 @@ def _inject_into_ai_daily(clusters, theme):
             deep_html,
         ))
 
-    # 完整子板块 HTML
+    # 完整子板块 HTML（报纸风格）
     section_html = '''<!-- daily-insight-start -->
 <style>
-.di-section{margin:24px 0;padding:20px;background:var(--card);border:1px solid var(--line);border-radius:10px;}
-.di-title{font-size:1.2em;font-weight:bold;margin-bottom:4px;}
-.di-theme{color:var(--accent);font-size:0.95em;margin-bottom:16px;}
-.di-card{padding:12px;border:1px solid var(--line);border-radius:8px;margin-bottom:10px;background:var(--bg);}
-.di-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;}
-.di-status{color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;}
-.di-resonance{font-size:11px;padding:1px 5px;border-radius:3px;background:rgba(255,100,0,.1);}
-.di-score{margin-left:auto;font-weight:bold;color:var(--accent);font-size:0.9em;}
-.di-label{font-size:1em;margin-bottom:4px;}
-.di-summary{color:var(--muted);font-size:0.9em;margin-bottom:6px;line-height:1.6;}
+.di-section{margin:34px 0;padding:18px 0;border-top:3px double var(--line-strong);}
+.di-title{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:.04em;margin-bottom:4px;}
+.di-theme{color:var(--muted);font-size:0.9em;margin-bottom:16px;font-style:italic;}
+.di-card{padding:14px 0;border-bottom:1px solid var(--line);}
+.di-card:last-child{border-bottom:none;}
+.di-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.di-status{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 6px;letter-spacing:.05em;}
+.di-resonance{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 5px;}
+.di-score{margin-left:auto;font-weight:bold;color:var(--accent);font-size:0.85em;font-family:var(--display);}
+.di-label{font-family:var(--display);font-size:1.05em;font-weight:700;margin-bottom:4px;line-height:1.4;}
+.di-summary{color:var(--muted);font-size:0.88em;margin-bottom:6px;line-height:1.7;}
 .di-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
-.di-src{font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(0,0,0,.06);color:var(--muted);}
-.di-cat{font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(48,137,26,.1);color:var(--accent);}
-.di-deep{margin-top:8px;font-size:0.9em;}
-.di-deep summary{cursor:pointer;color:var(--accent);font-weight:bold;padding:4px 0;}
-.di-deep-body p{margin:6px 0;line-height:1.7;}
-.di-quote{font-style:italic;padding:6px 10px;border-left:3px solid var(--accent);background:rgba(48,137,26,.04);margin:6px 0;}
-.di-conf{font-size:11px;color:var(--muted);}
+.di-src{font-size:10px;padding:1px 5px;border:1px solid var(--line);color:var(--faint);}
+.di-cat{font-size:10px;padding:1px 5px;color:var(--accent-ink);border:1px solid var(--accent);}
+.di-deep{margin-top:10px;padding:10px 0 10px 16px;border-left:2px solid var(--line-strong);font-size:0.88em;}
+.di-deep-title{font-family:var(--display);font-weight:700;font-size:0.95em;margin-bottom:6px;color:var(--ink);}
+.di-deep p{margin:5px 0;line-height:1.7;}
+.di-quote{font-style:italic;padding:6px 10px;border-left:2px solid var(--accent);color:var(--muted);margin:6px 0;}
+.di-conf{font-size:10px;color:var(--faint);}
+.di-bubble{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line-strong);}
+.di-bubble-title{font-family:var(--display);font-size:0.95em;font-weight:700;color:var(--muted);margin-bottom:10px;letter-spacing:.06em;}
+.di-bubble-card{padding:8px 0;border-bottom:1px dotted var(--line);}
+.di-bubble-card:last-child{border-bottom:none;}
+.di-bubble-label{font-family:var(--display);font-weight:700;font-size:0.92em;}
+.di-bubble-summary{color:var(--muted);font-size:0.82em;line-height:1.6;margin:3px 0;}
+.di-bubble-reason{font-size:0.78em;color:var(--faint);font-style:italic;}
 </style>
 <div class="di-section">
-  <div class="di-title">\U0001f4ca \u6bcf\u65e5\u6df1\u5ea6\u6d1e\u5bdf</div>
-  <div class="di-theme">\U0001f4cc %s</div>
+  <div class="di-title">\u6bcf\u65e5\u6df1\u5ea6\u6d1e\u5bdf</div>
+  <div class="di-theme">%s</div>
+  %s
   %s
 </div>
 <!-- daily-insight-end -->
-''' % (_esc(theme), "\n".join(cards_html))
+''' % (_esc(theme), "\n".join(cards_html), _build_bubble_html(bubble_breaker))
 
     # 在 <footer> 之前插入；若 footer 标记不存在则回退到 </body> 前
     if '<footer class="foot">' in html:
@@ -2322,17 +2791,8 @@ def main():
     else:
         chunks = fallback_chunks
 
-    # 3) 构建查询：AGI Hunt Top20 + AIHOT Top20 标题
-    queries = []
-    agihunt_sorted = sorted(agihunt_clean, key=lambda x: x.get("hot", 0), reverse=True)
-    for it in agihunt_sorted[:20]:
-        queries.append(it.get("title", ""))
-    for it in aihot_clean[:20]:
-        queries.append(it.get("title", ""))
-    # 回退：若无 AGI Hunt/AIHOT，用热榜标题
-    if not queries:
-        for it in hot_clean[:20]:
-            queries.append(it.get("title", ""))
+    # 3) 构建查询：混合查询构建
+    queries = _build_queries(hot_clean, agihunt_clean, aihot_clean)
 
     # 4) 混合检索 → 重排序 → 事件组装
     retrieved = _hybrid_retrieve(index, chunks, queries)
@@ -2392,11 +2852,19 @@ def main():
                     c["significance"] = pe.get("significance", "")
                     c["key_links"] = pe.get("key_links", [])
 
-            # Phase 1.5: 事实核查 — 确保 faithfulness（使用与 RAGAS 相同的全局上下文）
+            # Phase 1.5: 事实核查 — 确保 faithfulness
             try:
                 _verify_faithfulness(llm, clusters, retrieved_for_ragas)
             except Exception as exc:
                 print("[每日洞察] 事实核查异常，跳过: %s" % exc, file=sys.stderr)
+
+            # Phase 1.6: 自审环节 — 检查 Phase 1 输出质量
+            try:
+                all_material = "\n".join(
+                    _build_event_material(c)[:300] for c in clusters[:6])
+                _self_review_phase1(llm, clusters, all_material)
+            except Exception as exc:
+                print("[每日洞察] 自审环节异常，跳过: %s" % exc, file=sys.stderr)
 
             # Phase 2 LLM: Top N 深度解读
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
@@ -2407,10 +2875,13 @@ def main():
                     "label": c.get("label", ""),
                     "summary": c.get("summary", ""),
                 }, prev_summary)
-                if deep:
-                    c["deep_analysis"] = deep
+                c["deep_analysis"] = deep
+                if deep.get("status") == "ok":
                     has_analysis = True
                     print("[每日洞察] 深度解读完成: %s" % c.get("label", "")[:30])
+                else:
+                    print("[每日洞察] 深度解读降级: %s (%s)" % (
+                        c.get("label", "")[:30], deep.get("reason", "unknown")))
         else:
             print("[每日洞察] Phase 1 LLM 失败，降级为仅聚类结果", file=sys.stderr)
     else:
@@ -2425,8 +2896,11 @@ def main():
         except Exception as exc:
             print("[每日洞察] RAGAS 评估异常，跳过: %s" % exc, file=sys.stderr)
 
-    # ── Phase 3.1: 输出 JSON ──
-    _write_insight_json(clusters, theme, has_analysis, ragas_eval)
+    # ── Phase 3.1: 破茧栏 + 输出 JSON ──
+    history = _load_history()
+    read_profile = _build_read_profile(history)
+    bubble_breaker = _select_bubble_events(clusters, read_profile)
+    _write_insight_json(clusters, theme, has_analysis, ragas_eval, bubble_breaker)
 
     # ── Phase 3.3: 更新历史 ──
     _update_history(clusters, theme)
@@ -2435,7 +2909,7 @@ def main():
     _build_history_html()
 
     # ── 注入 AI 日报子板块 ──
-    _inject_into_ai_daily(clusters, theme)
+    _inject_into_ai_daily(clusters, theme, bubble_breaker)
 
     elapsed = round(time.time() - t0, 1)
     print("[每日洞察] 完成，耗时 %.1f 秒，%d 个事件" % (elapsed, len(clusters)))
