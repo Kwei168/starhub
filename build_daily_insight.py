@@ -709,8 +709,15 @@ def _load_vector_cache():
     文件不存在或加载失败时返回 ([], None, "")。
     """
     if not FAISS_AVAILABLE:
+        print("[每日洞察] 向量缓存跳过: FAISS 不可用", file=sys.stderr)
         return [], None, ""
-    if not os.path.exists(VECTOR_CACHE_FILE) or not os.path.exists(FAISS_META_FILE):
+    vec_exists = os.path.exists(VECTOR_CACHE_FILE)
+    meta_exists = os.path.exists(FAISS_META_FILE)
+    if not vec_exists or not meta_exists:
+        print("[每日洞察] 向量缓存为空: %s %s, %s %s (cwd=%s)" % (
+            VECTOR_CACHE_FILE, "✓" if vec_exists else "MISSING",
+            FAISS_META_FILE, "✓" if meta_exists else "MISSING",
+            os.getcwd()), file=sys.stderr)
         return [], None, ""
     try:
         with open(FAISS_META_FILE, "r", encoding="utf-8") as f:
