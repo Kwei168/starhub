@@ -44,7 +44,7 @@ except ImportError:
 BJT = datetime.timezone(datetime.timedelta(hours=8))
 NOW_BJ = None  # 在 main() 中初始化
 SEMANTIC_CLUSTER_THRESHOLD = 0.75  # 语义聚类余弦相似度阈值
-MAX_QUERIES = 40  # 查询总数上限
+MAX_QUERIES = 50  # 查询总数上限（扩容以容纳 RSS 标题查询）
 
 # ── 数据文件路径 ──
 RSS_HISTORY_FILE = "rss_history.json"
@@ -910,8 +910,8 @@ def _rerank(retrieved, hot_snapshot):
     return retrieved
 
 
-def _build_queries(hot_clean, agihunt_clean, aihot_clean, retrieved_chunks=None):
-    """混合查询构建：AGI Hunt + AIHOT + 热榜 + 伪查询，去重后截断到 MAX_QUERIES。"""
+def _build_queries(hot_clean, agihunt_clean, aihot_clean, rss_clean=None, retrieved_chunks=None):
+    """混合查询构建：AGI Hunt + AIHOT + 热榜 + RSS + 伪查询，去重后截断到 MAX_QUERIES。"""
     queries = []
     seen = set()
 
@@ -933,6 +933,12 @@ def _build_queries(hot_clean, agihunt_clean, aihot_clean, retrieved_chunks=None)
     # 热榜 Top15
     for it in hot_clean[:15]:
         _add(it.get("title", ""))
+
+    # RSS Top10（补充仅出现在 RSS 中的重要事件，提升 coverage）
+    if rss_clean:
+        rss_sorted = sorted(rss_clean, key=lambda x: x.get("pub_date", ""), reverse=True)
+        for it in rss_sorted[:10]:
+            _add(it.get("title", ""))
 
     # 伪查询 Top10（从已检索 chunks 的 title 截取）
     if retrieved_chunks:
@@ -3258,7 +3264,7 @@ def main():
         chunks = fallback_chunks
 
     # 3) 构建查询：混合查询构建
-    queries = _build_queries(hot_clean, agihunt_clean, aihot_clean)
+    queries = _build_queries(hot_clean, agihunt_clean, aihot_clean, rss_clean=rss_clean)
 
     # 4) 混合检索 → 重排序 → 事件组装
     retrieved = _hybrid_retrieve(index, chunks, queries)
