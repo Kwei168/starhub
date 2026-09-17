@@ -12,5 +12,10 @@
   "insight_top_topics": 15,
   "diverse_enabled": true,
   "diverse_window_minutes": 120,
-  "daily_insight_enabled": true
+  "daily_insight_enabled": true,
+  "daily_insight_judge_provider": "mimo",
+  "daily_insight_judge_model": "mimo-v2.5-free",
+  "daily_insight_judge_timeout": 60,
+  "daily_insight_cross_validation": true,
+  "daily_insight_judge_fallback": "agnes"
 }

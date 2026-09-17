@@ -1307,6 +1307,96 @@ def _init_llm():
     return _LLM(api_key, extra_keys=extra or None)
 
 
+# ──────────────────── Judge LLM：多模型降级 ────────────────────
+
+class _MimoLLM:
+    """Mimo 模型 LLM 调用（通过 OpenCode Zen 端点）。
+    用作 RAGAS Judge 的首选模型，评估一致性优于 agnes。"""
+
+    API_URL = "https://opencode.ai/zen/v1/chat/completions"
+
+    def __init__(self, api_key=None, model="mimo-v2.5-free", timeout=60):
+        self.api_key = api_key or os.environ.get("ZEN_API_KEY", "public")
+        self.model = model
+        self.timeout = timeout
+
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            self.API_URL, data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer %s" % self.api_key,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            return body["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as exc:
+            print("[MimoLLM] HTTP %d" % exc.code, file=sys.stderr)
+            return ""
+        except Exception as exc:
+            print("[MimoLLM] error: %s" % exc, file=sys.stderr)
+            return ""
+
+
+class _FallbackJudgeLLM:
+    """Judge 专用 LLM：首选 mimo，失败时降级到 agnes。
+    记录每次调用的模型、耗时（评估元数据）。"""
+
+    def __init__(self, primary_llm, fallback_llm):
+        self.primary = primary_llm
+        self.fallback = fallback_llm
+        self.model = primary_llm.model  # 对外暴露的模型名
+        self._call_log = []
+
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        meta = {"model": None, "elapsed_s": 0, "fallback": False}
+        t0 = time.time()
+        result = self.primary.complete(messages, temperature, max_tokens)
+        meta["model"] = self.primary.model
+        meta["elapsed_s"] = round(time.time() - t0, 2)
+        if result:
+            self._call_log.append(meta)
+            return result
+        # 首选失败，降级到 fallback
+        meta["fallback"] = True
+        t0 = time.time()
+        result = self.fallback.complete(messages, temperature, max_tokens)
+        meta["model"] = getattr(self.fallback, 'model', 'agnes')
+        meta["elapsed_s"] = round(time.time() - t0, 2)
+        self._call_log.append(meta)
+        if result:
+            print("[JudgeLLM] mimo 失败，已降级到 %s" % meta["model"], file=sys.stderr)
+        return result
+
+
+def _init_judge_llm(config=None):
+    """初始化 Judge LLM（mimo 首选 + agnes 降级）。
+    配置项可通过 config dict 覆盖。"""
+    cfg = config or {}
+    judge_provider = cfg.get("daily_insight_judge_provider", "mimo")
+    judge_model = cfg.get("daily_insight_judge_model", "mimo-v2.5-free")
+    judge_timeout = cfg.get("daily_insight_judge_timeout", 60)
+
+    agnes = _init_llm()  # 只创建一次 agnes 实例，避免 key rotation 状态分裂
+    if judge_provider == "mimo":
+        primary = _MimoLLM(model=judge_model, timeout=judge_timeout)
+        if agnes:
+            return _FallbackJudgeLLM(primary, agnes)
+        return primary
+    # 非 mimo provider：直接用 agnes，无需 FallbackJudgeLLM 包装
+    return agnes
+
+
 def _parse_json(text):
     """从 LLM 输出中提取 JSON。"""
     if not text:
@@ -2043,6 +2133,81 @@ def _select_bubble_events(clusters, read_profile, top_n=5):
 
 # ──────────────────── RAGAS: 质量评估与自我修正 ────────────────────
 
+# Chain-of-Thought 评估 Prompt（正向视角 — 检查覆盖率）
+_RAGAS_JUDGE_PROMPT = """你是 RAG 质量评估专家。请按以下步骤评估每日 AI 洞察报告的质量。
+
+【检索上下文】（四源 RAG 检索的原始素材）：
+%s
+
+【生成的报告】：
+主题: %s
+%s
+
+## 评估要求
+
+对以下三个维度，先输出推理过程，再给出分数。
+
+### 1. context_coverage（上下文覆盖度）
+**推理步骤**：
+- 列出检索上下文中的 3-5 个最重要信息点
+- 逐一检查报告中是否覆盖了这些信息点
+- 指出遗漏的重要信息
+**评分**：基于覆盖率给出 0.0-1.0 的分数，并标注置信度（high/medium/low）
+
+### 2. faithfulness（事实忠实度）
+**推理步骤**：
+- 从报告中提取 3-5 个关键事实声明
+- 逐一在检索上下文中查找支撑证据
+- 标注每个声明的支撑状态（supported/partially_supported/unsupported）
+**评分**：基于支撑比例给出 0.0-1.0 的分数，并标注置信度
+
+### 3. relevance（话题相关性）
+**推理步骤**：
+- 列出当日最重要的 3-5 个 AI/科技话题
+- 检查报告中的事件是否与这些话题匹配
+- 评估事件排序是否合理（最重要的在前）
+**评分**：基于匹配度给出 0.0-1.0 的分数，并标注置信度
+
+## 输出格式
+
+请严格按以下 JSON 格式输出（不要输出 JSON 以外的内容）：
+{"reasoning": {"coverage": {"evidence_points": ["..."], "covered": ["..."], "missed": ["..."], "confidence": "high|medium|low"}, "faithfulness": {"claims": [{"claim": "...", "status": "supported|partial|unsupported"}], "confidence": "high|medium|low"}, "relevance": {"key_topics": ["..."], "matched": ["..."], "unmatched": ["..."], "confidence": "high|medium|low"}}, "scores": {"context_coverage": 0.8, "faithfulness": 0.9, "relevance": 0.7}, "feedback": "具体改进建议", "weak_events": [2, 5]}"""
+
+# Chain-of-Thought 评估 Prompt V2（反向视角 — 找出缺陷）
+_RAGAS_JUDGE_PROMPT_V2 = """你是 RAG 质量审计专家。你的任务是找出报告中的缺陷和不足。
+
+【检索上下文】：
+%s
+
+【生成的报告】：
+主题: %s
+%s
+
+## 审计要求
+
+从以下角度审视报告，先列出问题，再给出分数。
+
+### 1. context_coverage — 信息遗漏审计
+- 检索上下文中有哪些重要信息被报告遗漏了？
+- 遗漏的信息对读者理解当日 AI 动态有多大影响？
+- 给出 0.0-1.0 分数和置信度（high/medium/low）
+
+### 2. faithfulness — 事实准确性审计
+- 报告中有哪些声明在检索上下文中找不到依据？
+- 是否存在过度推断或夸大？
+- 给出 0.0-1.0 分数和置信度
+
+### 3. relevance — 话题聚焦审计
+- 报告中有哪些事件与当日核心话题关系不大？
+- 事件排序是否合理？
+- 给出 0.0-1.0 分数和置信度
+
+## 输出格式
+
+请严格按以下 JSON 格式输出（不要输出 JSON 以外的内容）：
+{"reasoning": {"coverage": {"missed_points": ["..."], "impact": "...", "confidence": "high|medium|low"}, "faithfulness": {"unsupported_claims": [{"claim": "...", "issue": "..."}], "confidence": "high|medium|low"}, "relevance": {"irrelevant_events": ["..."], "ordering_issues": ["..."], "confidence": "high|medium|low"}}, "scores": {"context_coverage": 0.8, "faithfulness": 0.9, "relevance": 0.7}, "feedback": "具体改进建议", "weak_events": [2, 5]}"""
+
+
 def _build_ragas_context(clusters, retrieved_chunks):
     """为 RAGAS 评估构建上下文文本：将检索到的 chunks 拼接为评估参考。"""
     # 取 top chunks 作为评估上下文（按检索分数排序）
@@ -2058,8 +2223,11 @@ def _build_ragas_context(clusters, retrieved_chunks):
     return "\n---\n".join(context_parts)
 
 
-def _evaluate_report_quality(llm, clusters, theme, context_text):
-    """RAGAS-inspired 报告质量评估（无需 ground truth）。
+def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant="v1"):
+    """RAGAS-inspired 报告质量评估（Chain-of-Thought 推理链）。
+
+    使用结构化推理链让 LLM 先推理再评分，降低离散分数的随机性。
+    支持两个 prompt 变体：v1（正向视角）和 v2（反向审计视角）。
 
     评估维度：
     - context_coverage: 事件摘要是否充分利用了检索上下文中的关键信息
@@ -2068,16 +2236,19 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
 
     Returns:
         {"context_coverage": float, "faithfulness": float, "relevance": float,
-         "overall": float, "feedback": str, "weak_events": [int]}
+         "overall": float, "feedback": str, "weak_events": [int],
+         "confidences": {"coverage": str, "faithfulness": str, "relevance": str}}
     """
     if not context_text or not clusters:
         return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                "overall": 0.5, "feedback": "无上下文可评估", "weak_events": []}
+                "overall": 0.5, "feedback": "无上下文可评估", "weak_events": [],
+                "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"}}
     if not llm:
         return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                "overall": 0.5, "feedback": "LLM 不可用", "weak_events": []}
+                "overall": 0.5, "feedback": "LLM 不可用", "weak_events": [],
+                "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"}}
 
-    # 构建事件摘要摘要文本
+    # 构建事件摘要文本
     events_text = []
     for i, c in enumerate(clusters[:8]):
         summary = c.get("summary", "") or c.get("label", "")
@@ -2092,28 +2263,15 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
             i + 1, c.get("category", ""), summary[:200],
             significance[:100], "\n深度: " + deep_text if deep_text else ""))
 
-    prompt = (
-        "你是 RAG 质量评估专家。请评估以下每日 AI 洞察报告的质量。\n\n"
-        "【检索上下文】（来自四源 RAG 检索的原始素材）：\n"
-        "%s\n\n"
-        "【生成的报告】：\n"
-        "主题: %s\n"
-        "%s\n\n"
-        "请从三个维度评分（0.0-1.0）并给出改进建议：\n"
-        "1. context_coverage: 报告是否充分利用了检索上下文中的关键信息？是否遗漏了重要事件？\n"
-        "2. faithfulness: 摘要和分析中的事实/数据是否都有检索上下文支撑（无编造）？\n"
-        "3. relevance: 事件选取是否紧扣当日最重要的 AI/科技话题？排序是否合理？\n\n"
-        "另外，请指出哪些事件的摘要质量最差（编号列表，如无则为空列表）。\n\n"
-        "以 JSON 返回：\n"
-        "{\"context_coverage\": 0.8, \"faithfulness\": 0.9, \"relevance\": 0.7,\n"
-        " \"feedback\": \"具体改进建议\", \"weak_events\": [2, 5]}"
-    ) % (context_text, theme or "无主题", "\n".join(events_text))
+    # 选择 prompt 变体
+    prompt_template = _RAGAS_JUDGE_PROMPT_V2 if prompt_variant == "v2" else _RAGAS_JUDGE_PROMPT
+    prompt = prompt_template % (context_text, theme or "无主题", "\n".join(events_text))
 
     messages = [
-        {"role": "system", "content": "你是 RAG 质量评估专家。直接输出 JSON，不要任何解释、前言或后记。"},
+        {"role": "system", "content": "你是 RAG 质量评估专家。先按步骤推理每个维度，再给出分数。严格输出 JSON。"},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.2, max_tokens=3000)
+    result = llm.complete(messages, temperature=0.2, max_tokens=4000)
     parsed = _robust_parse_json(result)
 
     def _clamp(v):
@@ -2123,12 +2281,23 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
             return 0.5
 
     if isinstance(parsed, dict):
-        cov = _clamp(parsed.get("context_coverage", 0.5))
-        faith = _clamp(parsed.get("faithfulness", 0.5))
-        rel = _clamp(parsed.get("relevance", 0.5))
+        # 优先从 scores 子对象读取，兼容旧格式（顶层字段）
+        scores = parsed.get("scores", parsed)
+        cov = _clamp(scores.get("context_coverage", 0.5))
+        faith = _clamp(scores.get("faithfulness", 0.5))
+        rel = _clamp(scores.get("relevance", 0.5))
         weak = parsed.get("weak_events", [])
         if not isinstance(weak, list):
             weak = []
+
+        # 提取置信度（用于交叉验证加权）
+        reasoning = parsed.get("reasoning", {})
+        confidences = {
+            "coverage": reasoning.get("coverage", {}).get("confidence", "medium"),
+            "faithfulness": reasoning.get("faithfulness", {}).get("confidence", "medium"),
+            "relevance": reasoning.get("relevance", {}).get("confidence", "medium"),
+        }
+
         return {
             "context_coverage": round(cov, 2),
             "faithfulness": round(faith, 2),
@@ -2136,9 +2305,39 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
             "overall": round((cov + faith + rel) / 3, 2),
             "feedback": str(parsed.get("feedback", "")),
             "weak_events": [int(w) for w in weak if isinstance(w, (int, float))],
+            "confidences": confidences,
         }
 
     return None
+
+
+_CONFIDENCE_WEIGHT = {"high": 1.5, "medium": 1.0, "low": 0.5}
+
+
+def _weighted_avg_scores(v1, v2):
+    """TrustJudge 启发的加权平均：置信度高的评估权重更大。"""
+    dims = ["coverage", "faithfulness", "relevance"]
+    w1 = sum(_CONFIDENCE_WEIGHT.get(v1.get("confidences", {}).get(d, "medium"), 1.0) for d in dims)
+    w2 = sum(_CONFIDENCE_WEIGHT.get(v2.get("confidences", {}).get(d, "medium"), 1.0) for d in dims)
+
+    def _avg(key):
+        return (v1.get(key, 0.5) * w1 + v2.get(key, 0.5) * w2) / (w1 + w2)
+
+    cov = round(_avg("context_coverage"), 2)
+    faith = round(_avg("faithfulness"), 2)
+    rel = round(_avg("relevance"), 2)
+    result = {
+        "context_coverage": cov,
+        "faithfulness": faith,
+        "relevance": rel,
+        "overall": round((cov + faith + rel) / 3, 2),
+        "feedback": (v1.get("feedback", "") + " | " + v2.get("feedback", "")).strip(" |"),
+        "weak_events": list(set(
+            v1.get("weak_events", []) + v2.get("weak_events", []))),
+    }
+    if "cross_validation" in v1:
+        result["cross_validation"] = v1["cross_validation"]
+    return result
 
 
 def _self_correct_events(llm, clusters, context_text, evaluation):
@@ -2218,8 +2417,28 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     current = clusters
     eval_result = {}
     iteration_count = 0
+    use_cross_validation = config.get("daily_insight_cross_validation", False)
     for iteration in range(max_iterations + 1):
-        eval_result = _evaluate_report_quality(llm, current, theme, context_text)
+        if use_cross_validation:
+            # 交叉验证：两个 prompt 变体各评估一次
+            eval_v1 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v1")
+            eval_v2 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v2")
+            if eval_v1 and eval_v2:
+                eval_result = _weighted_avg_scores(eval_v1, eval_v2)
+                eval_result["cross_validation"] = {
+                    "v1_overall": eval_v1["overall"], "v2_overall": eval_v2["overall"]}
+                eval_result["_actual_variants"] = 2
+                print("[每日洞察] RAGAS 交叉验证: v1=%.2f v2=%.2f → avg=%.2f" % (
+                    eval_v1["overall"], eval_v2["overall"], eval_result["overall"]))
+            else:
+                eval_result = eval_v1 or eval_v2 or None
+                if eval_result is None:
+                    eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
+                                   "overall": 0.5, "feedback": "交叉验证两路均失败", "weak_events": []}
+                else:
+                    eval_result["_actual_variants"] = 1
+        else:
+            eval_result = _evaluate_report_quality(llm, current, theme, context_text)
         if eval_result is None:
             eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
                            "overall": 0.5, "feedback": "JSON 解析最终失败", "weak_events": []}
@@ -2236,8 +2455,16 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
                 eval_result["overall"], threshold), file=sys.stderr)
             pre_score = eval_result["overall"]
             corrected = _self_correct_events(llm, current, context_text, eval_result)
-            # 重新评估修正结果
-            corrected_result = _evaluate_report_quality(llm, corrected, theme, context_text)
+            # 重新评估修正结果（保持与初始评估一致的方法）
+            if use_cross_validation:
+                cr_v1 = _evaluate_report_quality(llm, corrected, theme, context_text, prompt_variant="v1")
+                cr_v2 = _evaluate_report_quality(llm, corrected, theme, context_text, prompt_variant="v2")
+                if cr_v1 and cr_v2:
+                    corrected_result = _weighted_avg_scores(cr_v1, cr_v2)
+                else:
+                    corrected_result = cr_v1 or cr_v2
+            else:
+                corrected_result = _evaluate_report_quality(llm, corrected, theme, context_text)
             if corrected_result is None:
                 corrected_result = {"overall": 0.0, "context_coverage": 0.0,
                                     "faithfulness": 0.0, "relevance": 0.0,
@@ -2255,6 +2482,17 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
                 break  # 修正无效，保留原版并停止迭代
 
     eval_result["iterations"] = iteration_count
+
+    # 评估元数据：准确记录实际运行的变体数
+    actual_variants = eval_result.get("_actual_variants", 1)
+    eval_result.pop("_actual_variants", None)
+    eval_result["meta"] = {
+        "judge_model": getattr(llm, 'model', 'unknown'),
+        "prompt_variants": actual_variants,
+        "call_log": getattr(llm, '_call_log', []),
+        "temperature": 0.2,
+    }
+
     return current, eval_result
 
 
@@ -2405,13 +2643,16 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None, bubble_b
     }
     # RAGAS 质量评分
     if ragas_eval:
-        output["quality"] = {
+        quality = {
             "overall": ragas_eval.get("overall", 0),
             "context_coverage": ragas_eval.get("context_coverage", 0),
             "faithfulness": ragas_eval.get("faithfulness", 0),
             "relevance": ragas_eval.get("relevance", 0),
             "feedback": ragas_eval.get("feedback", ""),
         }
+        if ragas_eval.get("meta"):
+            quality["meta"] = ragas_eval["meta"]
+        output["quality"] = quality
 
     try:
         _atomic_write_json(INSIGHT_FILE, output)
@@ -3369,10 +3610,15 @@ def main():
 
     # ── Phase 2.5: RAGAS 质量评估与自我修正 ──
     ragas_eval = {}
-    if llm and clusters:
+    if clusters:
         try:
-            clusters, ragas_eval = _ragas_evaluate_and_correct(
-                llm, clusters, theme, retrieved_for_ragas, load_config())
+            build_cfg = load_config()
+            judge_llm = _init_judge_llm(build_cfg)
+            if judge_llm:
+                clusters, ragas_eval = _ragas_evaluate_and_correct(
+                    judge_llm, clusters, theme, retrieved_for_ragas, build_cfg)
+            else:
+                print("[每日洞察] Judge LLM 不可用，跳过 RAGAS 评估", file=sys.stderr)
         except Exception as exc:
             print("[每日洞察] RAGAS 评估异常，跳过: %s" % exc, file=sys.stderr)
 
