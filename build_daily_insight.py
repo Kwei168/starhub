@@ -368,7 +368,22 @@ def _load_snapshot():
 
 
 def _load_rss_history():
-    """加载 RSS 72h 历史。"""
+    """加载 RSS 72h 历史（支持分块格式）。"""
+    index_file = "rss_history_index.json"
+    if os.path.exists(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                index = json.load(f)
+            merged = {}
+            for i in range(index.get("chunks", 0)):
+                fname = "rss_history_%d.json" % i
+                if os.path.exists(fname):
+                    with open(fname, "r", encoding="utf-8") as f:
+                        merged.update(json.load(f))
+            if merged:
+                return merged
+        except Exception:
+            pass
     if not os.path.exists(RSS_HISTORY_FILE):
         return {}
     try:
