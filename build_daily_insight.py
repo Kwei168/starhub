@@ -3307,6 +3307,9 @@ def main():
             except Exception as exc:
                 print("[每日洞察] 自审环节异常，跳过: %s" % exc, file=sys.stderr)
 
+            # Phase 1.7: 自审后最终去重 — 捕获自审修改 label 后产生的重复
+            clusters = _deduplicate_after_phase1(clusters)
+
             # Phase 2 LLM: Top N 深度解读
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
             for i in range(top_n):
