@@ -3220,13 +3220,12 @@ def main():
         # 无旧缓存，全量新计算
         all_vecs = _np.array(new_vecs_list, dtype=_np.float32)
 
-    # 2) 重建 FAISS 索引 + 保存向量缓存
+    # 2) 保存向量缓存 → 重建 FAISS 索引（先存向量防止 FAISS 失败丢失 embedding）
     index = None
-    _used_merged = False  # 标记 index 是否与 merged_chunks 对齐
+    _used_merged = False
     if all_vecs is not None and len(all_vecs) > 0:
-        index = _build_faiss_index(all_vecs)
         _save_vector_cache(merged_chunks, all_vecs, embed_model)
-        # 同步写入 FAISS 索引文件（chunks JSON 已由 _save_vector_cache 写入）
+        index = _build_faiss_index(all_vecs)
         try:
             if FAISS_AVAILABLE:
                 _faiss.write_index(index, FAISS_INDEX_FILE + ".tmp")
