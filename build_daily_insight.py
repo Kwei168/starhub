@@ -1535,7 +1535,7 @@ def _llm_phase1(llm, clusters):
         {"role": "user", "content": prompt},
     ]
     result = llm.complete(messages, temperature=0.3, max_tokens=3000)
-    parsed = _parse_json(result)
+    parsed = _robust_parse_json(result)
     if not parsed:
         print("[每日洞察] Phase 1 LLM 输出解析失败", file=sys.stderr)
         return None
@@ -1603,8 +1603,8 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
             {"role": "system", "content": "你是事实核查编辑。只输出严格 JSON。"},
             {"role": "user", "content": prompt},
         ]
-        result = llm.complete(messages, temperature=0.1, max_tokens=2000)
-        parsed = _parse_json(result)
+        result = llm.complete(messages, temperature=0.1, max_tokens=2500)
+        parsed = _robust_parse_json(result)
         if not parsed or "events" not in parsed:
             continue
 
@@ -1713,8 +1713,8 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
         {"role": "system", "content": _SYSTEM_PROMPT_P2},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.3, max_tokens=2000)
-    parsed = _parse_json(result)
+    result = llm.complete(messages, temperature=0.3, max_tokens=3000)
+    parsed = _robust_parse_json(result)
     if not parsed:
         print("[每日洞察] Phase 2 LLM 输出解析失败（事件: %s）" % cluster.get("id", "?"),
               file=sys.stderr)
@@ -1803,8 +1803,8 @@ def _self_review_phase1(llm, events, material_text):
         {"role": "system", "content": "你是 AI 行业分析师。只返回 JSON 数组。"},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.2, max_tokens=1500)
-    parsed = _parse_json(result)
+    result = llm.complete(messages, temperature=0.2, max_tokens=2000)
+    parsed = _robust_parse_json(result)
 
     if not isinstance(parsed, list):
         print("[每日洞察] Phase 1 自审: 解析失败，保留原版", file=sys.stderr)
@@ -2013,8 +2013,8 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
             {"role": "system", "content": "你是 AI 行业分析师。只返回 JSON。"},
             {"role": "user", "content": prompt},
         ]
-        result = llm.complete(messages, temperature=0.3, max_tokens=500)
-        parsed = _parse_json(result)
+        result = llm.complete(messages, temperature=0.3, max_tokens=1000)
+        parsed = _robust_parse_json(result)
         if isinstance(parsed, dict):
             if parsed.get("label"):
                 cluster["label"] = parsed["label"]
