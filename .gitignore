@@ -26,6 +26,7 @@ _verify_*
 # 构建中间产物（CI 生成，体积大，不进仓库）
 daily_insight_snapshot.json
 source_quality.json
+rss_api_snapshot*.json
 
 # 工具/IDE 本地产物
 .workbuddy/
