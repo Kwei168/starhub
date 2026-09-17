@@ -368,7 +368,22 @@ def _load_snapshot():
 
 
 def _load_rss_history():
-    """加载 RSS 72h 历史。"""
+    """加载 RSS 72h 历史（支持分块格式）。"""
+    index_file = "rss_history_index.json"
+    if os.path.exists(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                index = json.load(f)
+            merged = {}
+            for i in range(index.get("chunks", 0)):
+                fname = "rss_history_%d.json" % i
+                if os.path.exists(fname):
+                    with open(fname, "r", encoding="utf-8") as f:
+                        merged.update(json.load(f))
+            if merged:
+                return merged
+        except Exception:
+            pass
     if not os.path.exists(RSS_HISTORY_FILE):
         return {}
     try:
@@ -1019,6 +1034,79 @@ def _semantic_merge(events):
 
 # ──────────────────── RAG: 综合打分（事件级） ────────────────────
 
+def _compute_dual_heat(cluster, hot_snapshot):
+    """双参照系热度计算。返回 (heat, score_a, score_b, hot_platforms, resonance)。
+
+    参照系 A: 全球 AI 信号 (AGI Hunt hot + AIHOT score)
+    参照系 B: 中文生态信号 (热榜平台覆盖 + RSS tier)
+    每个子信号 cap 到 5 分，防止单一源垄断。
+    """
+    items = cluster.get("items", [])
+
+    # ── 参照系 A: 全球 AI 信号 (0-10) ──
+    agihunt_contrib = 0.0
+    aihot_contrib = 0.0
+    for it in items:
+        src = it.get("source_type", "")
+        if src == "agihunt":
+            agihunt_contrib += it.get("hot", 0) / 100.0
+        elif src == "aihot":
+            aihot_contrib += it.get("score", 0) / 15.0
+    score_a = min(10.0, min(5.0, agihunt_contrib) + min(5.0, aihot_contrib))
+
+    # ── 参照系 B: 中文生态信号 (0-10) ──
+    hot_platforms = set()
+    for it in items:
+        if it.get("source_type") == "hot":
+            hot_platforms.add(it.get("source", ""))
+
+    # 兆底：全局热榜反查（热榜 chunks 可能不在簇中）
+    if not hot_platforms and hot_snapshot:
+        label = cluster.get("label", "")
+        cluster_tokens = _tokenize_title(label)
+        if cluster_tokens:
+            for platform in hot_snapshot:
+                plat = platform.get("platform", "")
+                for pitem in platform.get("items", []):
+                    item_tokens = _tokenize_title(pitem.get("title", ""))
+                    if len(cluster_tokens & item_tokens) >= 2:
+                        hot_platforms.add(plat)
+                        break
+
+    t1 = sum(1 for p in hot_platforms if p in HOT_T1)
+    t2 = sum(1 for p in hot_platforms if p in HOT_T2)
+    t3 = len(hot_platforms) - t1 - t2
+    hot_contrib = min(5.0, t1 * 1.5 + t2 * 1.0 + t3 * 0.5)
+
+    rss_contrib = 0.0
+    for it in items:
+        if it.get("source_type") == "rss":
+            tier = _RSS_TIER_MAP.get(it.get("source_key", ""), 3)
+            rss_contrib += {1: 1.5, 2: 1.0, 3: 0}.get(tier, 0)
+    rss_contrib = min(5.0, rss_contrib)
+
+    score_b = min(10.0, hot_contrib + rss_contrib)
+
+    # ── 综合 heat (0-10) ──
+    heat = round(min(10.0, score_a * 0.5 + score_b * 0.5), 1)
+
+    # ── resonance 分类 ──
+    a_high = score_a >= 3.0
+    b_high = score_b >= 3.0
+    if a_high and b_high:
+        resonance = "breakout"
+    elif a_high and not b_high:
+        resonance = "tech_hot" if t1 < 2 else "niche"
+    elif not a_high and b_high:
+        resonance = "consumer" if t1 > 0 else "niche"
+    elif hot_platforms:
+        resonance = "niche"
+    else:
+        resonance = ""
+
+    return heat, round(score_a, 1), round(score_b, 1), hot_platforms, resonance
+
+
 def _score_events(clusters, hot_snapshot):
     """事件级综合打分：基于检索分数 + 跨源共振 + 时间衰减。"""
     for cluster in clusters:
@@ -1066,31 +1154,18 @@ def _score_events(clusters, hot_snapshot):
         depth = min(10, math.log2(len(items) + 1) * 2)
         novelty_dim = min(10, (1 - recency) * 10) if pub_dates else 5
 
-        # 共振模式
-        hot_platforms = set()
-        for it in items:
-            if it.get("source_type") == "hot":
-                hot_platforms.add(it.get("source", ""))
-        t1_count = sum(1 for p in hot_platforms if p in HOT_T1)
-        t2_count = sum(1 for p in hot_platforms if p in HOT_T2)
-        if t1_count >= 2:
-            resonance = "breakout"
-        elif t2_count >= 2 and t1_count < 2:
-            resonance = "tech_hot"
-        elif hot_platforms and t1_count == 0 and t2_count == 0:
-            resonance = "niche"
-        elif t1_count > 0 and t2_count == 0:
-            resonance = "consumer"
-        else:
-            resonance = ""
+        # 双参照系热度模型
+        heat, score_a, score_b, hot_platforms, resonance = _compute_dual_heat(
+            cluster, hot_snapshot)
 
         cluster["score"] = round(final, 2)
         cluster["signal"] = {
             "breadth": round(breadth, 1),
             "depth": round(depth, 1),
-            "heat": round(min(10, sum(3 if p in HOT_T1 else 2 if p in HOT_T2 else 1
-                                       for p in hot_platforms)), 1),
+            "heat": heat,
             "novelty": round(novelty_dim, 1),
+            "score_a": score_a,
+            "score_b": score_b,
         }
         cluster["resonance"] = resonance
         cluster["source_types"] = sorted(source_types)
@@ -1218,6 +1293,70 @@ def _parse_json(text):
     return None
 
 
+def _robust_parse_json(text):
+    """增强 JSON 解析：处理截断、前后缀噪音、括号缺失。"""
+    if not text:
+        return None
+    # 先用标准解析
+    parsed = _parse_json(text)
+    if isinstance(parsed, dict):
+        return parsed
+    # 提取 { 到最后一个 } 之间的内容
+    start = text.find('{')
+    end = text.rfind('}')
+    if start >= 0 and end > start:
+        candidate = text[start:end + 1]
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+    # 补全缺失的括号（处理截断 JSON）
+    if start >= 0:
+        candidate = text[start:]
+        # 移除尾部不完整字符串值
+        candidate = re.sub(r',\s*"[^"]*$', '', candidate)
+        candidate = re.sub(r',\s*\d+\.?\d*$', '', candidate)
+        opens = candidate.count('{') - candidate.count('}')
+        if opens > 0:
+            candidate = candidate.rstrip(', \t\r\n') + '}' * opens
+        # 补全数组括号
+        arr_opens = candidate.count('[') - candidate.count(']')
+        if arr_opens > 0:
+            candidate = candidate.rstrip('} \t\r\n') + ']' * arr_opens + '}'
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _filter_cluster_items(cluster, phase1_label):
+    """过滤 cluster 中与 Phase 1 label 不相关的 items。"""
+    if not phase1_label:
+        return cluster
+    label_tokens = _tokenize_title(phase1_label)
+    if not label_tokens:
+        return cluster
+
+    filtered = []
+    for it in cluster.get("items", []):
+        title = it.get("title", "")
+        text = it.get("text", "")[:200]
+        item_tokens = _tokenize_title(title + " " + text)
+        if len(label_tokens & item_tokens) >= 1:
+            filtered.append(it)
+
+    if not filtered and cluster.get("items"):
+        filtered = cluster["items"][:1]  # 至少保留 1 个
+
+    cluster["items"] = filtered
+    return cluster
+
+
 def _build_event_material(cluster):
     """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。"""
     lines = []
@@ -1297,6 +1436,45 @@ _SYSTEM_PROMPT_P1 = """
 所有陈述必须严格基于提供的素材。禁止使用你自己的知识补充。
 如果素材中缺少某个关键数据，在 summary 中标注[信息不足]。
 只输出严格 JSON，不要输出任何思考过程或解释。"""
+
+
+def _deduplicate_after_phase1(clusters):
+    """Phase 1 后去重：合并同 category 且标签高度相似的相邻事件。"""
+    if len(clusters) < 2:
+        return clusters
+
+    def _simple_tokens(title):
+        """去重专用分词：只按空格/标点切分，不拆中文 n-gram。"""
+        parts = re.split(r'[\s,，。！？!?、；:：\"\"\'\'（）()\[\]{}|/\\·\-]+', (title or "").lower())
+        return {p for p in parts if p and len(p) >= 2}
+
+    merged = []
+    used = set()
+    for i in range(len(clusters)):
+        if i in used:
+            continue
+        for j in range(i + 1, len(clusters)):
+            if j in used:
+                continue
+            ci, cj = clusters[i], clusters[j]
+            if (ci.get("category") == cj.get("category")
+                and ci.get("category", "")  # 空 category 不去重
+                and len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
+                and _jaccard(_simple_tokens(ci.get("label", "")),
+                             _simple_tokens(cj.get("label", ""))) >= 0.3):
+                # 合并 items 和 source_types
+                ci["items"].extend(cj.get("items", []))
+                ci["source_types"] = ci.get("source_types", set()) | cj.get("source_types", set())
+                # 保留高分事件的 label/summary
+                if cj.get("score", 0) > ci.get("score", 0):
+                    ci["label"] = cj.get("label", ci.get("label", ""))
+                    ci["summary"] = cj.get("summary", ci.get("summary", ""))
+                ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
+                used.add(j)
+        merged.append(ci)
+    if len(merged) < len(clusters):
+        print("[每日洞察] Phase 1 后去重: %d → %d 个事件" % (len(clusters), len(merged)))
+    return merged
 
 
 def _llm_phase1(llm, clusters):
@@ -1749,11 +1927,11 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
     ) % (context_text[:10000], theme or "无主题", "\n".join(events_text))
 
     messages = [
-        {"role": "system", "content": "你是 RAG 质量评估专家。只输出严格 JSON。"},
+        {"role": "system", "content": "你是 RAG 质量评估专家。直接输出 JSON，不要任何解释、前言或后记。"},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.2, max_tokens=500)
-    parsed = _parse_json(result)
+    result = llm.complete(messages, temperature=0.2, max_tokens=3000)
+    parsed = _robust_parse_json(result)
 
     def _clamp(v):
         try:
@@ -1777,8 +1955,7 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
             "weak_events": [int(w) for w in weak if isinstance(w, (int, float))],
         }
 
-    return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-            "overall": 0.5, "feedback": "评估解析失败", "weak_events": []}
+    return None
 
 
 def _self_correct_events(llm, clusters, context_text, evaluation):
@@ -1860,6 +2037,9 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     iteration_count = 0
     for iteration in range(max_iterations + 1):
         eval_result = _evaluate_report_quality(llm, current, theme, context_text)
+        if eval_result is None:
+            eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
+                           "overall": 0.5, "feedback": "JSON 解析最终失败", "weak_events": []}
         print("[每日洞察] RAGAS eval iter=%d: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
             iteration, eval_result["overall"], eval_result["context_coverage"],
             eval_result["faithfulness"], eval_result["relevance"]))
@@ -1875,6 +2055,10 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             corrected = _self_correct_events(llm, current, context_text, eval_result)
             # 重新评估修正结果
             corrected_result = _evaluate_report_quality(llm, corrected, theme, context_text)
+            if corrected_result is None:
+                corrected_result = {"overall": 0.0, "context_coverage": 0.0,
+                                    "faithfulness": 0.0, "relevance": 0.0,
+                                    "feedback": "修正评估 JSON 解析失败", "weak_events": []}
             print("[每日洞察] RAGAS 修正后: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
                 corrected_result["overall"], corrected_result["context_coverage"],
                 corrected_result["faithfulness"], corrected_result["relevance"]))
@@ -2502,6 +2686,112 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
 
 # ──────────────────── 构建质量追踪日志 ────────────────────
 
+class PipelineTracer:
+    """端到端 LLM 调用追踪器。"""
+
+    def __init__(self):
+        self.stages = {}
+        self.llm_calls = []
+        self.meta = {}
+
+    def set_meta(self, **kwargs):
+        """设置构建元信息。"""
+        self.meta.update(kwargs)
+
+    def trace_queries(self, rss_count, hot_count, aihot_count, agihunt_count,
+                      chunks_total, queries_count, retrieved_top_k):
+        """Stage 1: 查询构建。"""
+        self.stages["queries"] = {
+            "source_counts": {"rss": rss_count, "hot": hot_count,
+                              "aihot": aihot_count, "agihunt": agihunt_count},
+            "chunks_total": chunks_total,
+            "queries_count": queries_count,
+            "retrieved_top_k": retrieved_top_k,
+        }
+
+    def trace_clustering(self, method, threshold, before_count, after_count,
+                         events_summary):
+        """Stage 2: 聚类与事件组装。"""
+        self.stages["clustering"] = {
+            "method": method,
+            "threshold": threshold,
+            "before_count": before_count,
+            "after_count": after_count,
+            "events": events_summary,
+        }
+
+    def trace_llm_call(self, phase, event_idx, prompt_text, model_name,
+                       temperature, max_tokens, raw_response, parse_ok,
+                       parsed_result, token_usage=None):
+        """记录单次 LLM 调用。异常安全。"""
+        try:
+            # 确保 parsed_result 可序列化
+            safe_result = parsed_result
+            try:
+                json.dumps(parsed_result, ensure_ascii=False, default=str)
+            except Exception:
+                safe_result = str(parsed_result)
+
+            self.llm_calls.append({
+                "phase": phase,
+                "event_idx": event_idx,
+                "model": model_name,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "prompt_chars": len(prompt_text) if prompt_text else 0,
+                "prompt_preview": (prompt_text or "")[:5000],
+                "raw_response_preview": (raw_response or "")[:3000],
+                "parse_ok": parse_ok,
+                "parsed_summary": safe_result,
+                "token_usage": token_usage,
+            })
+        except Exception:
+            pass  # 异常安全：不影响主流程
+
+    def trace_self_review(self, issues_found, corrected_indices):
+        """Stage 5: 自审环节。"""
+        self.stages["self_review"] = {
+            "issues": issues_found,
+            "corrected_indices": corrected_indices,
+        }
+
+    def trace_ragas(self, iterations_log):
+        """Stage 6: RAGAS 评估-修正闭环。"""
+        self.stages["ragas"] = {"iterations": iterations_log}
+
+    def trace_bubble(self, read_profile, candidates, selected):
+        """Stage 7: 破茧栏选择。"""
+        self.stages["bubble_breaker"] = {
+            "read_profile": read_profile,
+            "candidates": candidates,
+            "selected": selected,
+        }
+
+    def trace_output(self, event_count, has_analysis_count, inject_html_len):
+        """Stage 8: 输出与注入。"""
+        self.stages["output"] = {
+            "event_count": event_count,
+            "has_analysis_count": has_analysis_count,
+            "inject_html_chars": inject_html_len,
+        }
+
+    def flush(self):
+        """输出完整追踪日志到 JSONL。"""
+        now_bj = _now_bj()
+        entry = {
+            "ts": now_bj.isoformat(),
+            "date": now_bj.strftime("%Y-%m-%d"),
+            "meta": self.meta,
+            "stages": self.stages,
+            "llm_calls": self.llm_calls,
+        }
+        try:
+            _log_tracking_entry(entry)
+        except Exception:
+            pass  # 异常安全
+        return entry
+
+
 def _log_tracking_entry(entry):
     """将构建追踪数据追加写入 daily_insight_tracking_history.jsonl。
 
@@ -2852,6 +3142,9 @@ def main():
                     c["significance"] = pe.get("significance", "")
                     c["key_links"] = pe.get("key_links", [])
 
+            # Phase 1.3: 跨源去重 — 合并同 category 且标签相似的事件
+            clusters = _deduplicate_after_phase1(clusters)
+
             # Phase 1.5: 事实核查 — 确保 faithfulness
             try:
                 _verify_faithfulness(llm, clusters, retrieved_for_ragas)
@@ -2870,6 +3163,8 @@ def main():
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
             for i in range(top_n):
                 c = clusters[i]
+                # Phase 2 前素材过滤：移除与 label 不相关的 items
+                _filter_cluster_items(c, c.get("label", ""))
                 prev_summary = c.get("prev_summary") if c.get("status") in ("ongoing", "escalating") else None
                 deep = _llm_phase2(llm, c, {
                     "label": c.get("label", ""),
