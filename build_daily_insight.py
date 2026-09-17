@@ -836,16 +836,48 @@ def _hybrid_retrieve(index, chunks, queries, top_k=RETRIEVAL_TOP_K):
 
     # 按 RRF 排序
     ranked = sorted(scores.values(), key=lambda x: x["rrf"], reverse=True)
+
+    # ── 源多样性保障：确保非 RSS 源至少有配额代表 ──
+    SOURCE_QUOTA = {"agihunt": 5, "aihot": 5, "hot": 5}
+    selected = []
+    selected_ids = set()
+    # 第一轮：按配额从各源抽取
+    for src_type, quota in SOURCE_QUOTA.items():
+        count = 0
+        for item in ranked:
+            if count >= quota:
+                break
+            cid = item["chunk"]["chunk_id"]
+            if item["chunk"].get("source_type") == src_type and cid not in selected_ids:
+                selected.append(item)
+                selected_ids.add(cid)
+                count += 1
+    # 第二轮：按 RRF 填充剩余槽位
+    for item in ranked:
+        if len(selected) >= top_k:
+            break
+        cid = item["chunk"]["chunk_id"]
+        if cid not in selected_ids:
+            selected.append(item)
+            selected_ids.add(cid)
+    # 按 RRF 重排
+    selected.sort(key=lambda x: x["rrf"], reverse=True)
+
     results = []
-    for item in ranked[:top_k]:
+    for item in selected[:top_k]:
         c = dict(item["chunk"])
         c["retrieval_score"] = item["rrf"]
         c["vec_similarity"] = item.get("vec_sim", 0.0)
         c["bm25_score"] = item.get("bm25", 0.0)
         results.append(c)
 
-    print("[每日洞察] 混合检索: %d 查询 → %d 结果 (向量+BM25 RRF)" % (
-        len(queries), len(results)))
+    # 统计源分布
+    src_dist = {}
+    for c in results:
+        st = c.get("source_type", "")
+        src_dist[st] = src_dist.get(st, 0) + 1
+    print("[每日洞察] 混合检索: %d 查询 → %d 结果 (向量+BM25 RRF, 源分布: %s)" % (
+        len(queries), len(results), src_dist))
     return results
 
 
@@ -982,6 +1014,25 @@ def _assemble_events(reranked_chunks):
     if len(events) > MAX_EVENTS * 2:
         threshold = events[MAX_EVENTS].get("best_score", 0) * 0.3 if len(events) > MAX_EVENTS else 0
         events = [e for e in events if len(e["items"]) > 1 or e["best_score"] >= threshold]
+
+    # ── P1 修复：ID 分配前合并标签完全相同的事件 ──
+    label_map = {}  # label -> index in events
+    deduped = []
+    for e in events:
+        label = e.get("label", "").strip()
+        if label and label in label_map:
+            # 合并到已存在的事件
+            existing = deduped[label_map[label]]
+            existing["items"].extend(e["items"])
+            existing["source_types"] |= e["source_types"]
+            existing["best_score"] = max(existing["best_score"], e["best_score"])
+        else:
+            if label:
+                label_map[label] = len(deduped)
+            deduped.append(e)
+    if len(deduped) < len(events):
+        print("[每日洞察] 标签去重: %d → %d 个事件" % (len(events), len(deduped)))
+    events = deduped
 
     # 分配 ID
     date_str = NOW_BJ.strftime("%Y%m%d")
