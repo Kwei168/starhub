@@ -1578,7 +1578,7 @@ def _deduplicate_after_phase1(clusters):
                              _simple_tokens(cj.get("label", ""))) >= 0.3):
                 # 合并 items 和 source_types
                 ci["items"].extend(cj.get("items", []))
-                ci["source_types"] = ci.get("source_types", set()) | cj.get("source_types", set())
+                ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
                 # 保留高分事件的 label/summary
                 if cj.get("score", 0) > ci.get("score", 0):
                     ci["label"] = cj.get("label", ci.get("label", ""))
@@ -1608,7 +1608,7 @@ def _deduplicate_after_phase1(clusters):
                     and ci.get("category") == cj.get("category")):
                     # 合并：保留高分事件的 label/summary
                     ci["items"].extend(cj.get("items", []))
-                    ci["source_types"] = ci.get("source_types", set()) | cj.get("source_types", set())
+                    ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
                     if cj.get("score", 0) > ci.get("score", 0):
                         ci["label"] = cj.get("label", ci.get("label", ""))
                         ci["summary"] = cj.get("summary", ci.get("summary", ""))
