@@ -1319,6 +1319,29 @@ def _robust_parse_json(text):
     return None
 
 
+def _filter_cluster_items(cluster, phase1_label):
+    """过滤 cluster 中与 Phase 1 label 不相关的 items。"""
+    if not phase1_label:
+        return cluster
+    label_tokens = _tokenize_title(phase1_label)
+    if not label_tokens:
+        return cluster
+
+    filtered = []
+    for it in cluster.get("items", []):
+        title = it.get("title", "")
+        text = it.get("text", "")[:200]
+        item_tokens = _tokenize_title(title + " " + text)
+        if len(label_tokens & item_tokens) >= 1:
+            filtered.append(it)
+
+    if not filtered and cluster.get("items"):
+        filtered = cluster["items"][:1]  # 至少保留 1 个
+
+    cluster["items"] = filtered
+    return cluster
+
+
 def _build_event_material(cluster):
     """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。"""
     lines = []
@@ -3019,6 +3042,8 @@ def main():
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
             for i in range(top_n):
                 c = clusters[i]
+                # Phase 2 前素材过滤：移除与 label 不相关的 items
+                _filter_cluster_items(c, c.get("label", ""))
                 prev_summary = c.get("prev_summary") if c.get("status") in ("ongoing", "escalating") else None
                 deep = _llm_phase2(llm, c, {
                     "label": c.get("label", ""),
