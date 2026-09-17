@@ -748,12 +748,20 @@ def _save_vector_cache(chunks, vectors, embed_model):
         for c in chunks:
             c["embed_model"] = embed_model or ""
         _atomic_write_json(FAISS_META_FILE, chunks)
-        _np.save(VECTOR_CACHE_FILE + ".tmp", vectors.astype(_np.float32))
-        os.replace(VECTOR_CACHE_FILE + ".tmp", VECTOR_CACHE_FILE)
-        print("[每日洞察] 向量缓存保存: %d chunks, shape=%s" % (
-            len(chunks), vectors.shape))
+        # 修复：直接保存，不使用原子重命名（避免 .tmp 文件问题）
+        vec_path = VECTOR_CACHE_FILE
+        vectors_f32 = vectors.astype(_np.float32)
+        print("[每日洞察] 向量缓存保存中: shape=%s, dtype=%s" % (vectors_f32.shape, vectors_f32.dtype))
+        _np.save(vec_path, vectors_f32)
+        if not os.path.exists(vec_path):
+            print("[每日洞察] 警告: .npy 文件保存后不存在: %s" % vec_path, file=sys.stderr)
+        else:
+            print("[每日洞察] 向量缓存保存: %d chunks, shape=%s, size=%dKB" % (
+                len(chunks), vectors.shape, os.path.getsize(vec_path) // 1024))
     except Exception as exc:
         print("[每日洞察] 向量缓存保存失败: %s" % exc, file=sys.stderr)
+        import traceback
+        traceback.print_exc()
 
 
 # ──────────────────── RAG: 混合检索 ────────────────────
