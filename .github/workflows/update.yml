@@ -69,9 +69,6 @@ jobs:
       - name: Install insight engine dependencies
         run: pip install llama-index-core llama-index-embeddings-fastembed fastembed faiss-cpu rank-bm25
 
-      - name: Get date for cache key
-        run: echo "CACHE_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
-
       - name: Restore embedding cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -79,14 +76,14 @@ jobs:
           path: |
             daily_insight_vectors.npy
             daily_insight_chunks.json
-          key: emb-cache-${{ runner.os }}-${{ env.CACHE_DATE }}
+          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             emb-cache-${{ runner.os }}-
 
       - name: Diagnose embedding cache restore
         run: |
           echo "=== Cache restore diagnostics ==="
-          echo "  cache-key: emb-cache-${{ runner.os }}-${{ env.CACHE_DATE }}"
+          echo "  cache-key: emb-cache-${{ runner.os }}-${{ github.run_id }}"
           echo "  cache-hit: ${{ steps.cache-restore.outputs.cache-hit }}"
           echo "  matched-key: ${{ steps.cache-restore.outputs.matched-key }}"
           for f in daily_insight_vectors.npy daily_insight_chunks.json; do
@@ -177,7 +174,7 @@ jobs:
           path: |
             daily_insight_vectors.npy
             daily_insight_chunks.json
-          key: emb-cache-${{ runner.os }}-${{ env.CACHE_DATE }}
+          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
 
       - name: Prune large build artifacts before Vercel deploy
         run: |
