@@ -144,13 +144,13 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-18">2026-09-18 (9 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-18">2026-09-18 (10 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-18" class="day-section" >
-  <div class="day-theme">从产品多线程自动化到商业模式差距，再到监管责任博弈，AI行业正在经历从工具化向自主化与资本化的关键拐点</div>
+  <div class="day-theme">从 Palantir CEO 警告监管与国有化风险，到 Anthropic 重构 Projects 开启多线程并行编码，再到中美大模型营收差距拉大至10倍，判断 AI 行业进入商业化规模分化与工程化加速的拐点</div>
   
 <article class="di-card">
   <div class="di-head">
@@ -158,38 +158,17 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.3</span>
   </div>
-  <h3 class="di-label">Anthropic推出Claude Code Projects功能</h3>
-  <p class="di-summary">Anthropic宣布在桌面端和网页端推出Claude Code Projects功能（测试版，面向部分用户）。核心机制为一个项目是一段持续对话，Claude自动把工作拆分成多个线程以并行云端会话方式执行，线程间自动传递上下文，即使用户离开也能继续运行。首批面向已有cloud session且未用过Projects的Pro和Max用户开放，Team和Enterprise暂不可用，官方称未来几周逐步推送。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月18日，Anthropic正式宣布在Claude Code桌面端及网页端推出Projects功能（测试版）。此次发布标志着Projects从单纯的文件夹管理升级为基于持续对话的自主调度系统。在该机制下，用户只需在一个项目内输入需求，Claude会自动将任务拆解为多个线程，以并行云端会话方式执行。线程间具备上下文传递能力，且支持跨会话状态保存，用户关闭设备后任务仍在云端继续运行。Anthropic内部员工catwu证实，她日常已采用该模式批量派发任务并聚合更新。首批开放对象为拥有cloud session且未使用过Projects的Pro及Max用户，老用户将被灰度迁移。Team和Enterprise版本目前不可用，官方预计未来几周逐步推送至全量用户。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Anthropic通过分阶段灰度发布确保Pro/Max高净值用户的稳定性，缓解服务器负载压力，同时确立当前云端多代理协作的标准范式。中期：本地环境支持的缺失与Team/Enterprise版的滞后，意味着企业级深度部署仍需等待，但并行云端执行将显著提升开发者在复杂重构任务中的时间效率。长期：从单会话工具向自主多线程云端工作模式的演进，标志着AI编程助手从辅助编写代码向独立承担长周期项目管理的范式转移，削弱了对本地算力持续在线的依赖。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt侧重底层机制解析，详细披露了作者catwu的个人使用案例及线程间上下文传递的技术细节；AI Hot 7天公开池强调分发策略，明确指出新功能首先面向Pro和Max用户的云会话开放；coding-agents社群则聚焦于产品形态的根本性重构，对比了过去作为“文件夹”的Projects与现在作为“持续对话”的差异。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>一个项目就是持续对话，Claude 自己为每项工作拆出线程，以并行云端 session 运行，线程间传递上下文，合上笔记本后仍继续工作</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Q4将看到本地环境支持与Team/Enterprise版本的同步上线，届时企业级多仓库协作将成为主流应用场景。</p></div>
-  <span class="di-conf">置信度: high</span>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.2</span>
-  </div>
-  <h3 class="di-label">Palantir CEO警告AI可能走向国有化</h3>
-  <p class="di-summary">Palantir CEO Alex Karp在CNBC采访中警告，无限责任问题可能把AI公司推向国有化：面对无限责任，唯一出路是向政府让渡50%业务，而业务价值会在此过程中崩塌，甚至整个市场可能崩盘。他同时抨击Anthropic急于推动AI监管，实为把法律责任转嫁给政府，因为客户可能很快以知识产权侵权为由提起诉讼；他还指出AI监管困难，因为真正懂AI的人几乎都在AI公司领薪水，并质疑AI公司能否活到递交S-1的那天。</p>
+  <h3 class="di-label">Palantir CEO 警告 AI 或因无限责任走向国有化</h3>
+  <p class="di-summary">Palantir CEO Alex Karp 在 CNBC 采访中警告，面对无限责任，AI 公司可能被迫向政府让渡 50% 业务以实现国有化，导致业务价值崩塌。他公开批评 Anthropic 急于推动监管，实质是将法律责任转嫁给政府，并指出 AI 监管的核心困境在于真正懂技术的人都在 AI 公司领薪，存在结构性利益冲突。他还质疑 AI 公司能否活到递交 S-1 的那天。</p>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月18日前后，Palantir CEO Alex Karp在接受CNBC采访时系统阐述了其对AI监管、责任归属及行业未来的看法，并公开抨击Anthropic。Karp指出AI监管的核心困境在于结构性利益冲突：真正懂技术的专家几乎都在AI公司薪资单上，监管者难以找到独立专家。他提出责任优先于豁免的原则，认为第一道防线应是开发商承担法律责任，而非自我监管或寻求豁免。Karp批评Anthropic急于推动AI监管，实质是将法律责任转嫁给政府，背景是客户可能很快以知识产权侵权为由对AI公司发起大规模诉讼。他警告AI实验室存在走向&#x27;国有化&#x27;的动机逻辑：为限定业务风险和AI潜在危险，公司只能将业务整体向政府迁移，面对无限责任，唯一出路是向政府让渡50%业务。但他预测业务价值会在此过程中多次崩塌，甚至拖垮整个市场，并归因于&#x27;EA运动&#x27;哲学的强加。他还质疑AI公司能否活到递交S-1的那天。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Palantir与Anthropic公开对立加剧行业阵营分化，可能影响AI公司融资节奏及监管游说策略。中期：若司法界采纳&#x27;无限责任&#x27;框架，AI公司可能被迫重构商业模式，部分企业或将寻求政府合作以规避风险，行业整合加速。长期：Karp预言的&#x27;国有化&#x27;路径若部分实现，将重塑AI产业所有权结构，私人资本主导的AGI研发模式可能让位于政府主导或公私合营模式，全球AI竞争格局可能发生根本性变化。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt/policy hot=4源与RSS/AGI Hunt源报道角度一致，均聚焦于Karp的&#x27;国有化&#x27;警告及对Anthropic的批评，未呈现明显分歧。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>面对无限责任，唯一出路是向政府让渡50%业务，而业务价值会在此过程中多次崩塌，甚至拖垮整个市场。</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计AI行业将加快知识产权风险排查与法律防御布局，监管博弈可能在Q4进入诉讼密集期。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>Palantir CEO Alex Karp 在 CNBC 采访中系统阐述对 AI 监管与责任问题的看法，并公开抨击 Anthropic。Karp 指出 AI 监管的核心困境：真正懂 AI 技术的人几乎都在 AI 公司薪资单上，监管者难以找到独立专家，存在结构性利益冲突。他提出责任优先于豁免的原则，认为第一道防线应是开发商为自身行为承担法律责任。Karp 公开批评 Anthropic 急于推动 AI 监管，实质是将法律责任转嫁给政府，背景是客户可能很快以知识产权侵权为由对 AI 公司发起大量诉讼。他警告面对无限责任，AI 公司唯一出路是向政府让渡 50% 业务，但业务价值会在过程中多次崩塌，甚至拖垮整个市场。他还质疑 AI 公司能否活到递交 S-1 的那天。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：AI 公司面临监管不确定性加剧，Anthropic 等积极游说监管的公司可能遭遇舆论反噬。中期：责任保险和法律诉讼风险上升，可能迫使部分 AI 公司重新评估监管策略，转向更谨慎的责任规避路径。长期：若无限责任框架落地，可能导致 AI 行业大规模国有化重组，业务价值崩塌可能引发整个市场动荡，同时加速行业洗牌，中小企业生存空间被进一步压缩。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt/policy hot=4 侧重监管困境与利益冲突分析；AGI Hunt/companies hot=5 强调 Anthropic 与监管的关联及国有化警告；AGI Hunt/policy hot=3 聚焦「国有化」生存策略的逻辑链条。各源报道角度一致，均围绕 Karp 的 CNBC 采访展开，无实质性分歧。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>面对无限责任，唯一出路可能是向政府让渡 50% 的业务</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计 AI 公司将在责任认定和监管游说之间重新校准策略，若知识产权侵权诉讼增多，可能加速行业整合或推动立法界对 AI 责任框架的修订。</p></div>
   <span class="di-conf">置信度: high</span>
 </div>
 </article>
@@ -200,17 +179,17 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.2</span>
   </div>
-  <h3 class="di-label">OpenAI与Anthropic营收是中国大模型总和10倍</h3>
-  <p class="di-summary">Rhodium Research数据显示，OpenAI年经常性收入约400亿美元，Anthropic约650亿美元，合计约1050亿美元。而中国头部模型厂商字节跳动约40亿美元、阿里百炼约23-24亿美元，中美头部公司营收差距达10倍。中国模型在Hugging Face下载量超20亿次，占平台总量41%，但开源模式难以直接变现。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">Claude Code 推出 Projects 支持多线程并行任务</h3>
+  <p class="di-summary">Anthropic 在桌面端和网页端 Claude Code 推出 Projects 功能（测试版），允许用户通过单次对话设定目标，由 Claude 自动将工作拆分为多个并行线程。这些线程以云端会话形式运行，即使关闭电脑也能继续执行，线程间可自动传递上下文。目前面向部分 Pro 和 Max 用户在云会话中开放 beta，老用户稍后灰度迁移。</p>
+  <div class="di-meta"><span class="di-src">hot</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2025年至2026年9月，Rhodium Research发布数据揭示中美AI商业模式差异。OpenAI年经常性收入（ARR）约400亿美元，Anthropic约650亿美元，合计约1050亿美元。同期，中国头部大模型厂商中，字节跳动大模型业务约40亿美元，阿里百炼MaaS约23-24亿美元。数据显示，OpenAI与Anthropic的营收总和约为中国所有AI模型总和的10倍。在开源层面，2025年中国模型在Hugging Face累计下载量超20亿次，占平台总下载量的41%，但用户可自行部署或通过第三方访问，导致收入难以回流至原始开发者。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：中美AI商业体量差距具象化，验证封闭API模式在B端付费上的效率优势，中国开源社区面临‘叫好不叫座’变现困境。中期：促使国内厂商调整战略重心，从单纯堆砌开源模型转向探索企业级SaaS服务或混合云部署，以弥补纯开源模式的收入短板。长期：全球AI开发范式将趋于分化，美国主导高价值闭源生态，中国主导开源分发网络，但需突破技术红利向商业红利的转化壁垒。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。Rhodium、CNBC及AGI Hunt均引用同一组核心数据，侧重客观呈现中美营收差距及开源模式对变现的制约，无观点分歧。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>用户可自行部署或通过第三方访问，收入难以回流到原始开发者</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计中国大模型厂商将在Q4加速推进开源协议的商业化改良（如提供付费托管/增强版），以降低对单纯下载的依赖。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月18日，Anthropic正式推出Claude Code Projects功能，标志着其产品从单次对话工具向自动化工作流代理演进。该功能首发于桌面端与网页版Claude Code，初期面向部分Pro和Max订阅用户在云会话环境中开放Beta测试，随后将逐步灰度迁移至所有Claude用户。核心机制在于每个Project绑定一个专属智能体，负责统一管理系统记忆并统筹任务分发；Claude会将复杂目标自动拆解为多个子任务，生成独立线程以并行模式在云端执行。这些云端线程具备上下文跨线程传递能力，支持&#x27;主动行动&#x27;或&#x27;按计划执行&#x27;两种工作模式，且在用户关闭本地设备后仍可持续运行，直到所有并行任务完成。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：显著降低高级用户处理大规模代码重构或复杂工程的等待成本，确立Anthropic在多代理编排领域的技术标杆。中期：推动竞品（如Cursor、Copilot）加速跟进类似功能，引发AI编程工具从&#x27;辅助补全&#x27;向&#x27;自主执行&#x27;的竞争升级。长期：并行计算与长时云端执行能力的成熟，将重塑软件开发的交付流程，使得AI代理承担更多全链路工程职责成为可能。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>一个项目即一段与 Claude 的对话，它会自动把工作拆分为多个线程，以并行云端会话运行、在线程间传递上下文，并在用户离开后继续执行</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Q4将看到Projects功能对免费用户的全面开放，并发规模与断点续传稳定性将成为测试期核心优化指标。</p></div>
   <span class="di-conf">置信度: high</span>
 </div>
 </article>
@@ -219,10 +198,43 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
+    <span class="di-score">0.2</span>
   </div>
-  <h3 class="di-label">Anthropic合并Claude Chat与Cowork并推出新品</h3>
-  <p class="di-summary">Anthropic将Claude Chat与Claude Cowork合并为统一体验，同时推出Claude Docs和Claude Slides（目前为测试版），此前发布的Claude Design也一并并入对话界面。输出可导出为PowerPoint、PDF或Google Docs、Word格式。新体验先向Pro和Max订阅用户推送，未来几周覆盖网页、桌面和移动端，Team和Free计划随后跟进。历史对话、Skill、连接器全部保留，跨入口通用。</p>
+  <h3 class="di-label">Claude Code Projects 允许合上电脑后继续并行工作</h3>
+  <p class="di-summary">Claude Code 的 Projects 功能重构了工作流，用户描述任务后，Claude 调度并行线程在云端运行并传递上下文。Anthropic 员工 _catwu 表示该功能已用于日常批量派发任务，项目带有随使用演化的长期记忆。该功能为测试版，面向部分 Pro 和 Max 用户的 cloud sessions 开放，未来几周逐步推送。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">developer</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月18日，Anthropic 正式宣布在桌面端与网页端推出 Claude Code Projects 功能，目前以测试版（beta）形式向部分 Pro 和 Max 用户的 cloud sessions 开放。该功能的核心机制是：用户在 Claude Code 中发起一次项目对话，描述任务后，Claude 自动将工作拆分为多个并行线程，以并行云端会话方式执行；线程间自动传递上下文，即使用户合上笔记本离开，任务仍在云端继续运行。Anthropic 员工 catwu 表示她每天使用该功能进行批量派发任务，项目带有随使用演化的长期记忆，可随时聚合状态更新。官方计划在随后几周逐步向所有 Claude 用户推送。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Claude Code 从单会话工具升级为自主多线程云端工作模式，Pro/Max 用户获得第一批生产力提升，批量派发任务后无需守在电脑前。中期：Projects 功能若验证有效，将推动 AI 编程工具从&#x27;对话式辅助&#x27;转向&#x27;自主执行&#x27;范式，竞品如 Cursor、Copilot 需跟进类似能力。长期：云端并行+长期记忆的项目模式可能重塑软件开发工作流，使得复杂任务可跨天持续推进，AI 编码 Agent 的自主性标准被拉高。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。AI Hot 7天公开池侧重功能介绍与开放范围；AGI Hunt 补充了 Anthropic 员工 catwu 的日常使用实证及项目长期记忆特性；三个来源在核心机制和开放进度上无分歧，信源交叉验证充分。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>批量派发任务后可以撒手不管，随时要聚合的状态更新，且项目带有随使用演化的长期记忆</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>未来几周面向全量用户推送后，Claude Code Projects 将成为检验 AI 编码自主执行能力的标杆；若长期记忆与并行调度体验良好，Anthropic 有望进一步开放 API 能力给第三方工具调用。</p></div>
+  <span class="di-conf">置信度: high</span>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.2</span>
+  </div>
+  <h3 class="di-label">OpenAI 与 Anthropic 营收是中国大模型总和 10 倍</h3>
+  <p class="di-summary">据 Rhodium Research 数据（CNBC 报道），OpenAI 年经常性收入约 400 亿美元，Anthropic 约 650 亿美元，两者合计约为中国所有 AI 模型厂商总和的 10 倍。字节跳动大模型业务约 40 亿美元，阿里百炼 MaaS 约 23-24 亿美元。中国模型在 Hugging Face 下载量超 20 亿次，占全球约 41%，但因以开源为主，难以直接变现。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">funding</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.2</span>
+  </div>
+  <h3 class="di-label">Anthropic 重构 Projects 可能加速消耗订阅额度</h3>
+  <p class="di-summary">Anthropic 重新设计 Claude Projects，引入协调器将工程目标拆解为多个并行 Claude Code 会话。由于每个线程均为独立的完整会话，并行运行会显著加快 token 消耗速度，可能更早触发用量限制。Anthropic 正面临 Max 计划用户的集体诉讼，指控其未披露用量上限。</p>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 </article>
@@ -233,8 +245,8 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Claude Code Projects线程云端运行机制详解</h3>
-  <p class="di-summary">根据Claude Code官方文档，每个线程都是云端运行的Claude Code session，即使电脑离线也持续工作。本地工作流支持被标注为“即将推出”。用户可追踪Project-specific usage并选择协调器和worker threads的model及effort level。支持在developer的工具和代码旁运行threads（包括private network后的资源）将在未来推出。目前为Pro/Max公测、逐步推送，Team/Enterprise暂不可用。若在claude.ai/code侧边栏或桌面应用Code标签页未看到入口，说明账号尚未被选中。</p>
+  <h3 class="di-label">Claude Code Projects 支持线程间上下文传递</h3>
+  <p class="di-summary">Anthropic 重构 Claude Code 的 Projects，用户设定目标后由 Claude 拆解任务、并行调度多个线程、审查输出并汇总结果，线程本质上是各自独立分支的 Claude Code 云端会话。</p>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">developer</span></div>
   
 </article>
@@ -245,9 +257,9 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Claude Code Projects本地开发支持待推出</h3>
-  <p class="di-summary">报道指出，Claude Code Projects通过协调线程、共享记忆和跨仓库协作来管理复杂AI编码工作流，但目前其最大优势仅限云端（cloud-only）。本地开发支持尚在规划中，ZDNET Security报道确认其 biggest benefits are still cloud-only，local developers must wait。</p>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">developer</span></div>
+  <h3 class="di-label">Anthropic 将 Claude Cowork 与聊天合并为统一入口</h3>
+  <p class="di-summary">Anthropic 宣布在 Claude Code 桌面端和网页端上线 Projects（公测）。一个项目就是一段持续对话，Claude 自动为每项工作拆出线程，以并行云端 session 运行，线程间传递上下文，合上笔记本后仍继续工作。首批面向已有 cloud session 且未用过 Claude Projects 的 Pro/Max 用户。同时，Claude Cowork 与聊天合并为一个 Claude，Cowork 和 Design 的能力可在任意对话中使用，历史对话、Skill 和连接器全部保留。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 </article>
 
@@ -257,9 +269,9 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Luel推出Agent原生数据市场</h3>
-  <p class="di-summary">数据公司Luel宣布其数据市场实现「agent 原生化」，智能体可在Claude Code、Cursor、Codex等工具中全自动完成数据集浏览、质量检查及购买授权流程。过去采购训练数据集需耗时三周，瓶颈主要在于license审核与索要样本等繁琐流程。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
+  <h3 class="di-label">Anthropic 统一 Claude 界面可能冲击传统 SaaS 股价</h3>
+  <p class="di-summary">Claude Code 官方文档说明 Projects 机制：每个线程都是云端运行的 Claude Code session，即使电脑离线也持续工作，本地工作流支持「即将推出」。目前为 Pro/Max 公测、逐步推送，Team/Enterprise 暂不可用。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
   
 </article>
 
@@ -269,21 +281,21 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Die With Me推出AI助手使用排名产品</h3>
-  <p class="di-summary">[信息不足] 全局素材库中仅存在名为“Die With Me: AIM buddy list for your friends’ Claude Code and Codex usage”的讨论主题标题，未提供关于该产品功能、上线平台或具体用途的描述性素材。</p>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
+  <h3 class="di-label">Anthropic 推出生命科学与验证计划</h3>
+  <p class="di-summary">Anthropic 推出 Life Sciences Verification Program（LSVP）beta，向经审核的生命科学团队开放 Mythos 5.1、Opus 5 和 Sonnet 5，用于药物发现、研究生物学等在一般可用模型中被阻止的任务。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
   
 </article>
 
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    
+    <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">CC-Monitor追踪Claude Code操作记录</h3>
-  <p class="di-summary">用户分享自研工具CC-Monitor，可记录Claude Code每一次读文件、写文件、跑命令和连网络的操作。目前支持Linux和Mac平台，官网为cc-monitor.com。</p>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">developer</span></div>
+  <h3 class="di-label">Databricks 推出 Omnigent 实现跨平台 Agent 运行</h3>
+  <p class="di-summary">Databricks 推出 Omnigent，让工程师一次定义 Agent 的模型、工具、策略与限制，即可跨 Claude Code、Codex 和原始 API 等任意 harness 运行，模型调用经 Databricks Foundation Model APIs 统一成本与治理。其搜索槽位接入 Nimble 后，基准准确率从 46% 升至 71%，搜索成本减半。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 </article>
 </section>
