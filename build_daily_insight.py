@@ -709,17 +709,8 @@ def _load_vector_cache():
     文件不存在或加载失败时返回 ([], None, "")。
     """
     if not FAISS_AVAILABLE:
-        print("[每日洞察] 向量缓存跳过: FAISS 不可用", file=sys.stderr)
         return [], None, ""
-    vec_exists = os.path.exists(VECTOR_CACHE_FILE)
-    meta_exists = os.path.exists(FAISS_META_FILE)
-    if not vec_exists or not meta_exists:
-        missing = []
-        if not vec_exists:
-            missing.append(VECTOR_CACHE_FILE)
-        if not meta_exists:
-            missing.append(FAISS_META_FILE)
-        print("[每日洞察] 向量缓存为空: 缺少 %s" % ", ".join(missing))
+    if not os.path.exists(VECTOR_CACHE_FILE) or not os.path.exists(FAISS_META_FILE):
         return [], None, ""
     try:
         with open(FAISS_META_FILE, "r", encoding="utf-8") as f:
@@ -759,11 +750,8 @@ def _save_vector_cache(chunks, vectors, embed_model):
         _atomic_write_json(FAISS_META_FILE, chunks)
         _np.save(VECTOR_CACHE_FILE + ".tmp", vectors.astype(_np.float32))
         os.replace(VECTOR_CACHE_FILE + ".tmp", VECTOR_CACHE_FILE)
-        # 确认文件落盘（供 CI 诊断）
-        vec_size = os.path.getsize(VECTOR_CACHE_FILE) if os.path.exists(VECTOR_CACHE_FILE) else 0
-        meta_size = os.path.getsize(FAISS_META_FILE) if os.path.exists(FAISS_META_FILE) else 0
-        print("[每日洞察] 向量缓存保存: %d chunks, shape=%s, npy=%dKB, json=%dKB" % (
-            len(chunks), vectors.shape, vec_size // 1024, meta_size // 1024))
+        print("[每日洞察] 向量缓存保存: %d chunks, shape=%s" % (
+            len(chunks), vectors.shape))
     except Exception as exc:
         print("[每日洞察] 向量缓存保存失败: %s" % exc, file=sys.stderr)
 
@@ -836,48 +824,16 @@ def _hybrid_retrieve(index, chunks, queries, top_k=RETRIEVAL_TOP_K):
 
     # 按 RRF 排序
     ranked = sorted(scores.values(), key=lambda x: x["rrf"], reverse=True)
-
-    # ── 源多样性保障：确保非 RSS 源至少有配额代表 ──
-    SOURCE_QUOTA = {"agihunt": 5, "aihot": 5, "hot": 5}
-    selected = []
-    selected_ids = set()
-    # 第一轮：按配额从各源抽取
-    for src_type, quota in SOURCE_QUOTA.items():
-        count = 0
-        for item in ranked:
-            if count >= quota:
-                break
-            cid = item["chunk"]["chunk_id"]
-            if item["chunk"].get("source_type") == src_type and cid not in selected_ids:
-                selected.append(item)
-                selected_ids.add(cid)
-                count += 1
-    # 第二轮：按 RRF 填充剩余槽位
-    for item in ranked:
-        if len(selected) >= top_k:
-            break
-        cid = item["chunk"]["chunk_id"]
-        if cid not in selected_ids:
-            selected.append(item)
-            selected_ids.add(cid)
-    # 按 RRF 重排
-    selected.sort(key=lambda x: x["rrf"], reverse=True)
-
     results = []
-    for item in selected[:top_k]:
+    for item in ranked[:top_k]:
         c = dict(item["chunk"])
         c["retrieval_score"] = item["rrf"]
         c["vec_similarity"] = item.get("vec_sim", 0.0)
         c["bm25_score"] = item.get("bm25", 0.0)
         results.append(c)
 
-    # 统计源分布
-    src_dist = {}
-    for c in results:
-        st = c.get("source_type", "")
-        src_dist[st] = src_dist.get(st, 0) + 1
-    print("[每日洞察] 混合检索: %d 查询 → %d 结果 (向量+BM25 RRF, 源分布: %s)" % (
-        len(queries), len(results), src_dist))
+    print("[每日洞察] 混合检索: %d 查询 → %d 结果 (向量+BM25 RRF)" % (
+        len(queries), len(results)))
     return results
 
 
@@ -1014,25 +970,6 @@ def _assemble_events(reranked_chunks):
     if len(events) > MAX_EVENTS * 2:
         threshold = events[MAX_EVENTS].get("best_score", 0) * 0.3 if len(events) > MAX_EVENTS else 0
         events = [e for e in events if len(e["items"]) > 1 or e["best_score"] >= threshold]
-
-    # ── P1 修复：ID 分配前合并标签完全相同的事件 ──
-    label_map = {}  # label -> index in events
-    deduped = []
-    for e in events:
-        label = e.get("label", "").strip()
-        if label and label in label_map:
-            # 合并到已存在的事件
-            existing = deduped[label_map[label]]
-            existing["items"].extend(e["items"])
-            existing["source_types"] |= e["source_types"]
-            existing["best_score"] = max(existing["best_score"], e["best_score"])
-        else:
-            if label:
-                label_map[label] = len(deduped)
-            deduped.append(e)
-    if len(deduped) < len(events):
-        print("[每日洞察] 标签去重: %d → %d 个事件" % (len(events), len(deduped)))
-    events = deduped
 
     # 分配 ID
     date_str = NOW_BJ.strftime("%Y%m%d")
