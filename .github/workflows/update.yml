@@ -73,13 +73,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            emb_cache.json
             daily_insight_vectors.npy
             daily_insight_chunks.json
             daily_insight_faiss.index
-          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
+          key: emb-cache-${{ runner.os }}-v1
           restore-keys: |
             emb-cache-${{ runner.os }}-
+
+      - name: Diagnose embedding cache restore
+        run: |
+          echo "=== Cache restore diagnostics ==="
+          for f in daily_insight_vectors.npy daily_insight_chunks.json daily_insight_faiss.index; do
+            if [ -f "$f" ]; then
+              echo "  ✓ $f ($(du -h "$f" | cut -f1))"
+            else
+              echo "  ✗ $f MISSING"
+            fi
+          done
 
       - name: Fetch stars & build
         run: python fetch_and_build.py $MODE
@@ -159,10 +169,9 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: |
-            emb_cache.json
             daily_insight_vectors.npy
             daily_insight_chunks.json
-          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
+          key: emb-cache-${{ runner.os }}-v1
 
       - name: Prune large build artifacts before Vercel deploy
         run: |
