@@ -285,22 +285,77 @@ def fetch_newsnow_snapshot():
     return result
 
 def _load_history():
-    """加载 72 小时文章历史"""
+    """加载 72 小时文章历史（支持分块格式）"""
     global _rss_history
-    if os.path.exists(RSS_HISTORY_FILE):
-        try:
-            with open(RSS_HISTORY_FILE, "r", encoding="utf-8") as f:
-                _rss_history = json.load(f)
+    try:
+        _rss_history = _load_history_chunked()
+        if _rss_history:
             print("[历史] 加载文章历史: %d 篇" % len(_rss_history))
-        except Exception as e:
-            print("[历史] 加载失败: %s" % e, file=sys.stderr)
-            _rss_history = {}
+    except Exception as e:
+        print("[历史] 加载失败: %s" % e, file=sys.stderr)
+        _rss_history = {}
+
+
+def _save_history_chunked(max_size=40 * 1024 * 1024):
+    """分块保存文章历史，避免单文件超 max_size 字节。"""
+    data = json.dumps(_rss_history, ensure_ascii=False, separators=(",", ":"))
+    total_bytes = len(data.encode("utf-8"))
+
+    if total_bytes <= max_size:
+        _atomic_write_json(RSS_HISTORY_FILE, _rss_history, ensure_ascii=False)
+        return
+
+    n_chunks = (total_bytes // max_size) + 1
+    buckets = [{} for _ in range(n_chunks)]
+    for link, record in _rss_history.items():
+        bucket_idx = int(hashlib.md5(link.encode()).hexdigest()[:8], 16) % n_chunks
+        buckets[bucket_idx][link] = record
+
+    base_dir = os.path.dirname(RSS_HISTORY_FILE) or "."
+    for i, bucket in enumerate(buckets):
+        _atomic_write_json(os.path.join(base_dir, "rss_history_%d.json" % i),
+                           bucket, ensure_ascii=False)
+
+    _atomic_write_json(os.path.join(base_dir, "rss_history_index.json"),
+                       {"chunks": n_chunks, "total": len(_rss_history)},
+                       ensure_ascii=False)
+    print("[历史] 分块保存: %d 篇 → %d 个文件" % (len(_rss_history), n_chunks))
+
+
+def _load_history_chunked(hist_file=None, index_file=None):
+    """加载分块的文章历史，向后兼容旧格式。"""
+    hist_file = hist_file or RSS_HISTORY_FILE
+    base_dir = os.path.dirname(hist_file) or "."
+    index_file = index_file or os.path.join(base_dir, "rss_history_index.json")
+
+    if os.path.exists(index_file):
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                index = json.load(f)
+            merged = {}
+            for i in range(index.get("chunks", 0)):
+                fname = os.path.join(base_dir, "rss_history_%d.json" % i)
+                if os.path.exists(fname):
+                    with open(fname, "r", encoding="utf-8") as f:
+                        merged.update(json.load(f))
+            if merged:
+                return merged
+        except Exception:
+            pass
+
+    if os.path.exists(hist_file):
+        try:
+            with open(hist_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 
 def _save_history():
-    """保存 72 小时文章历史"""
+    """保存 72 小时文章历史（分块防超 40MB）"""
     try:
-        _atomic_write_json(RSS_HISTORY_FILE, _rss_history, ensure_ascii=False)
+        _save_history_chunked()
         print("[历史] 保存文章历史: %d 篇" % len(_rss_history))
     except Exception as e:
         print("[历史] 保存失败: %s" % e, file=sys.stderr)
