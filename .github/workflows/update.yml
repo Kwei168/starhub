@@ -132,7 +132,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
           if [ -f hot_history.json ]; then git add hot_history.json; fi
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -148,7 +148,7 @@ jobs:
               # git reset --soft 保留工作区（含构建产物），将 HEAD 对齐到最新 origin/main
               git reset --soft origin/main
               # 重新 stage 所有产物 + 日志（现在也包含 remote 带来的变更）
-              git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+              git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -159,7 +159,7 @@ jobs:
                 echo "Rebase retry also failed. Falling back to full rebuild..."
                 git reset --hard origin/main
                 python fetch_and_build.py $MODE
-                git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json rss_api_snapshot*.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+                git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
                 if [ -f hot_history.json ]; then git add hot_history.json; fi
                 if [ -f daily-insight.json ]; then git add daily-insight.json; fi
                 if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
