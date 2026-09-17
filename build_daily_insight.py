@@ -1400,6 +1400,45 @@ _SYSTEM_PROMPT_P1 = """
 只输出严格 JSON，不要输出任何思考过程或解释。"""
 
 
+def _deduplicate_after_phase1(clusters):
+    """Phase 1 后去重：合并同 category 且标签高度相似的相邻事件。"""
+    if len(clusters) < 2:
+        return clusters
+
+    def _simple_tokens(title):
+        """去重专用分词：只按空格/标点切分，不拆中文 n-gram。"""
+        parts = re.split(r'[\s,，。！？!?、；:：\"\"\'\'（）()\[\]{}|/\\·\-]+', (title or "").lower())
+        return {p for p in parts if p and len(p) >= 2}
+
+    merged = []
+    used = set()
+    for i in range(len(clusters)):
+        if i in used:
+            continue
+        for j in range(i + 1, len(clusters)):
+            if j in used:
+                continue
+            ci, cj = clusters[i], clusters[j]
+            if (ci.get("category") == cj.get("category")
+                and ci.get("category", "")  # 空 category 不去重
+                and len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
+                and _jaccard(_simple_tokens(ci.get("label", "")),
+                             _simple_tokens(cj.get("label", ""))) >= 0.3):
+                # 合并 items 和 source_types
+                ci["items"].extend(cj.get("items", []))
+                ci["source_types"] = ci.get("source_types", set()) | cj.get("source_types", set())
+                # 保留高分事件的 label/summary
+                if cj.get("score", 0) > ci.get("score", 0):
+                    ci["label"] = cj.get("label", ci.get("label", ""))
+                    ci["summary"] = cj.get("summary", ci.get("summary", ""))
+                ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
+                used.add(j)
+        merged.append(ci)
+    if len(merged) < len(clusters):
+        print("[每日洞察] Phase 1 后去重: %d → %d 个事件" % (len(clusters), len(merged)))
+    return merged
+
+
 def _llm_phase1(llm, clusters):
     """Phase 1: 为每个事件生成结构化摘要 + 今日主题导语。"""
     if not llm or not clusters:
@@ -2958,6 +2997,9 @@ def main():
                     c["summary"] = pe.get("summary", "")
                     c["significance"] = pe.get("significance", "")
                     c["key_links"] = pe.get("key_links", [])
+
+            # Phase 1.3: 跨源去重 — 合并同 category 且标签相似的事件
+            clusters = _deduplicate_after_phase1(clusters)
 
             # Phase 1.5: 事实核查 — 确保 faithfulness
             try:
