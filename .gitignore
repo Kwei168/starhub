@@ -35,6 +35,7 @@ nul
 # D1 嵌入向量缓存（~8MB/5000 条，CI 用 actions/cache 持久化，不进仓库）
 emb_cache.json
 
-# 每日深度洞察 FAISS 索引与 chunks（~27MB，CI 每次重建，不进仓库）
+# 每日深度洞察 FAISS 索引与 chunks（CI 构建产物，不进仓库）
 daily_insight_faiss.index
 daily_insight_chunks.json
+daily_insight_vectors.npy

@@ -31,6 +31,7 @@ jobs:
       AGNES_API_KEY_2: ${{ secrets.AGNES_API_KEY_2 }}
       SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
       ZEN_API_KEY: ${{ secrets.ZEN_API_KEY || secrets.OPENCODE_KEY }}
+      AGIHUNT_API_KEY: ${{ secrets.AGIHUNT_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -71,7 +72,11 @@ jobs:
       - name: Restore embedding cache
         uses: actions/cache@v4
         with:
-          path: emb_cache.json
+          path: |
+            emb_cache.json
+            daily_insight_vectors.npy
+            daily_insight_chunks.json
+            daily_insight_faiss.index
           key: emb-cache-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             emb-cache-${{ runner.os }}-
@@ -159,7 +164,7 @@ jobs:
           rm -f analysis_snapshot.json translations.json trending_snapshot.json
           rm -f source_quality.json rss_trend_history.json known_categories.json descriptions_zh.json
           rm -f daily-insight.json daily_insight_history.json daily_insight_snapshot.json
-          rm -f daily_insight_tracking_history.jsonl daily_insight_faiss.index daily_insight_chunks.json
+          rm -f daily_insight_tracking_history.jsonl daily_insight_faiss.index daily_insight_chunks.json daily_insight_vectors.npy
           rm -f emb_cache.json
           rm -rf .deploy-tmp .workbuddy .zcode __pycache__ .pytest_cache build_logs docs
           echo "Pruned. Remaining size:"

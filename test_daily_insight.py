@@ -253,5 +253,82 @@ assert insight_ragas["quality"]["overall"] == 0.82, "quality.overall 应为 0.82
 print("RAGAS 评分写入 JSON: overall=%.2f" % insight_ragas["quality"]["overall"])
 print("[PASS] RAGAS 质量评估功能正确")
 
+# ── 测试 7: 增量向量缓存 ──
+print("\n=== 测试 7: 增量向量缓存 ===")
+
+# 7a) content_hash 稳定性：相同输入产生相同 hash
+B.NOW_BJ = B._now_bj()
+test_chunks_fn = B._chunk_documents
+rss_item = [{"title": "测试标题", "link": "https://a.com/1", "source": "测试源",
+             "source_key": "test_src", "summary": "这是测试内容。", "full_content": "",
+             "pub_date": "2026-09-17T10:00:00+08:00", "cat": "tech"}]
+chunks_a = B._chunk_documents(rss_item, [], [], [])
+chunks_b = B._chunk_documents(rss_item, [], [], [])
+assert len(chunks_a) > 0, "应产生至少一个 chunk"
+assert chunks_a[0]["content_hash"] == chunks_b[0]["content_hash"], \
+    "相同输入应产生相同 content_hash"
+print("content_hash 稳定性: %s" % chunks_a[0]["content_hash"])
+
+# 7b) content_hash 区分性：不同输入产生不同 hash
+rss_item_diff = [{"title": "完全不同的标题", "link": "https://b.com/2",
+                  "source": "其他源", "source_key": "other",
+                  "summary": "这是不同的内容。", "full_content": "",
+                  "pub_date": "2026-09-17T11:00:00+08:00", "cat": "tech"}]
+chunks_diff = B._chunk_documents(rss_item_diff, [], [], [])
+assert chunks_a[0]["content_hash"] != chunks_diff[0]["content_hash"], \
+    "不同输入应产生不同 content_hash"
+print("content_hash 区分性: %s vs %s" % (chunks_a[0]["content_hash"], chunks_diff[0]["content_hash"]))
+print("[PASS] content_hash 计算正确")
+
+# 7c) 向量缓存 round-trip（save → load 数据一致）
+if B.FAISS_AVAILABLE:
+    import numpy as np
+    import tempfile
+    import shutil
+    # 创建临时目录测试
+    orig_meta = B.FAISS_META_FILE
+    orig_vec = B.VECTOR_CACHE_FILE
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        B.FAISS_META_FILE = os.path.join(tmp_dir, "test_chunks.json")
+        B.VECTOR_CACHE_FILE = os.path.join(tmp_dir, "test_vectors.npy")
+        # 构造测试数据
+        test_chunks = [
+            {"chunk_id": "c0", "source_type": "rss", "source": "s",
+             "title": "t1", "url": "", "text": "hello world",
+             "pub_date": "2026-09-17T10:00:00+08:00",
+             "content_hash": "abc123def456"},
+            {"chunk_id": "c1", "source_type": "hot", "source": "s2",
+             "title": "t2", "url": "", "text": "test data",
+             "pub_date": "", "content_hash": "xyz789abc012"},
+        ]
+        test_vecs = np.random.rand(2, B.EMBED_DIM).astype(np.float32)
+        test_model = "test/model"
+        # 保存
+        B._save_vector_cache(test_chunks, test_vecs, test_model)
+        # 加载
+        loaded_chunks, loaded_vecs, loaded_model = B._load_vector_cache()
+        assert len(loaded_chunks) == 2, "加载 chunks 数量应为 2"
+        assert loaded_vecs.shape == (2, B.EMBED_DIM), "加载向量 shape 应为 (2, %d)" % B.EMBED_DIM
+        assert loaded_model == test_model, "加载模型名应为 %s" % test_model
+        assert loaded_chunks[0]["content_hash"] == "abc123def456", "content_hash 应保留"
+        np.testing.assert_array_almost_equal(loaded_vecs, test_vecs, decimal=5)
+        print("向量缓存 round-trip: chunks=%d, shape=%s, model=%s" % (
+            len(loaded_chunks), loaded_vecs.shape, loaded_model))
+        print("[PASS] 向量缓存 round-trip 正确")
+    finally:
+        B.FAISS_META_FILE = orig_meta
+        B.VECTOR_CACHE_FILE = orig_vec
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+else:
+    print("[SKIP] FAISS 不可用，跳过向量缓存 round-trip 测试")
+
+# 7d) 常量验证
+assert B.INSIGHT_RSS_HOURS == 168, "INSIGHT_RSS_HOURS 应为 168 (7天)"
+assert B.MAX_EMBED_CHUNKS == 30000, "MAX_EMBED_CHUNKS 应为 30000"
+print("常量检查: INSIGHT_RSS_HOURS=%d, MAX_EMBED_CHUNKS=%d" % (
+    B.INSIGHT_RSS_HOURS, B.MAX_EMBED_CHUNKS))
+print("[PASS] 常量配置正确")
+
 print("\n" + "=" * 50)
-print("全部测试通过！(RAG 管线 + RAGAS)")
+print("全部测试通过！(RAG 管线 + RAGAS + 增量向量缓存)")
