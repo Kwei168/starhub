@@ -1218,6 +1218,47 @@ def _parse_json(text):
     return None
 
 
+def _robust_parse_json(text):
+    """增强 JSON 解析：处理截断、前后缀噪音、括号缺失。"""
+    if not text:
+        return None
+    # 先用标准解析
+    parsed = _parse_json(text)
+    if isinstance(parsed, dict):
+        return parsed
+    # 提取 { 到最后一个 } 之间的内容
+    start = text.find('{')
+    end = text.rfind('}')
+    if start >= 0 and end > start:
+        candidate = text[start:end + 1]
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+    # 补全缺失的括号（处理截断 JSON）
+    if start >= 0:
+        candidate = text[start:]
+        # 移除尾部不完整字符串值
+        candidate = re.sub(r',\s*"[^"]*$', '', candidate)
+        candidate = re.sub(r',\s*\d+\.?\d*$', '', candidate)
+        opens = candidate.count('{') - candidate.count('}')
+        if opens > 0:
+            candidate = candidate.rstrip(', \t\r\n') + '}' * opens
+        # 补全数组括号
+        arr_opens = candidate.count('[') - candidate.count(']')
+        if arr_opens > 0:
+            candidate = candidate.rstrip('} \t\r\n') + ']' * arr_opens + '}'
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _build_event_material(cluster):
     """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。"""
     lines = []
@@ -1749,11 +1790,11 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
     ) % (context_text[:10000], theme or "无主题", "\n".join(events_text))
 
     messages = [
-        {"role": "system", "content": "你是 RAG 质量评估专家。只输出严格 JSON。"},
+        {"role": "system", "content": "你是 RAG 质量评估专家。直接输出 JSON，不要任何解释、前言或后记。"},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.2, max_tokens=500)
-    parsed = _parse_json(result)
+    result = llm.complete(messages, temperature=0.2, max_tokens=3000)
+    parsed = _robust_parse_json(result)
 
     def _clamp(v):
         try:
@@ -1777,8 +1818,7 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
             "weak_events": [int(w) for w in weak if isinstance(w, (int, float))],
         }
 
-    return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-            "overall": 0.5, "feedback": "评估解析失败", "weak_events": []}
+    return None
 
 
 def _self_correct_events(llm, clusters, context_text, evaluation):
@@ -1860,6 +1900,9 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     iteration_count = 0
     for iteration in range(max_iterations + 1):
         eval_result = _evaluate_report_quality(llm, current, theme, context_text)
+        if eval_result is None:
+            eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
+                           "overall": 0.5, "feedback": "JSON 解析最终失败", "weak_events": []}
         print("[每日洞察] RAGAS eval iter=%d: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
             iteration, eval_result["overall"], eval_result["context_coverage"],
             eval_result["faithfulness"], eval_result["relevance"]))
@@ -1875,6 +1918,10 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             corrected = _self_correct_events(llm, current, context_text, eval_result)
             # 重新评估修正结果
             corrected_result = _evaluate_report_quality(llm, corrected, theme, context_text)
+            if corrected_result is None:
+                corrected_result = {"overall": 0.0, "context_coverage": 0.0,
+                                    "faithfulness": 0.0, "relevance": 0.0,
+                                    "feedback": "修正评估 JSON 解析失败", "weak_events": []}
             print("[每日洞察] RAGAS 修正后: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
                 corrected_result["overall"], corrected_result["context_coverage"],
                 corrected_result["faithfulness"], corrected_result["relevance"]))
