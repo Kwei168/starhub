@@ -1603,9 +1603,10 @@ def _deduplicate_after_phase1(clusters):
                 cj = merged[j]
                 si = _simple_tokens(ci.get("summary", "") or ci.get("label", ""))
                 sj = _simple_tokens(cj.get("summary", "") or cj.get("label", ""))
-                if (len(si & sj) >= 3
-                    and _jaccard(si, sj) >= 0.25
-                    and ci.get("category") == cj.get("category")):
+                overlap = len(si & sj)
+                jacc = _jaccard(si, sj)
+                # 高相似度(≥0.3)跨类别也合并；中等相似度(≥0.25)需同类别
+                if overlap >= 3 and (jacc >= 0.3 or (jacc >= 0.25 and ci.get("category") == cj.get("category"))):
                     # 合并：保留高分事件的 label/summary
                     ci["items"].extend(cj.get("items", []))
                     ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
