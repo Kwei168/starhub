@@ -1019,6 +1019,79 @@ def _semantic_merge(events):
 
 # ──────────────────── RAG: 综合打分（事件级） ────────────────────
 
+def _compute_dual_heat(cluster, hot_snapshot):
+    """双参照系热度计算。返回 (heat, score_a, score_b, hot_platforms, resonance)。
+
+    参照系 A: 全球 AI 信号 (AGI Hunt hot + AIHOT score)
+    参照系 B: 中文生态信号 (热榜平台覆盖 + RSS tier)
+    每个子信号 cap 到 5 分，防止单一源垄断。
+    """
+    items = cluster.get("items", [])
+
+    # ── 参照系 A: 全球 AI 信号 (0-10) ──
+    agihunt_contrib = 0.0
+    aihot_contrib = 0.0
+    for it in items:
+        src = it.get("source_type", "")
+        if src == "agihunt":
+            agihunt_contrib += it.get("hot", 0) / 100.0
+        elif src == "aihot":
+            aihot_contrib += it.get("score", 0) / 15.0
+    score_a = min(10.0, min(5.0, agihunt_contrib) + min(5.0, aihot_contrib))
+
+    # ── 参照系 B: 中文生态信号 (0-10) ──
+    hot_platforms = set()
+    for it in items:
+        if it.get("source_type") == "hot":
+            hot_platforms.add(it.get("source", ""))
+
+    # 兆底：全局热榜反查（热榜 chunks 可能不在簇中）
+    if not hot_platforms and hot_snapshot:
+        label = cluster.get("label", "")
+        cluster_tokens = _tokenize_title(label)
+        if cluster_tokens:
+            for platform in hot_snapshot:
+                plat = platform.get("platform", "")
+                for pitem in platform.get("items", []):
+                    item_tokens = _tokenize_title(pitem.get("title", ""))
+                    if len(cluster_tokens & item_tokens) >= 2:
+                        hot_platforms.add(plat)
+                        break
+
+    t1 = sum(1 for p in hot_platforms if p in HOT_T1)
+    t2 = sum(1 for p in hot_platforms if p in HOT_T2)
+    t3 = len(hot_platforms) - t1 - t2
+    hot_contrib = min(5.0, t1 * 1.5 + t2 * 1.0 + t3 * 0.5)
+
+    rss_contrib = 0.0
+    for it in items:
+        if it.get("source_type") == "rss":
+            tier = _RSS_TIER_MAP.get(it.get("source_key", ""), 3)
+            rss_contrib += {1: 1.5, 2: 1.0, 3: 0}.get(tier, 0)
+    rss_contrib = min(5.0, rss_contrib)
+
+    score_b = min(10.0, hot_contrib + rss_contrib)
+
+    # ── 综合 heat (0-10) ──
+    heat = round(min(10.0, score_a * 0.5 + score_b * 0.5), 1)
+
+    # ── resonance 分类 ──
+    a_high = score_a >= 3.0
+    b_high = score_b >= 3.0
+    if a_high and b_high:
+        resonance = "breakout"
+    elif a_high and not b_high:
+        resonance = "tech_hot" if t1 < 2 else "niche"
+    elif not a_high and b_high:
+        resonance = "consumer" if t1 > 0 else "niche"
+    elif hot_platforms:
+        resonance = "niche"
+    else:
+        resonance = ""
+
+    return heat, round(score_a, 1), round(score_b, 1), hot_platforms, resonance
+
+
 def _score_events(clusters, hot_snapshot):
     """事件级综合打分：基于检索分数 + 跨源共振 + 时间衰减。"""
     for cluster in clusters:
@@ -1066,31 +1139,18 @@ def _score_events(clusters, hot_snapshot):
         depth = min(10, math.log2(len(items) + 1) * 2)
         novelty_dim = min(10, (1 - recency) * 10) if pub_dates else 5
 
-        # 共振模式
-        hot_platforms = set()
-        for it in items:
-            if it.get("source_type") == "hot":
-                hot_platforms.add(it.get("source", ""))
-        t1_count = sum(1 for p in hot_platforms if p in HOT_T1)
-        t2_count = sum(1 for p in hot_platforms if p in HOT_T2)
-        if t1_count >= 2:
-            resonance = "breakout"
-        elif t2_count >= 2 and t1_count < 2:
-            resonance = "tech_hot"
-        elif hot_platforms and t1_count == 0 and t2_count == 0:
-            resonance = "niche"
-        elif t1_count > 0 and t2_count == 0:
-            resonance = "consumer"
-        else:
-            resonance = ""
+        # 双参照系热度模型
+        heat, score_a, score_b, hot_platforms, resonance = _compute_dual_heat(
+            cluster, hot_snapshot)
 
         cluster["score"] = round(final, 2)
         cluster["signal"] = {
             "breadth": round(breadth, 1),
             "depth": round(depth, 1),
-            "heat": round(min(10, sum(3 if p in HOT_T1 else 2 if p in HOT_T2 else 1
-                                       for p in hot_platforms)), 1),
+            "heat": heat,
             "novelty": round(novelty_dim, 1),
+            "score_a": score_a,
+            "score_b": score_b,
         }
         cluster["resonance"] = resonance
         cluster["source_types"] = sorted(source_types)
