@@ -76,6 +76,7 @@ jobs:
           path: |
             daily_insight_vectors.npy
             daily_insight_chunks.json
+            daily_insight_faiss.index
           key: emb-cache-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             emb-cache-${{ runner.os }}-
@@ -86,7 +87,7 @@ jobs:
           echo "  cache-key: emb-cache-${{ runner.os }}-${{ github.run_id }}"
           echo "  cache-hit: ${{ steps.cache-restore.outputs.cache-hit }}"
           echo "  matched-key: ${{ steps.cache-restore.outputs.matched-key }}"
-          for f in daily_insight_vectors.npy daily_insight_chunks.json; do
+          for f in daily_insight_vectors.npy daily_insight_chunks.json daily_insight_faiss.index; do
             if [ -f "$f" ]; then
               echo "  ✓ $f ($(du -h "$f" | cut -f1))"
             else
@@ -174,6 +175,7 @@ jobs:
           path: |
             daily_insight_vectors.npy
             daily_insight_chunks.json
+            daily_insight_faiss.index
           key: emb-cache-${{ runner.os }}-${{ github.run_id }}
 
       - name: Prune large build artifacts before Vercel deploy
