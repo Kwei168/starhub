@@ -155,6 +155,15 @@ jobs:
             }
           fi
 
+      - name: Save embedding cache (before prune deletes .npy)
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            emb_cache.json
+            daily_insight_vectors.npy
+            daily_insight_chunks.json
+          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
+
       - name: Prune large build artifacts before Vercel deploy
         run: |
           # 构建产物只供 GitHub Pages 加载，Vercel 只需要 api/ + HTML 入口 + vercel.json
