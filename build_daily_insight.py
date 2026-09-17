@@ -1586,17 +1586,18 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
         return
 
     # 构建全局素材上下文（与 RAGAS 评估器使用相同的 chunks）
+    # LLM 有 1M 上下文，充分利用：60 chunks × 800 chars ≈ 48K chars ≈ 12K tokens (1.2%)
     global_ctx = ""
     if global_context_chunks:
         sorted_gc = sorted(global_context_chunks, key=lambda c: c.get("retrieval_score", 0), reverse=True)
         parts = []
-        for c in sorted_gc[:40]:
-            text = c.get("text", "")[:400]
-            title = c.get("title", "")[:80]
+        for c in sorted_gc[:60]:
+            text = c.get("text", "")[:800]
+            title = c.get("title", "")[:100]
             src = c.get("source_type", "")
             if text:
-                parts.append("[%s] %s: %s" % (src, title, text[:300]))
-        global_ctx = "\n---\n".join(parts)[:8000]
+                parts.append("[%s] %s: %s" % (src, title, text[:700]))
+        global_ctx = "\n---\n".join(parts)
 
     # 批量处理：每批 5 个事件
     batch_size = 5
@@ -1608,15 +1609,15 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
             significance = c.get("significance", "")
             # 该事件自身的 chunks
             own_chunks = []
-            for it in c.get("items", [])[:8]:
+            for it in c.get("items", [])[:10]:
                 text = it.get("text", "") or it.get("full_content") or it.get("summary") or ""
-                text = _strip_html(text)[:400]
-                title = it.get("title", "")[:80]
+                text = _strip_html(text)[:600]
+                title = it.get("title", "")[:100]
                 if text or title:
                     own_chunks.append("[%s] %s: %s" % (
                         it.get("source_type", "") or it.get("_src", ""),
-                        title, text[:250]))
-            own_ctx = "\n".join(own_chunks)[:1200]
+                        title, text[:500]))
+            own_ctx = "\n".join(own_chunks)
             events_input.append(
                 "--- 事件 %d ---\n[事件素材]:\n%s\n[摘要]: %s\n[意义]: %s" % (
                     batch_start + idx + 1, own_ctx, summary, significance))
@@ -1911,10 +1912,11 @@ def _select_bubble_events(clusters, read_profile, top_n=5):
 def _build_ragas_context(clusters, retrieved_chunks):
     """为 RAGAS 评估构建上下文文本：将检索到的 chunks 拼接为评估参考。"""
     # 取 top chunks 作为评估上下文（按检索分数排序）
+    # LLM 有 1M 上下文，充分利用：80 chunks × 1000 chars ≈ 80K chars ≈ 20K tokens (2%)
     sorted_chunks = sorted(retrieved_chunks, key=lambda c: c.get("retrieval_score", 0), reverse=True)
     context_parts = []
-    for c in sorted_chunks[:60]:
-        text = c.get("text", "")[:500]
+    for c in sorted_chunks[:80]:
+        text = c.get("text", "")[:1000]
         title = c.get("title", "")[:100]
         src = c.get("source_type", "")
         if text:
@@ -1971,7 +1973,7 @@ def _evaluate_report_quality(llm, clusters, theme, context_text):
         "以 JSON 返回：\n"
         "{\"context_coverage\": 0.8, \"faithfulness\": 0.9, \"relevance\": 0.7,\n"
         " \"feedback\": \"具体改进建议\", \"weak_events\": [2, 5]}"
-    ) % (context_text[:10000], theme or "无主题", "\n".join(events_text))
+    ) % (context_text, theme or "无主题", "\n".join(events_text))
 
     messages = [
         {"role": "system", "content": "你是 RAG 质量评估专家。直接输出 JSON，不要任何解释、前言或后记。"},
@@ -2023,7 +2025,7 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
         return clusters  # 无需修正
 
     # 修正薄弱事件
-    for idx in weak_indices[:3]:  # 最多修正 3 个事件
+    for idx in weak_indices[:5]:  # 最多修正 5 个事件
         if idx < 1 or idx > len(clusters):
             continue
         cluster = clusters[idx - 1]
@@ -2043,13 +2045,13 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
             " \"significance\": \"一句话说明为什么值得关注\",\n"
             " \"category\": \"ai-models|ai-products|industry|research|policy|funding|developer|consumer\"}\n\n"
             "约束：所有事实必须基于素材，不要编造。"
-        ) % ("; ".join(low_dims), feedback[:300], material[:1500], context_text[:1500])
+        ) % ("; ".join(low_dims), feedback[:500], material, context_text)
 
         messages = [
             {"role": "system", "content": "你是 AI 行业分析师。只返回 JSON。"},
             {"role": "user", "content": prompt},
         ]
-        result = llm.complete(messages, temperature=0.3, max_tokens=1000)
+        result = llm.complete(messages, temperature=0.3, max_tokens=1500)
         parsed = _robust_parse_json(result)
         if isinstance(parsed, dict):
             if parsed.get("label"):
