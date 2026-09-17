@@ -617,7 +617,7 @@ def _build_faiss_index(vectors):
     if not FAISS_AVAILABLE:
         print("[每日洞察] FAISS 不可用，无法构建向量索引", file=sys.stderr)
         return None
-    if not vectors:
+    if vectors is None or (hasattr(vectors, '__len__') and len(vectors) == 0):
         return None
 
     vec_np = _np.array(vectors, dtype=_np.float32)
