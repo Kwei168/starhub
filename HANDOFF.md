@@ -187,8 +187,8 @@
 | `GH_TOKEN` | GitHub PAT（fine-grained），需 `contents:write` + `actions:write` 权限 | Secret |
 | `REFRESH_KEY` | 弱防护密钥，用于 `/api/refresh` 和 `/api/search` 的 header 校验 | Secret |
 | `VERCEL_TOKEN` | Vercel 部署令牌（GitHub Actions 中使用） | Secret（workflow secrets） |
-| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力）。**注意：仅 `build_rss_aggregator.py`、`build_ai_daily.py`、`insight_engine.py` 三处对主 key 做逗号切分；`build_daily_insight.py`、`fetch_and_build.py`、`api/translate.js` 把主 key 当单值原样使用** —— 想以逗号合并多 key 进主变量前必须先补齐这三处，否则 translate.js 会发出畸形 Bearer、每日洞察整条 LLM 链 401 | Secret |
-| `AGNES_API_KEYS` | Agnes 附加 key（**逗号分隔**，与主 key 合并成池轮转抗 429；供 build_rss_aggregator / build_ai_daily / build_daily_insight / insight_engine / api/translate.js，取代已废弃的 `AGNES_API_KEY_2/_3`） | Secret |
+| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力）。**6 个调用点均已支持逗号分隔多 key**（2026-09-18 补齐 `build_daily_insight.py`、`fetch_and_build.py`、`api/translate.js`），与 `AGNES_API_KEYS` 合并成同一个池 | Secret |
+| `AGNES_API_KEYS` | Agnes 附加 key（**逗号分隔**，与主 key 合并成池轮转抗 429；供 build_rss_aggregator / build_ai_daily / build_daily_insight / insight_engine / fetch_and_build / api/translate.js 共 6 个调用点，取代已废弃的 `AGNES_API_KEY_2/_3`） | Secret |
 | `SILICONFLOW_API_KEY` | 硅基流动 API key（bge-m3 embedding 主力） | Secret |
 | `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力 + 每日洞察 Judge 首选 mimo-v2.5-free） | Secret |
 | `AGIHUNT_API_KEY` | AGI Hunt Agent API 密钥（每日洞察第四源；Bearer 认证，见 §8.12） | Secret |
@@ -807,6 +807,7 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 **本地诊断**：`python diagnose_coverage.py` 取 `daily_insight_chunks.json` 前 80 条近似评估上下文，与当日 events 对比给出覆盖率缺口的方向性线索（分母为近似，勿当判据；要精确归因需先在 `_build_ragas_context` 里把入选 chunk_id 写进 `daily-insight.json → quality`）；历史规格文档在 `docs/superpowers/specs/2026-09-17-daily-insight-*.md`。
 
 **修改守则**：
+- **CI 已有质量门禁**（`update.yml` 第 6 步 `Quality gate (syntax + tests)`，位于恢复缓存与任何构建之前）：`python -m py_compile *.py` + 跑 `test_insight_engine / test_insight_guard_v3 / test_insight_bad_date / test_daily_insight`，任一失败即中断构建、不产生提交；跑完自动 `git checkout -- . ; git clean -fdq` 还原测试写脏的产物。**这就是为什么新增测试必须是确定性且无网络的**——不确定的测试会把整站更新拖挂。
 - 任何生成/评估参数改动后，跑 `python test_daily_insight.py` + `pytest tests/daily_insight/`（**注意：当前 CI 环境未装 pytest，`tests/daily_insight/` 实际从未被执行过**）。
 - ⚠ `test_daily_insight.py` 会**真实写盘** `daily-insight.json`、`daily_insight_history.json`、`daily-insight-history.html`、`ai-daily.html` 四个受版本控制的产物（用测试桩数据覆盖当日真实内容）。跑完必须 `git checkout HEAD --` 这四个文件再提交，否则测试数据会上线。
 - Faithfulness 相关改动必须看下一构建的 `daily-insight.json → quality`，不能只看构建成功。
@@ -822,8 +823,9 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 
 ### 8.14 Agnes 多 key 轮询统一（2026-09-18）
 
-- 新方案：`AGNES_API_KEY`（主）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。`AGNES_API_KEYS` 已覆盖全部 5 个调用点：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`、`insight_engine.py`。
-- **主 key 逗号切分尚未统一（重要差异）**：只有 `build_rss_aggregator.py:152`、`build_ai_daily.py:531`、`insight_engine.py:247` 会对 `AGNES_API_KEY` 本身做 `.split(',')`；`build_daily_insight.py:1426`、`fetch_and_build.py:497`、`api/translate.js:30` 把主 key 当单值原样使用。**因此当前多 key 必须放在 `AGNES_API_KEYS` 里，不要图省事把 4 个 key 逗号拼进主变量**——那会让 Vercel 翻译代理发出畸形 Bearer、`fetch_and_build` AI 摘要静默返回 None、每日洞察整条 LLM 链 401，而翻译端点仍部分正常，形成半绿假象。
+- 新方案：`AGNES_API_KEY`（主）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。`AGNES_API_KEYS` 已覆盖全部 6 个调用点：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`、`insight_engine.py`、`fetch_and_build.py`（AI 态势摘要）。
+- **主 key 逗号切分已全量统一（2026-09-18）**：6 个调用点（`build_rss_aggregator.py:152`、`build_ai_daily.py:531`、`insight_engine.py:247`、`build_daily_insight.py:_init_llm`、`fetch_and_build.py:generate_ai_summary`、`api/translate.js:AGNES_KEYS`）现在都是同一语义：主 key 与附加 key 各自逗号切分后合并成一个池。**多 key 放 `AGNES_API_KEY` 或 `AGNES_API_KEYS` 都安全**。`fetch_and_build.py` 顺带补上了 429 换 key 重试（此前只发一次、失败即放弃）。
+- **注意 key 池不去重**：`AGNES_API_KEY=k1` + `AGNES_API_KEYS=k1,k1` 会得到 3 个相同 key，轮转只是在同一 key 上烧尝试次数。Secret 内容自己保证唯一。
 - **已修复（2026-09-18）**：`insight_engine.py` 的 `configure_llm()` 此前仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量，该引擎实际退化为单 key。现改为与 `build_rss_aggregator.py:152-155` 同语义的池化方案：主 key 逗号切分 + `AGNES_API_KEYS` 逗号切分合并，**主 key 缺失时附加 key 仍生效**（不会静默退回 MockLLM）。
 - **回归测试**：`test_insight_engine.py` 新增 4 例覆盖 key 池（单 key→`extra_keys` 必须为 None、主 key 逗号展开、主+附加合并且空白/空段被清洗、仅附加 key 时仍建 AgnesLLM）。全套 86 例当前 **全绿**——此前长期红着的 2 例 RSS 时效测试是因为 `recent` 硬编码成 `2026-09-13`，72h 窗口一过必然失败；已改为 `_recent_bjt_iso()` 相对时间，勿再写死日期。
 - 踩坑：`_AGNES_KEY_IDX` 等全局变量在函数内使用前必须先 `global` 声明（`1d2a93d` 修复过一处顺序 bug）。
