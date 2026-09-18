@@ -2530,89 +2530,133 @@ def _build_read_profile(history):
     return profile
 
 
-def _select_bubble_events(clusters, read_profile, residual_chunks=None, top_n=5):
-    """破茧栏：从主事件列表之外的素材中选取差异化内容。
+def _select_bubble_events(clusters, read_profile, residual_chunks=None, all_chunks=None, top_n=5):
+    """破茧栏 v2：正向识别非科技主题候选池 → 热度排序（QWIS cocoonFamiliar 式）。
 
-    设计初衷：反信息茧房 — 展示读者在主流事件中看不到的视角。
-    参照 QWis Portal 破茧栏语义：与用户常读分组交集最小的内容。
-
-    策略：
-    1. 从 residual_chunks（未被主事件采用的素材）中按 source_type 分组
-    2. 优先选择与主事件 category 和用户常读 category 均不同的源
-    3. 每源取代表性条目，生成破茧卡片
+    候选优先级：
+    1. all_chunks 中 topic_tag ∈ BUBBLE_TOPICS 的 chunk（主设计路径）
+    2. residual_chunks 旧评分路径（过渡兼容）
+    3. clusters 中 category 与 read_profile 交集最低的兜底
     """
     main_cats = set(c.get("category", "") for c in clusters if c.get("category"))
 
-    # 收集残差素材：不在任何主事件中的 chunks
-    if residual_chunks is None:
-        residual_chunks = []
-
-    main_urls = set()
+    main_keys = set()
     for c in clusters:
+        if c.get("label"):
+            main_keys.add(c["label"])
         for it in c.get("items", []):
-            url = it.get("url", "")
-            if url:
-                main_urls.add(url)
-            title = (it.get("title", "") or "").strip()
-            if title:
-                main_urls.add(title)
+            for k in (it.get("url", ""), (it.get("title", "") or "").strip()):
+                if k:
+                    main_keys.add(k)
 
+    read_top = ", ".join(k for k, v in sorted(read_profile.items(), key=lambda x: -x[1])[:2]) if read_profile else ""
+
+    def _bubble_heat(ch):
+        hot = min(10.0, float(ch.get("hot", 0) or 0))
+        pub = _parse_iso(ch.get("pub_date", ""))
+        age_h = _hours_ago(pub) if pub else 168
+        recency = (0.5 ** (age_h / 72.0)) * 10  # 破茧 7 天窗口，半衰期 72h
+        return round(hot * 0.5 + recency * 0.3, 2)
+
+    def _same_topic(ta, tb):
+        ja, jb = _tokenize_title(ta), _tokenize_title(tb)
+        if not ja or not jb:
+            return False
+        inter = len(ja & jb)
+        # 词级分词下近似重复标题 Jaccard 约 0.35-0.4（实测），低于 QWIS 整句 0.5
+        return _jaccard(ja, jb) >= 0.35 or inter / min(len(ja), len(jb)) >= 0.6
+
+    # ── 路径 1：非科技 topic 候选池 ──
+    pool = [c for c in (all_chunks or [])
+            if c.get("topic_tag") in BUBBLE_TOPICS
+            and (c.get("url", "") or c.get("link", "")) not in main_keys
+            and (c.get("title", "") or "").strip() not in main_keys]
+    pool.sort(key=_bubble_heat, reverse=True)
+    result = []
+    for ch in pool:
+        if any(_same_topic(ch.get("title", ""), r["label"]) for r in result):
+            continue
+        result.append({
+            "label": (ch.get("title", "") or "").strip()[:80],
+            "summary": ((ch.get("text", "") or "").strip() or ch.get("summary", ""))[:200],
+            "category": ch.get("topic_tag", ""),
+            "score": _bubble_heat(ch),
+            "reason": ("与你常读的科技领域不同" if read_top else "非科技热点"),
+            "url": ch.get("url", "") or ch.get("link", ""),
+            "source": ch.get("source", "") or ch.get("platform", ""),
+        })
+        if len(result) >= top_n:
+            return result
+    if result:
+        return result
+
+    # ── 路径 2：residual 旧逻辑（按 source_type 分组评分） ──
     residual = []
-    for chunk in residual_chunks:
+    for chunk in (residual_chunks or []):
         url = chunk.get("url", "")
         title = (chunk.get("title", "") or "").strip()
-        if url and url in main_urls:
+        if url and url in main_keys:
             continue
-        if title and title in main_urls:
+        if title and title in main_keys:
             continue
         residual.append(chunk)
 
-    if not residual:
-        return []
+    if residual:
+        by_source = {}
+        for chunk in residual:
+            src = chunk.get("source_type", "") or chunk.get("_src", "") or "other"
+            by_source.setdefault(src, []).append(chunk)
 
-    # 按 source_type 分组
-    by_source = {}
-    for chunk in residual:
-        src = chunk.get("source_type", "") or chunk.get("_src", "") or "other"
-        by_source.setdefault(src, []).append(chunk)
+        max_freq = max(read_profile.values()) if read_profile else 1
+        source_scores = []
+        for src, chunk_list in by_source.items():
+            src_cat = chunk_list[0].get("channel", "") or chunk_list[0].get("category", "")
+            cat_novelty = 1.0 if src_cat and src_cat not in main_cats else 0.5
+            read_freq = read_profile.get(src_cat, 0)
+            read_novelty = 1.0 - (read_freq / max_freq) if max_freq > 0 else 0.5
+            score = cat_novelty * 0.6 + read_novelty * 0.4 + len(chunk_list) * 0.01
+            source_scores.append((src, chunk_list, score, src_cat))
 
-    # 评分：与主事件 category 和用户常读均不同的源得分更高
+        source_scores.sort(key=lambda x: x[2], reverse=True)
+        for src, chunk_list, score, src_cat in source_scores[:top_n]:
+            best = max(chunk_list, key=lambda c: float(c.get("hot", 0) or 0))
+            label = (best.get("title", "") or "").strip()[:80]
+            text = (best.get("text", "") or "").strip()[:200]
+            if not label:
+                continue
+            if src_cat and src_cat not in main_cats:
+                reason = "来自 %s 视角，与主流事件不同" % src
+            elif read_top:
+                reason = "与你常读的 %s 领域不同" % read_top
+            else:
+                reason = "信息增量"
+            result.append({
+                "label": label,
+                "summary": text if text else best.get("summary", ""),
+                "category": src_cat,
+                "score": score,
+                "reason": reason,
+                "url": best.get("url", "") or best.get("link", ""),
+                "source": best.get("source", "") or best.get("platform", "") or src,
+            })
+        if result:
+            return result
+
+    # ── 路径 3：clusters 类别新颖兜底 ──
+    _tech_cats = MAIN_TOPICS | {"ai-models", "ai-products", "developer"}
     max_freq = max(read_profile.values()) if read_profile else 1
-    source_scores = []
-    for src, chunks in by_source.items():
-        src_cat = chunks[0].get("channel", "") or chunks[0].get("category", "")
-        cat_novelty = 1.0 if src_cat and src_cat not in main_cats else 0.5
-        read_freq = read_profile.get(src_cat, 0)
-        read_novelty = 1.0 - (read_freq / max_freq) if max_freq > 0 else 0.5
-        score = cat_novelty * 0.6 + read_novelty * 0.4 + len(chunks) * 0.01
-        source_scores.append((src, chunks, score, src_cat))
-
-    source_scores.sort(key=lambda x: x[2], reverse=True)
-
-    # 生成破茧卡片
-    result = []
-    read_top = ", ".join(k for k, v in sorted(read_profile.items(), key=lambda x: -x[1])[:2]) if read_profile else ""
-    for src, chunks, score, src_cat in source_scores[:top_n]:
-        best = max(chunks, key=lambda c: float(c.get("hot", 0) or 0))
-        label = (best.get("title", "") or "").strip()[:80]
-        text = (best.get("text", "") or "").strip()[:200]
-        if not label:
-            continue
-        if src_cat and src_cat not in main_cats:
-            reason = "来自 %s 视角，与主流事件不同" % src
-        elif read_top:
-            reason = "与你常读的 %s 领域不同" % read_top
-        else:
-            reason = "信息增量"
-        url = best.get("url", "") or best.get("link", "")
+    cand = [c for c in clusters
+            if c.get("category") and c.get("category") not in _tech_cats]
+    cand.sort(key=lambda c: read_profile.get(c.get("category", ""), 0) / max_freq if max_freq else 0)
+    for c in cand[:top_n]:
         result.append({
-            "label": label,
-            "summary": text if text else best.get("summary", ""),
-            "category": src_cat,
-            "score": score,
-            "reason": reason,
-            "url": url,
-            "source": best.get("source", "") or best.get("platform", "") or src,
+            "label": c.get("label", "")[:80],
+            "summary": (c.get("summary", "") or "")[:200],
+            "category": c.get("category", ""),
+            "score": round(1.0 - (read_profile.get(c.get("category", ""), 0) / max_freq if max_freq else 0), 2),
+            "reason": ("与你常读的 %s 领域不同" % read_top) if read_top else "信息增量",
+            "url": (c.get("key_links") or [""])[0],
+            "source": ",".join(sorted(c.get("source_types", []) or [])),
         })
     return result
 
@@ -4186,7 +4230,7 @@ def main():
     # ── Phase 3.1: 破茧栏 + 输出 JSON ──
     history = _load_history()
     read_profile = _build_read_profile(history)
-    bubble_breaker = _select_bubble_events(clusters, read_profile, residual_chunks=retrieved_for_ragas)
+    bubble_breaker = _select_bubble_events(clusters, read_profile, residual_chunks=retrieved_for_ragas, all_chunks=chunks)
     _write_insight_json(clusters, theme, has_analysis, ragas_eval, bubble_breaker)
 
     # ── Phase 3.3: 更新历史 ──
