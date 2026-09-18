@@ -1,14 +1,15 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-09-14（同步洞察引擎、翻译分流 v2、1014 源三层分级、热榜 40 平台等重大变更）
+> 最后更新：2026-09-18（同步每日深度洞察管线 build_daily_insight.py、RAGAS 评估-修正闭环、Agnes 四 key 轮询、RSS 快照出仓等重大变更；手册基线为 `e3c0313`，其后 25 个实质提交已全部核对）
 
 ## 一、项目一句话
 
-**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；LlamaIndex 语义洞察引擎驱动主题聚类与深度洞察；1014 RSS 源三层分级 + 多引擎翻译分流链（Agnes → Zen → GTX）；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
+**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；LlamaIndex 语义洞察引擎 + 每日深度洞察 RAG 管线（FAISS+BM25 混合检索、RAGAS 评估-修正闭环、破茧栏）驱动主题聚类与深度洞察；1005 RSS 源三层分级 + 多引擎翻译分流链（Agnes → Zen → GTX）+ Agnes 四 key 轮询；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
 
 - 用户访问地址：https://kwei168.github.io/starhub/（GitHub Pages，国内可达的静态入口）
 - Vercel 项目：https://starhub-refresh.vercel.app（静态产物 + Serverless API）
 - RSS 页面：https://kwei168.github.io/starhub/rss-aggregator.html
+- 每日深度洞察：AI 晨报内「每日深度洞察」子板块 + 历史页 https://kwei168.github.io/starhub/daily-insight-history.html
 - 仓库：https://github.com/Kwei168/starhub
 
 ---
@@ -42,7 +43,8 @@
 │  │              Python: fetch_and_build.py              │    │
 │  │   拉取 starred repos → 智能分类 → 翻译描述 →         │    │
 │  │   生成 index.html + ai-daily.html +                  │    │
-│  │   rss-aggregator.html（1014 源三层分级构建）           │    │
+│  │   rss-aggregator.html（1005 源三层分级构建）→         │    │
+│  │   build_daily_insight 每日深度洞察注入 ai-daily       │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 
@@ -70,7 +72,8 @@
 | **主数据区**（Star 项目列表） | GitHub API: `/users/Kwei168/starred` | workflow 触发 `fetch_and_build.py` 静态构建 | `index.html` |
 | **关注动态区**（右侧 Feed） | GitHub API: `/users/{user}/events/public` | `/api/events.js` 实时查询，前端 30min 轮询 | 运行时 API |
 | **AI 晨报** | AIHOT 公开 API v1（降级回退 RSS）+ HN / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis / AtlasNote 多渠道 | `build_ai_daily.py` 每次构建时云端拉取生成 | `ai-daily.html` |
-| **RSS 聚合** | 1014 源（AI/科技/开发/新闻/公众号/播客/Twitter），T1/T2/T3 三层分级 | `build_rss_aggregator.py` 构建 72h 快照 + `api/rss.js` T1 实时抓取；并行抓取（12 并发 + 域级熔断） | `rss-aggregator.html` + `rss-data-0.js`/`rss-data-1.js` + `rss_api_snapshot.json` |
+| **RSS 聚合** | 1005 源（AI/科技/开发/新闻/公众号/播客/Twitter），T1/T2/T3 三层分级 | `build_rss_aggregator.py` 构建 72h 快照 + `api/rss.js` T1 实时抓取；并行抓取（12 并发 + 域级熔断） | `rss-aggregator.html` + `rss-data-0.js`~`rss-data-N.js` + `rss_api_snapshot*.json`（快照已出仓，见 §8.13） |
+| **每日深度洞察** | RSS 7 天 + 热榜 40 平台 + AIHOT + AGI Hunt 四源叠加 | `build_daily_insight.py` RAG 管线（FAISS+BM25 混合检索 → 多级 LLM Phase → RAGAS 评估-修正），由 `fetch_and_build.py` 在 RSS 构建后调用 | `daily-insight.json` + `daily-insight-history.html` + 注入 `ai-daily.html` 的「每日深度洞察」子板块 |
 | **语义洞察** | LlamaIndex 向量索引 + Agnes LLM + SiliconFlow embedding | `insight_engine.py` 构建时运行；嵌入缓存 `emb_cache.json` 跨 run 持久化 | `analysis_snapshot.json`（含 deep_insights / topic_clusters / cross_platform） |
 | **热榜态势** | newsnow 40 平台热榜快照 | `build_rss_aggregator.py` 的 `fetch_newsnow_snapshot()`；`hot_snapshot.json` + `hot_history.json` | AI 动态面板「热榜」Tab + 分类筛选 |
 
@@ -82,21 +85,23 @@
 
 | 文件 | 行数 | 作用 |
 |---|---|---|
-| `fetch_and_build.py` | 815 | **核心入口**。拉取 starred repos、智能分类、翻译描述、生成 `index.html`。末尾调用 `build_ai_daily.main()` 与 `build_rss_aggregator.main(mode)` |
+| `fetch_and_build.py` | 825 | **核心入口**。拉取 starred repos、智能分类、翻译描述、生成 `index.html`。末尾依次调用 `build_ai_daily.main()`、`build_rss_aggregator.main(mode)` 与 `build_daily_insight.main()` |
 | `build_ai_daily.py` | ~1250 | AI 晨报生成器。主源 AIHOT 公开 API v1（匿名 `/api/v1/items`，失败降级 RSS → 本地 JSON）→ 筛选 36h 条目；多渠道快讯：Hacker News / The Verge / TechCrunch / arXiv / 36氪(RSSHub镜像) / Redis博客 / AtlasNote → 英译中 → 跨源四层去重（精确/子串/同URL/摘要互含）→ 头条评分制（跨源报道数+编辑分+信源权重+新鲜度）→ 生成报纸风格 `ai-daily.html`，页脚显示信源成败状态栏 |
 | `template.html` | ~2110 | **页面模板**。包含全部 CSS + HTML 结构 + JS 交互逻辑。`fetch_and_build.py` 读取此文件，替换占位符生成 `index.html`。2026-08-29 重设计为纸感编辑风（暖纸底+衬线标题+等宽数字），搜索置顶通栏+340px粘性侧栏 |
 | `index.html` | 自动生成 | 最终部署页面。**不要直接编辑**，每次 workflow 会从 template 重新生成 |
-| `ai-daily.html` | 自动生成 | AI 晨报页面。**不要直接编辑**，每次构建重新生成 |
-| `build_rss_aggregator.py` | ~6650 | **RSS 聚合页生成器**。1014 源三层分级（T1=6/T2=207/T3=801），支持 full/incremental 两种构建模式；并行抓取（全局 12 并发 + 每域名 2 + 域级熔断）；多引擎翻译分流链（Agnes → Zen → GTX → Bing → MyMemory）；同时生成卡片墙、AI 动态双形态面板（含热榜 Tab）、信源面板、reader2 阅读器、筛选/搜索/分享/主题切换/实时刷新、媒体播放（YouTube/播客） |
+| `build_rss_aggregator.py` | ~8047 | **RSS 聚合页生成器**。1005 源三层分级（T1=6/T2=204/T3=795），支持 full/incremental 两种构建模式；并行抓取（全局 12 并发 + 每域名 2 + 域级熔断）；多引擎翻译分流链（Agnes 多 key → Zen → GTX → Bing → MyMemory）；数据切成 `rss-data-0.js`（首屏）+ `rss-data-1..N.js`（后台合并）；同时生成卡片墙、AI 动态双形态面板（含热榜 Tab）、信源面板、reader2 阅读器、筛选/搜索/分享/主题切换/实时刷新、媒体播放（YouTube/播客） |
+| `build_daily_insight.py` | ~4082 | **每日深度洞察 RAG 管线**（详见 §8.12）。四源叠加（RSS 7 天 + 热榜 + AIHOT + AGI Hunt）→ 硬过滤 → 切片 embedding → FAISS+BM25 混合检索 → 多级 LLM Phase 生成 → RAGAS 评估-修正 → 破茧栏；产出 `daily-insight.json` + `daily-insight-history.html`，并注入 `ai-daily.html` |
 | `rss-aggregator.html` | 自动生成 | RSS 聚合页面。**不要直接编辑**；由 `build_rss_aggregator.py` 生成，包含卡片墙、AI 动态双形态面板（桌面左侧常驻/移动抽屉）、热榜分类筛选、信源面板、reader2 阅读器（内嵌媒体播放）、筛选/搜索/分享/主题切换/实时刷新 |
+| `ai-daily.html` | 自动生成 | AI 晨报页面。**不要直接编辑**；正文含 `<!-- daily-insight-start/end -->` 标记包裹的「每日深度洞察」子板块，由 `build_daily_insight._inject_into_ai_daily()` 幂等替换 |
+| `daily-insight-history.html` | 自动生成 | 每日洞察 30 天历史轨迹独立页面，报纸风格，与 `ai-daily.html` 视觉一致 |
 | `bestblogs_sources.json` | 559 条 | BestBlogs 项目导出的 RSS 源列表（375 公众号 + 60 播客 + 124 YouTube），构建时自动合并 |
 
 ### 语义洞察引擎
 
 | 文件 | 行数 | 作用 |
 |---|---|---|
-| `insight_engine.py` | ~1735 | **LlamaIndex 语义分析引擎**。替代纯统计 _run_analysis()；AgnesLLM 多 key 轮询 + 429 自动切换；SiliconFlow bge-m3 API embedding（本地 fastembed 回退）；层级索引 + 手动余弦相似度检索（避向量维度不匹配）；RAGAS-inspired 评估 + 自纠错循环；话题聚类（embedding + TF-IDF 加权）；关键词提取（LLM + 分源关键词池）；深度洞察三视角独立生成（core_trends / rss_insights / narrative）；嵌入缓存 `emb_cache.json` 跨 run 持久化（5000 条上限） |
-| `build_config.json` | 14 | 构建配置外置文件。控制 insight_engine 开关、LLM provider、max_documents、top_keywords/topics 等参数；缺失键自动填充默认值 |
+| `insight_engine.py` | ~1988 | **LlamaIndex 语义分析引擎**（服务于 RSS 聚合页 AI 动态面板的 `analysis_snapshot.json`，与 build_daily_insight 是两条独立管线）。AgnesLLM 多 key 轮询 + 429 自动切换（注意：仍读 `AGNES_API_KEY_2/_3` 编号式 key，与其余模块的 `AGNES_API_KEYS` 逗号方案不一致，见 §8.14）；SiliconFlow bge-m3 API embedding（本地 fastembed 回退）；层级索引 + 手动余弦相似度检索（避向量维度不匹配）；RAGAS-inspired 评估 + 自纠错循环；话题聚类（embedding + TF-IDF 加权）；关键词提取（LLM + 分源关键词池）；深度洞察三视角独立生成（core_trends / rss_insights / narrative）；嵌入缓存 `emb_cache.json` 跨 run 持久化（5000 条上限） |
+| `build_config.json` | 22 | 构建配置外置文件。控制 insight_engine 开关、LLM provider、max_documents、top_keywords/topics；`daily_insight_enabled`、`daily_insight_judge_provider/model/timeout`（当前 mimo / mimo-v2.5-free / 60s）、`daily_insight_cross_validation`（当前 true，双 prompt 交叉验证）等每日洞察参数；缺失键自动填充默认值 |
 | `build_logger.py` | ~120 | **构建日志系统**。JSONL 格式每日追加，14 天滚动清理；提供 `append()` / `cleanup()` / `summary()` API；供 workflow 与 `api/build_log.js` 消费 |
 
 ### 测试文件
@@ -110,6 +115,8 @@
 | `test_insight_guard_v3.py` | 维度护栏 v3 + 漂移自愈失效缓存测试 |
 | `test_insight_embeddings.py` | 嵌入缓存值类型过滤 + NaN/TypeError 防御测试 |
 | `test_insight_query_batch.py` | 查询批化与检索偏移修复测试 |
+| `test_daily_insight.py` | 每日洞察 RAG 管线本地测试（675 行，跳过网络的核心逻辑冒烟：聚类/去重/RAGAS 解析/注入标记等） |
+| `tests/daily_insight/*.py` | 每日洞察 pytest 套件（12 个文件：去重、双热度、历史分块、素材过滤、prompt 结构、查询与热度、RAGAS 解析/鲁棒、自审、语义聚类、tracer、集成） |
 | `test_translation_endpoints.py` | 翻译端点分流与降级链测试 |
 | `test_frontend_tz_regression.py` | 前端时区漂移回归测试 |
 
@@ -120,15 +127,21 @@
 | `known_categories.json` | 项目→分类映射缓存（避免每次重新分类） |
 | `descriptions_zh.json` | 项目→中文描述缓存（避免重复翻译） |
 | `trending_snapshot.json` | 趋势分析快照数据 |
-| `rss_api_snapshot.json` | RSS API 快照（72h 累积历史 + meta.last_fetch 增量状态） |
-| `rss_sources.json` | RSS 源元数据（1014 条，含 tier/cat/color 字段；8 分类：ai/tech/cn_tech/dev/news/podcast/wechat/twitter） |
+| `rss_api_snapshot.json` (+`_1`...) | RSS API 分块快照（72h 累积历史 + meta.last_fetch 增量状态）。**已移出仓库**（单文件 82MB 导致 Actions checkout 超时），`.gitignore` 忽略，仅存于 CI 工作区并随 `vercel --prod` 上传供 `api/rss.js` 读取（见 §8.13） |
+| `rss_sources.json` | RSS 源元数据（1005 条，含 tier/cat/color 字段；8 分类：wechat 386 / dev 178 / twitter 160 / podcast 70 / tech 66 / ai 61 / news 61 / cn_tech 23） |
 | `rss_history.json` | RSS 文章历史累积（跨构建持久化） |
 | `translations.json` | 翻译缓存（MD5 hash → 中文，供构建和 API 共享） |
 | `hot_snapshot.json` | 热榜快照数据（40 平台，列表格式） |
 | `hot_history.json` | 热榜历史累积（跨构建持久化） |
 | `analysis_snapshot.json` | 洞察分析快照（含 keywords / topics / deep_insights / topic_clusters / cross_platform / hot_trends / stale 标注） |
+| `daily-insight.json` | 每日深度洞察当日产出（date / theme / events（含 score、status、deep_analysis、key_links）/ bubble_breaker / stats / quality(RAGAS 评分)） |
+| `daily_insight_history.json` | 每日洞察 30 天事件轨迹（跨天 Jaccard≥0.5 匹配 ongoing/escalating 状态） |
+| `daily_insight_tracking_history.jsonl` | 每日洞察构建质量追踪（各 Stage 计数 + RAGAS 分数，按日追加） |
+| `diagnose_coverage.py` | 本地诊断脚本：对比 chunks 全量与当日 events，定位覆盖率缺口（读 `daily_insight_chunks.json` + `daily-insight.json`） |
 | `rss_trend_history.json` | RSS 趋势追踪（14 天滚动快照；关键词 5 种生命周期 + 话题 4 种生命周期） |
 | `emb_cache.json` | 嵌入向量缓存（~8MB/5000 条，CI 用 actions/cache 持久化，gitignore） |
+| `daily_insight_vectors.npy` / `daily_insight_chunks.json` / `daily_insight_faiss.index` | 每日洞察向量缓存 / chunk 元数据 / FAISS 索引（CI 用 actions/cache 持久化，gitignore） |
+| `daily_insight_snapshot.json` | 每日洞察的 AIHOT + AGI Hunt 构建期缓存（gitignore） |
 
 ### Vercel Serverless 函数
 
@@ -138,7 +151,7 @@
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
 | `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
-| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：返回构建时生成的 72h 累积快照（1014 源）；`?refresh=1` 时仅实时抓取 T1 高频源（6 个），T2/T3 从快照读取；T1 英文源实时翻译 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：加载 `rss_api_snapshot.json` 并自动合并分块 `_1.._N`（1005 源 72h 累积）；`?refresh=1` 时仅实时抓取 T1 高频源（6 个），T2/T3 从快照读取；T1 英文源实时翻译 |
 | `api/article.js` | `/api/article` | GET/OPTIONS | CORS 允许所有来源（`*`） | 15s（函数配置） | 阅读器全文兜底：快照全文 map → 特殊源提取/GitHub/YouTube → Readability 通用提取；OPTIONS 返回 204 |
 | `api/agihunt.js` | `/api/agihunt` | GET | 公开读取 | 15s | AI 动态侧栏的 AGI Hunt 频道代理 |
 | `api/translate.js` | `/api/translate` | POST | Origin 白名单 | 30s | **翻译代理**。引擎分流：mode='full'（全文/摘要按钮）→ Agnes 主力 + GTX 兜底；mode='bulk'（缺省，批量补翻）→ 前端浏览器直连 GTX 主力，服务端 GTX 尽力 + Agnes 限量兜底（AGNES_FALLBACK_MAX=8） |
@@ -149,11 +162,11 @@
 | 文件 | 作用 |
 |---|---|
 | `vercel.json` | Vercel 项目配置，声明 9 个 Serverless 函数及超时（refresh/search/events/news/rss/article/agihunt/translate/build_log） |
-| `.github/workflows/update.yml` | GitHub Actions 主工作流。**分层调度**：UTC 21:00（北京 05:00）全量构建，UTC 2/6/10/14（北京 10/14/18/22）增量构建；安装 LlamaIndex + fastembed；恢复嵌入缓存；env 提升到 job 级防 push 重试丢 key |
+| `.github/workflows/update.yml` | GitHub Actions 主工作流。**分层调度**：UTC 21:00（北京 05:00）全量构建，UTC 2/6/10/14（北京 10/14/18/22）增量构建；安装 LlamaIndex + fastembed + **faiss-cpu + rank-bm25**；恢复嵌入缓存与每日洞察 FAISS/向量缓存（actions/cache 路径含 `daily_insight_vectors.npy`/`daily_insight_chunks.json`/`daily_insight_faiss.index`）；**git add 不再包含 rss_api_snapshot**（已 gitignore）；env 提升到 job 级防 push 重试丢 key |
 | `.github/workflows/zen-check.yml` | Zen 翻译链路 CI 验证（手动触发），实测 6 条文本的 Zen 轮询翻译 |
 | `.github/workflows/build-log-summary.yml` | 每小时整点生成构建日志摘要并提交 |
 | `.github/workflows/sync-agnes-env.yml` | Agnes 环境变量同步到 Vercel（一次性工具） |
-| `.gitignore` | 忽略 `__pycache__/`、`.deploy-tmp/`、`rss_cache.json`（构建期缓存）、`emb_cache.json`（嵌入向量缓存）、`*.tmp`（原子写临时文件）、`_rev*`/`_adv*`（对抗性审查临时脚本）等 |
+| `.gitignore` | 忽略 `__pycache__/`、`.deploy-tmp/`、`rss_cache.json`（构建期缓存）、`emb_cache.json`（嵌入向量缓存）、`rss_api_snapshot*.json`（RSS 快照，82MB 出仓）、`daily_insight_snapshot.json`/`source_quality.json`/`daily_insight_faiss.index`/`daily_insight_chunks.json`/`daily_insight_vectors.npy`（每日洞察构建中间产物）、`*.tmp`（原子写临时文件）、`_rev*`/`_adv*`（对抗性审查临时脚本）等 |
 
 ### 辅助目录
 
@@ -174,10 +187,12 @@
 | `GH_TOKEN` | GitHub PAT（fine-grained），需 `contents:write` + `actions:write` 权限 | Secret |
 | `REFRESH_KEY` | 弱防护密钥，用于 `/api/refresh` 和 `/api/search` 的 header 校验 | Secret |
 | `VERCEL_TOKEN` | Vercel 部署令牌（GitHub Actions 中使用） | Secret（workflow secrets） |
-| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力） | Secret |
-| `AGNES_API_KEY_2` | Agnes AI 第二 key（多 key 轮询，429 自动切换） | Secret |
+| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力；自身也支持逗号分隔多 key） | Secret |
+| `AGNES_API_KEYS` | Agnes 附加 key（**逗号分隔**，四 key 轮询抗 429；供 build_ai_daily / build_rss_aggregator / build_daily_insight / api/translate.js，取代已废弃的 `AGNES_API_KEY_2`） | Secret |
 | `SILICONFLOW_API_KEY` | 硅基流动 API key（bge-m3 embedding 主力） | Secret |
-| `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力） | Secret |
+| `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力 + 每日洞察 Judge 首选 mimo-v2.5-free） | Secret |
+| `AGIHUNT_API_KEY` | AGI Hunt Agent API 密钥（每日洞察第四源；Bearer 认证，见 §8.12） | Secret |
+| `OPENROUTER_API_KEY` | 已在 update.yml 声明但 Judge 降级链已移除 OpenRouter（长期不通），当前闲置 | Secret |
 
 **当前状态**（2026-09-14）：
 - `REFRESH_KEY`：仅在 Vercel 环境变量、GitHub Actions Secret 与受控触发配置中维护；手册不记录实际值。
@@ -299,23 +314,27 @@ GitHub Actions: update.yml
   1. checkout main (fetch-depth: 0, 完整历史)
   2. setup Python 3.11
   3. 判断构建模式：UTC 21:00 → full，其余 → incremental
-  4. pip install llama-index-core llama-index-embeddings-fastembed fastembed
-  5. 恢复嵌入缓存（actions/cache）
+  4. pip install llama-index-core llama-index-embeddings-fastembed fastembed faiss-cpu rank-bm25
+  5. 恢复嵌入缓存 + 每日洞察 FAISS/向量缓存（actions/cache）
   6. python fetch_and_build.py $MODE
      - 拉取 Kwei168 的 starred repos（分页，每页 100）
      - 智能分类（关键词匹配 + known_categories.json 缓存）
-     - 翻译英文描述为中文（多引擎分流：Agnes → Zen → GTX → Bing → MyMemory）
+     - 翻译英文描述为中文（多引擎分流：Agnes 多 key → Zen → GTX → Bing → MyMemory）
      - 生成 index.html（从 template.html 替换占位符）
      - 调用 build_ai_daily.main() 生成 ai-daily.html
      - 调用 build_rss_aggregator.main(mode) 生成 RSS 聚合页
-       · full 模式：并行抓取全部 1014 源（12 并发 + 域级熔断）
+       · full 模式：并行抓取全部 1005 源（12 并发 + 域级熔断）
        · incremental 模式：跳过 T1 源 + 4h 内已抓源；跳过的源从历史数据填充
        · 运行 insight_engine 语义分析（LlamaIndex + Agnes LLM）
        · 生成热榜快照 + 趋势追踪
-  5. git add + commit + push（仅当有变更时）
+     - 调用 build_daily_insight.main() 生成每日深度洞察
+       · RAG 管线 + RAGAS 评估-修正 + 破茧栏
+       · 产出 daily-insight.json / daily-insight-history.html 并注入 ai-daily.html
+  5. git add + commit + push（仅当有变更时；**不含 rss_api_snapshot**，已 gitignore）
   6. npx vercel --prod --yes --token $VERCEL_TOKEN
                 ↓
-Vercel 部署完成（约 2-3 分钟）
+Vercel 部署完成（约 2-3 分钟；rss_api_snapshot*.json 虽不入 git，
+但存在于 Actions 工作区，随 vercel 上传供 /api/rss 读取）
 ```
 
 ### 关键约束
@@ -486,25 +505,25 @@ function _mergeLiveSources(liveData, silent) {
 
 ### 7.15 RSS 聚合器三层分级架构（2026-09-05）
 
-**背景**：集成 BestBlogs 559 源后，源清单达到当前 1014（含 160 个 X/Twitter 源）；全量抓取超出 GitHub Actions 分钟预算。
+**背景**：集成 BestBlogs 559 源后，源清单一度达到 1014（含 160 个 X/Twitter 源）；全量抓取超出 GitHub Actions 分钟预算。2026-09 下旬经死源清理后为 **1005**。
 
 **三层分级**：
 
 | Tier | 定义 | 源数量 | 刷新方式 |
 |------|------|--------|--------|
 | T1 | 日均产出极高（头部高频源） | 6 | 用户刷新时 api/rss.js 实时抓取 |
-| T2 | 日均产出 10+ 篇 | 207 | Actions 增量构建 |
-| T3 | 日均产出 < 10 篇 | 801 | Actions 增量构建 |
+| T2 | 日均产出 10+ 篇 | 204 | Actions 增量构建 |
+| T3 | 日均产出 < 10 篇 | 795 | Actions 增量构建 |
 
-**1014 源分类分布**：
+**1005 源分类分布**（2026-09-18 实测）：
 - wechat（公众号）: 386
-- dev（开发）: 184
+- dev（开发）: 178
 - twitter（X/Twitter）: 160
-- news（新闻）: 60
+- podcast（播客）: 70
+- tech（科技）: 66
+- news（新闻）: 61
 - ai: 61
-- podcast（播客）: 71
-- tech（科技）: 67
-- cn_tech（中国科技）: 25
+- cn_tech（中国科技）: 23
 
 **增量构建逻辑**（`build_rss_aggregator.py`）：
 ```
@@ -523,7 +542,7 @@ incremental 模式：
 
 **卡片墙交织算法**（`tierInterleave`）：
 - 双队列 4:1 交织：每 4 篇 T1/T2 文章穿插 1 篇 T3 文章
-- 防止 T3 的 801 个低频源被 T1 的 6 个高频源完全淹没
+- 防止 T3 的 795 个低频源被 T1 的 6 个高频源完全淹没
 - T1+T2 占 ~80% 卡片位，T3 占 ~20%
 
 **源面板排序**：每个分类内按文章数降序排列，用户可快速定位活跃源。
@@ -566,9 +585,9 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 ### 8.2 RSS 数据分块、去重与无图降级
 
-构建链：`fetch_and_build.py` → `build_rss_aggregator.py` → `rss-data-0.js`/`rss-data-1.js` → 前端 `SOURCES` → `buildArt()` → `renderWall()`。
+构建链：`fetch_and_build.py` → `build_rss_aggregator.py` → `rss-data-0.js`~`rss-data-N.js`（当前 N=2）→ 前端 `SOURCES` → `buildArt()` → `renderWall()`。
 
-- `rss-data-0.js` 是首屏块（默认 360 篇），`rss-data-1.js` 是剩余文章后台块；页面不再下载/替换约 30MB 的冗余同域快照。
+- `rss-data-0.js` 是首屏块，`rss-data-1..N.js` 是剩余文章后台块（块数随数据量自适应切分）；页面不再下载/替换约 30MB 的冗余同域快照。
 - `buildArt()` 在渲染前按 `sourceKey|link` 建 `_seen`，唯一键重复时跳过；无 link 时用标题作为兜底键。
 - `_mergeChunk()` 追加块数据前按 link 过滤已有文章，同时保留无 link item；`_mergeRemoteSources()` 兼容远程刷新字段并保留 `img`。
 - `renderWall()` 用 `hasImg=!!a.img` 分流：有图才输出 `.cover-card` 与封面区域；`a.img` 为空时输出原有紧凑纯文字卡，不生成渐变占位。
@@ -625,9 +644,12 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 | `44b2d60` | AI 动态流改为桌面端左侧常驻侧栏（≥1280px） | 静态 13/13、双视口 E2E 20/20 |
 | `a16b13a` | 去除快照替换竞态；ART/_mergeChunk 去重；无图文章回退纯文字卡 | 去重与卡片墙 E2E：DUP=0 |
 
+2026-09-17 之后（本手册基线 `e3c0313` 起）的 25 个实质提交全部集中在**每日深度洞察管线**与 **Agnes 多 key**，详见 §8.12–§8.14。
+
 ### 8.5 维护禁忌与快速定位
 
-- 不要直接编辑 `rss-aggregator.html`、`rss-data-0.js`、`rss-data-1.js`；workflow 会重新生成并覆盖。
+- 不要直接编辑 `rss-aggregator.html`、`rss-data-*.js`；workflow 会重新生成并覆盖。
+- 不要直接编辑 `daily-insight-history.html` 与 `ai-daily.html` 中 `daily-insight-start/end` 标记内的板块；由 `build_daily_insight.py` 生成/注入。
 - 修改 `buildArt()` 字段时，必须同时检查 Python item 字段、chunk JSON、`api/rss.js` 远程 item 和 `api/article.js` 快照字段。
 - 修改 AI 面板 DOM/CSS 时，同时验证 `reader2`（z-index 70）、`src-panel`（80）、`share-modal`（100）及 `scrim`，不要把桌面常驻栏误当成 `body.ai-open` 浮层。
 - 线上验证不要只看静态字符串；布局必须用真实浏览器 computed style + 双视口交互验证。
@@ -669,7 +691,7 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 - **轻量场/重场分级**：数据不足时走轻量路径（不携带旧 bad_date 名单）
 - **趋势快照 stale 标注**：过期数据标记 stale 而非丢弃
 
-**环境变量**：`AGNES_API_KEY`（必需）、`AGNES_API_KEY_2`（轮询）、`SILICONFLOW_API_KEY`（embedding）
+**环境变量**：`AGNES_API_KEY`（必需）、`AGNES_API_KEY_2/_3`（编号式轮询；update.yml 自 09-18 起已停发，该引擎实际退化为单 key，见 §8.14）、`SILICONFLOW_API_KEY`（embedding）
 
 **配置**：`build_config.json` 控制开关、provider、max_documents 等参数
 
@@ -725,20 +747,98 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 | Agnes 思考型模型耗尽 max_tokens | AI 摘要为空 | `enable_thinking: false` 关闭思考 |
 | AGI Hunt 移动端超时 | 12 频道并行触发移动端 6 连接槽排队 | 改为顺序请求，5s 单请求 + 30s 总超时 |
 
+### 8.12 每日深度洞察管线 build_daily_insight.py（2026-09-15 ~ 09-18，当前 4082 行）
+
+与 `insight_engine.py`（服务于 RSS 页 AI 动态面板）**完全独立**的第二条洞察管线，产出 `ai-daily.html` 内嵌的「每日深度洞察」子板块 + `daily-insight-history.html` 独立历史页。由 `fetch_and_build.py` 在 `build_rss_aggregator.main()` 之后调用。
+
+**数据流**：
+```
+四源叠加：rss_history.json(近168h=7天) + hot_snapshot.json(40平台) + AIHOT API + AGI Hunt(12频道×2天)
+     ↓ Phase 1.2 硬过滤（标题党/广告正则黑名单 + 质量过滤）
+     ↓ 切片：CHUNK_SIZE=300 token / overlap=50，上限 MAX_EMBED_CHUNKS=30000
+     ↓ Embedding：SiliconFlow bge-m3（1024 维，批 32）→ numpy 向量缓存增量
+     ↓ FAISS 索引 + 混合检索：向量(每查询 TOP_K=200) + BM25(窗口10000，
+       非RSS优先+近期RSS补满) → RRF 融合(K=60)
+     ↓ 查询构建：MAX_QUERIES=80（热榜+AIHOT+AGI Hunt+RSS 标题）
+     ↓ 重排序(双热度) → 事件组装(Jaccard 0.35) → 语义聚类(余弦 0.75)
+     ↓ MIN_EVENTS=3 / MAX_EVENTS=12 / 深度解读 Top3
+LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）：
+     Phase 1   全事件摘要+主题导语（携带全局检索上下文前 12000 字符）
+     Phase 1.2 丢弃 [信息不足] 占位事件
+     Phase 1.3 跨源去重（label 相似 → summary 互含 → 聚类级实体去重）
+     Phase 1.5 事实核查 _verify_faithfulness（对照检索原文）
+     Phase 1.6 自审（质量问题清单 → LLM 修正，最多 1 轮）
+     Phase 1.7 自审后最终去重
+     Phase 1.8 AI 主题硬过滤（非 AI 分类 + label 无 AI 关键词 + 全非 AI 源
+                → 丢弃；清除 BBC 驾考类噪声，但保留给破茧栏的残差素材）
+     Phase 2   Top3 深度解读（COASR prompt：事件还原/影响分析/信源分歧/
+                金句/展望 outlook/置信度）
+     Phase 2.5 RAGAS 评估-修正闭环（见下）
+     Phase 3.1 破茧栏 + daily-insight.json
+     Phase 3.3 跨天事件关联（Jaccard 0.5 匹配 30 天历史 → new/ongoing/escalating）
+     Phase 4   daily-insight-history.html + 注入 ai-daily.html
+     Phase 5   质量追踪 daily_insight_tracking_history.jsonl
+```
+
+**RAGAS 质量闭环（2026-09-18 定版）**：
+- Judge LLM：**mimo → agnes 两级降级链**（`_FallbackJudgeLLM`）。mimo-v2.5-free 经 OpenCode Zen 端点调用（伪装 OpenCode CLI 请求头，与 `api/translate.js` 的 translateZen 一致）；评估一致性优于 agnes 故做主力。OpenRouter 免费模型中转层已移除（长期不通，`_OpenRouterLLM` 类仍残留但不在链路上）。
+- 触发修正的条件（任一即触发，最多 1 轮）：overall < 0.70，**或**任一维度低于最低线：coverage ≥ 0.75 / faithfulness ≥ 0.88 / relevance ≥ 0.75。
+- 交叉验证已开启（`daily_insight_cross_validation: true`）：v1/v2 双 prompt 独立评分后加权平均，降低单 judge 抖动。
+- 评分原始输出记录在 `daily-insight.json` 的 `quality` 字段，可回溯。
+
+**破茧栏（反信息茧房）**：
+- 设计意图：展示 AI/科技**之外**的世界大事，不是主事件筛剩的边角料。
+- `_select_bubble_events` 从主事件之外的残差素材（retrieved 未入选 chunks）中选取，与 30 天阅读画像（`_build_read_profile`）交集最小的优先，每源取代表条目，约 5 条；卡片含 label/summary/选取理由。
+- 09-18 重构（`07b9add`）：旧版从聚类候选选，与主事件重复率高；现改为残差池选取并补链接。
+
+**关键参数速查**（均在文件头部常量区，部分可被 build_config.json 覆盖）：
+
+| 常量 | 当前值 | 调参历史教训 |
+|---|---|---|
+| `MAX_QUERIES` | 80 | 40→50→80，提升话题覆盖 |
+| `RETRIEVAL_TOP_K` | 200 | 100→200 扩覆盖 |
+| 全局上下文截断 | 12000 字符 | **曾扩到 16K 导致 LLM 幻觉、faithfulness 暴跌至 0.64，已回退 12K（`747b556`），不要盲目再扩** |
+| `MAX_EVENTS` | 12 | 12→15→12 回调，15 时尾部事件质量崩 |
+| `BM25_WINDOW` | 10000 | 非 RSS 优先入窗，剩余预算给近期 RSS |
+| `INSIGHT_RSS_HOURS` | 168 | 7 天窗口支持跨天趋势检测 |
+
+**AGI Hunt Agent API 合规守则**（`_fetch_agihunt`，09-18 落地）：限速 0.5 次/秒（每请求间隔 ≥2s）；429 按 Retry-After 退避且当天停拉；401 立即停止（密钥无效）；426 拉取 `/skill/version` 更新版本号后重试一次；取当天+昨天两天数据扩覆盖。
+
+**本地诊断**：`python diagnose_coverage.py` 对比 `daily_insight_chunks.json` 全量与当日 events，输出覆盖率缺口；历史规格文档在 `docs/superpowers/specs/2026-09-17-daily-insight-*.md`。
+
+**修改守则**：
+- 任何生成/评估参数改动后，跑 `python test_daily_insight.py` + `pytest tests/daily_insight/`。
+- Faithfulness 相关改动必须看下一构建的 `daily-insight.json → quality`，不能只看构建成功。
+- FAISS 重建前必须先 `_save_vector_cache`（`8fcb97d`），否则崩溃丢 embedding 导致下次全量重嵌。
+
+### 8.13 RSS 快照出仓（2026-09-17/18）
+
+`rss_api_snapshot.json` 已达 **82MB** 并拆分为 `_1.._N` 多文件，提交进 git 导致 Actions checkout/fetch 超时。处理：
+- 从版本控制移除并 gitignore（`ee0e4fd` + `e400660` 从 git add 列表剔除）。
+- `api/rss.js` 的 `loadSnapshot()` 自动合并主文件 + 分块；本地文件缺失时回退实时抓取。
+- **快照不进 GitHub 仓库，但仍随 `vercel --prod` 从 Actions 工作区上传**，线上 `/api/rss` 行为不变。
+- 连带影响：**增量构建的 `meta.last_fetch` 状态不再能从 git 恢复**，每次全新 checkout 后第一场构建按 full 逻辑补偿；本地跑 `build_rss_aggregator.py` 时无快照属正常。
+
+### 8.14 Agnes 多 key 轮询统一（2026-09-18）
+
+- 新方案：`AGNES_API_KEY`（主，可逗号分隔）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。已覆盖：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`。
+- **已知不一致**：`insight_engine.py` 仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发 `AGNES_API_KEY_2`——该引擎实际退化为单 key。后续改动时应统一为 `AGNES_API_KEYS` 方案。
+- 踩坑：`_AGNES_KEY_IDX` 等全局变量在函数内使用前必须先 `global` 声明（`1d2a93d` 修复过一处顺序 bug）。
+
 ---
 
 ## 九、技术栈总结
 
 | 层 | 技术 |
 |---|---|
-| 构建脚本 | Python 3.11（`fetch_and_build.py` 纯标准库；`build_rss_aggregator.py` 加 threading/LlamaIndex；`insight_engine.py` 加 llama-index-core/fastembed） |
-| 语义引擎 | LlamaIndex VectorStoreIndex + 层级索引 + 手动余弦相似度；AgnesLLM（多 key 轮询）；SiliconFlow bge-m3 embedding（本地 fastembed 回退） |
+| 构建脚本 | Python 3.11（`fetch_and_build.py` 纯标准库；`build_rss_aggregator.py` 加 threading/LlamaIndex；`insight_engine.py` 加 llama-index-core/fastembed；`build_daily_insight.py` 加可选 faiss-cpu/rank-bm25/numpy，缺失时降级） |
+| 语义引擎 | 双管线：`insight_engine.py`（LlamaIndex 层级索引 + 手动余弦检索，服务 RSS 页 AI 面板）；`build_daily_insight.py`（FAISS 向量 + BM25 窗口检索 RRF 混合 + SiliconFlow bge-m3 + numpy 向量缓存）；AgnesLLM 多 key 轮询；Judge 链 mimo→agnes 两级 |
 | Serverless | Vercel Functions（Node.js，原生 fetch）；9 个函数 |
 | 托管 | Vercel（主）+ GitHub Pages（备） |
 | CI/CD | GitHub Actions（4 个 workflow：update/zen-check/build-log-summary/sync-agnes-env） |
-| 定时触发 | cron-job.org 每小时 POST（主力）+ GitHub cron（5 次/天，兆底） |
+| 定时触发 | cron-job.org 每小时 POST（主力）+ GitHub cron（5 次/天，兜底） |
 | 前端 | 原生 HTML/CSS/JS，无框架 |
-| 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源）、X/Twitter（160 源 via xgo.ing）、newsnow 40 平台热榜 |
-| 翻译 | 五端点降级链：Agnes AI → OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时按场景分流（全文走 Agnes、批量走浏览器 GTX） |
-| RSS 架构 | 1014 源三层分级（T1=6 实时/T2=207/T3=801 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放 |
-| 洞察引擎 | LlamaIndex 语义分析 + RAGAS-inspired 评估自纠错 + 话题聚类 + 关键词生命周期追踪 + 14 天趋势滚动 |
+| 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源）、X/Twitter（160 源 via xgo.ing）、newsnow 40 平台热榜、AGI Hunt Agent API（12 频道，密钥 + 限速合规） |
+| 翻译 | 五端点降级链：Agnes AI（多 key 轮询）→ OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时按场景分流（全文走 Agnes、批量走浏览器 GTX） |
+| RSS 架构 | 1005 源三层分级（T1=6 实时/T2=204/T3=795 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放；快照已出仓（gitignore，仅随 Vercel 上传） |
+| 洞察引擎 | insight_engine：LlamaIndex + RAGAS-inspired 自纠错 + 话题聚类 + 关键词生命周期 + 14 天趋势滚动；每日深度洞察：RAG 混合检索 + 多级 Phase（去重/核查/自审/硬过滤）+ RAGAS 四维阈值闭环 + 破茧栏 + 30 天跨天关联 |
