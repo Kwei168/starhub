@@ -116,3 +116,33 @@ class TestHeatSignal(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTimezoneRobustness:
+    """CI run 35349753348 崩溃回归：mixed naive/aware pub_dates → max() TypeError。"""
+
+    def test_parse_iso_naive_becomes_aware_bjt(self):
+        dt = B._parse_iso("2026-09-18T10:00:00")
+        assert dt.tzinfo is not None
+        assert dt.utcoffset().total_seconds() == 8 * 3600
+
+    def test_parse_iso_aware_preserved(self):
+        dt = B._parse_iso("2026-09-18T10:00:00+00:00")
+        assert dt.utcoffset().total_seconds() == 0
+
+    def test_score_events_mixed_tz_no_crash(self):
+        import datetime as _dt
+        if B.NOW_BJ is None:
+            B.NOW_BJ = B._now_bj()
+        # 相对时间构造：防 recency 衰减导致未来某日 score 归零假红
+        naive_iso = (B.NOW_BJ - _dt.timedelta(hours=11)).replace(tzinfo=None).isoformat()
+        aware_iso = (B.NOW_BJ - _dt.timedelta(hours=9)).isoformat()
+        clusters = [{
+            "label": "混合时区事件", "items": [
+                {"pub_date": naive_iso, "source_type": "rss"},
+                {"pub_date": aware_iso, "source_type": "hot"},
+            ],
+            "source_types": {"rss", "hot"}, "best_score": 1.0, "status": "new",
+        }]
+        out = B._score_events(clusters, [])
+        assert len(out) == 1 and out[0]["score"] > 0
