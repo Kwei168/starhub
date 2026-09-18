@@ -42,6 +42,15 @@ from insight_engine import (
     _extract_cluster_label,
 )
 
+from datetime import datetime, timedelta, timezone
+
+_BJT = timezone(timedelta(hours=8))
+
+
+def _recent_bjt_iso(hours_ago=10):
+    """Timestamp inside the 72h recency window, relative to now (hardcoded dates rot)."""
+    return (datetime.now(_BJT) - timedelta(hours=hours_ago)).isoformat()
+
 
 # ═══════════════════ Task 1 Tests ════════════════════════════
 
@@ -195,9 +204,10 @@ class TestConfigAndFactory(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=False)
     def test_default_config_returns_mock_when_no_key(self):
-        """No AGNES_API_KEY → MockLLM."""
-        # Ensure key is not set
+        """No AGNES_API_KEY / AGNES_API_KEYS → MockLLM."""
+        # Ensure keys are not set
         os.environ.pop("AGNES_API_KEY", None)
+        os.environ.pop("AGNES_API_KEYS", None)
         cfg = {"insight_llm_provider": "agnes"}
         llm = configure_llm(cfg)
         self.assertIsInstance(llm, MockLLM)
@@ -209,6 +219,33 @@ class TestConfigAndFactory(unittest.TestCase):
         llm = configure_llm(cfg)
         self.assertIsInstance(llm, AgnesLLM)
         self.assertEqual(llm.api_keys[0], "test-key-xyz")
+
+    @patch.dict(os.environ, {"AGNES_API_KEY": "k1", "AGNES_API_KEYS": ""}, clear=False)
+    def test_agnes_single_key_pool_has_no_extras(self):
+        """Only a primary key → pool of 1, extra_keys must stay None (rotation depends on it)."""
+        llm = configure_llm({"insight_llm_provider": "agnes"})
+        self.assertIsInstance(llm, AgnesLLM)
+        self.assertEqual(llm.api_keys, ["k1"])
+
+    @patch.dict(os.environ, {"AGNES_API_KEY": "k1,k2,k3", "AGNES_API_KEYS": ""}, clear=False)
+    def test_agnes_comma_separated_primary(self):
+        """Comma-separated AGNES_API_KEY expands into the pool."""
+        llm = configure_llm({"insight_llm_provider": "agnes"})
+        self.assertEqual(llm.api_keys, ["k1", "k2", "k3"])
+
+    @patch.dict(os.environ, {"AGNES_API_KEY": " k1 ", "AGNES_API_KEYS": " , k2 ,,k3, k4 "},
+                clear=False)
+    def test_agnes_pool_merges_primary_and_extras(self):
+        """Primary + AGNES_API_KEYS merge into one pool, whitespace/empty segments dropped."""
+        llm = configure_llm({"insight_llm_provider": "agnes"})
+        self.assertEqual(llm.api_keys, ["k1", "k2", "k3", "k4"])
+
+    @patch.dict(os.environ, {"AGNES_API_KEY": "", "AGNES_API_KEYS": "k2,k3"}, clear=False)
+    def test_agnes_extras_used_when_primary_unset(self):
+        """No primary but extras present → still AgnesLLM, no key silently unused."""
+        llm = configure_llm({"insight_llm_provider": "agnes"})
+        self.assertIsInstance(llm, AgnesLLM)
+        self.assertEqual(llm.api_keys, ["k2", "k3"])
 
     def test_unknown_provider_returns_mock(self):
         """Unknown provider → MockLLM."""
@@ -234,7 +271,7 @@ class TestDataLoading(unittest.TestCase):
         ]
 
     def _make_rss_history(self):
-        recent = "2026-09-13T10:00:00+08:00"
+        recent = _recent_bjt_iso()
         return {
             "item1": {"title": "AI News", "summary": "Latest AI developments", "cat": "ai", "pub_date": recent},
             "item2": {"title": "Tech Update", "summary": "New tech releases", "cat": "tech", "pub_date": recent},
@@ -310,7 +347,7 @@ class TestDataLoading(unittest.TestCase):
     def test_load_documents_filters_old_rss(self):
         """load_documents filters out RSS entries older than 72h."""
         old = "2026-01-01T00:00:00+08:00"
-        recent = "2026-09-13T10:00:00+08:00"
+        recent = _recent_bjt_iso()
         rss = {
             "a": {"title": "old article", "pub_date": old, "cat": "tech"},
             "b": {"title": "new article", "pub_date": recent, "cat": "tech"},

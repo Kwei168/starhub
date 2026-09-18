@@ -245,8 +245,8 @@ def configure_llm(config):
     if provider == "agnes":
         # 多 key 轮询：AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加），429 自动切换
         keys = [k.strip() for k in os.environ.get("AGNES_API_KEY", "").split(",") if k.strip()]
+        keys += [k.strip() for k in os.environ.get("AGNES_API_KEYS", "").split(",") if k.strip()]
         if keys:
-            keys.extend(k.strip() for k in os.environ.get("AGNES_API_KEYS", "").split(",") if k.strip())
             return AgnesLLM(api_key=keys[0], extra_keys=keys[1:] or None)
         print("[insight_engine] AGNES_API_KEY not set, using MockLLM", file=sys.stderr)
     elif provider != "mock":
