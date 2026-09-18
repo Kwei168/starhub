@@ -3902,7 +3902,7 @@ def main():
 
         # Phase 1 LLM: 全事件摘要（传入全局检索上下文，解决生成/评估不对齐问题）
         _ragas_ctx = _build_ragas_context(clusters, retrieved_for_ragas) if retrieved_for_ragas else ""
-        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:16000] if _ragas_ctx else None)
+        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:12000] if _ragas_ctx else None)
         if p1_result:
             theme = p1_result.get("theme", "")
             p1_events = p1_result.get("events", [])
