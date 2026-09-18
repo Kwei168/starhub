@@ -183,13 +183,19 @@ def _parse_iso(s):
     s = (s or "").strip().replace("Z", "+00:00")
     if not s:
         return None
+    dt = None
     try:
-        return datetime.datetime.fromisoformat(s)
+        dt = datetime.datetime.fromisoformat(s)
     except (ValueError, TypeError):
         try:
-            return datetime.datetime.fromisoformat(s[:19])
+            dt = datetime.datetime.fromisoformat(s[:19])
         except (ValueError, TypeError):
             return None
+    # naive 时间戳按北京时间理解（与 _hours_ago 既有约定一致），
+    # 统一返回 aware，杜绝 max/min 混比 TypeError（CI run 35349753348 崩溃根因）
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=BJT)
+    return dt
 
 
 def _hours_ago(dt):
@@ -3093,7 +3099,7 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             break
         if iteration < max_iterations:
             iteration_count += 1
-            print("[每日洞察] RAGAS 质量 %.2f < %.2f，执行自我修正..." % (
+            print("[每日洞察] RAGAS 未达标 (overall=%.2f 阈值=%.2f)，执行自我修正..." % (
                 eval_result["overall"], threshold), file=sys.stderr)
             pre_score = eval_result["overall"]
             corrected = _self_correct_events(llm, current, context_text, eval_result)
