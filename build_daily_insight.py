@@ -96,6 +96,39 @@ VALID_CATEGORIES = [
     "policy", "funding", "developer", "consumer",
 ]
 
+# ── 主题分类层（借鉴 QWIS：优先级顺序匹配，首个命中即停） ──
+# 顺序敏感：ai 在最前，确保"英伟达股价"类科技金融交叉事件留在主报告
+TOPIC_TAXONOMY = [
+    ("ai", ["大模型", "模型", "gpt", "claude", "gemini", "llm", "openai", "anthropic",
+            "deepmind", "智能体", "agent", "芯片", "gpu", "nvidia", "英伟达", "算力",
+            "训练", "推理", "机器人", "自动驾驶", "深度学习", "机器学习", "agi", "多模态",
+            "人工智能"]),
+    ("programming", ["github", "开源", "编程", "开发者", "框架", "sdk", "api", "编译器",
+                     "rust", "python", "javascript", "代码", "漏洞", "安全研究", "插件"]),
+    ("finance", ["央行", "利率", "股价", "股涨", "股跌", "指数涨", "基金", "债券", "汇率",
+                 "通胀", "gdp", "a股", "美股", "港股", "期货", "黄金", "存款", "贷款", "楼市", "房价"]),
+    ("geopolitics", ["联合国", "安理会", "制裁", "关税", "外交", "军事", "导弹", "停火",
+                     "选举投票", "峰会", "北约", "俄乌", "中东", "台海", "法案通过", "禁令"]),
+    ("society", ["高考", "报名", "就业", "医疗", "医保", "养老", "生育", "人口", "事故",
+                 "警方", "法院", "判决", "教育", "校园", "疫情", "疫苗", "火车", "航班"]),
+    ("culture", ["诺贝尔", "奥斯卡", "世界杯", "奥运", "联赛", "电影票房", "文学奖",
+                 "博物馆", "考古", "演唱会", "夺冠", "运动员", "太空", "天文", "发射"]),
+]
+MAIN_TOPICS = {"ai", "programming"}
+BUBBLE_TOPICS = {"finance", "geopolitics", "society", "culture"}
+_CAT_HINTS = {"ai": "ai", "dev": "programming", "tech": "programming",
+              "news": "other", "wechat": "other", "cn_tech": "programming"}
+
+
+def _classify_topic(title, text, source, cat=""):
+    """关键词优先级匹配。无命中时按 RSS cat 提示归类，最终回退 other。"""
+    hay = ((title or "") + " " + (text or "")[:300] + " " + (source or "")).lower()
+    for tag, kws in TOPIC_TAXONOMY:
+        for kw in kws:
+            if kw in hay:
+                return tag
+    return _CAT_HINTS.get(cat, "other")
+
 # ── 打分参数（框架先立，参数后调） ──
 CROSS_FACTOR = 1.5          # 每多一个信源类型，信号 ×1.5
 RECENCY_HALF_LIFE_H = 24    # 24h 半衰期
@@ -555,6 +588,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
             "text": text[:3000],
             "pub_date": pub_date,
             "content_hash": content_hash,
+            "topic_tag": _classify_topic(title, text, source, (extra or {}).get("cat", "")),
         }
         if extra:
             c.update(extra)
@@ -572,7 +606,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
             chunks.append(_make_chunk(
                 "rss", item.get("source", ""), title,
                 item.get("link", ""), text, item.get("pub_date", ""),
-                source_key=item.get("source_key", ""),
+                source_key=item.get("source_key", ""), extra={"cat": item.get("cat", "")},
             ))
             continue
         # 按段落分割，再按目标 token 数合并/拆分
@@ -588,7 +622,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
                         "rss", item.get("source", ""), title,
                         item.get("link", ""), current_text,
                         item.get("pub_date", ""),
-                        source_key=item.get("source_key", ""),
+                        source_key=item.get("source_key", ""), extra={"cat": item.get("cat", "")},
                     ))
                 # 超长段落按句子拆分
                 while len(para) > CHUNK_SIZE * 4:
@@ -603,7 +637,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
                         "rss", item.get("source", ""), title,
                         item.get("link", ""), cut,
                         item.get("pub_date", ""),
-                        source_key=item.get("source_key", ""),
+                        source_key=item.get("source_key", ""), extra={"cat": item.get("cat", "")},
                     ))
                     para = para[len(cut):]
                 current_text = para
@@ -614,7 +648,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
                 "rss", item.get("source", ""), title,
                 item.get("link", ""), current_text,
                 item.get("pub_date", ""),
-                source_key=item.get("source_key", ""),
+                source_key=item.get("source_key", ""), extra={"cat": item.get("cat", "")},
             ))
 
     # ── 热榜: 每条一个 chunk ──
