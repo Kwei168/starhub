@@ -49,3 +49,44 @@ class TestValidateKeyLinks:
         variants = ["http://a.com/x/", "https://www.a.com/x"]
         out = bdi._validate_key_links(variants, [{"url": "https://b.com/y"}])
         assert out == ["http://a.com/x/", "https://b.com/y"]
+
+
+class TestDropInsufficient:
+    """RAGAS 修正环可事后注入[信息不足]占位——修正后必须再过一次占位闸。"""
+
+    def _mk(self, n_good, n_bad):
+        return ([{"label": "g%d" % i, "summary": "正常摘要内容%d" % i} for i in range(n_good)]
+                + [{"label": "b%d" % i, "summary": "[信息不足] 素材库中无相关报道"} for i in range(n_bad)])
+
+    def test_drops_when_above_min(self):
+        out = bdi._drop_insufficient(self._mk(6, 2))
+        assert len(out) == 6
+
+    def test_guard_keeps_all_when_below_min(self):
+        # MIN_EVENTS=3：2 good < 3 → 全保留防塌空
+        out = bdi._drop_insufficient(self._mk(2, 2))
+        assert len(out) == 4
+
+    def test_correction_prompt_forbids_placeholder(self):
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "不要返回[信息不足]占位" in src
+
+
+class TestIter4Hardening:
+    def test_drop_checks_significance_too(self):
+        cs = [{"label": "ok1", "summary": "s", "significance": "[信息不足] 无法判断"}]
+        cs += [{"label": "g%d" % i, "summary": "正常", "significance": "有意义"} for i in range(3)]
+        out = bdi._drop_insufficient(cs)
+        assert all("信息不足" not in (c.get("significance") or "") for c in out)
+
+    def test_correction_prompt_includes_current_summary(self):
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "【当前摘要】" in src
+
+    def test_ragas_loop_can_second_round(self):
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        seg = src[src.index("修正有效 ("):src.index("eval_result[\"iterations\"]")]
+        assert "continue" in seg, "未达标时应进入下一轮而非 break"

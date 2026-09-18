@@ -166,7 +166,7 @@ INSIGHT_RSS_HOURS = 168   # 每日洞察取最近 N 小时的 RSS（7 天窗口�
 # ── RAGAS 质量评估参数 ──
 RAGAS_ENABLED = True          # RAGAS 评估-修正闭环开关
 RAGAS_QUALITY_THRESHOLD = 0.70  # 整体质量阈值，低于此值触发修正
-RAGAS_MAX_CORRECTIONS = 1      # 最大修正轮次
+RAGAS_MAX_CORRECTIONS = 2      # 最大修正轮数（00:33 期证据：单轮不足以修复 dims 失守）
 # 各维度最低阈值 — 任一维度低于阈值即触发修正（即使 overall 达标）
 RAGAS_MIN_COVERAGE = 0.75      # context_coverage 最低要求
 RAGAS_MIN_FAITHFULNESS = 0.88  # faithfulness 最低要求（目标 ≥ 0.95）
@@ -2045,6 +2045,17 @@ def _order_events_for_output(clusters):
     return sorted(clusters, key=lambda c: -int(c.get("editor_score") or 0))
 
 
+def _drop_insufficient(clusters):
+    """丢弃含[信息不足]占位的事件（summary/significance/label 任一命中）；
+    剩余不足 MIN_EVENTS 时保底全留（防报告塌空）。"""
+    def _bad(c):
+        return (_is_insufficient(c.get("summary"))
+                or _is_insufficient(c.get("significance"))
+                or _is_insufficient(c.get("label")))
+    good = [c for c in clusters if not _bad(c)]
+    return good if len(good) >= MIN_EVENTS else clusters
+
+
 MIN_DEEP_SCORE = 55  # 快筛 ≥55 才进 Phase 2 深度分析
 
 
@@ -3015,14 +3026,16 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
             "【薄弱维度】：%s\n"
             "【评估反馈】：%s\n\n"
             "【原始素材】：\n%s\n\n"
+            "【当前摘要】：%s\n\n"
             "【检索上下文（参考）】：\n%s\n\n"
             "请重新生成该事件的摘要，以 JSON 返回：\n"
             "{\"label\": \"一句话标题（15字内）\",\n"
             " \"summary\": \"2-3句话概括，必须包含具体数据\",\n"
             " \"significance\": \"一句话说明为什么值得关注\",\n"
             " \"category\": \"ai-models|ai-products|industry|research|policy|funding|developer|consumer\"}\n\n"
-            "约束：所有事实必须基于素材，不要编造。"
-        ) % ("; ".join(low_dims), feedback[:500], material, context_text)
+            "约束：所有事实必须基于素材，不要编造。若素材完全不足以支撑摘要，返回原摘要原文，不要返回[信息不足]占位。"
+        ) % ("; ".join(low_dims), feedback[:500], material,
+             (cluster.get("summary", "") or "")[:300], context_text)
 
         messages = [
             {"role": "system", "content": "你是 AI 行业分析师。只返回 JSON。"},
@@ -3138,10 +3151,16 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
                 print("[每日洞察] 修正有效 (%.2f → %.2f)，采纳" % (pre_score, corrected_result["overall"]))
                 current = corrected
                 eval_result = corrected_result
-                break  # 修正已采纳，无需再评估
+                # 采纳后若各维度仍未全达标，进入下一轮修正（受 max_iterations 约束）
+                if (corrected_result["overall"] >= threshold
+                        and _dims_pass_thresholds(corrected_result)):
+                    break
+                continue
             else:
                 print("[每日洞察] 修正未改善 (%.2f → %.2f)，保留原版" % (pre_score, corrected_result["overall"]))
-                break  # 修正无效，保留原版并停止迭代
+                if corrected_result["overall"] >= threshold and _dims_pass_thresholds(corrected_result):
+                    break
+                continue  # 保留原版，下一轮换写法重试（temp 采样），轮数封顶
 
     eval_result["iterations"] = iteration_count
 
@@ -4235,12 +4254,11 @@ def main():
                     c["key_links"] = _validate_key_links(pe.get("key_links", []), c.get("items", []))
 
             # Phase 1.2: 丢弃 [信息不足] 事件 — 防止占位事件拉低质量（前缀匹配，覆盖 [信息不足：...]）
-            _good = [c for c in clusters if not _is_insufficient(c.get('summary'))]
-            if len(_good) >= MIN_EVENTS:
-                _dropped = len(clusters) - len(_good)
-                clusters = _good
-                if _dropped:
-                    print("[每日洞察] 丢弃 %d 个 [信息不足] 事件" % _dropped)
+            _before = len(clusters)
+            clusters = _drop_insufficient(clusters)
+            _dropped = _before - len(clusters)
+            if _dropped:
+                print("[每日洞察] 丢弃 %d 个 [信息不足] 事件" % _dropped)
 
             # Phase 1.3: 跨源去重 — 合并同 category 且标签相似的事件
             clusters = _deduplicate_after_phase1(clusters)
@@ -4363,6 +4381,10 @@ def main():
                 print("[每日洞察] Judge LLM 不可用，跳过 RAGAS 评估", file=sys.stderr)
         except Exception as exc:
             print("[每日洞察] RAGAS 评估异常，跳过: %s" % exc, file=sys.stderr)
+
+    # 占位闸（无条件）：事实核查/自审/RAGAS 修正环都可能在 Phase 1.2 之后注入[信息不足]
+    clusters = _drop_insufficient(clusters)
+    clusters = _order_events_for_output(clusters)  # 闸与分数刷新后重排，保证导出 editor_score 单调
 
     # ── Phase 3.1: 破茧栏 + 输出 JSON ──
     history = _load_history()
