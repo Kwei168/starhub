@@ -2005,6 +2005,7 @@ _SYSTEM_PROMPT_P1 = """
 每句话必须有信息增量，不允许空话。
 
 所有陈述必须严格基于提供的素材。禁止使用你自己的知识补充。
+具体数字（金额/数量/百分比/日期）必须能在事件素材或全局检索上下文中找到原样形式；允许单位/千分位/全角等等价改写，禁止换算、四舍五入或用外部知识补数。
 如果素材中缺少某个关键数据，在 summary 中标注[信息不足]。
 只输出严格 JSON，不要输出任何思考过程或解释。"""
 
@@ -2013,7 +2014,7 @@ _INSUFFICIENT_RE = re.compile(r'\[信息不足')
 
 
 def _is_insufficient(text):
-    """[信息不足] 占位判断：前缀匹配，覆盖 [信息不足] 与 [信息不足：...] 两种输出。"""
+    """[信息不足] 占位判断：出现即判（search），覆盖 [信息不足] 与 [信息不足：...] 两种输出。"""
     return bool(_INSUFFICIENT_RE.search(text or ""))
 
 
@@ -2150,11 +2151,15 @@ def _deduplicate_after_phase1(clusters):
                 url_overlap = len(urls_i & urls_j) / min(len(urls_i), len(urls_j)) if min(len(urls_i), len(urls_j)) > 0 else 0
                 # 合并条件：
                 # - 源URL重叠>50%（同一批源文章=同一事件，可跨类别）
-                # - 文本相似度达标且同 category（跨类别文本合并曾致 9/17 同标签错并）
+                # - 同类别：常规相似度达标，或"低相似高冗余"转述对（同一事件不同记者写法，22:14 实测）
+                # - 跨类别：summary 高冗余+高相似组合强证据才允许（9/17 错标反例 summary 零重叠被此闸挡下）
+                same_cat = ci.get("category") == cj.get("category")
                 if url_overlap > 0.5:
                     pass  # URL 高度重叠，直接合并
-                elif ci.get("category") == cj.get("category") and overlap >= 3 and jacc >= 0.15:
-                    pass  # 文本相似度达标（同类别）
+                elif same_cat and ((overlap >= 3 and jacc >= 0.15) or (overlap >= 20 and jacc >= 0.08)):
+                    pass  # 同类别文本相似或高冗余
+                elif (not same_cat) and ((overlap >= 20 and jacc >= 0.30) or (overlap >= 40 and jacc >= 0.25)):
+                    pass  # 跨类别组合强证据（0.25 档为 22:14 实测漏网对 ov=52/jacc=0.286 放开，非重复对最大 ov45/jacc0.237 仍被挡）
                 else:
                     continue
                 # 合并：保留高分事件的 label/summary
@@ -2244,7 +2249,7 @@ def _llm_phase1(llm, clusters, global_context=None):
 
     # 全局检索上下文：让 LLM 见到评估器认为它该见到的完整信息场
     if global_context:
-        _gc_block = "【全局检索上下文】（今日 AI/科技领域完整信息场，请确保 summary 充分利用其中的关键信息）：\n%s" % global_context
+        _gc_block = "【全局检索上下文】（今日 AI/科技领域完整信息场。其中的诉讼监管动向、宏观格局类高分辨性主题必须优先纳入事件清单或写入对应 summary，不得只看单一产品线）：\n%s" % global_context
     else:
         _gc_block = ""
 
@@ -4335,6 +4340,8 @@ def main():
             if judge_llm:
                 clusters, ragas_eval = _ragas_evaluate_and_correct(
                     judge_llm, clusters, theme, retrieved_for_ragas, build_cfg)
+                # 修正循环重写了 label/summary/category，可能事后制造重复 → 去重必须在其后再跑一轮
+                clusters = _deduplicate_after_phase1(clusters)
                 # 修正循环改写了 label/summary 后刷新门槛分，保证导出 JSON 分数描述最终内容
                 for c in clusters:
                     if "editor_score" in c:

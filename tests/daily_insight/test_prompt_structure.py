@@ -91,3 +91,24 @@ class TestPhase2Prompt(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRagasFallbackPrompt:
+    """22:14 归因批：数字溯源与覆盖导向必须存在于 prompt 装配层。"""
+
+    def test_number_provenance_constraint(self):
+        import build_daily_insight as b
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "必须能在事件素材或全局检索上下文中找到原样形式" in src
+        assert "禁止换算、四舍五入或用外部知识补数" in src
+
+    def test_coverage_orientation_in_global_block(self):
+        import build_daily_insight as b
+        clusters = [{"label": "x", "items": [{"title": "t", "text": "c" * 50,
+                                              "source_type": "rss", "source": "s"}],
+                     "source_types": ["rss"], "score": 5}]
+        out = b._llm_phase1.__doc__  # 结构走读用源码断言替代
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "诉讼监管动向、宏观格局类高分辨性主题必须优先纳入" in src
