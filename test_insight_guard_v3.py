@@ -6,11 +6,20 @@ V3-2: 已污染缓存（混维）+ 混合调用 → 漂移检出 → 缓存失�
 V3-3: 健康缓存 → 纯命中/部分命中/混合全部正常（无误杀）
 """
 import hashlib
+import io
 import json
 import os
+import sys
 import tempfile
 
 import insight_engine as ie
+
+# Windows GBK 控制台无法打印 ✓/✗，会让全部通过的用例以 exit=1 收场
+try:
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 
 def md5k(t):

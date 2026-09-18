@@ -386,7 +386,7 @@ print("\n=== 测试 9: TrustJudge 优化 ===")
 # 9a) _MimoLLM 初始化
 mimo = B._MimoLLM()
 assert mimo.model == "mimo-v2.5-free", "默认模型应为 mimo-v2.5-free"
-assert mimo.timeout == 60, "默认超时应为 60s"
+assert mimo.timeout == 30, "类默认超时应为 30s（b21ee89 快速降级；运行时由 daily_insight_judge_timeout 覆盖为 60）"
 assert mimo.api_key == "public", "默认 API key 应为 public"
 print("_MimoLLM 初始化: model=%s, timeout=%d" % (mimo.model, mimo.timeout))
 
@@ -625,15 +625,15 @@ assert len(or_custom.models) == 3, "应支持自定义模型列表"
 assert or_custom.model == "model-a", "对外模型名应为第一个"
 print("_OpenRouterLLM 自定义模型: OK")
 
-# 9n-3) 三级降级链初始化
+# 9n-3) 即使残留 OPENROUTER_API_KEY，降级链也必须是两级（OpenRouter 已于 ff137b0 移除）
 os.environ["OPENROUTER_API_KEY"] = "test-or-key"
 old_key = os.environ.get("AGNES_API_KEY", "")
 os.environ["AGNES_API_KEY"] = "test-agnes-key"
 chain = B._init_judge_llm({"daily_insight_judge_provider": "mimo"})
 assert isinstance(chain, B._FallbackJudgeLLM), "应返回 FallbackJudgeLLM"
-assert isinstance(chain.fallback, B._FallbackJudgeLLM), "fallback 应为嵌套的 FallbackJudgeLLM (三级链)"
-assert isinstance(chain.fallback.fallback, B._LLM), "第三级应为 agnes"
-print("三级降级链: mimo -> openrouter -> agnes OK")
+assert not isinstance(chain.fallback, B._FallbackJudgeLLM), "不应再嵌套 OpenRouter 中间层"
+assert isinstance(chain.fallback, B._LLM), "唯一 fallback 应为 agnes"
+print("两级降级链（残留 OpenRouter key 也不启用）: mimo -> agnes OK")
 
 # 9n-4) 无 OPENROUTER_API_KEY 时回退两级链
 os.environ.pop("OPENROUTER_API_KEY", None)

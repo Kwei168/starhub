@@ -137,7 +137,7 @@
 | `daily-insight.json` | 每日深度洞察当日产出（date / theme / events（含 score、status、deep_analysis、key_links）/ bubble_breaker / stats / quality(RAGAS 评分)） |
 | `daily_insight_history.json` | 每日洞察 30 天事件轨迹（跨天 Jaccard≥0.5 匹配 ongoing/escalating 状态） |
 | `daily_insight_tracking_history.jsonl` | 每日洞察构建质量追踪（各 Stage 计数 + RAGAS 分数，按日追加） |
-| `diagnose_coverage.py` | 本地诊断脚本：对比 chunks 全量与当日 events，定位覆盖率缺口（读 `daily_insight_chunks.json` + `daily-insight.json`） |
+| `diagnose_coverage.py` | 本地诊断脚本：取 `daily_insight_chunks.json`（跨构建累积嵌入缓存）**前 80 条**近似当日评估上下文，与 events 对比给出覆盖率缺口的**方向性**线索；因 `retrieval_score` 未持久化，不能还原真实评估上下文，结论不可当判据（读 `daily_insight_chunks.json` + `daily-insight.json`） |
 | `rss_trend_history.json` | RSS 趋势追踪（14 天滚动快照；关键词 5 种生命周期 + 话题 4 种生命周期） |
 | `emb_cache.json` | 嵌入向量缓存（~8MB/5000 条，CI 用 actions/cache 持久化，gitignore） |
 | `daily_insight_vectors.npy` / `daily_insight_chunks.json` / `daily_insight_faiss.index` | 每日洞察向量缓存 / chunk 元数据 / FAISS 索引（CI 用 actions/cache 持久化，gitignore） |
@@ -187,8 +187,8 @@
 | `GH_TOKEN` | GitHub PAT（fine-grained），需 `contents:write` + `actions:write` 权限 | Secret |
 | `REFRESH_KEY` | 弱防护密钥，用于 `/api/refresh` 和 `/api/search` 的 header 校验 | Secret |
 | `VERCEL_TOKEN` | Vercel 部署令牌（GitHub Actions 中使用） | Secret（workflow secrets） |
-| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力；自身也支持逗号分隔多 key） | Secret |
-| `AGNES_API_KEYS` | Agnes 附加 key（**逗号分隔**，四 key 轮询抗 429；供 build_ai_daily / build_rss_aggregator / build_daily_insight / api/translate.js，取代已废弃的 `AGNES_API_KEY_2`） | Secret |
+| `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力）。**注意：仅 `build_rss_aggregator.py`、`build_ai_daily.py`、`insight_engine.py` 三处对主 key 做逗号切分；`build_daily_insight.py`、`fetch_and_build.py`、`api/translate.js` 把主 key 当单值原样使用** —— 想以逗号合并多 key 进主变量前必须先补齐这三处，否则 translate.js 会发出畸形 Bearer、每日洞察整条 LLM 链 401 | Secret |
+| `AGNES_API_KEYS` | Agnes 附加 key（**逗号分隔**，与主 key 合并成池轮转抗 429；供 build_rss_aggregator / build_ai_daily / build_daily_insight / insight_engine / api/translate.js，取代已废弃的 `AGNES_API_KEY_2/_3`） | Secret |
 | `SILICONFLOW_API_KEY` | 硅基流动 API key（bge-m3 embedding 主力） | Secret |
 | `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力 + 每日洞察 Judge 首选 mimo-v2.5-free） | Secret |
 | `AGIHUNT_API_KEY` | AGI Hunt Agent API 密钥（每日洞察第四源；Bearer 认证，见 §8.12） | Secret |
@@ -659,7 +659,7 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 ### 8.6 洞察引擎集成（2026-09-08 ~ 09-14）
 
-**核心模块**：`insight_engine.py`（~1988 行），替代原纯统计 `_run_analysis()` 管线。
+**核心模块**：`insight_engine.py`（~1984 行），替代原纯统计 `_run_analysis()` 管线。
 
 **架构概览**：
 ```
@@ -691,7 +691,7 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 - **轻量场/重场分级**：数据不足时走轻量路径（不携带旧 bad_date 名单）
 - **趋势快照 stale 标注**：过期数据标记 stale 而非丢弃
 
-**环境变量**：`AGNES_API_KEY`（必需，可逗号分隔多 key）、`AGNES_API_KEYS`（逗号分隔附加 key，与主 key 合并成池）、`SILICONFLOW_API_KEY`（embedding）
+**环境变量**：`AGNES_API_KEY`（必需，本模块支持逗号分隔多 key）、`AGNES_API_KEYS`（逗号分隔附加 key，与主 key 合并成池）、`SILICONFLOW_API_KEY`（embedding）
 
 **配置**：`build_config.json` 控制开关、provider、max_documents 等参数
 
@@ -804,10 +804,11 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 
 **AGI Hunt Agent API 合规守则**（`_fetch_agihunt`，09-18 落地）：限速 0.5 次/秒（每请求间隔 ≥2s）；429 按 Retry-After 退避且当天停拉；401 立即停止（密钥无效）；426 拉取 `/skill/version` 更新版本号后重试一次；取当天+昨天两天数据扩覆盖。
 
-**本地诊断**：`python diagnose_coverage.py` 对比 `daily_insight_chunks.json` 全量与当日 events，输出覆盖率缺口；历史规格文档在 `docs/superpowers/specs/2026-09-17-daily-insight-*.md`。
+**本地诊断**：`python diagnose_coverage.py` 取 `daily_insight_chunks.json` 前 80 条近似评估上下文，与当日 events 对比给出覆盖率缺口的方向性线索（分母为近似，勿当判据；要精确归因需先在 `_build_ragas_context` 里把入选 chunk_id 写进 `daily-insight.json → quality`）；历史规格文档在 `docs/superpowers/specs/2026-09-17-daily-insight-*.md`。
 
 **修改守则**：
-- 任何生成/评估参数改动后，跑 `python test_daily_insight.py` + `pytest tests/daily_insight/`。
+- 任何生成/评估参数改动后，跑 `python test_daily_insight.py` + `pytest tests/daily_insight/`（**注意：当前 CI 环境未装 pytest，`tests/daily_insight/` 实际从未被执行过**）。
+- ⚠ `test_daily_insight.py` 会**真实写盘** `daily-insight.json`、`daily_insight_history.json`、`daily-insight-history.html`、`ai-daily.html` 四个受版本控制的产物（用测试桩数据覆盖当日真实内容）。跑完必须 `git checkout HEAD --` 这四个文件再提交，否则测试数据会上线。
 - Faithfulness 相关改动必须看下一构建的 `daily-insight.json → quality`，不能只看构建成功。
 - FAISS 重建前必须先 `_save_vector_cache`（`8fcb97d`），否则崩溃丢 embedding 导致下次全量重嵌。
 
@@ -821,8 +822,10 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 
 ### 8.14 Agnes 多 key 轮询统一（2026-09-18）
 
-- 新方案：`AGNES_API_KEY`（主，可逗号分隔）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。已覆盖：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`。
-- **已修复（2026-09-18）**：`insight_engine.py` 的 `configure_llm()` 此前仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量，该引擎实际退化为单 key。现已统一为 `AGNES_API_KEYS` 逗号方案（主 key 亦可逗号分隔，与 `build_rss_aggregator.py` 完全对齐）。验证：假 key 环境下 key 池解析为 4 个；`test_insight_*.py` 无新增失败（`test_insight_engine.py` 2 项 RSS 日期过滤失败、`test_insight_guard_v3.py` 的 GBK 控制台 `UnicodeEncodeError` 均为改动前既有问题）。
+- 新方案：`AGNES_API_KEY`（主）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。`AGNES_API_KEYS` 已覆盖全部 5 个调用点：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`、`insight_engine.py`。
+- **主 key 逗号切分尚未统一（重要差异）**：只有 `build_rss_aggregator.py:152`、`build_ai_daily.py:531`、`insight_engine.py:247` 会对 `AGNES_API_KEY` 本身做 `.split(',')`；`build_daily_insight.py:1426`、`fetch_and_build.py:497`、`api/translate.js:30` 把主 key 当单值原样使用。**因此当前多 key 必须放在 `AGNES_API_KEYS` 里，不要图省事把 4 个 key 逗号拼进主变量**——那会让 Vercel 翻译代理发出畸形 Bearer、`fetch_and_build` AI 摘要静默返回 None、每日洞察整条 LLM 链 401，而翻译端点仍部分正常，形成半绿假象。
+- **已修复（2026-09-18）**：`insight_engine.py` 的 `configure_llm()` 此前仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量，该引擎实际退化为单 key。现改为与 `build_rss_aggregator.py:152-155` 同语义的池化方案：主 key 逗号切分 + `AGNES_API_KEYS` 逗号切分合并，**主 key 缺失时附加 key 仍生效**（不会静默退回 MockLLM）。
+- **回归测试**：`test_insight_engine.py` 新增 4 例覆盖 key 池（单 key→`extra_keys` 必须为 None、主 key 逗号展开、主+附加合并且空白/空段被清洗、仅附加 key 时仍建 AgnesLLM）。全套 86 例当前 **全绿**——此前长期红着的 2 例 RSS 时效测试是因为 `recent` 硬编码成 `2026-09-13`，72h 窗口一过必然失败；已改为 `_recent_bjt_iso()` 相对时间，勿再写死日期。
 - 踩坑：`_AGNES_KEY_IDX` 等全局变量在函数内使用前必须先 `global` 声明（`1d2a93d` 修复过一处顺序 bug）。
 
 ---

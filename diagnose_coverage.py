@@ -224,8 +224,11 @@ def main():
         print("  事件 %d: %s | chunks=%d articles=%d summary=%d字" % (
             ei + 1, label, n_chunks, n_articles, summary_len))
 
-    # 7. 瓶颈判定
-    print("\n── 瓶颈判定 ──")
+    # 7. 瓶颈判定（方向性参考，非结论）
+    # 分母是 daily_insight_chunks.json 的前 80 条：该文件是跨构建累积的嵌入缓存，
+    # 且 retrieval_score 未持久化，无法还原真实评估上下文（按当日 retrieval_score 降序取 80）。
+    # 因此下面的比例只能指示方向，不能据此断言瓶颈在哪一步。
+    print("\n── 瓶颈判定（分母为近似，结论仅供参考）──")
     if cluster_cov < 0.8:
         print("  ⚠ 聚类瓶颈: 仅 %.1f%% 的评估 chunks 被聚类进事件" % (cluster_cov * 100))
         print("    建议: 增加 MAX_EVENTS、降低聚类阈值、扩大检索候选池")
