@@ -123,7 +123,7 @@ CHUNK_OVERLAP = 50     # chunk 重叠 token 数
 FAISS_INDEX_FILE = "daily_insight_faiss.index"
 FAISS_META_FILE = "daily_insight_chunks.json"
 VECTOR_CACHE_FILE = "daily_insight_vectors.npy"  # numpy 向量缓存（增量 embedding）
-RETRIEVAL_TOP_K = 100  # 向量检索每查询返回数（扩大检索提升覆盖率）
+RETRIEVAL_TOP_K = 200  # 向量检索每查询返回数（扩大检索提升覆盖率）
 RRF_K = 60             # RRF 融合常数
 BM25_ENABLED = True     # BM25 混合检索开关
 MAX_EMBED_CHUNKS = 30000   # 最大 embedding chunk 数（扩容至全量覆盖）
@@ -1436,7 +1436,7 @@ class _MimoLLM:
 
     API_URL = "https://opencode.ai/zen/v1/chat/completions"
 
-    def __init__(self, api_key=None, model="mimo-v2.5-free", timeout=60):
+    def __init__(self, api_key=None, model="mimo-v2.5-free", timeout=30):
         self.api_key = api_key or os.environ.get("ZEN_API_KEY", "public")
         self.model = model
         self.timeout = timeout
