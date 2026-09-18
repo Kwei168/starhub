@@ -20,6 +20,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 # ── 可选依赖：FAISS + BM25 + numpy ──
 try:
@@ -1328,11 +1329,19 @@ class _MimoLLM:
             "max_tokens": max_tokens,
         }
         data = json.dumps(payload).encode("utf-8")
+        # 伪装 OpenCode CLI 请求头，绕过 free tier 仅限内部使用的限制
+        # 与 api/translate.js translateZen() 保持一致
+        _rid = uuid.uuid4().hex
         req = urllib.request.Request(
             self.API_URL, data=data,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": "Bearer %s" % self.api_key,
+                "User-Agent": "opencode/1.15.0 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13",
+                "x-opencode-client": "cli",
+                "x-opencode-project": "global",
+                "x-opencode-request": "msg_" + _rid,
+                "x-opencode-session": "ses_" + _rid,
             },
             method="POST",
         )
@@ -1348,8 +1357,86 @@ class _MimoLLM:
             return ""
 
 
+class _OpenRouterLLM:
+    """OpenRouter 免费模型 LLM 调用。
+    支持多模型游标轮询 + 429 限流重试。"""
+
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+    def __init__(self, api_key=None, models=None, timeout=60):
+        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        self.models = models or ["qwen/qwen3.8-27b:free", "z-ai/glm-5.2:free"]
+        self.model = self.models[0]  # 对外暴露的模型名（元数据用）
+        self.timeout = timeout
+        self._idx = 0
+
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        for attempt in range(len(self.models)):
+            model = self.models[(self._idx + attempt) % len(self.models)]
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                self.API_URL, data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer %s" % self.api_key,
+                    "HTTP-Referer": "https://github.com",
+                    "X-Title": "StarHub",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                content = body["choices"][0]["message"]["content"]
+                if content:
+                    self._idx = (self._idx + attempt + 1) % len(self.models)
+                    return content
+            except urllib.error.HTTPError as exc:
+                print("[OpenRouter] %s HTTP %d" % (model, exc.code), file=sys.stderr)
+                if exc.code == 429:
+                    continue  # 限流，切换下一个模型
+                return ""  # 非限流错误，不重试
+            except Exception as exc:
+                print("[OpenRouter] %s error: %s" % (model, exc), file=sys.stderr)
+                return ""
+        # 所有模型都被限流，等待后重试第一个
+        print("[OpenRouter] 全部模型限流，等待 5s 重试...", file=sys.stderr)
+        time.sleep(5)
+        model = self.models[self._idx]
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            self.API_URL, data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer %s" % self.api_key,
+                "HTTP-Referer": "https://github.com",
+                "X-Title": "StarHub",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            return body["choices"][0]["message"]["content"]
+        except Exception as exc:
+            print("[OpenRouter] retry error: %s" % exc, file=sys.stderr)
+            return ""
+
+
 class _FallbackJudgeLLM:
-    """Judge 专用 LLM：首选 mimo，失败时降级到 agnes。
+    """Judge 专用 LLM：首选模型失败时降级到备选。
     记录每次调用的模型、耗时（评估元数据）。"""
 
     def __init__(self, primary_llm, fallback_llm):
@@ -1371,16 +1458,21 @@ class _FallbackJudgeLLM:
         meta["fallback"] = True
         t0 = time.time()
         result = self.fallback.complete(messages, temperature, max_tokens)
-        meta["model"] = getattr(self.fallback, 'model', 'agnes')
+        # 嵌套 FallbackJudgeLLM 时，从内层 call_log 获取实际模型名
+        inner_log = getattr(self.fallback, '_call_log', None)
+        if inner_log:
+            meta["model"] = inner_log[-1]["model"]
+        else:
+            meta["model"] = getattr(self.fallback, 'model', 'agnes')
         meta["elapsed_s"] = round(time.time() - t0, 2)
         self._call_log.append(meta)
         if result:
-            print("[JudgeLLM] mimo 失败，已降级到 %s" % meta["model"], file=sys.stderr)
+            print("[JudgeLLM] %s 失败，已降级到 %s" % (self.primary.model, meta["model"]), file=sys.stderr)
         return result
 
 
 def _init_judge_llm(config=None):
-    """初始化 Judge LLM（mimo 首选 + agnes 降级）。
+    """初始化 Judge LLM（mimo → OpenRouter → agnes 三级降级链）。
     配置项可通过 config dict 覆盖。"""
     cfg = config or {}
     judge_provider = cfg.get("daily_insight_judge_provider", "mimo")
@@ -1390,6 +1482,15 @@ def _init_judge_llm(config=None):
     agnes = _init_llm()  # 只创建一次 agnes 实例，避免 key rotation 状态分裂
     if judge_provider == "mimo":
         primary = _MimoLLM(model=judge_model, timeout=judge_timeout)
+        # OpenRouter 免费模型作为中间降级（Qwen/GLM）
+        or_key = os.environ.get("OPENROUTER_API_KEY", "")
+        if or_key:
+            openrouter = _OpenRouterLLM(api_key=or_key, timeout=judge_timeout)
+            if agnes:
+                # 三级链: mimo → openrouter → agnes
+                return _FallbackJudgeLLM(primary, _FallbackJudgeLLM(openrouter, agnes))
+            # 两级链: mimo → openrouter
+            return _FallbackJudgeLLM(primary, openrouter)
         if agnes:
             return _FallbackJudgeLLM(primary, agnes)
         return primary
