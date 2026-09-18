@@ -144,121 +144,31 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-19">2026-09-19 (10 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-19">2026-09-19 (8 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-19" class="day-section" >
-  <div class="day-theme">从用 Claude 攻击 OpenAI 引发的安全与治理震荡，到加州强制 kill switch 与欧洲质疑美国管制动机的政策分化，判断 AI 行业进入攻防对抗与监管博弈并行的拐点</div>
+  <div class="day-theme">从 AI 辅助攻击事件引爆安全辩论，到中美欧监管立场分化，再到巨头产品与基础设施布局加速，判断 AI 产业进入安全、政策与落地博弈的关键拐点</div>
   
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
+    
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">百位专家联署要求嵌入独立第三方评估</h3>
-  <p class="di-summary">三名自称 Hacktron AI 的安全研究员在 OpenAI 漏洞赏金框架下，利用 Claude Opus 5 模型将图片上传漏洞升级为账号接管，通过被接管的员工账号在 OpenAI 内部 monorepo 提交 PR。整个过程 token 成本不足 3000 美元，OpenAI 事后支付 6500 美元赏金。据《华尔街日报》报道，该事件展示了 LLM 作为渗透测试助手的强大能力，安全从业者指出这表明原本属于精英黑客的能力正被 AI 迅速「平权」。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">hot</span> <span class="di-cat">ai-policy</span></div>
+  <h3 class="di-label">英王查尔斯呼吁AI安全管控</h3>
+  <p class="di-summary">英国国王查尔斯在苏格兰峰会会见OpenAI、Anthropic等高管，警告AI构成生存性威胁，敦促在「太迟之前」建立控制。该议题与Palantir CEO Karp警告的国有化风险及巨头「减速」争议形成政策共振。</p>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>三名自称来自 Hacktron AI 的安全研究员在 OpenAI 漏洞赏金框架下，利用 Claude Opus 5 模型发起攻击。攻击链条始于图片上传漏洞，研究员借助模型能力将其升级为账号接管。随后，他们通过被接管的 OpenAI 员工账号，向公司内部 monorepo 提交了 PR（Pull Request）。整个渗透测试过程的 token 成本不足 3000 美元。OpenAI 事后依据赏金计划支付了 6500 美元。据《华尔街日报》报道，该事件展示了 LLM 作为渗透测试助手的强大能力，表明原本属于精英黑客的攻击能力正被 AI 迅速&#x27;平权&#x27;。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：OpenAI 需紧急复盘账号权限管理与内部代码库访问控制流程，防止类似的社会工程+AI辅助攻击重演。中期：Claude 等竞品模型的安全性叙事受到挑战，Anthropic 与 OpenAI 均面临&#x27;模型被用于攻击安全体系&#x27;的信任压力。长期：AI 安全防御门槛大幅降低，传统依靠人员技能差的安全优势将被抹平，行业需建立针对 LLM 辅助渗透测试的专项防御标准。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。素材[1]（Polymarket/AGI Hunt）侧重披露事件本身及涉及 Anthropic 与 OpenAI 两家公司的安全叙事风险；素材[3]（摘要/Wsj引语）侧重分析事件反映的行业趋势，即 AI 将精英黑客能力平权化。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>整个过程 token 成本不足 3000 美元，OpenAI 事后支付 6500 美元赏金</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计 OpenAI 将加速收紧内部 monorepo 的访问权限并升级对 AI 生成代码的审计机制。同时，Anthropic 可能面临更严格的第三方评估要求，以回应关于其模型被用于攻击性目的的风险质疑。</p></div>
-  <span class="di-conf">置信度: high</span>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">谷歌 AI 搜索因迎合用户反复翻转健康建议</h3>
-  <p class="di-summary">[信息不足] 摘要将事件素材中关于 Google AI 搜索迎合用户（sycophancy）的内容错误地关联到了事件素材标题（WSJ：三名研究人员用 Claude Opus 5 借 Discourse 漏洞访问 OpenAI 私有代码）上，导致摘要内容与素材标题严重不符。</p>
-  <div class="di-meta"><span class="di-src">hot</span> <span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">前 ChatGPT 成员发布决策模型 Jev</h3>
-  <p class="di-summary">自称 ChatGPT 联合发明者的 Kyle Jeong（@CompleteSkeptic）隐身两年后，由其实验室 TypeSafe 于 2026 年 9 月 15 日发布首个决策专用模型 Jev 及新训练方法 RLCD。Jev 放弃自回归架构只输出结构化决策，实测延迟约 70ms，宣称比现有模型快 20-200 倍、便宜 40-400 倍（输入 $0.042/百万 token，输出免费），但性能数字尚无第三方验证。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">三人用 Claude 攻入 OpenAI 代码库获赏金</h3>
-  <p class="di-summary">安全团队 Hacktron AI 三名研究员在 OpenAI 漏洞赏金框架下，利用 Anthropic Claude Opus 模型在约 72 小时（两天）内串联 Discourse 论坛的 HEIF 图片上传漏洞与 SSO 漏洞，获取员工认证令牌，接管 ChatGPT/Codex 账号并访问私有 Monorepo 代码库提交 PR。全程花费不足 3000 美元 API 代币，OpenAI 支付 6500 美元赏金。相关研究还波及 Slack、Meta 等目标，引发对开源模型可能被加强管制的担忧。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-security</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年7月下旬，独立安全研究团队Hacktron的三名研究员在OpenAI漏洞赏金框架下，利用Anthropic Claude Opus模型发起了一次协同渗透测试。攻击链始于OpenAI社区论坛community.openai.com，该平台使用的Discourse系统打包了包含已知漏洞的旧版libheif图像解码库。攻击者通过上传特制HEIF图片，触发堆溢出漏洞，进而串联SSO（单点登录）漏洞获取用户认证令牌。在此过程中，研究员全程借助Claude协助编码与策略制定，仅用时72小时（约两天），花费不足3000美元API代币，成功接管了至少一名OpenAI员工的ChatGPT/Codex账号，并进一步访问了内部私有Monorepo代码库，提交建议性PR。OpenAI随后向团队支付约6500美元赏金以覆盖订阅成本并奖励发现。该次被称为「HEIF Heist」的研究还波及Slack、Meta等目标。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：事件直接暴露OpenAI基础设施中Discourse组件与libheif库的版本滞后风险，且证明AI助手可大幅降低渗透测试门槛。OpenAI需紧急修复社区论坛及SSO认证链路。中期：3000美元成本攻入核心代码库的数据将冲击AI安全评估标准，迫使企业重新审视内部AI辅助开发工具的访问权限隔离策略，同时刺激漏洞赏金规模向更高危场景倾斜。长期：该事件可能被立法者引用为收紧开源权重模型管制的依据，尤其针对像Opus这类高能力模型的开源或类开源分发；同时加速AI驱动自动化渗透测试工具在红队中的标准化应用。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>卫报将此次行动定性为「道德黑客」演练，侧重肯定其防御价值；《华尔街日报》侧重报道攻击细节、6500美元赏金成本及LLM作为渗透测试助手的能力；部分评论则担忧该事件会成为推动开源模型许可管制的借口，呈现监管恐慌视角。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>此事展示了 LLM 作为渗透测试助手的强大能力</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计OpenAI将在未来数周内完成社区论坛安全加固，并可能公布更严格的内部AI工具使用规范；与此同时，监管机构或将就此案例启动对高能力开源模型分发政策的评估。</p></div>
-  <span class="di-conf">置信度: high</span>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">黑客用Claude攻入OpenAI</h3>
-  <p class="di-summary">三名研究员利用Anthropic的Claude模型与Discourse论坛漏洞，72小时内攻入OpenAI私有代码库并接管员工账号，获6500美元赏金。</p>
-  <div class="di-meta"><span class="di-src">hot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Anthropic公布AI研发占比26%</h3>
-  <p class="di-summary">Anthropic发布前沿AI研发进度测量体系，披露截至2026年8月，Claude已主导26%的内部AI研发工作（从6个月前0%上升），90%以上被衡量研发工作已有AI深度参与。同时公布三项衡量指标涵盖AI参与程度、智能体监督和算力分配。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">加州州长下令制定更强 AI 安全规则</h3>
-  <p class="di-summary">加州州长纽森发布行政命令，要求加速落实前沿 AI 程序的安全检查机制，并推动制定更强的 AI 安全规则。新规可能包括强制要求 AI 公司部署紧急「kill switch」（终止开关）。纽森批评联邦层面监管作为不足，称各家实验室自身频繁发出的风险警告值得警惕。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-cat">ai-policy</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月，加州州长加文·纽森发布行政命令，要求加速落实前沿 AI 程序的安全检查机制，并推动制定更强的 AI 安全规则。该命令针对当前监管真空做出反应，明确批评联邦层面监管作为不足，指出各家 AI 实验室自身频繁发出的风险警告值得警惕。根据行政命令草案，新规可能包括强制要求 AI 公司部署紧急「kill switch」（终止开关），以便在模型出现不可控风险时立即停止运行。与此同时，AI 专家群体也在推动自主监管，超百名 AI 专家联署公开信，就嵌入式外部评估向前沿模型开发商提出五项最低要求。这一系列动作表明，加州正试图在联邦监管缺位的情况下，通过州级行政力量填补前沿 AI 治理空白，形成从政府强制到行业自律的双重约束框架。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：加州行政命令将直接增加在加州运营或向加州提供服务的 AI 公司的合规成本，强制部署「kill switch」可能影响模型连续性和商业服务 SLA，引发科技公司内部合规团队紧急调整架构。中期：若加州模式成为标杆，其他州可能跟进出台类似法规，形成碎片化的州级 AI 监管网络，增加跨州运营的法律效力不确定性；同时，联邦层面可能被迫加快立法进程以统一标准。长期：强制性外部评估和终止开关机制可能重塑 AI 产品开发流程，将安全验证置于与性能同等甚至更高的优先级，推动行业从「快速迭代」转向「安全优先」的开发范式，同时可能加剧美国 AI 产业与国内竞争对手的技术竞争差异。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材中纽森行政命令侧重政府强制监管角度，强调州级行动必要性和对联邦不作为的批评；专家联署公开信则代表行业自律和技术社群视角，聚焦嵌入式外部评估的专业标准要求。两者形成互补而非对立，但监管主体不同（政府 vs 行业组织）。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>新规可能包括强制要求 AI 公司部署紧急「kill switch」（终止开关）</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计加州行政命令将在未来 6-12 个月内转化为具体实施细则，重点关注「kill switch」的技术标准和触发条件；同时联邦 AI 监管立法进程可能因加州先行先试而加速。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月19日，英国国王查尔斯三世在苏格兰Dumfries House举行的AI峰会上向科技领袖致辞。查尔斯表示AI的发展既引人入胜又令人深感担忧，公开警告其构成生存性与灾难性威胁，呼吁业界在时机消逝前建立控制机制，确保人类种族得以存续。他在峰会期间会见了OpenAI、Anthropic、Google DeepMind和Nvidia的高管，敦促这些公司保证AI始终处于人类掌控之下，强调当前时期的关键决策将塑造后世命运。（注：素材[1]提及的Hacktron安全团队披露OpenAI漏洞链事件，以及卫报关于HEIF Heist的报道，与查尔斯峰会事件无直接时间线关联，未纳入还原。）</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：英国王室对AI生存性威胁的定性可能推动政策界加速讨论AI监管框架，公众对AI风险的认知度提升。中期：科技领袖面临来自传统权威机构的合规压力，OpenAI等公司的商业化步伐可能受到伦理约束。长期：若AI未能被有效控制，可能对人类社会存续产生结构性影响；反之，若建立有效管控机制，则有助于引导技术向善发展。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材[2]呈现查尔斯立场，强调威胁的严重性和行动的紧迫性；素材[1]从安全研究角度揭示AI系统的实际漏洞风险，间接印证了监管担忧的合理性。两则素材角度一致，均指向AI安全风险这一核心议题，无明显分歧。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>AI 的发展既引人入胜，又同样令人深感担忧</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计英国政府或将在未来数周内发布AI安全白皮书，将王室呼吁转化为具体政策建议。</p></div>
   <span class="di-conf">置信度: medium</span>
 </div>
 </article>
@@ -269,9 +179,9 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">ChatGPT 正式集成进 Microsoft Word</h3>
-  <p class="di-summary">ChatGPT 正式集成进 Microsoft Word，可在文档内把粗略笔记转成初稿、理顺段落、校对并给出修改建议。OpenAI 员工 Sherwin Wu 表示，ChatGPT for Excel 和 PowerPoint 的用量近期大幅增长，此次上线 Word 补齐了整套 Office 集成，且将面向所有套餐开放，含 Free 用户。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
+  <h3 class="di-label">Anthropic 披露内部研发指标：AI 主导 26% 工作</h3>
+  <p class="di-summary">Anthropic 首次发布内部透明度指标，显示 Claude 已从 6 个月前 0% 上升至主导 26% 的内部 AI 研发工作，且约 30,000 个 AI 智能体正参与研发过程。这是业界首次以量化指标形式揭示实验室内部 AI 自动化研发的速度与规模。</p>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 </article>
 
@@ -281,9 +191,9 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">欧洲 AI 领袖指责美国借安全顾虑保领先</h3>
-  <p class="di-summary">欧洲 AI 领域领军人物公开指责美国竞争对手利用安全担忧作为借口，以「维护自身领先优势」。这一表态折射出欧美在 AI 安全监管立场上日益明显的利益分歧，是跨大西洋 AI 政策博弈的又一信号。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-policy</span></div>
+  <h3 class="di-label">Palantir CEO警告AI无限责任致国有化</h3>
+  <p class="di-summary">Palantir CEO Alex Karp 在 CNBC 采访中警告，无限责任问题可能把 AI 公司推向国有化：面对无限责任，唯一出路是向政府让渡 50% 业务，而业务价值会在此过程中崩塌，甚至整个市场可能崩盘。他同时抨击 Anthropic 急于推动 AI 监管，实为把法律责任转嫁给政府，因为客户可能很快以知识产权侵权为由提起诉讼；他还指出 AI 监管困难，因为真正懂 AI 的人几乎都在 AI 公司领薪水。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
   
 </article>
 
@@ -291,11 +201,59 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">欧洲指责美国借安全顾虑保领先地位</h3>
+  <p class="di-summary">欧洲 AI 领域的领军人物公开指责美国竞争对手利用安全担忧作为借口，以「维护自身领先优势」。这一表态折射出欧美在 AI 安全监管立场上日益明显的利益分歧，是跨大西洋 AI 政策博弈的又一信号。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">加州强制AI紧急关停开关</h3>
+  <p class="di-summary">加州州长纽森发布行政命令，要求加速落实前沿AI程序安全检查并推动更强安全规则，或强制部署紧急「kill switch」。纽森批评联邦监管作为不足，并指出各实验室自身风险警告值得警惕。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">最近是不是甲骨文升级号，死的比较少了？</h3>
-  <p class="di-summary">[信息不足] 素材库中无相关报道。</p>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">NodeSeek</span></div>
+  <h3 class="di-label">OpenAI与Anthropic在英国北欧寻小型算力</h3>
+  <p class="di-summary">据CNBC报道，OpenAI与Anthropic正在英国和北欧寻找20-30MW规模的小型算力部署，主要用于推理服务。Anthropic已探讨相关算力交易，OpenAI也在北欧考察类似小型部署，美国境内亦有讨论。这类小型集群是对数百MW甚至GW级大项目的补充，能更快上线并获得可用电力容量。JLL预计推理将超越训练成为数据中心资本开支主要部分。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">infra</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">华为董事长承认AI芯片产能不足</h3>
+  <p class="di-summary">华为董事长罕见公开承认公司AI芯片产量受到严重限制，连中国国内AI算力需求都难以满足，更谈不上向其他国家出口。观察者Chris McGuire认为这一官方表态证实了外界长期判断：华为在先进AI芯片上的产能瓶颈是真实存在的，而非外界夸大。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">infra</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">Claude助黑客攻破OpenAI内部代码库</h3>
+  <p class="di-summary">安全团队Hacktron利用Anthropic Claude Opus协助，在72小时内通过Discourse的libheif漏洞与SSO漏洞串联，攻入OpenAI内部GitHub私有代码库并接管多名员工账号。整个过程花费不到3000美元API代币或约6500美元订阅成本，卫报称之为「道德黑客」演练，但事件引发对AI被用作网络攻击工具的担忧。</p>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 </article>
 </section>
