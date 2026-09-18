@@ -430,5 +430,7 @@
  "QwenLM/Qwen-MM-Plugins": "使任何代理利用多模式原生。",
  "liyupi/ai-model-world": "AI 大模型世界，把 556 个大模型拟人化成像素小人的可视化站点。进来就能看到此刻谁最聪明、谁最会写代码、谁最便宜、谁刚发布，往下是国内与国外分区的厂商广场、完整的发布时间线和多维排行榜。搜索认模型名、厂商和能力，输入「多模态」会直接列出全部多模态模型。数据取自 Epoch AI、models.dev、LiveBench 与 Hugging Face，每小时自动同步，所有文案由真实数据生成，不调用任何 LLM。Next.js 静态导出，零后端。",
  "coder/coder": "为开发人员及其代理提供安全的环境",
- "anthropics/knowledge-work-plugins": "主要供知识工作者在 Claude Cowork 中使用的开源插件存储库"
+ "anthropics/knowledge-work-plugins": "主要供知识工作者在 Claude Cowork 中使用的开源插件存储库",
+ "dashscope-sdk/agentscope-java": "构建分布式、生产级、长期运行的代理。",
+ "ARahim3/cachebeat": "克劳德代码的一个小技巧，可以在空闲会话期间使您的提示缓存保持温暖，这样您的下一条消息就可以从缓存中读取，而不是支付全价。"
 }
