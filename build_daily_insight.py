@@ -2101,9 +2101,11 @@ def _deduplicate_after_phase1(clusters):
             if j in used:
                 continue
             cj = clusters[j]
-            if (len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
-                and _jaccard(_simple_tokens(ci.get("label", "")),
-                             _simple_tokens(cj.get("label", ""))) >= 0.2):
+            # 类别守卫：不同 category 不合并（9/17 evt_002/evt_010 同标签不同内容的错并防护）
+            if (ci.get("category") == cj.get("category")
+                    and len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
+                    and _jaccard(_simple_tokens(ci.get("label", "")),
+                                 _simple_tokens(cj.get("label", ""))) >= 0.2):
                 # 合并 items 和 source_types
                 ci["items"].extend(cj.get("items", []))
                 ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
@@ -2138,13 +2140,12 @@ def _deduplicate_after_phase1(clusters):
                 urls_j = set(it.get("url", "") for it in cj.get("items", []) if it.get("url"))
                 url_overlap = len(urls_i & urls_j) / min(len(urls_i), len(urls_j)) if min(len(urls_i), len(urls_j)) > 0 else 0
                 # 合并条件：
-                # - 高文本相似度(Jaccard>=0.2) 跨类别合并
-                # - 中等文本相似度(Jaccard>=0.15)需同类别
-                # - 源URL重叠>50%（即使文本不同，同一批源文章=同一事件）
+                # - 源URL重叠>50%（同一批源文章=同一事件，可跨类别）
+                # - 文本相似度达标且同 category（跨类别文本合并曾致 9/17 同标签错并）
                 if url_overlap > 0.5:
                     pass  # URL 高度重叠，直接合并
-                elif overlap >= 3 and (jacc >= 0.2 or (jacc >= 0.15 and ci.get("category") == cj.get("category"))):
-                    pass  # 文本相似度达标
+                elif ci.get("category") == cj.get("category") and overlap >= 3 and jacc >= 0.15:
+                    pass  # 文本相似度达标（同类别）
                 else:
                     continue
                 # 合并：保留高分事件的 label/summary
@@ -2189,6 +2190,9 @@ def _deduplicate_after_phase1(clusters):
                 if j in used3:
                     continue
                 cj = merged[j]
+                # 类别守卫：实体/文本证据只在同类别内合并（跨类别仅第二轮 URL 重叠可豁免）
+                if ci.get("category") != cj.get("category"):
+                    continue
                 ej = _extract_entities(cj.get("label", ""))
                 if not ei or not ej:
                     continue
