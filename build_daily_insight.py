@@ -1940,6 +1940,32 @@ _SYSTEM_PROMPT_P1 = """
 只输出严格 JSON，不要输出任何思考过程或解释。"""
 
 
+_INSUFFICIENT_RE = re.compile(r'\[信息不足')
+
+
+def _is_insufficient(text):
+    """[信息不足] 占位判断：前缀匹配，覆盖 [信息不足] 与 [信息不足：...] 两种输出。"""
+    return bool(_INSUFFICIENT_RE.search(text or ""))
+
+
+def _validate_key_links(links, items):
+    """key_links 去重保序；多样性不足（≤1 个）时用事件 items 的 URL 补足到 ≤3；上限 5。"""
+    seen, out = set(), []
+    for u in links or []:
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    if len(out) <= 1:
+        for it in items or []:
+            u = it.get("url", "") or it.get("link", "")
+            if u and u not in seen:
+                seen.add(u)
+                out.append(u)
+            if len(out) >= 3:
+                break
+    return out[:5]
+
+
 def _deduplicate_after_phase1(clusters):
     """Phase 1 后去重：合并同 category 且标签高度相似的相邻事件。"""
     if len(clusters) < 2:
@@ -4016,10 +4042,10 @@ def main():
                     c["category"] = pe.get("category", c.get("category", ""))
                     c["summary"] = pe.get("summary", "")
                     c["significance"] = pe.get("significance", "")
-                    c["key_links"] = pe.get("key_links", [])
+                    c["key_links"] = _validate_key_links(pe.get("key_links", []), c.get("items", []))
 
-            # Phase 1.2: 丢弃 [信息不足] 事件 — 防止占位事件拉低质量
-            _good = [c for c in clusters if '[信息不足]' not in (c.get('summary', '') or '')]
+            # Phase 1.2: 丢弃 [信息不足] 事件 — 防止占位事件拉低质量（前缀匹配，覆盖 [信息不足：...]）
+            _good = [c for c in clusters if not _is_insufficient(c.get('summary'))]
             if len(_good) >= MIN_EVENTS:
                 _dropped = len(clusters) - len(_good)
                 clusters = _good
