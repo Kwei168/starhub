@@ -2029,6 +2029,50 @@ def _validate_key_links(links, items):
     return out[:5]
 
 
+MIN_DEEP_SCORE = 55  # 快筛 ≥55 才进 Phase 2 深度分析
+
+
+def _quick_score_event(cluster, yesterday_labels=None):
+    """4 维快筛（借鉴 BestBlogs v4 权重）：信号深度40/科技相关性30/事实密度20/新颖度10 + 减分。"""
+    items = cluster.get("items", []) or []
+    n = len(items)
+    if n == 0:
+        return 0
+    # 1) 信号深度 0-40：素材量 + 跨源 + 时间跨度
+    src_types = set(it.get("source_type") or it.get("_src") for it in items)
+    ages = []
+    for it in items:
+        pub = _parse_iso(it.get("pub_date", ""))
+        ages.append(_hours_ago(pub) if pub else 0)
+    span_h = (max(ages) - min(ages)) if len(ages) > 1 else 0
+    depth = min(15.0, n * 2.5) + min(15.0, len(src_types) * 5) + min(10.0, span_h / 12.0)
+    # 2) 科技相关性 0-30：topic_tag ∈ MAIN_TOPICS 占比；旧缓存无 tag 时给中性满分
+    tagged = [it for it in items if it.get("topic_tag")]
+    if tagged:
+        ratio = sum(1 for it in tagged if it.get("topic_tag") in MAIN_TOPICS) / float(len(tagged))
+    else:
+        ratio = 1.0
+    relevance = 30.0 * ratio
+    # 3) 事实密度 0-20：含具体数字的素材占比
+    def _has_num(it):
+        return bool(re.search(r'\d', (it.get("text") or "") + (it.get("title") or "")))
+    density = 20.0 * sum(1 for it in items if _has_num(it)) / n
+    # 4) 新颖度 0-10：24h 内素材占比
+    fresh = sum(1 for a in ages if a <= 24)
+    novelty = 10.0 * fresh / n
+    raw = depth + relevance + density + novelty
+    # 减分（BestBlogs v4 风格，最多 -20）
+    ded = 0
+    if n == 1:
+        ded += 5
+    urls = [it.get("url") or it.get("link") for it in items if (it.get("url") or it.get("link"))]
+    if len(urls) > 1 and len(set(urls)) == 1:
+        ded += 10
+    if yesterday_labels and cluster.get("label", "").strip() in yesterday_labels:
+        ded += 10
+    return int(max(0, min(100, raw - ded)))
+
+
 def _deduplicate_after_phase1(clusters):
     """Phase 1 后去重：合并同 category 且标签高度相似的相邻事件。"""
     if len(clusters) < 2:
@@ -3205,6 +3249,7 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None, bubble_b
             "label": c.get("label", ""),
             "category": c.get("category", ""),
             "score": c.get("score", 0),
+            "editor_score": c.get("editor_score", 0),
             "signal": c.get("signal", {}),
             "resonance": c.get("resonance", ""),
             "sources": c.get("source_types", []),
@@ -4216,11 +4261,22 @@ def main():
             if len(_filtered) < len(clusters) and len(_filtered) >= MIN_EVENTS:
                 clusters = _filtered
 
-            # Phase 2 LLM: Top N 深度解读
+            # Phase 2 LLM: Top N 深度解读（快筛门槛：editor_score ≥ MIN_DEEP_SCORE 才做深度分析）
+            _gate_days = [d for d in _load_history().get("days", [])
+                          if d.get("date") != NOW_BJ.strftime("%Y-%m-%d")]
+            _yday_labels = {e.get("label", "").strip()
+                            for e in (_gate_days[-1].get("events", []) if _gate_days else [])}
+            for c in clusters:
+                c["editor_score"] = _quick_score_event(c, yesterday_labels=_yday_labels)
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
             _rss_by_url = {_norm_url(k): v for k, v in rss_history.items() if isinstance(v, dict)}
+            _skipped_low = 0
             for i in range(top_n):
                 c = clusters[i]
+                if c["editor_score"] < MIN_DEEP_SCORE:
+                    c["deep_analysis"] = None
+                    _skipped_low += 1
+                    continue
                 # Phase 2 前素材过滤：移除与 label 不相关的 items
                 _filter_cluster_items(c, c.get("label", ""))
                 prev_summary = c.get("prev_summary") if c.get("status") in ("ongoing", "escalating") else None
@@ -4244,6 +4300,9 @@ def main():
                 else:
                     print("[每日洞察] 深度解读降级: %s (%s)" % (
                         c.get("label", "")[:30], deep.get("reason", "unknown")))
+            if _skipped_low:
+                print("[每日洞察] 快筛门槛: %d 个事件 editor_score < %d，跳过深度分析" % (
+                    _skipped_low, MIN_DEEP_SCORE))
         else:
             print("[每日洞察] Phase 1 LLM 失败，降级为仅聚类结果", file=sys.stderr)
     else:
