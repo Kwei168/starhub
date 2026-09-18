@@ -68,7 +68,7 @@ jobs:
           fi
 
       - name: Install insight engine dependencies
-        run: pip install llama-index-core llama-index-embeddings-fastembed fastembed faiss-cpu rank-bm25
+        run: pip install llama-index-core llama-index-embeddings-fastembed fastembed faiss-cpu rank-bm25 pytest
 
       # ── 质量门禁 A：语法（blocking）──
       # 起因：4819686 改写 Phase 2 prompt 时丢掉一个闭合 """，每日洞察连续失败数天且无人察觉，
@@ -98,6 +98,7 @@ jobs:
           python test_insight_guard_v3.py
           python test_insight_bad_date.py
           python test_daily_insight.py
+          python -m pytest tests/daily_insight/ -q
           # 测试会真实写盘受版本控制的产物（daily-insight.json / ai-daily.html 等），
           # 以及 gitignored 的向量缓存；不清掉就会污染第 8 步的真实构建与最终提交。
           git checkout -- .
