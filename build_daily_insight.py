@@ -132,8 +132,12 @@ INSIGHT_RSS_HOURS = 168   # 每日洞察取最近 N 小时的 RSS（7 天窗口�
 
 # ── RAGAS 质量评估参数 ──
 RAGAS_ENABLED = True          # RAGAS 评估-修正闭环开关
-RAGAS_QUALITY_THRESHOLD = 0.6  # 整体质量阈值，低于此值触发修正
+RAGAS_QUALITY_THRESHOLD = 0.70  # 整体质量阈值，低于此值触发修正
 RAGAS_MAX_CORRECTIONS = 1      # 最大修正轮次
+# 各维度最低阈值 — 任一维度低于阈值即触发修正（即使 overall 达标）
+RAGAS_MIN_COVERAGE = 0.75      # context_coverage 最低要求
+RAGAS_MIN_FAITHFULNESS = 0.88  # faithfulness 最低要求（目标 ≥ 0.95）
+RAGAS_MIN_RELEVANCE = 0.75     # relevance 最低要求（目标 ≥ 0.80）
 
 
 # ──────────────────── 工具函数 ────────────────────
@@ -2236,7 +2240,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
   "impact_analysis": "影响分析（200-300字，分短期/中期/长期）",
   "source_divergence": "信源分歧（具体指出哪个源持什么角度，无分歧则写'各源报道角度一致'）",
   "quote": "素材中最有分量的一句原文引用",
-  "outlook": "后续展望（1-2句话，预判下一步发展）",
+  "outlook": "后续展望（1-2句话，基于素材中的信号和趋势推断下一步发展，不得编造素材中不存在的信息）",
   "confidence": "high|medium|low"
 }
 
@@ -2247,7 +2251,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
 - quote 必须是素材中的原文，不要编造
 - confidence: 多源交叉验证=high，单一信源=low
 - 禁止使用"值得关注""引发讨论""未来可期"等空话，每句话必须有信息增量
-- 所有陈述必须基于素材"""
+- outlook 必须基于素材中已有的信号和趋势进行推断，不得编造
 
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P2},
@@ -2690,14 +2694,17 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
     feedback = evaluation.get("feedback", "")
     weak_indices = evaluation.get("weak_events", [])
 
-    # 识别薄弱维度
+    # 识别薄弱维度（阈值对齐质量目标）
     low_dims = []
-    if evaluation.get("context_coverage", 1) < 0.6:
-        low_dims.append("context_coverage（需更多利用检索上下文中的信息，不要遗漏重要细节）")
-    if evaluation.get("faithfulness", 1) < 0.6:
-        low_dims.append("faithfulness（需确保每个事实/数据都有检索上下文依据，禁止编造）")
-    if evaluation.get("relevance", 1) < 0.6:
-        low_dims.append("relevance（需更紧扣最重要的 AI/科技话题，去除边缘事件）")
+    if evaluation.get("context_coverage", 1) < RAGAS_MIN_COVERAGE:
+        low_dims.append("context_coverage（当前%.2f，需≥%.2f，更多利用检索上下文中的信息）" % (
+            evaluation.get("context_coverage", 0), RAGAS_MIN_COVERAGE))
+    if evaluation.get("faithfulness", 1) < RAGAS_MIN_FAITHFULNESS:
+        low_dims.append("faithfulness（当前%.2f，需≥%.2f，确保每个事实/数据都有检索上下文依据，禁止编造）" % (
+            evaluation.get("faithfulness", 0), RAGAS_MIN_FAITHFULNESS))
+    if evaluation.get("relevance", 1) < RAGAS_MIN_RELEVANCE:
+        low_dims.append("relevance（当前%.2f，需≥%.2f，更紧扣最重要的 AI/科技话题，去除边缘事件）" % (
+            evaluation.get("relevance", 0), RAGAS_MIN_RELEVANCE))
 
     if not low_dims and not weak_indices:
         return clusters  # 无需修正
@@ -2743,6 +2750,23 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
             print("[每日洞察] RAGAS 修正事件 %d: %s" % (idx, cluster.get("label", "")[:30]))
 
     return clusters
+
+
+def _dims_pass_thresholds(eval_result):
+    """检查各维度是否达到最低阈值。任一维度不达标则返回 False。"""
+    cov = eval_result.get("context_coverage", 0)
+    faith = eval_result.get("faithfulness", 0)
+    rel = eval_result.get("relevance", 0)
+    if cov < RAGAS_MIN_COVERAGE:
+        print("[每日洞察] 维度不达标: coverage=%.2f < %.2f" % (cov, RAGAS_MIN_COVERAGE))
+        return False
+    if faith < RAGAS_MIN_FAITHFULNESS:
+        print("[每日洞察] 维度不达标: faithfulness=%.2f < %.2f" % (faith, RAGAS_MIN_FAITHFULNESS))
+        return False
+    if rel < RAGAS_MIN_RELEVANCE:
+        print("[每日洞察] 维度不达标: relevance=%.2f < %.2f" % (rel, RAGAS_MIN_RELEVANCE))
+        return False
+    return True
 
 
 def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
@@ -2791,8 +2815,9 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             iteration, eval_result["overall"], eval_result["context_coverage"],
             eval_result["faithfulness"], eval_result["relevance"]))
 
-        if eval_result["overall"] >= threshold:
-            print("[每日洞察] RAGAS 质量达标 (%.2f >= %.2f)" % (eval_result["overall"], threshold))
+        if eval_result["overall"] >= threshold and _dims_pass_thresholds(eval_result):
+            print("[每日洞察] RAGAS 质量达标 (overall=%.2f >= %.2f, 各维度达标)" % (
+                eval_result["overall"], threshold))
             break
         if iteration < max_iterations:
             iteration_count += 1
