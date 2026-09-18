@@ -1846,6 +1846,35 @@ def _filter_cluster_items(cluster, phase1_label):
     return cluster
 
 
+def _norm_url(u):
+    """URL 归一化：去协议/www/尾斜杠/小写，用于跨源反查 RSS 存档。"""
+    u = (u or "").strip().lower()
+    u = re.sub(r'^https?://', '', u)
+    u = re.sub(r'^www\.', '', u)
+    return u.rstrip('/')
+
+
+def _build_evidence_pack(cluster, rss_by_url, max_docs=3, doc_chars=2500):
+    """事件 URL 反查 rss_history 全文，拼为 Phase 2 交叉核对参考。"""
+    docs, seen = [], set()
+    for it in cluster.get("items", []):
+        key = _norm_url(it.get("url") or it.get("link"))
+        if not key or key in seen:
+            continue
+        rec = rss_by_url.get(key)
+        if not rec:
+            continue
+        body = _strip_html((rec.get("full_content") or rec.get("summary_zh")
+                            or rec.get("summary") or "").strip())
+        if len(body) < 120:
+            continue
+        seen.add(key)
+        docs.append("【%s】%s\n%s" % (rec.get("source", ""), rec.get("title", ""), body[:doc_chars]))
+        if len(docs) >= max_docs:
+            break
+    return "\n\n".join(docs)
+
+
 def _build_event_material(cluster, numbered=False):
     """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。
     numbered=True 时片段带 [n] 编号并返回编号→来源映射，供 Phase 2 引用溯源。"""
@@ -2332,8 +2361,8 @@ citations 为字段级来源索引：每个字段的结论必须标注其来自�
 每句话必须有信息增量，不允许空话。所有陈述必须基于素材。"""
 
 
-def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
-    """Phase 2: 单个事件的深度解读。"""
+def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None, evidence=""):
+    """Phase 2: 单个事件的深度解读。evidence 为同源 RSS 全文存档交叉参考（可为空）。"""
     if not llm:
         return {"status": "degraded", "reason": "llm_unavailable",
                 "event_reconstruction": "", "impact_analysis": "",
@@ -2351,6 +2380,12 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
 %s
 """ % (NOW_BJ.strftime("%Y年%m月%d日"), phase1_summary.get("label", ""),
        material, phase1_summary.get("summary", ""))
+
+    if evidence:
+        prompt += """
+### 补充全文参考（同源 RSS 存档原文，用于交叉核对数据与信源观点分歧；不可作为引用编号来源，citations 仍只能引用上方素材 [n] 编号）
+%s
+""" % evidence[:8000]
 
     if prev_summary:
         prompt += """
@@ -4183,6 +4218,7 @@ def main():
 
             # Phase 2 LLM: Top N 深度解读
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
+            _rss_by_url = {_norm_url(k): v for k, v in rss_history.items() if isinstance(v, dict)}
             for i in range(top_n):
                 c = clusters[i]
                 # Phase 2 前素材过滤：移除与 label 不相关的 items
@@ -4191,7 +4227,7 @@ def main():
                 deep = _llm_phase2(llm, c, {
                     "label": c.get("label", ""),
                     "summary": c.get("summary", ""),
-                }, prev_summary)
+                }, prev_summary, evidence=_build_evidence_pack(c, _rss_by_url))
                 c["deep_analysis"] = deep
                 if deep.get("status") == "ok":
                     has_analysis = True
