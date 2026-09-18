@@ -110,7 +110,7 @@ JACCARD_EVENT_THRESHOLD = 0.35   # 检索后事件组装用
 
 # ── TopK ──
 MIN_EVENTS = 3
-MAX_EVENTS = 10
+MAX_EVENTS = 12
 DEEP_ANALYSIS_TOP_N = 3
 
 # ── RAG 参数 ──
@@ -123,7 +123,7 @@ CHUNK_OVERLAP = 50     # chunk 重叠 token 数
 FAISS_INDEX_FILE = "daily_insight_faiss.index"
 FAISS_META_FILE = "daily_insight_chunks.json"
 VECTOR_CACHE_FILE = "daily_insight_vectors.npy"  # numpy 向量缓存（增量 embedding）
-RETRIEVAL_TOP_K = 80   # 向量检索每查询返回数（扩大检索提升覆盖率）
+RETRIEVAL_TOP_K = 100  # 向量检索每查询返回数（扩大检索提升覆盖率）
 RRF_K = 60             # RRF 融合常数
 BM25_ENABLED = True     # BM25 混合检索开关
 MAX_EMBED_CHUNKS = 30000   # 最大 embedding chunk 数（扩容至全量覆盖）
@@ -207,6 +207,18 @@ def _tokenize_title(title):
             tokens.add(p)
         for i in range(len(p) - 1):
             tokens.add(p[i:i+2])
+    return tokens
+
+
+def _simple_tokens(text):
+    """轻量分词：英文按词切分 + 中文按 character bigrams。用于去重/相似度计算。"""
+    text = (text or "").lower()
+    tokens = set()
+    for w in re.findall(r'[a-z0-9]{2,}', text):
+        tokens.add(w)
+    cjk = re.findall(r'[\u4e00-\u9fff]', text)
+    for k in range(len(cjk) - 1):
+        tokens.add(cjk[k] + cjk[k + 1])
     return tokens
 
 
@@ -459,7 +471,7 @@ def _chunk_documents(rss_clean, hot_clean, aihot_clean, agihunt_clean):
             "source_key": source_key,
             "title": title,
             "url": url,
-            "text": text[:2000],
+            "text": text[:3000],
             "pub_date": pub_date,
             "content_hash": content_hash,
         }
@@ -938,7 +950,7 @@ def _build_queries(hot_clean, agihunt_clean, aihot_clean, rss_clean=None, retrie
     # RSS Top10（补充仅出现在 RSS 中的重要事件，提升 coverage）
     if rss_clean:
         rss_sorted = sorted(rss_clean, key=lambda x: x.get("pub_date", ""), reverse=True)
-        for it in rss_sorted[:10]:
+        for it in rss_sorted[:15]:
             _add(it.get("title", ""))
 
     # 伪查询 Top10（从已检索 chunks 的 title 截取）
@@ -1017,6 +1029,37 @@ def _assemble_events(reranked_chunks):
     for i, e in enumerate(events):
         e["id"] = "evt_%s_%03d" % (date_str, i + 1)
         del e["tokens"]
+
+    # 事件内 chunk 去重：同一事件多源转载时，去除高度相似的 chunks
+    _total_before = sum(len(e["items"]) for e in events)
+    for e in events:
+        items = e["items"]
+        if len(items) <= 1:
+            continue
+        keep = []
+        for it in items:
+            it_title = (it.get("title", "") or "").strip()
+            it_text = (it.get("text", "") or "")[:300]
+            it_tok = _simple_tokens(it_title + " " + it_text)
+            is_dup = False
+            for kept in keep:
+                kept_title = (kept.get("title", "") or "").strip()
+                kept_text = (kept.get("text", "") or "")[:300]
+                kept_tok = _simple_tokens(kept_title + " " + kept_text)
+                if not it_tok or not kept_tok:
+                    continue
+                overlap = len(it_tok & kept_tok)
+                sim = overlap / min(len(it_tok), len(kept_tok)) if min(len(it_tok), len(kept_tok)) > 0 else 0
+                if sim > 0.8:
+                    is_dup = True
+                    break
+            if not is_dup:
+                keep.append(it)
+        e["items"] = keep
+    _total_after = sum(len(e["items"]) for e in events)
+    if _total_after < _total_before:
+        print("[每日洞察] 事件内去重: %d -> %d chunks (-%d)" % (
+            _total_before, _total_after, _total_before - _total_after))
 
     # 按最高 chunk 分数排序
     events.sort(key=lambda e: e["best_score"], reverse=True)
@@ -1839,7 +1882,7 @@ def _deduplicate_after_phase1(clusters):
     return merged
 
 
-def _llm_phase1(llm, clusters):
+def _llm_phase1(llm, clusters, global_context=None):
     """Phase 1: 为每个事件生成结构化摘要 + 今日主题导语。"""
     if not llm or not clusters:
         return None
@@ -1850,6 +1893,12 @@ def _llm_phase1(llm, clusters):
         events_text.append("## 事件 %d（信号强度: %.1f，来源: %s）\n%s" % (
             i + 1, c["score"], ", ".join(c["source_types"]), material))
 
+    # 全局检索上下文：让 LLM 见到评估器认为它该见到的完整信息场
+    if global_context:
+        _gc_block = "【全局检索上下文】（今日 AI/科技领域完整信息场，请确保 summary 充分利用其中的关键信息）：\n%s" % global_context
+    else:
+        _gc_block = ""
+
     prompt = """今天是 %s。以下是今日 AI/科技领域 %d 个热点事件的原始素材。
 
 %s
@@ -1858,6 +1907,8 @@ def _llm_phase1(llm, clusters):
 
 1. 为每个事件输出结构化摘要
 2. 用一句话概括今日内容主线（≤60字），样式：「从 X，到 Y，再到 Z，判断 W」
+
+%s
 
 输出严格 JSON：
 {
@@ -1879,7 +1930,10 @@ def _llm_phase1(llm, clusters):
 - summary 必须包含具体数据（参数量/融资金额/用户数等），不能是空泛描述
 - category 必须从枚举中选
 - 如果素材不足以判断，summary 里标注[信息不足]
-- 所有陈述必须基于素材，不要编造""" % (NOW_BJ.strftime("%Y年%m月%d日"), len(clusters), "\n\n".join(events_text))
+- 所有陈述必须基于素材，不要编造
+- 每个事件的 summary 必须覆盖该事件素材中的所有关键事实点（至少 3 个独立信息点）
+- 不要只挑最重要的 1-2 条素材，要综合所有素材
+- 如果全局上下文中有重要信息未被任何事件覆盖，请在 theme 中提及""" % (NOW_BJ.strftime("%Y年%m月%d日"), len(clusters), "\n\n".join(events_text), _gc_block)
 
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P1},
@@ -2136,7 +2190,7 @@ def _self_review_phase1(llm, events, material_text):
     events_json = json.dumps(
         [{"id": e.get("id", ""), "label": e.get("label", ""),
           "summary": e.get("summary", ""), "significance": e.get("significance", "")}
-         for e in events[:8]],
+         for e in events[:MAX_EVENTS]],
         ensure_ascii=False, indent=2)
 
     prompt = """请检查并修正以下事件摘要的质量问题。
@@ -2351,7 +2405,7 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
 
     # 构建事件摘要文本
     events_text = []
-    for i, c in enumerate(clusters[:8]):
+    for i, c in enumerate(clusters[:MAX_EVENTS]):
         summary = c.get("summary", "") or c.get("label", "")
         significance = c.get("significance", "")
         deep = c.get("deep_analysis", {})
@@ -3652,8 +3706,9 @@ def main():
     theme = ""
 
     if llm:
-        # Phase 1 LLM: 全事件摘要
-        p1_result = _llm_phase1(llm, clusters)
+        # Phase 1 LLM: 全事件摘要（传入全局检索上下文，解决生成/评估不对齐问题）
+        _ragas_ctx = _build_ragas_context(clusters, retrieved_for_ragas) if retrieved_for_ragas else ""
+        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:6000] if _ragas_ctx else None)
         if p1_result:
             theme = p1_result.get("theme", "")
             p1_events = p1_result.get("events", [])
@@ -3678,7 +3733,7 @@ def main():
             # Phase 1.6: 自审环节 — 检查 Phase 1 输出质量
             try:
                 all_material = "\n".join(
-                    _build_event_material(c)[:300] for c in clusters[:6])
+                    _build_event_material(c)[:300] for c in clusters[:MAX_EVENTS])
                 _self_review_phase1(llm, clusters, all_material)
             except Exception as exc:
                 print("[每日洞察] 自审环节异常，跳过: %s" % exc, file=sys.stderr)
