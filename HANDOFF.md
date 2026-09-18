@@ -807,7 +807,14 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 **本地诊断**：`python diagnose_coverage.py` 取 `daily_insight_chunks.json` 前 80 条近似评估上下文，与当日 events 对比给出覆盖率缺口的方向性线索（分母为近似，勿当判据；要精确归因需先在 `_build_ragas_context` 里把入选 chunk_id 写进 `daily-insight.json → quality`）；历史规格文档在 `docs/superpowers/specs/2026-09-17-daily-insight-*.md`。
 
 **修改守则**：
-- **CI 已有质量门禁**（`update.yml` 第 6 步 `Quality gate (syntax + tests)`，位于恢复缓存与任何构建之前）：`python -m py_compile *.py` + 跑 `test_insight_engine / test_insight_guard_v3 / test_insight_bad_date / test_daily_insight`，任一失败即中断构建、不产生提交；跑完自动 `git checkout -- . ; git clean -fdq` 还原测试写脏的产物。**这就是为什么新增测试必须是确定性且无网络的**——不确定的测试会把整站更新拖挂。
+- **CI 质量门禁分两级**（`update.yml` 第 6/7 步，位于恢复缓存与任何构建之前）：
+  - **A 语法（blocking）**：`py_compile *.py` + `compileall -q tests` + 逐个 `node --check api/*.js`。纯静态、无网络无副作用，失败即中断——这正是 `4819686` 那个未闭合 `"""` 能连续数天静默失败的原因。
+  - **B 洞察测试（advisory，`continue-on-error: true`）**：跑 `test_insight_engine / test_insight_guard_v3 / test_insight_bad_date / test_daily_insight`。之所以不阻塞：本 job 是 stars/RSS/ai-daily/每日洞察的唯一产出者且负责 Vercel 部署，任何环境相关断言翻红会冻结每天 5 个定时档、连一行热修都发不出去。**在 CI 里连续观察稳定后再摘掉 `continue-on-error` 收紧。**
+  - B 步骤用 step 级 `env` 把 6 个上游 key 全部置空：测试不需要凭证，而 `test_insight_engine.py` 有 10 处 `run_analysis` 会经 `insight_engine.py:43` 拿真 key 打真实嵌入 API。
+- **新增门禁测试必须离线自洽**，且不得依赖环境变量的存在与否。已踩过的三个坑（都是"本地绿、CI 红"）：
+  - `insight_engine.py:664` 的 fastembed 回退分支**不受 `_SF_KEY` 门控**，CI 装了 fastembed 就会改变 `_get_embeddings` 返回值 → `test_insight_guard_v3.py` 必须显式 `ie.FASTEMBED_AVAILABLE = False`。
+  - `_MimoLLM.api_key` 是 `os.environ.get("ZEN_API_KEY", "public")`，CI 里该变量有值 → 断言默认值前必须先把它 pop 掉。
+  - `rank_bm25` 用**无平滑** Okapi IDF `log(N-df+0.5)-log(df+0.5)`，**df 恰为窗口一半时 IDF=0、全部得分归零**。构造 BM25 测试语料时关键词不能铺满半数文档（旧 fixture 是 5000/10000，正好中招）。
 - 任何生成/评估参数改动后，跑 `python test_daily_insight.py` + `pytest tests/daily_insight/`（**注意：当前 CI 环境未装 pytest，`tests/daily_insight/` 实际从未被执行过**）。
 - ⚠ `test_daily_insight.py` 会**真实写盘** `daily-insight.json`、`daily_insight_history.json`、`daily-insight-history.html`、`ai-daily.html` 四个受版本控制的产物（用测试桩数据覆盖当日真实内容）。跑完必须 `git checkout HEAD --` 这四个文件再提交，否则测试数据会上线。
 - Faithfulness 相关改动必须看下一构建的 `daily-insight.json → quality`，不能只看构建成功。
@@ -824,7 +831,7 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 ### 8.14 Agnes 多 key 轮询统一（2026-09-18）
 
 - 新方案：`AGNES_API_KEY`（主）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。`AGNES_API_KEYS` 已覆盖全部 6 个调用点：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`、`insight_engine.py`、`fetch_and_build.py`（AI 态势摘要）。
-- **主 key 逗号切分已全量统一（2026-09-18）**：6 个调用点（`build_rss_aggregator.py:152`、`build_ai_daily.py:531`、`insight_engine.py:247`、`build_daily_insight.py:_init_llm`、`fetch_and_build.py:generate_ai_summary`、`api/translate.js:AGNES_KEYS`）现在都是同一语义：主 key 与附加 key 各自逗号切分后合并成一个池。**多 key 放 `AGNES_API_KEY` 或 `AGNES_API_KEYS` 都安全**。`fetch_and_build.py` 顺带补上了 429 换 key 重试（此前只发一次、失败即放弃）。
+- **主 key 逗号切分已全量统一（2026-09-18）**：6 个调用点（`build_rss_aggregator.py:152`、`build_ai_daily.py:531`、`insight_engine.py:247`、`build_daily_insight.py:_init_llm`、`fetch_and_build.py:generate_ai_summary`、`api/translate.js:AGNES_KEYS`）现在都是同一语义：主 key 与附加 key 各自逗号切分后合并成一个池。**多 key 放 `AGNES_API_KEY` 或 `AGNES_API_KEYS` 都安全**。`fetch_and_build.py` 顺带补上了换 key 重试（此前只发一次、失败即放弃）：**先建池再判空**（避免主 key 缺失时漏用附加 key、或主 key 全逗号时零输出静默返回），且只在 429/5xx/超时/JSON 失败时换 key，401/403 立即停止（换 key 也是白烧）。
 - **注意 key 池不去重**：`AGNES_API_KEY=k1` + `AGNES_API_KEYS=k1,k1` 会得到 3 个相同 key，轮转只是在同一 key 上烧尝试次数。Secret 内容自己保证唯一。
 - **已修复（2026-09-18）**：`insight_engine.py` 的 `configure_llm()` 此前仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量，该引擎实际退化为单 key。现改为与 `build_rss_aggregator.py:152-155` 同语义的池化方案：主 key 逗号切分 + `AGNES_API_KEYS` 逗号切分合并，**主 key 缺失时附加 key 仍生效**（不会静默退回 MockLLM）。
 - **回归测试**：`test_insight_engine.py` 新增 4 例覆盖 key 池（单 key→`extra_keys` 必须为 None、主 key 逗号展开、主+附加合并且空白/空段被清洗、仅附加 key 时仍建 AgnesLLM）。全套 86 例当前 **全绿**——此前长期红着的 2 例 RSS 时效测试是因为 `recent` 硬编码成 `2026-09-13`，72h 窗口一过必然失败；已改为 `_recent_bjt_iso()` 相对时间，勿再写死日期。

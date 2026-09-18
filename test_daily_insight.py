@@ -338,13 +338,15 @@ if B.FAISS_AVAILABLE and B.BM25_AVAILABLE:
 
     mock_chunks = []
     mock_vecs = []
+    # 关键词只放进少数 hot 文档：rank_bm25 用无平滑 Okapi IDF = log(N-df+0.5)-log(df+0.5)，
+    # df 恰为窗口一半（旧写法 5000/10000）时 IDF=0，全部得分归零，本测试会假性失败。
     for i in range(5000):
         mock_chunks.append({
             "chunk_id": "hot_%05d" % i,
             "source_type": "hot",
             "source": "weibo",
             "title": "热榜条目 %d" % i,
-            "url": "", "text": "热榜测试文本 关键词Alpha %d" % i,
+            "url": "", "text": "热榜测试文本 %s %d" % ("关键词Alpha" if i < 50 else "普通词条", i),
             "pub_date": "",
             "content_hash": "h_%016d" % i,
         })
@@ -384,10 +386,14 @@ else:
 print("\n=== 测试 9: TrustJudge 优化 ===")
 
 # 9a) _MimoLLM 初始化
+# "public" 只是 ZEN_API_KEY **未设置**时的兜底；CI 里该变量有值，必须自行隔离环境再断言
+_mimo_saved_key = os.environ.pop("ZEN_API_KEY", None)
 mimo = B._MimoLLM()
+if _mimo_saved_key is not None:
+    os.environ["ZEN_API_KEY"] = _mimo_saved_key
 assert mimo.model == "mimo-v2.5-free", "默认模型应为 mimo-v2.5-free"
 assert mimo.timeout == 30, "类默认超时应为 30s（b21ee89 快速降级；运行时由 daily_insight_judge_timeout 覆盖为 60）"
-assert mimo.api_key == "public", "默认 API key 应为 public"
+assert mimo.api_key == "public", "默认 API key 应为 public（仅 ZEN_API_KEY 缺失时）"
 print("_MimoLLM 初始化: model=%s, timeout=%d" % (mimo.model, mimo.timeout))
 
 # 9b) _MimoLLM 自定义参数
