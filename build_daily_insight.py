@@ -1794,30 +1794,77 @@ def _filter_cluster_items(cluster, phase1_label):
     return cluster
 
 
-def _build_event_material(cluster):
-    """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。"""
+def _build_event_material(cluster, numbered=False):
+    """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。
+    numbered=True 时片段带 [n] 编号并返回编号→来源映射，供 Phase 2 引用溯源。"""
     lines = []
-    for it in cluster.get("items", []):
+    refs = []
+    for idx, it in enumerate(cluster.get("items", []), 1):
         # 兼容 RAG chunk (source_type) 和旧格式 (_src)
         src = it.get("source_type", "") or it.get("_src", "?")
         title = it.get("title", "")
+        url = it.get("url", "") or it.get("link", "")
+        prefix = "[%d]" % idx if numbered else ""
         if src == "rss":
             body = it.get("text", "") or it.get("full_content") or it.get("summary") or ""
             body = _strip_html(body)[:800]
-            lines.append("[RSS/%s] %s\n%s" % (it.get("source", ""), title, body))
+            src_name = it.get("source", "")
+            lines.append("%s[RSS/%s] %s\n%s" % (prefix, src_name, title, body))
         elif src == "hot":
             plat = it.get("source", "") or it.get("platform", "")
-            lines.append("[热榜/%s #%s] %s" % (plat, it.get("rank", ""), title))
+            src_name = "热榜/%s" % plat
+            lines.append("%s[热榜/%s #%s] %s" % (prefix, plat, it.get("rank", ""), title))
         elif src == "aihot":
-            lines.append("[AIHOT/%s] %s\n%s" % (it.get("category", ""), title, it.get("summary", "")))
+            src_name = "AIHOT/%s" % it.get("category", "")
+            lines.append("%s[AIHOT/%s] %s\n%s" % (prefix, it.get("category", ""), title, it.get("summary", "")))
         elif src == "agihunt":
             ch = it.get("channel", "") or it.get("source", "")
-            lines.append("[AGI Hunt/%s hot=%.0f] %s\n%s" % (
-                ch, it.get("hot", 0), title, it.get("text", "")))
+            src_name = "AGI Hunt/%s" % ch
+            lines.append("%s[AGI Hunt/%s hot=%.0f] %s\n%s" % (
+                prefix, ch, it.get("hot", 0), title, it.get("text", "")))
         else:
             # 未知源类型，直接输出文本
-            lines.append("[%s/%s] %s\n%s" % (src, it.get("source", ""), title, it.get("text", "")[:500]))
+            src_name = "%s/%s" % (src, it.get("source", ""))
+            lines.append("%s[%s/%s] %s\n%s" % (prefix, src, it.get("source", ""), title, it.get("text", "")[:500]))
+        if numbered:
+            refs.append({"index": idx, "source": src_name, "title": title, "url": url})
+    if numbered:
+        return "\n---\n".join(lines), refs
     return "\n---\n".join(lines)
+
+
+def _validate_phase2_citations(parsed, mat_refs):
+    """校验 Phase 2 引用编号：剔除素材中不存在的编号，回填 cited_sources（含 URL）。"""
+    valid = {r["index"]: r for r in mat_refs}
+    cites = parsed.get("citations")
+    normalized = {}
+    cited_idx = set()
+    if isinstance(cites, dict):
+        for field, refs in cites.items():
+            if isinstance(refs, int) or (isinstance(refs, str) and refs.isdigit()):
+                refs = [refs]
+            if not isinstance(refs, list):
+                continue
+            keep = []
+            for r in refs:
+                # LLM 常输出字符串编号，统一归一为 int
+                if isinstance(r, str) and r.strip().isdigit():
+                    r = int(r.strip())
+                if isinstance(r, int) and r in valid:
+                    keep.append(r)
+            normalized[field] = keep
+            cited_idx.update(keep)
+    parsed["citations"] = normalized
+    seen_url = set()
+    cited_sources = []
+    for i in sorted(cited_idx):
+        r = valid[i]
+        if r.get("url") and r["url"] in seen_url:
+            continue
+        seen_url.add(r.get("url"))
+        cited_sources.append(dict(r))
+    parsed["cited_sources"] = cited_sources
+    return parsed
 
 
 # ── Phase 1 LLM：全事件摘要 + 主题导语 ──
@@ -2189,7 +2236,8 @@ _SYSTEM_PROMPT_P2 = """
 (A) Audience: AI 从业者、科技媒体编辑、技术决策者。
 
 (R) Response: 严格输出 JSON：
-{"event_reconstruction": "...", "impact_analysis": "...", "source_divergence": "...", "quote": "...", "outlook": "...", "confidence": "high|medium|low"}
+{"event_reconstruction": "...", "impact_analysis": "...", "source_divergence": "...", "quote": "...", "outlook": "...", "confidence": "high|medium|low", "citations": {"字段名": [素材编号]}}
+citations 为字段级来源索引：每个字段的结论必须标注其来自哪些素材片段（片段以 [n] 编号）。无法归属来源的内容不应存在。
 
 ## 正确示例
 {
@@ -2214,11 +2262,11 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
                 "source_divergence": "", "quote": "", "outlook": "",
                 "confidence": "low"}
 
-    material = _build_event_material(cluster)
+    material, mat_refs = _build_event_material(cluster, numbered=True)
     prompt = """今天是 %s。请深度解读以下事件。
 
 ## 事件：%s
-### 多源素材
+### 多源素材（每条以 [编号] 开头，引用时必须使用这些编号）
 %s
 
 ### 摘要
@@ -2241,7 +2289,14 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
   "source_divergence": "信源分歧（具体指出哪个源持什么角度，无分歧则写'各源报道角度一致'）",
   "quote": "素材中最有分量的一句原文引用",
   "outlook": "后续展望（1-2句话，基于素材中的信号和趋势推断下一步发展，不得编造素材中不存在的信息）",
-  "confidence": "high|medium|low"
+  "confidence": "high|medium|low",
+  "citations": {
+    "event_reconstruction": [1, 3],
+    "impact_analysis": [1],
+    "source_divergence": [1, 2, 3],
+    "quote": 2,
+    "outlook": [3]
+  }
 }
 
 约束：
@@ -2253,6 +2308,8 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
 - 禁止使用"值得关注""引发讨论""未来可期"等空话，每句话必须有信息增量
 - outlook 必须基于素材中已有的信号和趋势进行推断，不得编造
 - 所有陈述必须基于素材
+- citations 为字段级引用：每个字段的结论来自哪些素材编号（整数数组，quote 填单个编号）。
+  无法归属到任何素材编号的句子必须删除；编号只能使用素材中出现过的 [n]
 """
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P2},
@@ -2277,6 +2334,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
                 "event_reconstruction": "", "impact_analysis": "",
                 "source_divergence": "", "quote": "", "outlook": "",
                 "confidence": "low"}
+    parsed = _validate_phase2_citations(parsed, mat_refs)
     parsed["status"] = "ok"
     return parsed
 
@@ -4014,7 +4072,16 @@ def main():
                 c["deep_analysis"] = deep
                 if deep.get("status") == "ok":
                     has_analysis = True
-                    print("[每日洞察] 深度解读完成: %s" % c.get("label", "")[:30])
+                    # 引用溯源回填：key_links 优先取实际被引用的素材链接（防 LLM 乱填同质 URL）
+                    _cited_urls = []
+                    for s in deep.get("cited_sources", []):
+                        u = s.get("url", "")
+                        if u and u not in _cited_urls:
+                            _cited_urls.append(u)
+                    if _cited_urls:
+                        c["key_links"] = _cited_urls[:3]
+                    print("[每日洞察] 深度解读完成: %s (引用 %d 源)" % (
+                        c.get("label", "")[:30], len(deep.get("cited_sources", []))))
                 else:
                     print("[每日洞察] 深度解读降级: %s (%s)" % (
                         c.get("label", "")[:30], deep.get("reason", "unknown")))
