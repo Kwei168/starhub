@@ -26,7 +26,11 @@ const GTX_CONCURRENCY = 2;   // GTX 并发上限（bulk 模式 + full 兜底）�
 const AGNES_FALLBACK_MAX = 30; // bulk 模式 Agnes 兜底条数上限：浏览器 GTX CORS 全灭时 bulk 流量全部涌入
 
 // 多 key 轮询（429 自动切换，对齐 build_rss_aggregator.py 的 AgnesLLM 行为）
-const AGNES_KEYS = [process.env.AGNES_API_KEY, process.env.AGNES_API_KEY_2].filter(Boolean);
+const AGNES_KEYS = [
+  process.env.AGNES_API_KEY,
+  ...(process.env.AGNES_API_KEYS || '').split(',').map(s => s.trim()).filter(Boolean),
+  process.env.AGNES_API_KEY_2,
+].filter(Boolean);
 let agnesKeyIdx = 0;
 
 // ── OpenCode Zen 免费模型轮询 ──

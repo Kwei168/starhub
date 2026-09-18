@@ -28,6 +28,7 @@ jobs:
     # 步骤级 env 会让重试构建拿不到翻译 key（退化）与 GitHub API 配额（403）
     env:
       AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+      AGNES_API_KEYS: ${{ secrets.AGNES_API_KEYS }}
       AGNES_API_KEY_2: ${{ secrets.AGNES_API_KEY_2 }}
       SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
       ZEN_API_KEY: ${{ secrets.ZEN_API_KEY || secrets.OPENCODE_KEY }}

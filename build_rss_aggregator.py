@@ -148,7 +148,12 @@ _tier4_success_streak = {}             # {source_key: 连续成功次数}
 # ── 翻译统计 
 _TRANS_STATS = {"agnes": 0, "zen": 0, "google": 0, "bing": 0, "mymemory": 0, "dict": 0, "skip": 0, "fail": 0, "cache_hit": 0}
 # GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
-_AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
+# 多 key 轮询：AGNES_API_KEY（主）+ AGNES_API_KEYS（逗号分隔附加），429 自动切换
+_AGNES_KEYS = [k.strip() for k in os.environ.get("AGNES_API_KEY", "").split(",") if k.strip()]
+_extra_agnes = os.environ.get("AGNES_API_KEYS", "")
+if _extra_agnes:
+    _AGNES_KEYS.extend(k.strip() for k in _extra_agnes.split(",") if k.strip())
+_AGNES_KEY_IDX = 0
 # Agnes 免费但限流：HTTP 错误与连续空响应都按连续违规指数退避（5→10→20→40 分钟，封顶 1h），
 # 期间直接走后续端点，不浪费每次 0.4s 的撞墙（对齐 Zen Z1 账本语义）
 _AGNES_BLOCK_UNTIL = 0.0
@@ -1570,7 +1575,7 @@ def _agnes_translate(text, timeout=20):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + _AGNES_KEY,
+            "Authorization": "Bearer " + _AGNES_KEYS[_AGNES_KEY_IDX],
             "User-Agent": "starhub-auto-update",
         },
     )
@@ -1594,8 +1599,14 @@ def _agnes_translate(text, timeout=20):
                     print("[翻译] Agnes 连续 %d 次空响应，暂停直连 %d 分钟" % (_AGNES_EMPTY_LIMIT, block_s // 60), file=sys.stderr)
         return out
     except urllib.error.HTTPError as e:
-        # 对齐 Zen Z1 语义：任何 HTTP 错误都入账本（429 限流 / 401/403 key 问题 / 5xx 上游故障），
-        # 锁内幂等——同波并发失败只记一次违规，罚期不被并发覆盖翻倍
+        # 429 限流：先轮转到下一个 key，如果全部 key 都试过则入账本罚期
+        global _AGNES_KEY_IDX
+        if e.code == 429 and len(_AGNES_KEYS) > 1:
+            with _TRANS_LOCK:
+                _AGNES_KEY_IDX = (_AGNES_KEY_IDX + 1) % len(_AGNES_KEYS)
+            print("[翻译] Agnes 429，轮转到 key[%d]" % _AGNES_KEY_IDX, file=sys.stderr)
+            return None
+        # 其他 HTTP 错误 / 全部 key 已轮转完：入账本罚期
         with _TRANS_LOCK:
             if _AGNES_BLOCK_UNTIL > time.time():
                 return None
@@ -1729,7 +1740,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     encoded = urllib.parse.quote(text[:500])
 
     # 0) Agnes AI（首选，免费但限流：429 后暂停直连，期间直接走后续端点）
-    if _AGNES_KEY and time.time() >= _AGNES_BLOCK_UNTIL:
+    if _AGNES_KEYS and time.time() >= _AGNES_BLOCK_UNTIL:
         try:
             cand = _agnes_translate(text, timeout=timeout)
             if cand and len(cand) > len(text) * 0.2:
@@ -6856,7 +6867,7 @@ def _generate_daily_summary(keywords, topics, stats, rising=None):
         parts.append("共 %d 篇文章，其中近 24 小时新增 %d 篇" % (total, recent))
         return "。".join(parts)
     # ── Agnes AI 结构化摘要 ──
-    if not _AGNES_KEY:
+    if not _AGNES_KEYS:
         return _template_summary()
     system_prompt = (
         "你是一名高级科技情报分析师。你的核心能力是从海量碎片化信息中提炼核心逻辑，"
@@ -6915,7 +6926,7 @@ def _generate_daily_summary(keywords, topics, stats, rising=None):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + _AGNES_KEY,
+            "Authorization": "Bearer " + _AGNES_KEYS[_AGNES_KEY_IDX],
             "User-Agent": "starhub-auto-update",
         },
     )
