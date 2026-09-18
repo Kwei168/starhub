@@ -2252,7 +2252,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
 - confidence: 多源交叉验证=high，单一信源=low
 - 禁止使用"值得关注""引发讨论""未来可期"等空话，每句话必须有信息增量
 - outlook 必须基于素材中已有的信号和趋势进行推断，不得编造
-
+"""
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P2},
         {"role": "user", "content": prompt},
