@@ -56,3 +56,29 @@ class TestBubbleV2:
                                      "summary": "s2", "items": []}]
         out = bdi._select_bubble_events(clusters, self.profile, top_n=1)
         assert len(out) == 1 and out[0]["category"] == "agriculture"
+
+    def test_main_categories_never_bubble(self):
+        # 对抗审查 P2-4：policy/funding 等 8 个主类别是 Phase 1 真实枚举，
+        # 兜底路径不得把主事件原样复制进破茧栏
+        clusters = self.clusters + [{"label": "融资新闻", "category": "funding",
+                                     "summary": "s3", "items": [], "key_links": []},
+                                    {"label": "监管新政", "category": "policy",
+                                     "summary": "s4", "items": [], "key_links": []}]
+        out = bdi._select_bubble_events(clusters, self.profile, top_n=3)
+        assert all(c["category"] not in ("funding", "policy", "industry", "consumer",
+                                         "research", "ai-models", "ai-products",
+                                         "developer") for c in out)
+
+    def test_null_label_no_crash(self):
+        clusters = self.clusters + [{"label": None, "category": "agriculture",
+                                     "summary": "s", "items": []}]
+        out = bdi._select_bubble_events(clusters, self.profile, top_n=1)
+        assert isinstance(out, list)  # 不抛 TypeError
+
+    def test_stale_chunk_excluded(self):
+        # 对抗审查 P2-5：all_chunks 实为 merged_chunks（含 7 天前缓存），
+        # 超龄素材不得回潮上破茧栏
+        pool = [_chunk("30天前的旧新闻", "finance", hot=9, days_ago=30),
+                _chunk("昨日降准", "finance", hot=3, days_ago=1)]
+        out = bdi._select_bubble_events(self.clusters, self.profile, all_chunks=pool, top_n=5)
+        assert [c["label"] for c in out] == ["昨日降准"]

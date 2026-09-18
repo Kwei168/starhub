@@ -99,8 +99,12 @@ jobs:
           python test_insight_bad_date.py
           python test_daily_insight.py
           python -m pytest tests/daily_insight/ -q
-          # 测试会真实写盘受版本控制的产物（daily-insight.json / ai-daily.html 等），
-          # 以及 gitignored 的向量缓存；不清掉就会污染第 8 步的真实构建与最终提交。
+
+      # 独立 always() 步骤：此前清理与被测命令同块，测试失败时 bash -e 会跳过清理，
+      # 脏工作区（测试写盘的 daily-insight.json / tracking.jsonl 等）会污染第 8 步真实构建与提交
+      - name: Restore worktree after insight tests
+        if: always()
+        run: |
           git checkout -- .
           git clean -fdq
           rm -f emb_cache.json

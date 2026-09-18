@@ -66,3 +66,25 @@ class TestQuickScore:
         items = [_item("rss", "finance", url="https://f/%d" % i) for i in range(4)]
         cluster = {"label": "财经事件", "items": items}
         assert bdi._quick_score_event(cluster) <= 85
+
+    def test_null_label_no_crash(self):
+        # 对抗审查 P1-1：label 为 None（LLM 输出 null 时 :4203 直接赋 None）
+        items = [_item("rss", "ai", url="https://a/%d" % i) for i in range(3)]
+        cluster = {"label": None, "items": items}
+        assert bdi._quick_score_event(cluster, yesterday_labels={"X"}) >= 0
+
+    def test_low_tag_coverage_neutral(self):
+        # 对抗审查 P1-2：缓存过渡期 8 条旧无 tag + 1 条标 other，
+        # 不能让唯一一条新标记把相关性打到 0 而误杀深度分析
+        items = []
+        for i in range(7):
+            it = _item("rss", "ai", url="https://mix/%d" % i)
+            del it["topic_tag"]
+            items.append(it)
+        for st in ("hot", "aihot"):
+            it = _item(st, "ai", url="https://mix/" + st)
+            del it["topic_tag"]
+            items.append(it)
+        items.append(_item("agihunt", "other", url="https://mix/new"))
+        cluster = {"label": "过渡期事件", "items": items}
+        assert bdi._quick_score_event(cluster) >= bdi.MIN_DEEP_SCORE
