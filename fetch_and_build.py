@@ -494,13 +494,13 @@ def build_trending(token, desc_zh):
 
 def generate_ai_summary(rising_top10):
     """调用 Agnes AI API 生成 AI 态势一句话摘要。失败返回 None（静默降级）。"""
-    api_key = os.environ.get("AGNES_API_KEY")
-    if not api_key:
-        print("[AI摘要] 跳过: 未配置 AGNES_API_KEY", file=sys.stderr)
-        return None
-    # 多 key 轮询：AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加），429 自动换 key
-    keys = [k.strip() for k in api_key.split(",") if k.strip()]
+    # 多 key 轮询：AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加）
+    # 必须先建池再判空：否则主 key 缺失/全逗号时会漏掉附加 key 或无任何输出地返回
+    keys = [k.strip() for k in os.environ.get("AGNES_API_KEY", "").split(",") if k.strip()]
     keys += [k.strip() for k in os.environ.get("AGNES_API_KEYS", "").split(",") if k.strip()]
+    if not keys:
+        print("[AI摘要] 跳过: 未配置 AGNES_API_KEY / AGNES_API_KEYS", file=sys.stderr)
+        return None
     if not rising_top10:
         print("[AI摘要] 跳过: rising 列表为空", file=sys.stderr)
         return None
@@ -538,18 +538,32 @@ def generate_ai_summary(rising_top10):
             try:
                 with urllib.request.urlopen(req, timeout=30) as r:
                     data = json.loads(r.read().decode("utf-8"))
+                choices = data.get("choices") or []
+                if not choices:
+                    print("[AI摘要] 响应无 choices（key %d/%d）" % (_ki + 1, len(keys)), file=sys.stderr)
+                    continue
+                content = (choices[0].get("message", {}).get("content") or "").strip()
             except urllib.error.HTTPError as e:
-                print("[AI摘要] API 调用失败: HTTP %s（key %d/%d）" % (e.code, _ki + 1, len(keys)),
-                      file=sys.stderr)
+                # 仅限流与上游故障值得换 key；认证类错误换 key 也是白烧
+                if e.code in (401, 403):
+                    print("[AI摘要] 密钥无效 HTTP %s，停止轮询" % e.code, file=sys.stderr)
+                    return None
+                if e.code == 429 or e.code >= 500:
+                    print("[AI摘要] HTTP %s（key %d/%d），换 key 重试" % (e.code, _ki + 1, len(keys)),
+                          file=sys.stderr)
+                    continue
+                print("[AI摘要] API 调用失败: HTTP %s" % e.code, file=sys.stderr)
+                return None
+            except (urllib.error.URLError, TimeoutError, ValueError) as e:
+                # 超时/DNS/JSON 解析失败都是可重试的瞬时故障，不能让它打死剩余 key
+                print("[AI摘要] 请求异常（key %d/%d）: %s" % (_ki + 1, len(keys), e), file=sys.stderr)
                 continue
-            choice = data.get("choices", [{}])[0]
-            content = (choice.get("message", {}).get("content") or "").strip()
             if content and len(content) <= 100:
                 print("[AI摘要] %s" % content)
                 return content
             # content 为空/超长：换 key 无意义，打印诊断后结束
             print("[AI摘要] 响应不合格: content_len=%d finish_reason=%r usage=%s"
-                  % (len(content), choice.get("finish_reason"), data.get("usage")), file=sys.stderr)
+                  % (len(content), choices[0].get("finish_reason"), data.get("usage")), file=sys.stderr)
             break
     except Exception as e:
         print("[AI摘要] 失败: %s" % e, file=sys.stderr)

@@ -70,24 +70,40 @@ jobs:
       - name: Install insight engine dependencies
         run: pip install llama-index-core llama-index-embeddings-fastembed fastembed faiss-cpu rank-bm25
 
-      # 质量门禁：4819686 丢掉一个闭合 """ 就让每日洞察连续失败数天且无人察觉，
-      # 而编译检查 + 现有测试 5 秒内就能拦住。放在恢复缓存与任何构建之前，
-      # 失败即中断，不产生垃圾提交。
-      - name: Quality gate (syntax + tests)
+      # ── 质量门禁 A：语法（blocking）──
+      # 起因：4819686 改写 Phase 2 prompt 时丢掉一个闭合 """，每日洞察连续失败数天且无人察觉，
+      # 因为此前没有任何步骤做过编译/解析检查。纯静态检查，无网络无副作用，可安全中断构建。
+      - name: Quality gate A — syntax (blocking)
         run: |
-          echo "── 语法编译全部根目录 Python ──"
           python -m py_compile *.py
-          echo "── 洞察引擎测试 ──"
+          python -m compileall -q tests
+          for f in api/*.js; do node --check "$f"; done
+          echo "语法门禁通过"
+
+      # ── 质量门禁 B：洞察测试（advisory）──
+      # 本 job 是唯一产出者（stars/RSS/ai-daily/每日洞察 + bot 提交 + Vercel 部署），
+      # 硬失败会冻结每天 5 个定时档并阻断一行热修的上线，故先观察再收紧。
+      # 清空全部上游 key：测试不需要凭证，带着真 key 会打真实 API（run_analysis 每场 18+ 次嵌入）。
+      - name: Quality gate B — insight tests (advisory)
+        continue-on-error: true
+        env:
+          AGNES_API_KEY: ""
+          AGNES_API_KEYS: ""
+          SILICONFLOW_API_KEY: ""
+          ZEN_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          AGIHUNT_API_KEY: ""
+        run: |
           python test_insight_engine.py
           python test_insight_guard_v3.py
           python test_insight_bad_date.py
-          echo "── 每日洞察管线测试 ──"
           python test_daily_insight.py
-          # 测试会真实写盘 daily-insight.json / ai-daily.html 等受版本控制的产物，
-          # 门禁只验证代码，必须在此丢弃，避免测试桩数据进入后续构建与提交。
+          # 测试会真实写盘受版本控制的产物（daily-insight.json / ai-daily.html 等），
+          # 以及 gitignored 的向量缓存；不清掉就会污染第 8 步的真实构建与最终提交。
           git checkout -- .
           git clean -fdq
-          echo "质量门禁通过，工作区已还原"
+          rm -f emb_cache.json
+          echo "洞察测试执行完毕，工作区已还原"
 
       - name: Restore embedding cache
         id: cache-restore

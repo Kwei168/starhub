@@ -29,6 +29,9 @@ def md5k(t):
 def setup(cache_vectors):
     ie._SF_KEY = "k"
     ie._SF_EMBED_MODEL = "BAAI/bge-m3"
+    # _get_embeddings 的 fastembed 回退分支（insight_engine.py:664）不受 _SF_KEY 门控，
+    # 而 CI 会 pip install fastembed；不关掉它，V3-1/V3-2 的 assert vecs is None 在 CI 必红。
+    ie.FASTEMBED_AVAILABLE = False
     cache_file = os.path.join(tempfile.mkdtemp(), "emb_cache.json")
     with open(cache_file, "w", encoding="utf-8") as f:
         json.dump({"model": "BAAI/bge-m3", "vectors": cache_vectors}, f)
