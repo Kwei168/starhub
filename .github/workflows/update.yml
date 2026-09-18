@@ -31,6 +31,7 @@ jobs:
       AGNES_API_KEY_2: ${{ secrets.AGNES_API_KEY_2 }}
       SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
       ZEN_API_KEY: ${{ secrets.ZEN_API_KEY || secrets.OPENCODE_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       AGIHUNT_API_KEY: ${{ secrets.AGIHUNT_API_KEY }}
     steps:
       - name: Checkout

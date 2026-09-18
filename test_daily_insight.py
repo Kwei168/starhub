@@ -610,5 +610,66 @@ else:
 
 print("[PASS] TrustJudge 优化功能全部正确 (含对抗性审查修复)")
 
+# ── 测试 9n: _OpenRouterLLM ──
+print("\n=== 测试 9n: _OpenRouterLLM ===")
+
+# 9n-1) 初始化
+or_llm = B._OpenRouterLLM(api_key="test-key")
+assert or_llm.model == "qwen/qwen3.8-27b:free", "默认模型应为 qwen"
+assert len(or_llm.models) == 2, "应有 2 个默认模型"
+print("_OpenRouterLLM 初始化: models=%s" % or_llm.models)
+
+# 9n-2) 自定义模型列表
+or_custom = B._OpenRouterLLM(api_key="test-key", models=["model-a", "model-b", "model-c"])
+assert len(or_custom.models) == 3, "应支持自定义模型列表"
+assert or_custom.model == "model-a", "对外模型名应为第一个"
+print("_OpenRouterLLM 自定义模型: OK")
+
+# 9n-3) 三级降级链初始化
+os.environ["OPENROUTER_API_KEY"] = "test-or-key"
+old_key = os.environ.get("AGNES_API_KEY", "")
+os.environ["AGNES_API_KEY"] = "test-agnes-key"
+chain = B._init_judge_llm({"daily_insight_judge_provider": "mimo"})
+assert isinstance(chain, B._FallbackJudgeLLM), "应返回 FallbackJudgeLLM"
+assert isinstance(chain.fallback, B._FallbackJudgeLLM), "fallback 应为嵌套的 FallbackJudgeLLM (三级链)"
+assert isinstance(chain.fallback.fallback, B._LLM), "第三级应为 agnes"
+print("三级降级链: mimo -> openrouter -> agnes OK")
+
+# 9n-4) 无 OPENROUTER_API_KEY 时回退两级链
+os.environ.pop("OPENROUTER_API_KEY", None)
+chain2 = B._init_judge_llm({"daily_insight_judge_provider": "mimo"})
+assert isinstance(chain2, B._FallbackJudgeLLM), "应返回 FallbackJudgeLLM"
+assert not isinstance(chain2.fallback, B._FallbackJudgeLLM), "无 OpenRouter 时不应嵌套"
+print("无 OpenRouter key: mimo -> agnes 两级链 OK")
+
+# 9n-5) 三级链降级行为
+class _SuccessLLM:
+    def __init__(self, name, result):
+        self.model = name
+        self._result = result
+        self._call_log = []
+    def complete(self, messages, temperature=0.3, max_tokens=2000):
+        self._call_log.append({"model": self.model})
+        return self._result
+
+primary_fail = _SuccessLLM("mimo", "")
+mid_fail = _SuccessLLM("openrouter", "")
+final_ok = _SuccessLLM("agnes", '{"scores": {"context_coverage": 0.7}}')
+chain3 = B._FallbackJudgeLLM(primary_fail, B._FallbackJudgeLLM(mid_fail, final_ok))
+result = chain3.complete([{"role": "user", "content": "test"}])
+assert result == '{"scores": {"context_coverage": 0.7}}', "三级链应降级到最终成功"
+assert len(chain3._call_log) == 1, "应记录一次调用"
+assert chain3._call_log[0]["fallback"] is True, "应标记为 fallback"
+assert chain3._call_log[0]["model"] == "agnes", "实际模型应为 agnes"
+print("三级链降级: mimo(X) -> openrouter(X) -> agnes(OK) OK")
+
+if old_key:
+    os.environ["AGNES_API_KEY"] = old_key
+else:
+    os.environ.pop("AGNES_API_KEY", None)
+os.environ.pop("OPENROUTER_API_KEY", None)
+
+print("[PASS] _OpenRouterLLM + 三级降级链正确")
+
 print("\n" + "=" * 50)
 print("全部测试通过！(RAG 管线 + RAGAS + 增量向量缓存 + TrustJudge 优化)")
