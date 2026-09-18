@@ -1592,8 +1592,8 @@ class _FallbackJudgeLLM:
 
 
 def _init_judge_llm(config=None):
-    """初始化 Judge LLM（mimo → OpenRouter → agnes 三级降级链）。
-    配置项可通过 config dict 覆盖。"""
+    """初始化 Judge LLM（mimo → agnes 两级降级链）。
+    OpenRouter 已移除（长期不通）。配置项可通过 config dict 覆盖。"""
     cfg = config or {}
     judge_provider = cfg.get("daily_insight_judge_provider", "mimo")
     judge_model = cfg.get("daily_insight_judge_model", "mimo-v2.5-free")
@@ -1602,16 +1602,8 @@ def _init_judge_llm(config=None):
     agnes = _init_llm()  # 只创建一次 agnes 实例，避免 key rotation 状态分裂
     if judge_provider == "mimo":
         primary = _MimoLLM(model=judge_model, timeout=judge_timeout)
-        # OpenRouter 免费模型作为中间降级（Qwen/GLM）
-        or_key = os.environ.get("OPENROUTER_API_KEY", "")
-        if or_key:
-            openrouter = _OpenRouterLLM(api_key=or_key, timeout=judge_timeout)
-            if agnes:
-                # 三级链: mimo → openrouter → agnes
-                return _FallbackJudgeLLM(primary, _FallbackJudgeLLM(openrouter, agnes))
-            # 两级链: mimo → openrouter
-            return _FallbackJudgeLLM(primary, openrouter)
         if agnes:
+            # 两级链: mimo → agnes
             return _FallbackJudgeLLM(primary, agnes)
         return primary
     # 非 mimo provider：直接用 agnes，无需 FallbackJudgeLLM 包装
