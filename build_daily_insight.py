@@ -45,7 +45,7 @@ except ImportError:
 BJT = datetime.timezone(datetime.timedelta(hours=8))
 NOW_BJ = None  # 在 main() 中初始化
 SEMANTIC_CLUSTER_THRESHOLD = 0.75  # 语义聚类余弦相似度阈值
-MAX_QUERIES = 50  # 查询总数上限（扩容以容纳 RSS 标题查询）
+MAX_QUERIES = 80  # 查询总数上限（扩容以覆盖更多话题维度）
 
 # ── 数据文件路径 ──
 RSS_HISTORY_FILE = "rss_history.json"
@@ -3902,7 +3902,7 @@ def main():
 
         # Phase 1 LLM: 全事件摘要（传入全局检索上下文，解决生成/评估不对齐问题）
         _ragas_ctx = _build_ragas_context(clusters, retrieved_for_ragas) if retrieved_for_ragas else ""
-        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:12000] if _ragas_ctx else None)
+        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:16000] if _ragas_ctx else None)
         if p1_result:
             theme = p1_result.get("theme", "")
             p1_events = p1_result.get("events", [])
