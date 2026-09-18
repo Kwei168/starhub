@@ -2342,32 +2342,85 @@ def _build_read_profile(history):
     return profile
 
 
-def _select_bubble_events(clusters, read_profile, top_n=5):
-    """选取与常读 category 交集最小的事件作为破茧栏。"""
-    if not clusters or not read_profile:
-        sorted_c = sorted(clusters, key=lambda c: c.get("score", 0))
-        return sorted_c[:top_n]
+def _select_bubble_events(clusters, read_profile, residual_chunks=None, top_n=5):
+    """破茧栏：从主事件列表之外的素材中选取差异化内容。
 
-    max_freq = max(read_profile.values()) if read_profile else 1
-    scored = []
+    设计初衷：反信息茧房 — 展示读者在主流事件中看不到的视角。
+    参照 QWis Portal 破茧栏语义：与用户常读分组交集最小的内容。
+
+    策略：
+    1. 从 residual_chunks（未被主事件采用的素材）中按 source_type 分组
+    2. 优先选择与主事件 category 和用户常读 category 均不同的源
+    3. 每源取代表性条目，生成破茧卡片
+    """
+    main_cats = set(c.get("category", "") for c in clusters if c.get("category"))
+
+    # 收集残差素材：不在任何主事件中的 chunks
+    if residual_chunks is None:
+        residual_chunks = []
+
+    main_urls = set()
     for c in clusters:
-        cat = c.get("category", "")
-        freq = read_profile.get(cat, 0)
-        novelty = 1.0 - (freq / max_freq) if max_freq > 0 else 1.0
-        scored.append((c, novelty))
+        for it in c.get("items", []):
+            url = it.get("url", "")
+            if url:
+                main_urls.add(url)
+            title = (it.get("title", "") or "").strip()
+            if title:
+                main_urls.add(title)
 
-    scored.sort(key=lambda x: x[1], reverse=True)
+    residual = []
+    for chunk in residual_chunks:
+        url = chunk.get("url", "")
+        title = (chunk.get("title", "") or "").strip()
+        if url and url in main_urls:
+            continue
+        if title and title in main_urls:
+            continue
+        residual.append(chunk)
+
+    if not residual:
+        return []
+
+    # 按 source_type 分组
+    by_source = {}
+    for chunk in residual:
+        src = chunk.get("source_type", "") or chunk.get("_src", "") or "other"
+        by_source.setdefault(src, []).append(chunk)
+
+    # 评分：与主事件 category 和用户常读均不同的源得分更高
+    max_freq = max(read_profile.values()) if read_profile else 1
+    source_scores = []
+    for src, chunks in by_source.items():
+        src_cat = chunks[0].get("channel", "") or chunks[0].get("category", "")
+        cat_novelty = 1.0 if src_cat and src_cat not in main_cats else 0.5
+        read_freq = read_profile.get(src_cat, 0)
+        read_novelty = 1.0 - (read_freq / max_freq) if max_freq > 0 else 0.5
+        score = cat_novelty * 0.6 + read_novelty * 0.4 + len(chunks) * 0.01
+        source_scores.append((src, chunks, score, src_cat))
+
+    source_scores.sort(key=lambda x: x[2], reverse=True)
+
+    # 生成破茧卡片
     result = []
-    for c, novelty in scored[:top_n]:
-        cat = c.get("category", "")
-        reason = "与你常读的 %s 领域不同" % ", ".join(
-            k for k, v in sorted(read_profile.items(), key=lambda x: -x[1])[:2]
-        ) if read_profile else "信息增量"
+    read_top = ", ".join(k for k, v in sorted(read_profile.items(), key=lambda x: -x[1])[:2]) if read_profile else ""
+    for src, chunks, score, src_cat in source_scores[:top_n]:
+        best = max(chunks, key=lambda c: float(c.get("hot", 0) or 0))
+        label = (best.get("title", "") or "").strip()[:80]
+        text = (best.get("text", "") or "").strip()[:200]
+        if not label:
+            continue
+        if src_cat and src_cat not in main_cats:
+            reason = "来自 %s 视角，与主流事件不同" % src
+        elif read_top:
+            reason = "与你常读的 %s 领域不同" % read_top
+        else:
+            reason = "信息增量"
         result.append({
-            "label": c.get("label", ""),
-            "summary": c.get("summary", ""),
-            "category": cat,
-            "score": c.get("score", 0),
+            "label": label,
+            "summary": text if text else best.get("summary", ""),
+            "category": src_cat,
+            "score": score,
             "reason": reason,
         })
     return result
@@ -3880,7 +3933,7 @@ def main():
     # ── Phase 3.1: 破茧栏 + 输出 JSON ──
     history = _load_history()
     read_profile = _build_read_profile(history)
-    bubble_breaker = _select_bubble_events(clusters, read_profile)
+    bubble_breaker = _select_bubble_events(clusters, read_profile, residual_chunks=retrieved_for_ragas)
     _write_insight_json(clusters, theme, has_analysis, ragas_eval, bubble_breaker)
 
     # ── Phase 3.3: 更新历史 ──
