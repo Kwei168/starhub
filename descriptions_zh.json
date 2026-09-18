@@ -432,5 +432,6 @@
  "coder/coder": "为开发人员及其代理提供安全的环境",
  "anthropics/knowledge-work-plugins": "主要供知识工作者在 Claude Cowork 中使用的开源插件存储库",
  "dashscope-sdk/agentscope-java": "构建分布式、生产级、长期运行的代理。",
- "ARahim3/cachebeat": "克劳德代码的一个小技巧，可以在空闲会话期间使您的提示缓存保持温暖，这样您的下一条消息就可以从缓存中读取，而不是支付全价。"
+ "ARahim3/cachebeat": "克劳德代码的一个小技巧，可以在空闲会话期间使您的提示缓存保持温暖，这样您的下一条消息就可以从缓存中读取，而不是支付全价。",
+ "Fission-AI/OpenSpec": "AI 编码助手的规范驱动开发 (SDD)。"
 }
