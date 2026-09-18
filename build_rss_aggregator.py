@@ -1558,7 +1558,7 @@ def _detect_lang(text):
 
 def _agnes_translate(text, timeout=20):
     """Agnes AI 翻译（OpenAI 兼容接口，agnes-2.5-flash）。失败返回 None。"""
-    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES, _AGNES_EMPTY_STREAK
+    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES, _AGNES_EMPTY_STREAK, _AGNES_KEY_IDX
     payload = json.dumps({
         "model": "agnes-2.5-flash",
         "messages": [
@@ -1600,7 +1600,6 @@ def _agnes_translate(text, timeout=20):
         return out
     except urllib.error.HTTPError as e:
         # 429 限流：先轮转到下一个 key，如果全部 key 都试过则入账本罚期
-        global _AGNES_KEY_IDX
         if e.code == 429 and len(_AGNES_KEYS) > 1:
             with _TRANS_LOCK:
                 _AGNES_KEY_IDX = (_AGNES_KEY_IDX + 1) % len(_AGNES_KEYS)
