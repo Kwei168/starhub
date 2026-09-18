@@ -100,7 +100,7 @@
 
 | 文件 | 行数 | 作用 |
 |---|---|---|
-| `insight_engine.py` | ~1988 | **LlamaIndex 语义分析引擎**（服务于 RSS 聚合页 AI 动态面板的 `analysis_snapshot.json`，与 build_daily_insight 是两条独立管线）。AgnesLLM 多 key 轮询 + 429 自动切换（注意：仍读 `AGNES_API_KEY_2/_3` 编号式 key，与其余模块的 `AGNES_API_KEYS` 逗号方案不一致，见 §8.14）；SiliconFlow bge-m3 API embedding（本地 fastembed 回退）；层级索引 + 手动余弦相似度检索（避向量维度不匹配）；RAGAS-inspired 评估 + 自纠错循环；话题聚类（embedding + TF-IDF 加权）；关键词提取（LLM + 分源关键词池）；深度洞察三视角独立生成（core_trends / rss_insights / narrative）；嵌入缓存 `emb_cache.json` 跨 run 持久化（5000 条上限） |
+| `insight_engine.py` | ~1984 | **LlamaIndex 语义分析引擎**（服务于 RSS 聚合页 AI 动态面板的 `analysis_snapshot.json`，与 build_daily_insight 是两条独立管线）。AgnesLLM 多 key 轮询 + 429 自动切换（2026-09-18 起统一为 `AGNES_API_KEYS` 逗号方案，与其余模块一致，见 §8.14）；SiliconFlow bge-m3 API embedding（本地 fastembed 回退）；层级索引 + 手动余弦相似度检索（避向量维度不匹配）；RAGAS-inspired 评估 + 自纠错循环；话题聚类（embedding + TF-IDF 加权）；关键词提取（LLM + 分源关键词池）；深度洞察三视角独立生成（core_trends / rss_insights / narrative）；嵌入缓存 `emb_cache.json` 跨 run 持久化（5000 条上限） |
 | `build_config.json` | 22 | 构建配置外置文件。控制 insight_engine 开关、LLM provider、max_documents、top_keywords/topics；`daily_insight_enabled`、`daily_insight_judge_provider/model/timeout`（当前 mimo / mimo-v2.5-free / 60s）、`daily_insight_cross_validation`（当前 true，双 prompt 交叉验证）等每日洞察参数；缺失键自动填充默认值 |
 | `build_logger.py` | ~120 | **构建日志系统**。JSONL 格式每日追加，14 天滚动清理；提供 `append()` / `cleanup()` / `summary()` API；供 workflow 与 `api/build_log.js` 消费 |
 
@@ -691,7 +691,7 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 - **轻量场/重场分级**：数据不足时走轻量路径（不携带旧 bad_date 名单）
 - **趋势快照 stale 标注**：过期数据标记 stale 而非丢弃
 
-**环境变量**：`AGNES_API_KEY`（必需）、`AGNES_API_KEY_2/_3`（编号式轮询；update.yml 自 09-18 起已停发，该引擎实际退化为单 key，见 §8.14）、`SILICONFLOW_API_KEY`（embedding）
+**环境变量**：`AGNES_API_KEY`（必需，可逗号分隔多 key）、`AGNES_API_KEYS`（逗号分隔附加 key，与主 key 合并成池）、`SILICONFLOW_API_KEY`（embedding）
 
 **配置**：`build_config.json` 控制开关、provider、max_documents 等参数
 
@@ -822,7 +822,7 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 ### 8.14 Agnes 多 key 轮询统一（2026-09-18）
 
 - 新方案：`AGNES_API_KEY`（主，可逗号分隔）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。已覆盖：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`。
-- **遗留待办（2026-09-18 核实仍未修复，远端 `a9a5ee1`）**：`insight_engine.py` 的 `configure_llm()` 仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量——该引擎实际退化为单 key。修复方式：改为与其余模块一致的 `AGNES_API_KEYS` 逗号方案，改后跑 `test_insight_*.py`。
+- **已修复（2026-09-18）**：`insight_engine.py` 的 `configure_llm()` 此前仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量，该引擎实际退化为单 key。现已统一为 `AGNES_API_KEYS` 逗号方案（主 key 亦可逗号分隔，与 `build_rss_aggregator.py` 完全对齐）。验证：假 key 环境下 key 池解析为 4 个；`test_insight_*.py` 无新增失败（`test_insight_engine.py` 2 项 RSS 日期过滤失败、`test_insight_guard_v3.py` 的 GBK 控制台 `UnicodeEncodeError` 均为改动前既有问题）。
 - 踩坑：`_AGNES_KEY_IDX` 等全局变量在函数内使用前必须先 `global` 声明（`1d2a93d` 修复过一处顺序 bug）。
 
 ---

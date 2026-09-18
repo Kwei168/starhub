@@ -243,15 +243,11 @@ def configure_llm(config):
     """Create an LLM instance based on config. Falls back to MockLLM."""
     provider = config.get("insight_llm_provider", "agnes")
     if provider == "agnes":
-        api_key = os.environ.get("AGNES_API_KEY", "")
-        if api_key:
-            # 读取备用 key（支持多 key 轮询抗 429 限流）
-            extra_keys = []
-            for suffix in ["_2", "_3"]:
-                k = os.environ.get(f"AGNES_API_KEY{suffix}", "")
-                if k:
-                    extra_keys.append(k)
-            return AgnesLLM(api_key=api_key, extra_keys=extra_keys or None)
+        # 多 key 轮询：AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加），429 自动切换
+        keys = [k.strip() for k in os.environ.get("AGNES_API_KEY", "").split(",") if k.strip()]
+        if keys:
+            keys.extend(k.strip() for k in os.environ.get("AGNES_API_KEYS", "").split(",") if k.strip())
+            return AgnesLLM(api_key=keys[0], extra_keys=keys[1:] or None)
         print("[insight_engine] AGNES_API_KEY not set, using MockLLM", file=sys.stderr)
     elif provider != "mock":
         print(f"[insight_engine] Unknown provider '{provider}', using MockLLM", file=sys.stderr)
