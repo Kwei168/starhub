@@ -526,9 +526,13 @@ def _has_cn(s):
 _TRANS_CACHE = {}
 _TRANS_STATS = {"agnes": 0, "google": 0, "bing": 0, "mymemory": 0, "google_alt": 0, "fail": 0, "skip": 0}
 _BING_TOKENS = None  # 构建内缓存，token 有效期 1 小时
-# GA 免费翻译端点（Google/Bing/MyMemory）已被数据中心 IP 封锁（429/401/timeout），
-# AGNES_API_KEY 存在时优先走 Agnes AI 付费接口（无 IP 封锁、稳定 ~1s/条），免费链降级为本地回退。
-_AGNES_KEY = os.environ.get("AGNES_API_KEY", "")
+# GA 免费翻译端点已被数据中心 IP 封锁（429/timeout），AGNES_API_KEY 存在时首选 Agnes AI。
+# 多 key 轮询：AGNES_API_KEY（主）+ AGNES_API_KEYS（逗号分隔附加），429 自动切换
+_AGNES_KEYS = [k.strip() for k in os.environ.get("AGNES_API_KEY", "").split(",") if k.strip()]
+_extra_agnes = os.environ.get("AGNES_API_KEYS", "")
+if _extra_agnes:
+    _AGNES_KEYS.extend(k.strip() for k in _extra_agnes.split(",") if k.strip())
+_AGNES_KEY_IDX = 0
 
 
 def _fetch_bing_tokens():
@@ -603,7 +607,7 @@ def _agnes_translate(text):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + _AGNES_KEY,
+            "Authorization": "Bearer " + (_AGNES_KEYS[_AGNES_KEY_IDX] if _AGNES_KEYS else ""),
             "User-Agent": "starhub-auto-update",
         },
     )
@@ -612,6 +616,15 @@ def _agnes_translate(text):
             data = json.loads(r.read().decode("utf-8"))
         cand = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         return cand or None
+    except urllib.error.HTTPError as ex:
+        # 429 限流：轮转到下一个 key
+        global _AGNES_KEY_IDX
+        if ex.code == 429 and len(_AGNES_KEYS) > 1:
+            _AGNES_KEY_IDX = (_AGNES_KEY_IDX + 1) % len(_AGNES_KEYS)
+            print("[AI晨报] Agnes 429，轮转到 key[%d]" % _AGNES_KEY_IDX, file=sys.stderr)
+            return None
+        print("[AI晨报] Agnes 翻译失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
+        return None
     except Exception as ex:
         print("[AI晨报] Agnes 翻译失败: %s: %s" % (type(ex).__name__, ex), file=sys.stderr)
         return None
@@ -633,7 +646,7 @@ def _translate_to_zh(text):
     result = None
 
     # ── 端点 0：Agnes AI（首选，无 IP 封锁）──
-    if not result and _AGNES_KEY:
+    if not result and _AGNES_KEYS:
         cand = _agnes_translate(text)
         if cand and _has_cn(cand):
             result = cand

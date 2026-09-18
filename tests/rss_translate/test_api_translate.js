@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 // 设置环境变量（必须在 import 模块之前）
 process.env.AGNES_API_KEY = 'test-key-1';
-process.env.AGNES_API_KEY_2 = 'test-key-2';
+process.env.AGNES_API_KEYS = 'test-key-2';
 
 // ── 辅助：构造 mock fetch 响应 ──
 function agnesResp(text) {

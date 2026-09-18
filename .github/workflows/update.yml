@@ -29,7 +29,6 @@ jobs:
     env:
       AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
       AGNES_API_KEYS: ${{ secrets.AGNES_API_KEYS }}
-      AGNES_API_KEY_2: ${{ secrets.AGNES_API_KEY_2 }}
       SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
       ZEN_API_KEY: ${{ secrets.ZEN_API_KEY || secrets.OPENCODE_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
