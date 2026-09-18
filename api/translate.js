@@ -29,7 +29,6 @@ const AGNES_FALLBACK_MAX = 30; // bulk 模式 Agnes 兜底条数上限：浏览�
 const AGNES_KEYS = [
   process.env.AGNES_API_KEY,
   ...(process.env.AGNES_API_KEYS || '').split(',').map(s => s.trim()).filter(Boolean),
-  process.env.AGNES_API_KEY_2,
 ].filter(Boolean);
 let agnesKeyIdx = 0;
 
