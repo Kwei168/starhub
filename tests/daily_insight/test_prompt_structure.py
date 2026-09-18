@@ -112,3 +112,19 @@ class TestRagasFallbackPrompt:
         src = open(os.path.join(os.path.dirname(__file__), "..", "..",
                                 "build_daily_insight.py"), encoding="utf-8").read()
         assert "诉讼监管动向、宏观格局类高分辨性主题必须优先纳入" in src
+
+
+class TestIter3FaithRel:
+    """第3轮：不确定性标注(faith) + 输出按热度排序(rel)。"""
+
+    def test_uncertainty_clause_in_prompts(self):
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "有争议" in src and "不得写成确定事实" in src
+
+    def test_order_events_desc_stable(self):
+        import build_daily_insight as b
+        cs = [{"label": "a", "editor_score": 60}, {"label": "b", "editor_score": 80},
+              {"label": "c", "editor_score": 80}, {"label": "d"}]
+        out = [c["label"] for c in b._order_events_for_output(cs)]
+        assert out == ["b", "c", "a", "d"]
