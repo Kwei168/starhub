@@ -110,7 +110,7 @@ JACCARD_EVENT_THRESHOLD = 0.35   # 检索后事件组装用
 
 # ── TopK ──
 MIN_EVENTS = 3
-MAX_EVENTS = 15
+MAX_EVENTS = 12
 DEEP_ANALYSIS_TOP_N = 3
 
 # ── RAG 参数 ──
@@ -1966,6 +1966,61 @@ def _deduplicate_after_phase1(clusters):
             print("[每日洞察] Phase 1 后去重(summary): %d → %d 个事件" % (len(merged), len(merged2)))
         merged = merged2
 
+    # 第三轮：实体级去重 — 捕获 label 不同但报道同一产品/事件的情况
+    # 原理：提取产品名、公司名、技术术语等关键实体，若两个 cluster 的核心实体
+    # 高度重叠（>50%）且 label 有最低限度文本相似（Jaccard>0.05），则合并
+    if len(merged) >= 2:
+        def _extract_entities(text):
+            """提取关键实体：英文产品/模型名 + 中文专有名词"""
+            entities = set()
+            t = (text or "")
+            # 英文实体：含数字/大写的词（模型名、产品名、公司名）
+            for w in re.findall(r'[A-Za-z][A-Za-z0-9._\-]*[0-9][A-Za-z0-9._\-]*', t):
+                entities.add(w.lower().rstrip('.'))
+            for w in re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)+', t):
+                entities.add(w.lower())
+            # 中文实体：引号内内容、「」内内容
+            for m in re.findall(r'[「「]([^」」]{2,20})[」」]', t):
+                entities.add(m)
+            return entities
+
+        merged3 = []
+        used3 = set()
+        for i in range(len(merged)):
+            if i in used3:
+                continue
+            ci = merged[i]
+            ei = _extract_entities(ci.get("label", ""))
+            for j in range(i + 1, len(merged)):
+                if j in used3:
+                    continue
+                cj = merged[j]
+                ej = _extract_entities(cj.get("label", ""))
+                if not ei or not ej:
+                    continue
+                overlap_e = ei & ej
+                entity_ratio = len(overlap_e) / min(len(ei), len(ej))
+                if entity_ratio < 0.5:
+                    continue
+                # 实体高度重叠 → 检查 label 是否有最低限度文本相似（防误合并不同话题）
+                ti = _simple_tokens(ci.get("label", ""))
+                tj = _simple_tokens(cj.get("label", ""))
+                jacc = _jaccard(ti, tj)
+                if jacc < 0.05:
+                    continue
+                # 合并
+                ci["items"].extend(cj.get("items", []))
+                ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
+                if cj.get("score", 0) > ci.get("score", 0):
+                    ci["label"] = cj.get("label", ci.get("label", ""))
+                    ci["summary"] = cj.get("summary", ci.get("summary", ""))
+                ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
+                used3.add(j)
+            merged3.append(ci)
+        if len(merged3) < len(merged):
+            print("[每日洞察] Phase 1 后去重(entity): %d → %d 个事件" % (len(merged), len(merged3)))
+        merged = merged3
+
     return merged
 
 
@@ -2416,12 +2471,15 @@ def _select_bubble_events(clusters, read_profile, residual_chunks=None, top_n=5)
             reason = "与你常读的 %s 领域不同" % read_top
         else:
             reason = "信息增量"
+        url = best.get("url", "") or best.get("link", "")
         result.append({
             "label": label,
             "summary": text if text else best.get("summary", ""),
             "category": src_cat,
             "score": score,
             "reason": reason,
+            "url": url,
+            "source": best.get("source", "") or best.get("platform", "") or src,
         })
     return result
 
@@ -2865,7 +2923,7 @@ def _update_history(clusters, theme):
             "status": c.get("status", "new"),
             "summary": c.get("summary", ""),
             "significance": c.get("significance", ""),
-            "key_links": c.get("key_links", []),
+            "key_links": c.get("key_links", []) or [it.get("url", "") for it in c.get("items", []) if it.get("url")][:3],
         }
         if c.get("deep_analysis"):
             evt["deep_analysis"] = c["deep_analysis"]
@@ -2919,7 +2977,7 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None, bubble_b
             "status": c.get("status", "new"),
             "summary": c.get("summary", ""),
             "significance": c.get("significance", ""),
-            "key_links": c.get("key_links", []),
+            "key_links": c.get("key_links", []) or [a["url"] for a in articles if a.get("url")][:3],
             "deep_analysis": c.get("deep_analysis"),
             "articles": articles,
         }
