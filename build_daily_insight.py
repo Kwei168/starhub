@@ -1441,7 +1441,11 @@ class _MimoLLM:
     API_URL = "https://opencode.ai/zen/v1/chat/completions"
 
     def __init__(self, api_key=None, model="mimo-v2.5-free", timeout=30):
-        self.api_key = api_key or os.environ.get("ZEN_API_KEY", "public")
+        # 与 build_rss_aggregator.py 的 _ZEN_KEY 同语义：空串也算未配置，且回退 OPENCODE_KEY
+        self.api_key = (api_key
+                        or os.environ.get("ZEN_API_KEY", "")
+                        or os.environ.get("OPENCODE_KEY", "")
+                        or "public")
         self.model = model
         self.timeout = timeout
 
@@ -1593,6 +1597,20 @@ class _FallbackJudgeLLM:
         if result:
             print("[JudgeLLM] %s 失败，已降级到 %s" % (self.primary.model, meta["model"]), file=sys.stderr)
         return result
+
+
+def _effective_judge_model(llm):
+    """实际打分的模型名。
+
+    _FallbackJudgeLLM.model 在构造时取主模型名且降级后不更新，直接写进 quality.meta
+    会让"标签是 mimo、分数其实是 agnes 打的"长期无人察觉；只有 _call_log 记录真实调用。
+    """
+    log = getattr(llm, '_call_log', None) or []
+    models = [e.get("model") for e in log if e.get("model")]
+    if not models:
+        return getattr(llm, 'model', 'unknown')
+    uniq = list(dict.fromkeys(models))
+    return uniq[0] if len(uniq) == 1 else "mixed(%s)" % "+".join(uniq)
 
 
 def _init_judge_llm(config=None):
@@ -2916,7 +2934,8 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     actual_variants = eval_result.get("_actual_variants", 1)
     eval_result.pop("_actual_variants", None)
     eval_result["meta"] = {
-        "judge_model": getattr(llm, 'model', 'unknown'),
+        "judge_model": _effective_judge_model(llm),
+        "judge_model_configured": getattr(llm, 'model', 'unknown'),
         "prompt_variants": actual_variants,
         "call_log": getattr(llm, '_call_log', []),
         "temperature": 0.2,
