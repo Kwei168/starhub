@@ -1,10 +1,10 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-09-18（同步每日深度洞察管线 build_daily_insight.py、RAGAS 评估-修正闭环、Agnes 四 key 轮询、RSS 快照出仓等重大变更；手册基线为 `e3c0313`，其后 25 个实质提交已全部核对）
+> 最后更新：2026-09-18（同步每日深度洞察管线 build_daily_insight.py、RAGAS 评估-修正闭环、Agnes 多 key 轮询、RSS 快照出仓等重大变更；手册基线为 `e3c0313`，其后 25 个实质提交已全部核对。同日另完成一轮修复：Phase 2 prompt 语法与接地约束、6 个 Agnes 调用点 key 池统一、`update.yml` 两级质量门禁、被 SyntaxError 掩盖的 4 处失效测试，详见 §8.12 修改守则与 §8.14）
 
 ## 一、项目一句话
 
-**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；LlamaIndex 语义洞察引擎 + 每日深度洞察 RAG 管线（FAISS+BM25 混合检索、RAGAS 评估-修正闭环、破茧栏）驱动主题聚类与深度洞察；1005 RSS 源三层分级 + 多引擎翻译分流链（Agnes → Zen → GTX）+ Agnes 四 key 轮询；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
+**Kwei168 的 GitHub Star 收藏台**——自动拉取 starred repos，智能分类、翻译描述、生成静态单页站；LlamaIndex 语义洞察引擎 + 每日深度洞察 RAG 管线（FAISS+BM25 混合检索、RAGAS 评估-修正闭环、破茧栏）驱动主题聚类与深度洞察；1005 RSS 源三层分级 + 多引擎翻译分流链（Agnes → Zen → GTX）+ Agnes 多 key 轮询；GitHub Pages 是 RSS 用户实际访问入口，Vercel 承载 Serverless API 与部署产物。
 
 - 用户访问地址：https://kwei168.github.io/starhub/（GitHub Pages，国内可达的静态入口）
 - Vercel 项目：https://starhub-refresh.vercel.app（静态产物 + Serverless API）
@@ -701,11 +701,13 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 **最终方案**：按场景分流
 
-| 场景 | 主力 | 兜底 | 说明 |
+| 场景 | 服务端降级链 | 并发/限额 | 说明 |
 |------|------|------|------|
-| 全文/摘要按钮（mode='full'） | Agnes AI | 服务端 GTX | 低频高价值，用户主动点击 |
-| 批量补翻（mode='bulk'，缺省） | 浏览器直连 GTX | 服务端 GTX 尽力 + Agnes 限量（8 条） | 用户本地 IP，GTX 端点响应带 ACAO:* |
+| 全文/摘要按钮（mode='full'） | **统一一条链：GTX → MyMemory → Agnes → Zen**（`translateWithFallback`） | 并发 4，Agnes 不限额 | 低频高价值，用户主动点击 |
+| 批量补翻（mode='bulk'，缺省） | 同一条链（浏览器端另有直连 GTX） | 并发 2，**Agnes 兜底上限 30 条**（`AGNES_FALLBACK_MAX`） | 防浏览器 GTX CORS 全灭时 bulk 流量打爆 Agnes 配额 |
 | 构建期翻译 | Agnes → Zen → GTX → Bing → MyMemory | 翻译熔断（连续 5 次全失败暂停 5min） | 有界并发池（6 源并发） |
+
+> 注意：运行时两种 mode **共用同一条降级链**，mode 只改并发数与 Agnes 条数上限，不存在"全文优先走 Agnes"。线上实测（2026-09-18，Vercel）：GTX 因出口 IP 被 Google 频率限流长期 429，实际大量落在 MyMemory，配额打满后才轮到 Agnes（`engine=agnes` 已实测拿到有效译文）。
 
 **Zen 免费模型轮询**：
 - 默认模型：`ling-3.0-flash-fin-free`、`big-pickle`、`mimo-v2.5-free`
@@ -851,6 +853,6 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 | 定时触发 | cron-job.org 每小时 POST（主力）+ GitHub cron（5 次/天，兜底） |
 | 前端 | 原生 HTML/CSS/JS，无框架 |
 | 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源）、X/Twitter（160 源 via xgo.ing）、newsnow 40 平台热榜、AGI Hunt Agent API（12 频道，密钥 + 限速合规） |
-| 翻译 | 五端点降级链：Agnes AI（多 key 轮询）→ OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时按场景分流（全文走 Agnes、批量走浏览器 GTX） |
+| 翻译 | 构建期五端点降级链：Agnes AI（多 key 轮询）→ OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时 Vercel 网关统一链 GTX → MyMemory → Agnes → Zen，mode 只改并发（full 4 / bulk 2）与 Agnes 条数上限（bulk 30） |
 | RSS 架构 | 1005 源三层分级（T1=6 实时/T2=204/T3=795 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放；快照已出仓（gitignore，仅随 Vercel 上传） |
 | 洞察引擎 | insight_engine：LlamaIndex + RAGAS-inspired 自纠错 + 话题聚类 + 关键词生命周期 + 14 天趋势滚动；每日深度洞察：RAG 混合检索 + 多级 Phase（去重/核查/自审/硬过滤）+ RAGAS 四维阈值闭环 + 破茧栏 + 30 天跨天关联 |
