@@ -43,3 +43,9 @@ class TestValidateKeyLinks:
     def test_capped_at_5(self):
         links = ["https://i.com/%d" % i for i in range(10)]
         assert len(bdi._validate_key_links(links, [])) == 5
+
+    def test_url_variants_count_as_one(self):
+        # 对抗审查 P2-8：仅协议/www/尾斜杠不同的同一 URL 不应算 2 个多样链接
+        variants = ["http://a.com/x/", "https://www.a.com/x"]
+        out = bdi._validate_key_links(variants, [{"url": "https://b.com/y"}])
+        assert out == ["http://a.com/x/", "https://b.com/y"]

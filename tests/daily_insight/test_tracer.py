@@ -12,6 +12,11 @@ import build_daily_insight as B
 
 B.NOW_BJ = B._now_bj()
 
+# 测试隔离：PipelineTracer.flush() 会写真实 TRACKING_FILE（受版本控制），
+# 重定向到临时目录避免污染工作区与 CI 提交
+import tempfile as _tempfile
+B.TRACKING_FILE = os.path.join(_tempfile.mkdtemp(prefix="tracer_test_"), "tracking.jsonl")
+
 
 class TestPipelineTracer(unittest.TestCase):
     """PipelineTracer 应收集各阶段数据并输出结构化 JSONL。"""

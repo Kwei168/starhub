@@ -2015,14 +2015,16 @@ def _validate_key_links(links, items):
     """key_links 去重保序；多样性不足（≤1 个）时用事件 items 的 URL 补足到 ≤3；上限 5。"""
     seen, out = set(), []
     for u in links or []:
-        if u and u not in seen:
-            seen.add(u)
+        k = _norm_url(u)
+        if u and k and k not in seen:
+            seen.add(k)
             out.append(u)
     if len(out) <= 1:
         for it in items or []:
             u = it.get("url", "") or it.get("link", "")
-            if u and u not in seen:
-                seen.add(u)
+            k = _norm_url(u)
+            if u and k and k not in seen:
+                seen.add(k)
                 out.append(u)
             if len(out) >= 3:
                 break
@@ -2046,9 +2048,10 @@ def _quick_score_event(cluster, yesterday_labels=None):
         ages.append(_hours_ago(pub) if pub else 0)
     span_h = (max(ages) - min(ages)) if len(ages) > 1 else 0
     depth = min(15.0, n * 2.5) + min(15.0, len(src_types) * 5) + min(10.0, span_h / 12.0)
-    # 2) 科技相关性 0-30：topic_tag ∈ MAIN_TOPICS 占比；旧缓存无 tag 时给中性满分
+    # 2) 科技相关性 0-30：topic_tag ∈ MAIN_TOPICS 占比；
+    #    缓存过渡期 tag 覆盖率 <50% 时给中性满分（对抗审查 P1-2：防单条新标记误杀）
     tagged = [it for it in items if it.get("topic_tag")]
-    if tagged:
+    if tagged and len(tagged) * 2 >= n:
         ratio = sum(1 for it in tagged if it.get("topic_tag") in MAIN_TOPICS) / float(len(tagged))
     else:
         ratio = 1.0
@@ -2068,7 +2071,7 @@ def _quick_score_event(cluster, yesterday_labels=None):
     urls = [it.get("url") or it.get("link") for it in items if (it.get("url") or it.get("link"))]
     if len(urls) > 1 and len(set(urls)) == 1:
         ded += 10
-    if yesterday_labels and cluster.get("label", "").strip() in yesterday_labels:
+    if yesterday_labels and (cluster.get("label") or "").strip() in yesterday_labels:
         ded += 10
     return int(max(0, min(100, raw - ded)))
 
@@ -2649,9 +2652,14 @@ def _select_bubble_events(clusters, read_profile, residual_chunks=None, all_chun
         # 词级分词下近似重复标题 Jaccard 约 0.35-0.4（实测），低于 QWIS 整句 0.5
         return _jaccard(ja, jb) >= 0.35 or inter / min(len(ja), len(jb)) >= 0.6
 
-    # ── 路径 1：非科技 topic 候选池 ──
+    # ── 路径 1：非科技 topic 候选池（限 INSIGHT_RSS_HOURS 新鲜窗口，防旧缓存回潮） ──
+    def _fresh_enough(ch):
+        pub = _parse_iso(ch.get("pub_date", ""))
+        return (not pub) or _hours_ago(pub) <= INSIGHT_RSS_HOURS
+
     pool = [c for c in (all_chunks or [])
             if c.get("topic_tag") in BUBBLE_TOPICS
+            and _fresh_enough(c)
             and (c.get("url", "") or c.get("link", "")) not in main_keys
             and (c.get("title", "") or "").strip() not in main_keys]
     pool.sort(key=_bubble_heat, reverse=True)
@@ -2725,15 +2733,15 @@ def _select_bubble_events(clusters, read_profile, residual_chunks=None, all_chun
         if result:
             return result
 
-    # ── 路径 3：clusters 类别新颖兜底 ──
-    _tech_cats = MAIN_TOPICS | {"ai-models", "ai-products", "developer"}
+    # ── 路径 3：clusters 类别新颖兜底（排除全部主报告类别，防主事件复制进破茧） ──
+    _tech_cats = MAIN_TOPICS | set(VALID_CATEGORIES)
     max_freq = max(read_profile.values()) if read_profile else 1
     cand = [c for c in clusters
             if c.get("category") and c.get("category") not in _tech_cats]
     cand.sort(key=lambda c: read_profile.get(c.get("category", ""), 0) / max_freq if max_freq else 0)
     for c in cand[:top_n]:
         result.append({
-            "label": c.get("label", "")[:80],
+            "label": (c.get("label") or "")[:80],
             "summary": (c.get("summary", "") or "")[:200],
             "category": c.get("category", ""),
             "score": round(1.0 - (read_profile.get(c.get("category", ""), 0) / max_freq if max_freq else 0), 2),
@@ -4268,7 +4276,7 @@ def main():
             # Phase 2 LLM: Top N 深度解读（快筛门槛：editor_score ≥ MIN_DEEP_SCORE 才做深度分析）
             _gate_days = [d for d in _load_history().get("days", [])
                           if d.get("date") != NOW_BJ.strftime("%Y-%m-%d")]
-            _yday_labels = {e.get("label", "").strip()
+            _yday_labels = {(e.get("label") or "").strip()
                             for e in (_gate_days[-1].get("events", []) if _gate_days else [])}
             for c in clusters:
                 c["editor_score"] = _quick_score_event(c, yesterday_labels=_yday_labels)
@@ -4321,6 +4329,10 @@ def main():
             if judge_llm:
                 clusters, ragas_eval = _ragas_evaluate_and_correct(
                     judge_llm, clusters, theme, retrieved_for_ragas, build_cfg)
+                # 修正循环改写了 label/summary 后刷新门槛分，保证导出 JSON 分数描述最终内容
+                for c in clusters:
+                    if "editor_score" in c:
+                        c["editor_score"] = _quick_score_event(c, yesterday_labels=_yday_labels)
             else:
                 print("[每日洞察] Judge LLM 不可用，跳过 RAGAS 评估", file=sys.stderr)
         except Exception as exc:
