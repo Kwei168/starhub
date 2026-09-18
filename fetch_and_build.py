@@ -498,6 +498,9 @@ def generate_ai_summary(rising_top10):
     if not api_key:
         print("[AI摘要] 跳过: 未配置 AGNES_API_KEY", file=sys.stderr)
         return None
+    # 多 key 轮询：AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加），429 自动换 key
+    keys = [k.strip() for k in api_key.split(",") if k.strip()]
+    keys += [k.strip() for k in os.environ.get("AGNES_API_KEYS", "").split(",") if k.strip()]
     if not rising_top10:
         print("[AI摘要] 跳过: rising 列表为空", file=sys.stderr)
         return None
@@ -522,27 +525,32 @@ def generate_ai_summary(rising_top10):
         "chat_template_kwargs": {"enable_thinking": False},
     }).encode("utf-8")
     try:
-        req = urllib.request.Request(
-            "https://apihub.agnes-ai.com/v1/chat/completions",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + api_key,
-                "User-Agent": "starhub-auto-update",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=30) as r:
-            data = json.loads(r.read().decode("utf-8"))
-        choice = data.get("choices", [{}])[0]
-        content = (choice.get("message", {}).get("content") or "").strip()
-        if content and len(content) <= 100:
-            print("[AI摘要] %s" % content)
-            return content
-        # content 为空/超长：打印诊断，避免静默失败
-        print("[AI摘要] 响应不合格: content_len=%d finish_reason=%r usage=%s"
-              % (len(content), choice.get("finish_reason"), data.get("usage")), file=sys.stderr)
-    except urllib.error.HTTPError as e:
-        print("[AI摘要] API 调用失败: HTTP %s" % e.code, file=sys.stderr)
+        for _ki, _key in enumerate(keys):
+            req = urllib.request.Request(
+                "https://apihub.agnes-ai.com/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + _key,
+                    "User-Agent": "starhub-auto-update",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                print("[AI摘要] API 调用失败: HTTP %s（key %d/%d）" % (e.code, _ki + 1, len(keys)),
+                      file=sys.stderr)
+                continue
+            choice = data.get("choices", [{}])[0]
+            content = (choice.get("message", {}).get("content") or "").strip()
+            if content and len(content) <= 100:
+                print("[AI摘要] %s" % content)
+                return content
+            # content 为空/超长：换 key 无意义，打印诊断后结束
+            print("[AI摘要] 响应不合格: content_len=%d finish_reason=%r usage=%s"
+                  % (len(content), choice.get("finish_reason"), data.get("usage")), file=sys.stderr)
+            break
     except Exception as e:
         print("[AI摘要] 失败: %s" % e, file=sys.stderr)
     return None

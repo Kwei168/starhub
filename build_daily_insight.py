@@ -1422,14 +1422,14 @@ class _LLM:
 
 
 def _init_llm():
-    """初始化 LLM。从环境变量读取 API key。"""
-    api_key = os.environ.get("AGNES_API_KEY", "")
-    if not api_key:
+    """初始化 LLM。从环境变量读取 API key。
+    多 key 轮询：AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加），429 自动切换。"""
+    keys = [k.strip() for k in os.environ.get("AGNES_API_KEY", "").split(",") if k.strip()]
+    keys += [k.strip() for k in os.environ.get("AGNES_API_KEYS", "").split(",") if k.strip()]
+    if not keys:
         print("[每日洞察] AGNES_API_KEY 未配置，LLM 分析将跳过", file=sys.stderr)
         return None
-    extra = os.environ.get("AGNES_API_KEYS", "").split(",")
-    extra = [k.strip() for k in extra if k.strip()]
-    return _LLM(api_key, extra_keys=extra or None)
+    return _LLM(keys[0], extra_keys=keys[1:] or None)
 
 
 # ──────────────────── Judge LLM：多模型降级 ────────────────────
@@ -2252,6 +2252,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None):
 - confidence: 多源交叉验证=high，单一信源=low
 - 禁止使用"值得关注""引发讨论""未来可期"等空话，每句话必须有信息增量
 - outlook 必须基于素材中已有的信号和趋势进行推断，不得编造
+- 所有陈述必须基于素材
 """
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P2},

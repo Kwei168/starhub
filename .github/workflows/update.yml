@@ -70,6 +70,25 @@ jobs:
       - name: Install insight engine dependencies
         run: pip install llama-index-core llama-index-embeddings-fastembed fastembed faiss-cpu rank-bm25
 
+      # 质量门禁：4819686 丢掉一个闭合 """ 就让每日洞察连续失败数天且无人察觉，
+      # 而编译检查 + 现有测试 5 秒内就能拦住。放在恢复缓存与任何构建之前，
+      # 失败即中断，不产生垃圾提交。
+      - name: Quality gate (syntax + tests)
+        run: |
+          echo "── 语法编译全部根目录 Python ──"
+          python -m py_compile *.py
+          echo "── 洞察引擎测试 ──"
+          python test_insight_engine.py
+          python test_insight_guard_v3.py
+          python test_insight_bad_date.py
+          echo "── 每日洞察管线测试 ──"
+          python test_daily_insight.py
+          # 测试会真实写盘 daily-insight.json / ai-daily.html 等受版本控制的产物，
+          # 门禁只验证代码，必须在此丢弃，避免测试桩数据进入后续构建与提交。
+          git checkout -- .
+          git clean -fdq
+          echo "质量门禁通过，工作区已还原"
+
       - name: Restore embedding cache
         id: cache-restore
         uses: actions/cache/restore@v4
