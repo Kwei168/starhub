@@ -2006,6 +2006,7 @@ _SYSTEM_PROMPT_P1 = """
 
 所有陈述必须严格基于提供的素材。禁止使用你自己的知识补充。
 具体数字（金额/数量/百分比/日期）必须能在事件素材或全局检索上下文中找到原样形式；允许单位/千分位/全角等等价改写，禁止换算、四舍五入或用外部知识补数。
+素材对某一说法存在分歧（质疑、否认、要求核实）时，summary 必须注明"该说法有争议"及分歧方，不得写成确定事实。
 如果素材中缺少某个关键数据，在 summary 中标注[信息不足]。
 只输出严格 JSON，不要输出任何思考过程或解释。"""
 
@@ -2036,6 +2037,12 @@ def _validate_key_links(links, items):
             if len(out) >= 3:
                 break
     return out[:5]
+
+
+def _order_events_for_output(clusters):
+    """事件列表按 editor_score（素材热度代理）降序稳定排列——judge 反馈：重大趋势应前置。
+    深度分析分配与破茧选择已在排序前基于原顺序完成，此处只影响展示次序。"""
+    return sorted(clusters, key=lambda c: -int(c.get("editor_score") or 0))
 
 
 MIN_DEEP_SCORE = 55  # 快筛 ≥55 才进 Phase 2 深度分析
@@ -2354,7 +2361,8 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
             "2. 如果某个声明在素材库中找不到原文或近义表述，必须删除\n"
             "3. 禁止用你自己的知识补充任何信息\n"
             "4. 宁可标注[信息不足]也不要编造\n"
-            "5. 改写时保持语句通顺\n\n"
+            "5. 改写时保持语句通顺\n"
+            "6. 已注明“该说法有争议”及分歧方的表述属于有依据陈述，不得删除，也不得改写为确定事实\n\n"
             "以 JSON 返回：\n"
             "{\"events\": [{\"event_num\": 1, \"summary\": \"修正后摘要\", \"significance\": \"修正后意义\"}]}"
         ) % (global_ctx, "\n\n".join(events_input))
@@ -2420,7 +2428,8 @@ citations 为字段级来源索引：每个字段的结论必须标注其来自�
 
 ## 禁用表达
 “值得关注”“引发讨论”“未来可期”“拭目以待”“不难预见”
-每句话必须有信息增量，不允许空话。所有陈述必须基于素材。"""
+每句话必须有信息增量，不允许空话。所有陈述必须基于素材。
+素材对某一说法存在分歧（质疑、否认、要求核实）时，必须标注"该说法有争议"及分歧方，不得写成确定事实。"""
 
 
 def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None, evidence=""):
@@ -4330,6 +4339,10 @@ def main():
             print("[每日洞察] Phase 1 LLM 失败，降级为仅聚类结果", file=sys.stderr)
     else:
         print("[每日洞察] LLM 不可用，降级为仅聚类结果", file=sys.stderr)
+
+    # Phase 2.4: 热度排序提前至 RAGAS 前——judge 评估的是最终展示序（relevance 定义含"重大在前"），
+    # 且修正循环 weak_events 索引与该序自洽
+    clusters = _order_events_for_output(clusters)
 
     # ── Phase 2.5: RAGAS 质量评估与自我修正 ──
     ragas_eval = {}
