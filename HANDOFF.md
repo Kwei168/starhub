@@ -154,7 +154,7 @@
 | `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：加载 `rss_api_snapshot.json` 并自动合并分块 `_1.._N`（1005 源 72h 累积）；`?refresh=1` 时仅实时抓取 T1 高频源（6 个），T2/T3 从快照读取；T1 英文源实时翻译 |
 | `api/article.js` | `/api/article` | GET/OPTIONS | CORS 允许所有来源（`*`） | 15s（函数配置） | 阅读器全文兜底：快照全文 map → 特殊源提取/GitHub/YouTube → Readability 通用提取；OPTIONS 返回 204 |
 | `api/agihunt.js` | `/api/agihunt` | GET | 公开读取 | 15s | AI 动态侧栏的 AGI Hunt 频道代理 |
-| `api/translate.js` | `/api/translate` | POST | Origin 白名单 | 30s | **翻译代理**。引擎分流：mode='full'（全文/摘要按钮）→ Agnes 主力 + GTX 兜底；mode='bulk'（缺省，批量补翻）→ 前端浏览器直连 GTX 主力，服务端 GTX 尽力 + Agnes 限量兜底（AGNES_FALLBACK_MAX=8） |
+| `api/translate.js` | `/api/translate` | POST | Origin 白名单 | 30s | **翻译代理**。两种 mode **共用同一条服务端降级链** GTX → MyMemory → Agnes → Zen（`translateWithFallback`）；mode 只改并发与配额：`full`（全文/摘要按钮）并发 4、Agnes 不限额；`bulk`（缺省，批量补翻）并发 2、**Agnes 兜底上限 30 条**（`AGNES_FALLBACK_MAX`），另有浏览器端直连 GTX 分担。实测 GTX 在 Vercel 出口 IP 长期 429，大量落 MyMemory |
 | `api/build_log.js` | `/api/build_log` | GET | CORS 宽松 | 10s | **构建日志查询**。读 `build_logs/*.jsonl`，支持日期/类型过滤、分页、摘要模式（`?summary=1`） |
 
 ### 配置
@@ -190,7 +190,7 @@
 | `AGNES_API_KEY` | Agnes AI 主 API key（洞察引擎 LLM + 翻译主力）。**6 个调用点均已支持逗号分隔多 key**（2026-09-18 补齐 `build_daily_insight.py`、`fetch_and_build.py`、`api/translate.js`），与 `AGNES_API_KEYS` 合并成同一个池 | Secret |
 | `AGNES_API_KEYS` | Agnes 附加 key（**逗号分隔**，与主 key 合并成池轮转抗 429；供 build_rss_aggregator / build_ai_daily / build_daily_insight / insight_engine / fetch_and_build / api/translate.js 共 6 个调用点，取代已废弃的 `AGNES_API_KEY_2/_3`） | Secret |
 | `SILICONFLOW_API_KEY` | 硅基流动 API key（bge-m3 embedding 主力） | Secret |
-| `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力 + 每日洞察 Judge 首选 mimo-v2.5-free） | Secret |
+| `ZEN_API_KEY` / `OPENCODE_KEY` | OpenCode Zen 免费模型 key（翻译链 gtx 之后接力 + 每日洞察 Judge 首选 mimo-v2.5-free）。**⚠ 实测该端点当前整体不可用：构建期翻译 `Zen: 0`、三个模型逐个自封，Judge 侧 mimo 0/6 命中并全部降级 agnes（见 §8.7 / §8.12）——按"已配置但不可依赖"对待** | Secret |
 | `AGIHUNT_API_KEY` | AGI Hunt Agent API 密钥（每日洞察第四源；Bearer 认证，见 §8.12） | Secret |
 | `OPENROUTER_API_KEY` | 已在 update.yml 声明但 Judge 降级链已移除 OpenRouter（长期不通），当前闲置 | Secret |
 
@@ -360,7 +360,10 @@ Vercel 部署完成（约 2-3 分钟；rss_api_snapshot*.json 虽不入 git，
 
 ### 7.3 git push 被拒绝（远端有新提交）
 workflow 自动构建后会 push 新 commit，导致本地 push 被拒。
-**解决**：`git stash && git pull --rebase && git push && git stash drop`。自动生成文件冲突用 `git checkout --theirs <file>`。
+**解决**：`git fetch origin` → `git merge origin/main` → `git push origin main`。
+
+> **禁止 `git pull --rebase`、禁止 `git rebase`、禁止 `git commit --amend`、禁止裸 `git stash`**（`CLAUDE.md` 硬性规定）：CI 每小时并发 auto-commit，rebase 易产生悬挂对象并损坏 pack 文件，amend 在并发分支上不可恢复。自动生成文件冲突用 `git checkout --theirs <file>`。
+> 若本地未推送提交含真实工作，**不要**照 `CLAUDE.md` 的 `git reset --hard origin/main` 流程做（那条前提是"未推送提交可丢弃"，仅适用于纯数据改动）；此时用 merge，零重叠时必然无冲突。
 
 ### 7.4 Vercel 环境变量更新后不生效
 修改 Environment Variables 后，Vercel 提示 "A new deployment is needed"。但如果有更新的部署已存在，Redeploy 旧部署会失败。
@@ -623,7 +626,7 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 1. 修改源文件：页面改 `build_rss_aggregator.py`，API 改 `api/*.js`；不要编辑自动生成的 HTML/chunk。
 2. 本地验证：`python -m py_compile build_rss_aggregator.py`、生成本地产物、`node --check` 主 JS；运行对应 `.deploy-tmp/verify_*.cjs`。
-3. `git fetch origin` 后 rebase 最新 `origin/main`，只提交源文件和必要文档，避免把本地 VERIFY 产物提交。
+3. `git fetch origin` 后 **merge** 最新 `origin/main`（禁 rebase/amend，见 §7.3），只提交源文件和必要文档，避免把本地 VERIFY 产物提交。
 4. push 后执行 `node .deploy-tmp/trigger-workflow.cjs`；轮询 `.deploy-tmp/poll-run-dedup.cjs`，注意构建提交可能产生第二个 `dynamic` run。
 5. 必须确认两类 run 都 success：源码 workflow run 与构建提交触发的连锁 run；最近布局改动对应 `34025327944`、`34025453474`，提交 `44b2d60`。
 6. 线上静态验证：`node .deploy-tmp/verify_online_sidebar.cjs`，当前证据为 HTTP 200、13/13 PASS。
@@ -710,6 +713,8 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 > 注意：运行时两种 mode **共用同一条降级链**，mode 只改并发数与 Agnes 条数上限，不存在"全文优先走 Agnes"。线上实测（2026-09-18，Vercel）：GTX 因出口 IP 被 Google 频率限流长期 429，实际大量落在 MyMemory，配额打满后才轮到 Agnes（`engine=agnes` 已实测拿到有效译文）。
 
 **Zen 免费模型轮询**：
+
+> ⚠ **实际可用性（2026-09-18 核）**：Zen 在文档里仍是降级链的一个层级，但**当天 CI 构建日志中三个模型逐个"限流/故障，自封 5 分钟并切换下一模型"，构建期翻译统计 `Zen: 0`**（同场 Agnes 40 次成功）。即 Zen 目前实际贡献为零，不要把它当作可依赖的容量层。注：本轮仅证实到"自封/切换"这一层，未证实具体 HTTP 状态码与起始日期。
 - 默认模型：`ling-3.0-flash-fin-free`、`big-pickle`、`mimo-v2.5-free`
 - 指数退避自封：5→10→20→40 分钟封顶 1h，成功清零
 - 连续 2 次超时/网络故障自封模型 5 分钟
@@ -783,7 +788,9 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 ```
 
 **RAGAS 质量闭环（2026-09-18 定版）**：
-- Judge LLM：**mimo → agnes 两级降级链**（`_FallbackJudgeLLM`）。mimo-v2.5-free 经 OpenCode Zen 端点调用（伪装 OpenCode CLI 请求头，与 `api/translate.js` 的 translateZen 一致）；评估一致性优于 agnes 故做主力。OpenRouter 免费模型中转层已移除（长期不通，`_OpenRouterLLM` 类仍残留但不在链路上）。
+- Judge LLM：**mimo → agnes 两级降级链**（`_FallbackJudgeLLM`）。mimo-v2.5-free 经 OpenCode Zen 端点调用（`_MimoLLM.API_URL = https://opencode.ai/zen/v1/chat/completions`，伪装 OpenCode CLI 请求头，与 `api/translate.js` 的 translateZen 同一端点）。OpenRouter 免费模型中转层已移除（长期不通，`_OpenRouterLLM` 类仍残留但不在链路上）。
+- ⚠ **主力 mimo 实际从未生效（2026-09-18 实证）**：因为 mimo 走的就是上面那个已被封的 Zen 端点，**它与 Zen 是同一个故障源**。当日线上产物 `daily-insight.json → quality.meta.call_log` 6 条全部为 `{"model": "agnes-2.5-flash", "fallback": true}`，即 **0/6 命中 mimo，三个分数一直由 agnes 打**。"mimo 评估一致性优于 agnes 故做主力"是配置意图，不是运行事实。
+- ⚠ **`judge_model` 标签历史缺陷（已修）**：`_FallbackJudgeLLM.model` 在构造时取主模型名且降级后不更新，而 `quality.meta.judge_model` 直接读它，导致标签长期谎报 `mimo-v2.5-free`。现改为 `_effective_judge_model()` 从 `_call_log` 取实际模型（单一模型直接报名名，混合报 `mixed(a+b)`，无记录才回退配置值），并新增 `judge_model_configured` 保留配置值以便对照。**读历史产物时注意：2026-09-18 之前的 `judge_model` 不可信，要看 `call_log`。**
 - 触发修正的条件（任一即触发，最多 1 轮）：overall < 0.70，**或**任一维度低于最低线：coverage ≥ 0.75 / faithfulness ≥ 0.88 / relevance ≥ 0.75。
 - 交叉验证已开启（`daily_insight_cross_validation: true`）：v1/v2 双 prompt 独立评分后加权平均，降低单 judge 抖动。
 - 评分原始输出记录在 `daily-insight.json` 的 `quality` 字段，可回溯。
@@ -815,7 +822,7 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
   - B 步骤用 step 级 `env` 把 6 个上游 key 全部置空：测试不需要凭证，而 `test_insight_engine.py` 有 10 处 `run_analysis` 会经 `insight_engine.py:43` 拿真 key 打真实嵌入 API。
 - **新增门禁测试必须离线自洽**，且不得依赖环境变量的存在与否。已踩过的三个坑（都是"本地绿、CI 红"）：
   - `insight_engine.py:664` 的 fastembed 回退分支**不受 `_SF_KEY` 门控**，CI 装了 fastembed 就会改变 `_get_embeddings` 返回值 → `test_insight_guard_v3.py` 必须显式 `ie.FASTEMBED_AVAILABLE = False`。
-  - `_MimoLLM.api_key` 是 `os.environ.get("ZEN_API_KEY", "public")`，CI 里该变量有值 → 断言默认值前必须先把它 pop 掉。
+  - `_MimoLLM.api_key` 取 `ZEN_API_KEY` → `OPENCODE_KEY` → `"public"`（2026-09-18 前是 `os.environ.get("ZEN_API_KEY", "public")`：空串不回退、也不读 OPENCODE_KEY，与 `build_rss_aggregator._ZEN_KEY` 语义不一致，已统一）。测试断言默认值前必须把**两个**变量都 pop 掉，否则 CI 里必红。
   - `rank_bm25` 用**无平滑** Okapi IDF `log(N-df+0.5)-log(df+0.5)`，**df 恰为窗口一半时 IDF=0、全部得分归零**。构造 BM25 测试语料时关键词不能铺满半数文档（旧 fixture 是 5000/10000，正好中招）。
 - 任何生成/评估参数改动后，跑 `python test_daily_insight.py` + `pytest tests/daily_insight/`（**注意：当前 CI 环境未装 pytest，`tests/daily_insight/` 实际从未被执行过**）。
 - ⚠ `test_daily_insight.py` 会**真实写盘** `daily-insight.json`、`daily_insight_history.json`、`daily-insight-history.html`、`ai-daily.html` 四个受版本控制的产物（用测试桩数据覆盖当日真实内容）。跑完必须 `git checkout HEAD --` 这四个文件再提交，否则测试数据会上线。

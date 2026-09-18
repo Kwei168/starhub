@@ -386,14 +386,23 @@ else:
 print("\n=== 测试 9: TrustJudge 优化 ===")
 
 # 9a) _MimoLLM 初始化
-# "public" 只是 ZEN_API_KEY **未设置**时的兜底；CI 里该变量有值，必须自行隔离环境再断言
-_mimo_saved_key = os.environ.pop("ZEN_API_KEY", None)
+# "public" 只是两个 Zen key **都未设置**时的兜底；CI 里这些变量有值，必须自行隔离环境再断言
+_saved_zen = {k: os.environ.pop(k, None) for k in ("ZEN_API_KEY", "OPENCODE_KEY")}
 mimo = B._MimoLLM()
-if _mimo_saved_key is not None:
-    os.environ["ZEN_API_KEY"] = _mimo_saved_key
 assert mimo.model == "mimo-v2.5-free", "默认模型应为 mimo-v2.5-free"
 assert mimo.timeout == 30, "类默认超时应为 30s（b21ee89 快速降级；运行时由 daily_insight_judge_timeout 覆盖为 60）"
-assert mimo.api_key == "public", "默认 API key 应为 public（仅 ZEN_API_KEY 缺失时）"
+assert mimo.api_key == "public", "两个 Zen key 均缺失时应兜底 public"
+# 空串等同未配置，且 ZEN 缺失时回退 OPENCODE_KEY（与 build_rss_aggregator._ZEN_KEY 同语义）
+os.environ["ZEN_API_KEY"] = ""
+os.environ["OPENCODE_KEY"] = "oc-key"
+assert B._MimoLLM().api_key == "oc-key", "ZEN_API_KEY 为空应回退 OPENCODE_KEY"
+os.environ["ZEN_API_KEY"] = "zen-key"
+assert B._MimoLLM().api_key == "zen-key", "ZEN_API_KEY 优先于 OPENCODE_KEY"
+for _k, _v in _saved_zen.items():
+    if _v is not None:
+        os.environ[_k] = _v
+    else:
+        os.environ.pop(_k, None)
 print("_MimoLLM 初始化: model=%s, timeout=%d" % (mimo.model, mimo.timeout))
 
 # 9b) _MimoLLM 自定义参数
@@ -647,6 +656,21 @@ chain2 = B._init_judge_llm({"daily_insight_judge_provider": "mimo"})
 assert isinstance(chain2, B._FallbackJudgeLLM), "应返回 FallbackJudgeLLM"
 assert not isinstance(chain2.fallback, B._FallbackJudgeLLM), "无 OpenRouter 时不应嵌套"
 print("无 OpenRouter key: mimo -> agnes 两级链 OK")
+
+# 9n-4b) judge_model 必须反映实际打分的模型（历史缺陷：降级后 .model 仍是主模型名，
+#        导致 quality.meta.judge_model 一直谎报 mimo，而 call_log 全是被降级的 agnes）
+_stub_primary = B._MimoLLM(api_key="p", model="mimo-v2.5-free")
+_stub_fallback = B._LLM("k", extra_keys=None)
+_stub_fallback.model = "agnes-2.5-flash"
+_j = B._FallbackJudgeLLM(_stub_primary, _stub_fallback)
+assert B._effective_judge_model(_j) == "mimo-v2.5-free", "无调用记录时回退配置值"
+_j._call_log = [{"model": "agnes-2.5-flash", "fallback": True},
+                {"model": "agnes-2.5-flash", "fallback": True}]
+assert B._effective_judge_model(_j) == "agnes-2.5-flash", "全部降级时应报实际模型"
+_j._call_log = [{"model": "mimo-v2.5-free"}, {"model": "agnes-2.5-flash", "fallback": True}]
+assert B._effective_judge_model(_j) == "mixed(mimo-v2.5-free+agnes-2.5-flash)", "混合时应标注 mixed"
+assert B._effective_judge_model(object()) == "unknown", "无 model 属性时应返回 unknown"
+print("judge_model 取实际调用模型 OK（含 mixed / unknown）")
 
 # 9n-5) 三级链降级行为
 class _SuccessLLM:
