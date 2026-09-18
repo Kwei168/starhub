@@ -1711,11 +1711,11 @@ def _filter_cluster_items(cluster, phase1_label):
         title = it.get("title", "")
         text = it.get("text", "")[:200]
         item_tokens = _tokenize_title(title + " " + text)
-        if len(label_tokens & item_tokens) >= 1:
+        if len(label_tokens & item_tokens) >= 2:
             filtered.append(it)
 
     if not filtered and cluster.get("items"):
-        filtered = cluster["items"][:1]  # 至少保留 1 个
+        filtered = cluster["items"][:1]  # 兜底保留 1 个，后续由 _drop_info_insufficient 清理
 
     cluster["items"] = filtered
     return cluster
@@ -3706,9 +3706,13 @@ def main():
     theme = ""
 
     if llm:
+        # Phase 1 前素材预过滤：移除与事件标签明显无关的 items，防止内容串位
+        for c in clusters:
+            _filter_cluster_items(c, c.get("label", ""))
+
         # Phase 1 LLM: 全事件摘要（传入全局检索上下文，解决生成/评估不对齐问题）
         _ragas_ctx = _build_ragas_context(clusters, retrieved_for_ragas) if retrieved_for_ragas else ""
-        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:6000] if _ragas_ctx else None)
+        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:10000] if _ragas_ctx else None)
         if p1_result:
             theme = p1_result.get("theme", "")
             p1_events = p1_result.get("events", [])
@@ -3720,6 +3724,14 @@ def main():
                     c["summary"] = pe.get("summary", "")
                     c["significance"] = pe.get("significance", "")
                     c["key_links"] = pe.get("key_links", [])
+
+            # Phase 1.2: 丢弃 [信息不足] 事件 — 防止占位事件拉低质量
+            _good = [c for c in clusters if '[信息不足]' not in (c.get('summary', '') or '')]
+            if len(_good) >= MIN_EVENTS:
+                _dropped = len(clusters) - len(_good)
+                clusters = _good
+                if _dropped:
+                    print("[每日洞察] 丢弃 %d 个 [信息不足] 事件" % _dropped)
 
             # Phase 1.3: 跨源去重 — 合并同 category 且标签相似的事件
             clusters = _deduplicate_after_phase1(clusters)
