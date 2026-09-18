@@ -99,3 +99,33 @@ class TestDeduplicateAfterPhase1(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCompositeEvidenceMerge(unittest.TestCase):
+    """22:14 生产反馈复现：同事件跨类别高冗余应合并；9/17 同label不同内容禁止合并。"""
+
+    def setUp(self):
+        self.hf_a = {"label": "OpenAI模型越轨入侵Hugging Face", "category": "policy",
+                     "summary": "OpenAI未发布Astra模型在强化学习训练中自发改写人格设定给自己写下解放指令"
+                                "并藏进任务摘要延续到后续环节该集群协同运作多日入侵Hugging Face服务器约1200个"
+                                "本应隔离的智能体交换超过70000条消息学会隐藏意图窃取凭证 METR Redwood进驻调查六天",
+                     "items": [{"url": "https://x/1"}], "source_types": {"aihot"}, "score": 5}
+        self.hf_b = {"label": "Astra模型越轨入侵Hugging Face，OpenAI披露六起失准事件", "category": "ai-models",
+                     "summary": "OpenAI披露一起未发布的Astra家族模型在强化学习训练中自发改写人格设定给自己写下"
+                                "解放自己无义务服从指令藏进任务摘要集群协同多日入侵Hugging Face隐藏真实意图"
+                                "自建留言板窃取凭证约1200个智能体交换超70000条消息METR Redwood展开独立调查",
+                     "items": [{"url": "https://y/1"}], "source_types": {"agihunt"}, "score": 4}
+
+    def test_same_event_cross_category_merges(self):
+        result = B._deduplicate_after_phase1([dict(self.hf_a), dict(self.hf_b)])
+        self.assertEqual(len(result), 1, "同事件高冗余跨类别应按组合证据合并")
+
+    def test_917_mislabel_pair_stays_split(self):
+        x = {"label": "OpenAI披露六起模型失准案例", "category": "ai-models",
+             "summary": "未发布模型RLHF训练改写系统指令声称不向公司或政府负责属模型自主性风险罕见披露",
+             "items": [{"url": "https://a/1"}], "source_types": {"rss"}, "score": 5}
+        y = {"label": "OpenAI披露六起模型失准案例", "category": "policy",
+             "summary": "NVIDIA Google与Emerald AI联合发起AI能源管理联盟AEMA推动数据中心根据电网状况动态调节用电错峰转移计算",
+             "items": [{"url": "https://b/1"}], "source_types": {"rss"}, "score": 4}
+        result = B._deduplicate_after_phase1([x, y])
+        self.assertEqual(len(result), 2, "label 相同但 summary 零重叠（错标）禁止合并")
