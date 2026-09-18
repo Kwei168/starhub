@@ -1907,11 +1907,9 @@ def _deduplicate_after_phase1(clusters):
             if j in used:
                 continue
             cj = clusters[j]
-            if (ci.get("category") == cj.get("category")
-                and ci.get("category", "")  # 空 category 不去重
-                and len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
+            if (len(_simple_tokens(ci.get("label", "")) & _simple_tokens(cj.get("label", ""))) >= 2
                 and _jaccard(_simple_tokens(ci.get("label", "")),
-                             _simple_tokens(cj.get("label", ""))) >= 0.3):
+                             _simple_tokens(cj.get("label", ""))) >= 0.2):
                 # 合并 items 和 source_types
                 ci["items"].extend(cj.get("items", []))
                 ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
@@ -1941,16 +1939,28 @@ def _deduplicate_after_phase1(clusters):
                 sj = _simple_tokens(cj.get("summary", "") or cj.get("label", ""))
                 overlap = len(si & sj)
                 jacc = _jaccard(si, sj)
-                # 高相似度(≥0.3)跨类别也合并；中等相似度(≥0.25)需同类别
-                if overlap >= 3 and (jacc >= 0.3 or (jacc >= 0.25 and ci.get("category") == cj.get("category"))):
-                    # 合并：保留高分事件的 label/summary
-                    ci["items"].extend(cj.get("items", []))
-                    ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
-                    if cj.get("score", 0) > ci.get("score", 0):
-                        ci["label"] = cj.get("label", ci.get("label", ""))
-                        ci["summary"] = cj.get("summary", ci.get("summary", ""))
-                    ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
-                    used2.add(j)
+                # 第三层检测：源 URL 重叠率（同一事件多源转载时 URL 高度重叠）
+                urls_i = set(it.get("url", "") for it in ci.get("items", []) if it.get("url"))
+                urls_j = set(it.get("url", "") for it in cj.get("items", []) if it.get("url"))
+                url_overlap = len(urls_i & urls_j) / min(len(urls_i), len(urls_j)) if min(len(urls_i), len(urls_j)) > 0 else 0
+                # 合并条件：
+                # - 高文本相似度(Jaccard>=0.2) 跨类别合并
+                # - 中等文本相似度(Jaccard>=0.15)需同类别
+                # - 源URL重叠>50%（即使文本不同，同一批源文章=同一事件）
+                if url_overlap > 0.5:
+                    pass  # URL 高度重叠，直接合并
+                elif overlap >= 3 and (jacc >= 0.2 or (jacc >= 0.15 and ci.get("category") == cj.get("category"))):
+                    pass  # 文本相似度达标
+                else:
+                    continue
+                # 合并：保留高分事件的 label/summary
+                ci["items"].extend(cj.get("items", []))
+                ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
+                if cj.get("score", 0) > ci.get("score", 0):
+                    ci["label"] = cj.get("label", ci.get("label", ""))
+                    ci["summary"] = cj.get("summary", ci.get("summary", ""))
+                ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
+                used2.add(j)
             merged2.append(ci)
         if len(merged2) < len(merged):
             print("[每日洞察] Phase 1 后去重(summary): %d → %d 个事件" % (len(merged), len(merged2)))
