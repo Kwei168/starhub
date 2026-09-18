@@ -3943,6 +3943,37 @@ def main():
             # Phase 1.7: 自审后最终去重 — 捕获自审修改 label 后产生的重复
             clusters = _deduplicate_after_phase1(clusters)
 
+            # Phase 1.8: AI 主题硬过滤 — 清除与 AI/科技无关的噪声事件
+            _AI_KEYWORDS = re.compile(
+                r'AI|GPT|Claude|LLM|AGI|模型|智能|算法|芯片|GPU|推理|训练|'
+                r'OpenAI|Anthropic|Google|Meta|微软|苹果|亚马逊|英伟达|'
+                r'\bAI\b|\bLLM\b|\bML\b|\bNLP\b|\bCV\b|\bAPI\b|\bSDK\b|'
+                r'机器人|自动驾驶|无人机|区块链|元宇宙|量子计算|'
+                r'融资|创业|独角兽|估值|收购|IPO|上市|'
+                r'开源|发布|上线|更新|版本|框架|平台|系统', re.IGNORECASE)
+            _NON_AI_CATS = {'bbc top stories', 'fun', 'sport', 'entertainment',
+                            'politics', 'celebrity', 'lifestyle', 'travel',
+                            'food', 'fashion', 'music', 'film', 'tv'}
+            _filtered = []
+            for c in clusters:
+                cat = (c.get("category", "") or "").lower()
+                label = c.get("label", "") or ""
+                # 明确非 AI 分类 → 检查 label 是否有 AI 关键词
+                if cat in _NON_AI_CATS:
+                    if not _AI_KEYWORDS.search(label):
+                        print("[每日洞察] 过滤非AI事件: %s (cat=%s)" % (label[:40], cat))
+                        continue
+                # 检查 source_types 是否全为非 AI 源
+                src_types = c.get("source_types", []) or []
+                non_ai_srcs = {'bbc', 'cnn', 'reuters', 'guardian'}
+                if src_types and all(s.lower() in non_ai_srcs for s in src_types):
+                    if not _AI_KEYWORDS.search(label):
+                        print("[每日洞察] 过滤非AI源事件: %s" % label[:40])
+                        continue
+                _filtered.append(c)
+            if len(_filtered) < len(clusters) and len(_filtered) >= MIN_EVENTS:
+                clusters = _filtered
+
             # Phase 2 LLM: Top N 深度解读
             top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
             for i in range(top_n):
