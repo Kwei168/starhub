@@ -166,7 +166,7 @@ INSIGHT_RSS_HOURS = 168   # 每日洞察取最近 N 小时的 RSS（7 天窗口�
 # ── RAGAS 质量评估参数 ──
 RAGAS_ENABLED = True          # RAGAS 评估-修正闭环开关
 RAGAS_QUALITY_THRESHOLD = 0.70  # 整体质量阈值，低于此值触发修正
-RAGAS_MAX_CORRECTIONS = 2      # 最大修正轮数（00:33 期证据：单轮不足以修复 dims 失守）
+RAGAS_MAX_CORRECTIONS = 1      # 修正轮数（01:12 期实证：2 轮在复评噪声带内采纳劣化版，回稳 1 轮）
 # 各维度最低阈值 — 任一维度低于阈值即触发修正（即使 overall 达标）
 RAGAS_MIN_COVERAGE = 0.75      # context_coverage 最低要求
 RAGAS_MIN_FAITHFULNESS = 0.88  # faithfulness 最低要求（目标 ≥ 0.95）
@@ -3147,7 +3147,8 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             print("[每日洞察] RAGAS 修正后: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
                 corrected_result["overall"], corrected_result["context_coverage"],
                 corrected_result["faithfulness"], corrected_result["relevance"]))
-            if corrected_result["overall"] > pre_score:
+            # 采纳须超出复评噪声带（±0.02 实测漂移），防采纳劣化版
+            if corrected_result["overall"] > pre_score + 0.02:
                 print("[每日洞察] 修正有效 (%.2f → %.2f)，采纳" % (pre_score, corrected_result["overall"]))
                 current = corrected
                 eval_result = corrected_result

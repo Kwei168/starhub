@@ -56,3 +56,15 @@ class TestRobustParseJson(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAdoptionNoiseGuard:
+    """01:12 期实证：复评基线漂移 0.05 内，'改善即采纳'会采纳劣化版。
+    要求修正版超过 pre_score + 0.02 才采纳，且修正轮数回退 1。"""
+
+    def test_adoption_margin_and_single_round(self):
+        import os
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "pre_score + 0.02" in src
+        assert "RAGAS_MAX_CORRECTIONS = 1" in src
