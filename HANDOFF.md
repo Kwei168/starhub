@@ -659,7 +659,7 @@ aside.ai-feed-panel      ← fixed 右侧抽屉，默认 translateX(103%)
 
 ### 8.6 洞察引擎集成（2026-09-08 ~ 09-14）
 
-**核心模块**：`insight_engine.py`（1735 行），替代原纯统计 `_run_analysis()` 管线。
+**核心模块**：`insight_engine.py`（~1988 行），替代原纯统计 `_run_analysis()` 管线。
 
 **架构概览**：
 ```
@@ -821,8 +821,8 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 
 ### 8.14 Agnes 多 key 轮询统一（2026-09-18）
 
-- 新方案：`AGNES_API_KEY`（主，可逗号分隔）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。已覆盖：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`。
-- **已知不一致**：`insight_engine.py` 仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发 `AGNES_API_KEY_2`——该引擎实际退化为单 key。后续改动时应统一为 `AGNES_API_KEYS` 方案。
+- 新方案：`AGNES_API_KEY`（主，可逗号分隔）+ `AGNES_API_KEYS`（附加，逗号分隔），合并成 key 池；429 时轮转下一个 key，非 429 错误重试当前 key 2 次。当前账号侧共 4 个 key（**池大小以 Secret 内容为准，代码不写死数量**）。已覆盖：`build_rss_aggregator.py`、`build_ai_daily.py`、`build_daily_insight.py`（`_LLM` 类）、`api/translate.js`。
+- **遗留待办（2026-09-18 核实仍未修复，远端 `a9a5ee1`）**：`insight_engine.py` 的 `configure_llm()` 仍读旧编号式 `AGNES_API_KEY_2/_3`，而 update.yml 已停发这两个变量——该引擎实际退化为单 key。修复方式：改为与其余模块一致的 `AGNES_API_KEYS` 逗号方案，改后跑 `test_insight_*.py`。
 - 踩坑：`_AGNES_KEY_IDX` 等全局变量在函数内使用前必须先 `global` 声明（`1d2a93d` 修复过一处顺序 bug）。
 
 ---
