@@ -591,6 +591,7 @@ def _bing_translate(text):
 
 def _agnes_translate(text):
     """Agnes AI 翻译（OpenAI 兼容接口，agnes-2.5-flash）。失败返回 None。"""
+    global _AGNES_KEY_IDX
     payload = json.dumps({
         "model": "agnes-2.5-flash",
         "messages": [
@@ -618,7 +619,6 @@ def _agnes_translate(text):
         return cand or None
     except urllib.error.HTTPError as ex:
         # 429 限流：轮转到下一个 key
-        global _AGNES_KEY_IDX
         if ex.code == 429 and len(_AGNES_KEYS) > 1:
             _AGNES_KEY_IDX = (_AGNES_KEY_IDX + 1) % len(_AGNES_KEYS)
             print("[AI晨报] Agnes 429，轮转到 key[%d]" % _AGNES_KEY_IDX, file=sys.stderr)

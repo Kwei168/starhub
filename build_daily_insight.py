@@ -110,7 +110,7 @@ JACCARD_EVENT_THRESHOLD = 0.35   # 检索后事件组装用
 
 # ── TopK ──
 MIN_EVENTS = 3
-MAX_EVENTS = 12
+MAX_EVENTS = 15
 DEEP_ANALYSIS_TOP_N = 3
 
 # ── RAG 参数 ──
@@ -311,44 +311,121 @@ def _fetch_aihot():
 
 
 def _fetch_agihunt():
-    """构建期抓取 AGI Hunt 12 频道数据。需 AGIHUNT_API_KEY 环境变量。"""
+    """构建期抓取 AGI Hunt 频道数据。需 AGIHUNT_API_KEY 环境变量。
+
+    遵循 AGI Hunt Agent API 使用守则：
+    - 限速 0.5 次/秒（突发 10），每请求间隔 ≥ 2s
+    - 429 按 Retry-After 退避，不循环重试
+    - 401 停止后续请求（密钥无效）
+    - 426 拉取新版 Skill 版本后重试一次
+    - 取当天 + 昨天数据以扩大覆盖率（API 支持近 3 天）
+    """
     api_key = os.environ.get("AGIHUNT_API_KEY", "")
     if not api_key:
         print("[每日洞察] AGIHUNT_API_KEY 未配置，跳过 AGI Hunt", file=sys.stderr)
         return []
 
-    today = (NOW_BJ).strftime("%Y-%m-%d")
+    skill_version = "1.2.2"
+    today = NOW_BJ.strftime("%Y-%m-%d")
+    yesterday = (NOW_BJ - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    fetch_days = [today, yesterday]
+
     all_items = []
+    key_valid = True
+    retry_once = True  # 426 时允许重试一次
 
-    for channel in AGIHUNT_CHANNELS:
-        url = ("%s/channel/%s/items?day=%s&sort=hot"
-               % (AGIHUNT_API_URL, channel, today))
-        req = urllib.request.Request(url, headers={
-            "Authorization": "Bearer %s" % api_key,
-            "X-AgiHunt-Skill-Version": "1.2.2",
-            "User-Agent": "starhub-auto-update",
-        })
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                data = json.loads(r.read(500000).decode("utf-8", errors="replace"))
-            for it in (data.get("items") or []):
-                title = (it.get("title") or "").strip()
-                if not title:
-                    continue
-                all_items.append({
-                    "title": title,
-                    "text": _truncate(it.get("text") or "", 800),
-                    "url": it.get("url") or "",
-                    "author": it.get("author") or "",
-                    "hot": float(it.get("hot") or 0),
-                    "channel": channel,
-                    "pub_date": it.get("published_at") or "",
-                    "_src": "agihunt",
-                })
-        except Exception as e:
-            print("[每日洞察] AGI Hunt [%s] 失败: %s" % (channel, e), file=sys.stderr)
+    for day in fetch_days:
+        if not key_valid:
+            break
+        for ci, channel in enumerate(AGIHUNT_CHANNELS):
+            # 限速：0.5 次/秒 → 每请求间隔 ≥ 2s（突发 10 后必须降速）
+            if ci > 0 or day != today:
+                time.sleep(2.0)
 
-    print("[每日洞察] AGI Hunt 拉取 %d 条（%d 频道）" % (len(all_items), len(AGIHUNT_CHANNELS)))
+            url = "%s/channel/%s/items?day=%s&sort=hot" % (
+                AGIHUNT_API_URL, channel, day)
+            req = urllib.request.Request(url, headers={
+                "Authorization": "Bearer %s" % api_key,
+                "X-AgiHunt-Skill-Version": skill_version,
+                "User-Agent": "starhub-auto-update",
+            })
+            try:
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    data = json.loads(r.read(500000).decode("utf-8", errors="replace"))
+                for it in (data.get("items") or []):
+                    title = (it.get("title") or "").strip()
+                    if not title:
+                        continue
+                    all_items.append({
+                        "title": title,
+                        "text": _truncate(it.get("text") or "", 800),
+                        "url": it.get("url") or "",
+                        "author": it.get("author") or "",
+                        "hot": float(it.get("hot") or 0),
+                        "channel": channel,
+                        "pub_date": it.get("published_at") or "",
+                        "_src": "agihunt",
+                    })
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    # 按 Retry-After 退避，不循环重试
+                    retry_after = int(e.headers.get("Retry-After", "60"))
+                    wait = min(retry_after, 120)
+                    print("[每日洞察] AGI Hunt 429 限流，等待 %ds 后跳过剩余频道" % wait, file=sys.stderr)
+                    time.sleep(wait)
+                    key_valid = False  # 当天不再请求
+                elif e.code == 401:
+                    print("[每日洞察] AGI Hunt 401 密钥无效，停止请求", file=sys.stderr)
+                    key_valid = False
+                elif e.code == 426 and retry_once:
+                    # Skill 需更新：拉取最新版本号后重试
+                    retry_once = False
+                    try:
+                        ver_url = "%s/skill/version" % AGIHUNT_API_URL
+                        ver_req = urllib.request.Request(ver_url, headers={
+                            "Authorization": "Bearer %s" % api_key,
+                            "User-Agent": "starhub-auto-update",
+                        })
+                        with urllib.request.urlopen(ver_req, timeout=5) as vr:
+                            new_ver = vr.read().decode("utf-8").strip().strip('"')
+                        if new_ver and new_ver != skill_version:
+                            print("[每日洞察] AGI Hunt Skill 更新: %s → %s" % (skill_version, new_ver), file=sys.stderr)
+                            skill_version = new_ver
+                            # 重试当前频道
+                            time.sleep(2.0)
+                            retry_req = urllib.request.Request(
+                                url, headers={
+                                    "Authorization": "Bearer %s" % api_key,
+                                    "X-AgiHunt-Skill-Version": skill_version,
+                                    "User-Agent": "starhub-auto-update",
+                                })
+                            with urllib.request.urlopen(retry_req, timeout=15) as r:
+                                data = json.loads(r.read(500000).decode("utf-8", errors="replace"))
+                            for it in (data.get("items") or []):
+                                title = (it.get("title") or "").strip()
+                                if not title:
+                                    continue
+                                all_items.append({
+                                    "title": title,
+                                    "text": _truncate(it.get("text") or "", 800),
+                                    "url": it.get("url") or "",
+                                    "author": it.get("author") or "",
+                                    "hot": float(it.get("hot") or 0),
+                                    "channel": channel,
+                                    "pub_date": it.get("published_at") or "",
+                                    "_src": "agihunt",
+                                })
+                    except Exception as ve:
+                        print("[每日洞察] AGI Hunt 426 更新失败: %s" % ve, file=sys.stderr)
+                elif e.code == 400:
+                    print("[每日洞察] AGI Hunt [%s] day=%s 参数错误(400)" % (channel, day), file=sys.stderr)
+                else:
+                    print("[每日洞察] AGI Hunt [%s] 失败: HTTP %d" % (channel, e.code), file=sys.stderr)
+            except Exception as e:
+                print("[每日洞察] AGI Hunt [%s] 失败: %s" % (channel, e), file=sys.stderr)
+
+    print("[每日洞察] AGI Hunt 拉取 %d 条（%d 频道, %d 天）" % (
+        len(all_items), len(AGIHUNT_CHANNELS), len(fetch_days)))
     return all_items
 
 
@@ -3712,7 +3789,7 @@ def main():
 
         # Phase 1 LLM: 全事件摘要（传入全局检索上下文，解决生成/评估不对齐问题）
         _ragas_ctx = _build_ragas_context(clusters, retrieved_for_ragas) if retrieved_for_ragas else ""
-        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:10000] if _ragas_ctx else None)
+        p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:12000] if _ragas_ctx else None)
         if p1_result:
             theme = p1_result.get("theme", "")
             p1_events = p1_result.get("events", [])
