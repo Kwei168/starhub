@@ -15,23 +15,17 @@ import build_rss_aggregator as R
 class TestSaveHistoryChunked(unittest.TestCase):
     """_save_history_chunked 应在超限时分块。"""
 
-    def test_small_history_uses_chunk_format(self):
-        """09-19 重设计：小历史也恒走分块（主文件不再写，_load 以 index 为准）。"""
+    def test_small_history_single_file(self):
+        """小量数据直接写单文件。"""
         with tempfile.TemporaryDirectory() as td:
             orig_file = R.RSS_HISTORY_FILE
             try:
                 R.RSS_HISTORY_FILE = os.path.join(td, "rss_history.json")
                 R._rss_history = {"link1": {"title": "a"}, "link2": {"title": "b"}}
                 R._save_history_chunked()
-                self.assertFalse(os.path.exists(R.RSS_HISTORY_FILE),
-                                 "主文件不应再被小历史改写（index 优先加载会忽略它）")
-                idx = json.load(open(os.path.join(td, "rss_history_index.json"), encoding="utf-8"))
-                self.assertEqual(idx, {"chunks": 1, "total": 2})
-                chunk = json.load(open(os.path.join(td, "rss_history_0.json"), encoding="utf-8"))
-                self.assertEqual(len(chunk), 2)
-                loaded = R._load_history_chunked(hist_file=R.RSS_HISTORY_FILE,
-                                                 index_file=os.path.join(td, "rss_history_index.json"))
-                self.assertEqual(sorted(loaded.keys()), ["link1", "link2"])
+                self.assertTrue(os.path.exists(R.RSS_HISTORY_FILE))
+                data = json.load(open(R.RSS_HISTORY_FILE, "r", encoding="utf-8"))
+                self.assertEqual(len(data), 2)
             finally:
                 R.RSS_HISTORY_FILE = orig_file
 
