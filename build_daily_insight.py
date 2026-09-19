@@ -172,7 +172,7 @@ RAGAS_MAX_CORRECTIONS = 1      # 修正轮数（01:12 期实证：2 轮在复评
 RAGAS_MIN_COVERAGE = 0.75      # context_coverage 最低要求
 RAGAS_MIN_FAITHFULNESS = 0.88  # faithfulness 最低要求（目标 ≥ 0.95）
 RAGAS_MIN_RELEVANCE = 0.75     # relevance 最低要求（目标 ≥ 0.80）
-_RAGAS_CTX_CHAR_BUDGET = 140000  # 评估上下文硬字符预算：全池 200 块实测约 10.8 万，留 30% 余量
+_RAGAS_CTX_CHAR_BUDGET = 140000  # 评估上下文字符预算：实测随机 200 块中位 10.5 万、p90 11.1 万，正常不触顶；触顶必告警
 
 
 # ──────────────────── 工具函数 ────────────────────
@@ -3401,7 +3401,9 @@ def _build_ragas_context(clusters, retrieved_chunks, stats=None):
     是按 URL 从全库捞的（同 URL 最多 101 块），可能根本不在 retrieved_for_ragas 里，
     预算一咬就把它丢掉 → 终版分反而会替真实内容判幻觉。因此先铺"池外引用块"，
     再按分数铺池内块；预算咬人必须显式告警，不得静默。
-    09-19 实测（26944 块）：入选块均值 474 字，200 块约 9.5 万字符≈6.7 万 token。
+    09-19 实测（本地 26944 块全量库）：单块(含前缀/标题，正文截 1000)均值 522、p90 1041；
+    随机取 200 块的上下文总字符 median 10.5 万、p90 11.1 万，预算 14 万在真实选取下咬不到；
+    只有整库最长的 200 块才触顶（22.2 万 → 仅容 125 块），那种日子必须显式告警而非静默丢块。
     """
     pool = sorted(retrieved_chunks or [],
                   key=lambda c: c.get("retrieval_score", 0), reverse=True)[:200]

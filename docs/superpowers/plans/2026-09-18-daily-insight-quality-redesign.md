@@ -1,5 +1,14 @@
 # 每日洞察质量管线重设计 实施计划
 
+> **⚠ 已完成且已被后续轮次超越 —— 禁止按本文重跑（2026-09-19 登记）**
+> Task 1-6 全部已上线（主题分类层、破茧栏 v2、Phase2 证据包、4 维快筛、[信息不足] 前缀与 key_links 校验、去重类别守卫 + pytest 纳入 CI）；
+> 下面的步骤框当初没勾，所以看起来像"待办"，实际是历史记录。
+> 本文的架构声明「RAGAS 闭环、Phase 1、检索、聚类、嵌入全部不动」**已不成立**：
+> 第 6-12 轮改了 Phase1 配对（按 event_num）、RAGAS（三样本中位 + 采纳边距 + 终版复评）、新增合并评审 agent 与 missed 回收环、评估域与装配域对齐。
+> 现行计划：`docs/superpowers/plans/2026-09-19-daily-insight-shipped-baseline.md`；
+> 其中仍有约束力的四条不变量（TOPIC_TAXONOMY 顺序敏感、证据包"不可作为引用编号来源"、4 维权重 40/30/20/10 与 editor_score≥55、破茧排除全部主类别）已抄入 HANDOFF.md，本文只当设计依据存档。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 修复每日洞察管线的 5 个质量缺陷：主题分类层缺失、破茧栏选不出非科技内容、Phase 2 素材单薄致幻觉、[信息不足] 过滤失效、key_links 同质化。
