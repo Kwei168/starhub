@@ -1861,13 +1861,12 @@ def _norm_url(u):
     return u.rstrip('/')
 
 
-def _build_evidence_pack(cluster, rss_by_url, max_docs=3, doc_chars=2500, skip_urls=None):
+def _build_evidence_pack(cluster, rss_by_url, max_docs=3, doc_chars=2500):
     """事件 URL 反查 rss_history 全文，拼为 Phase 2 交叉核对参考。"""
     docs, seen = [], set()
-    _skip = skip_urls or set()
     for it in cluster.get("items", []):
         key = _norm_url(it.get("url") or it.get("link"))
-        if not key or key in seen or key in _skip:
+        if not key or key in seen:
             continue
         rec = rss_by_url.get(key)
         if not rec:
@@ -1883,99 +1882,40 @@ def _build_evidence_pack(cluster, rss_by_url, max_docs=3, doc_chars=2500, skip_u
     return "\n\n".join(docs)
 
 
-# AI/科技主题正则：Phase 1.8 噪声过滤与 G1 回收闸共用（审查 P1-2：回收事件曾无主题闸）
-_AI_NEWS_RE = re.compile(
-    r'AI|GPT|Claude|LLM|AGI|模型|智能|算法|芯片|GPU|推理|训练|'
-    r'OpenAI|Anthropic|Google|Meta|微软|苹果|亚马逊|英伟达|'
-    r'\bAI\b|\bLLM\b|\bML\b|\bNLP\b|\bCV\b|\bAPI\b|\bSDK\b|'
-    r'机器人|自动驾驶|无人机|区块链|元宇宙|量子计算|'
-    r'融资|创业|独角兽|估值|收购|IPO|上市|'
-    r'开源|发布|上线|更新|版本|框架|平台|系统', re.IGNORECASE)
-
-
-def _truncate_at_paragraph(text, limit):
-    """段落/句边界截断，避免腰斩半句（G2）。"""
-    t = text or ""
-    if len(t) <= limit:
-        return t
-    cut = t.rfind("\n", 0, limit)
-    if cut < int(limit * 0.5):
-        cut = t.rfind("。", 0, limit)
-    return t[:cut].rstrip() if cut > 0 else t[:limit]
-
-
-def _fulltext_hit_urls(cluster, rss_by_url):
-    """素材可被正文替换的 URL 集合（证据包据此跳过重复注入）。"""
-    if not rss_by_url:
-        return set()
-    out = set()
-    for it in cluster.get("items", []):
-        key = _norm_url(it.get("url", "") or it.get("link", ""))
-        if key:
-            rec = rss_by_url.get(key)
-            if isinstance(rec, dict) and len(_strip_html((rec.get("full_content") or "").strip())) >= 120:
-                out.add(key)
-    return out
-
-
-def _build_event_material(cluster, numbered=False, rss_by_url=None):
+def _build_event_material(cluster, numbered=False):
     """为 LLM 构建事件素材文本。兼容 RAG chunk 和旧格式。
     numbered=True 时片段带 [n] 编号并返回编号→来源映射，供 Phase 2 引用溯源。"""
     lines = []
     refs = []
-    _kept_toks = []  # G2: 近似转述去重（仅 Phase2 路径启用）
-    n_out = 0
     for idx, it in enumerate(cluster.get("items", []), 1):
         # 兼容 RAG chunk (source_type) 和旧格式 (_src)
         src = it.get("source_type", "") or it.get("_src", "?")
         title = it.get("title", "")
         url = it.get("url", "") or it.get("link", "")
-        prefix = ""  # 每条保留后统一赋号（P1-3：跳号会让模型序数引用被 _validate 剔除）
+        prefix = "[%d]" % idx if numbered else ""
         if src == "rss":
             body = it.get("text", "") or it.get("full_content") or it.get("summary") or ""
-            body = _strip_html(body)
-            _key = _norm_url(url)
-            _rec = rss_by_url.get(_key) if (rss_by_url and _key) else None
-            _full = _strip_html((_rec or {}).get("full_content", "") or "")
-            if len(_full) >= 120:
-                body = _truncate_at_paragraph(_full, 2500)  # G2: 正文主体取代 800 字 feed 导语
-            else:
-                body = body[:800]
-            _tok = _dedup_tokens(body[:600])
-            if rss_by_url is not None and _tok and any(_jaccard(_tok, k) > 0.7 for k in _kept_toks):
-                continue  # P1-4: 无 rss_by_url（Phase1/自审/修正环）不裁剪素材
-            if _tok:
-                _kept_toks.append(_tok)
+            body = _strip_html(body)[:800]
             src_name = it.get("source", "")
-            n_out += 1
-            prefix = "[%d]" % n_out if numbered else ""
             lines.append("%s[RSS/%s] %s\n%s" % (prefix, src_name, title, body))
         elif src == "hot":
             plat = it.get("source", "") or it.get("platform", "")
             src_name = "热榜/%s" % plat
-            n_out += 1
-            prefix = "[%d]" % n_out if numbered else ""
             lines.append("%s[热榜/%s #%s] %s" % (prefix, plat, it.get("rank", ""), title))
         elif src == "aihot":
             src_name = "AIHOT/%s" % it.get("category", "")
-            n_out += 1
-            prefix = "[%d]" % n_out if numbered else ""
             lines.append("%s[AIHOT/%s] %s\n%s" % (prefix, it.get("category", ""), title, it.get("summary", "")))
         elif src == "agihunt":
             ch = it.get("channel", "") or it.get("source", "")
             src_name = "AGI Hunt/%s" % ch
-            n_out += 1
-            prefix = "[%d]" % n_out if numbered else ""
             lines.append("%s[AGI Hunt/%s hot=%.0f] %s\n%s" % (
                 prefix, ch, it.get("hot", 0), title, it.get("text", "")))
         else:
             # 未知源类型，直接输出文本
             src_name = "%s/%s" % (src, it.get("source", ""))
-            n_out += 1
-            prefix = "[%d]" % n_out if numbered else ""
             lines.append("%s[%s/%s] %s\n%s" % (prefix, src, it.get("source", ""), title, it.get("text", "")[:500]))
         if numbered:
-            refs.append({"index": n_out, "source": src_name, "title": title, "url": url})
+            refs.append({"index": idx, "source": src_name, "title": title, "url": url})
     if numbered:
         return "\n---\n".join(lines), refs
     return "\n---\n".join(lines)
@@ -2697,7 +2637,7 @@ citations 为字段级来源索引：每个字段的结论必须标注其来自�
 素材对某一说法存在分歧（质疑、否认、要求核实）时，必须标注"该说法有争议"及分歧方，不得写成确定事实。"""
 
 
-def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None, evidence="", rss_by_url=None):
+def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None, evidence=""):
     """Phase 2: 单个事件的深度解读。evidence 为同源 RSS 全文存档交叉参考（可为空）。"""
     if not llm:
         return {"status": "degraded", "reason": "llm_unavailable",
@@ -2705,7 +2645,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None, evidence="", rs
                 "source_divergence": "", "quote": "", "outlook": "",
                 "confidence": "low"}
 
-    material, mat_refs = _build_event_material(cluster, numbered=True, rss_by_url=rss_by_url)
+    material, mat_refs = _build_event_material(cluster, numbered=True)
     prompt = """今天是 %s。请深度解读以下事件。
 
 ## 事件：%s
@@ -3204,18 +3144,6 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
             "relevance": reasoning.get("relevance", {}).get("confidence", "medium"),
         }
 
-        # G1：回收 judge 的漏点清单（v1 键 missed / v2 键 missed_points），历史被丢弃
-        missed_pts = []
-        _cov_r = reasoning.get("coverage", {})
-        if isinstance(_cov_r, dict):
-            for _k in ("missed", "missed_points"):
-                _v = _cov_r.get(_k, [])
-                if isinstance(_v, list):
-                    for _m in _v:
-                        _m = str(_m).strip()
-                        if _m and _m not in missed_pts:
-                            missed_pts.append(_m)
-
         return {
             "context_coverage": round(cov, 2),
             "faithfulness": round(faith, 2),
@@ -3224,7 +3152,6 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
             "feedback": str(parsed.get("feedback", "")),
             "weak_events": [int(w) for w in weak if isinstance(w, (int, float))],
             "confidences": confidences,
-            "missed_points": missed_pts[:12],
         }
 
     return None
@@ -3355,20 +3282,6 @@ def _median_eval_samples(samples):
     ref = min(samples, key=lambda s: abs(s.get("overall", 0) - out.get("overall", 0)))
     out["feedback"] = ref.get("feedback", "")
     out["weak_events"] = ref.get("weak_events", [])
-    # 漏点须 ≥2 样本共现（v1/v2 措辞差异大，并集=噪声最大化；v1/v1' 重复才可信）
-    _cnt, _disp = {}, {}
-    for s in samples:
-        _seen = set()
-        for m in s.get("missed_points", []) or []:
-            k = (m or "").strip().lower()
-            if k and k not in _seen:
-                _seen.add(k)
-                _cnt[k] = _cnt.get(k, 0) + 1
-                _disp.setdefault(k, m)
-    _thr = 2 if len(samples) >= 2 else 1
-    _mp = [v for k, v in _disp.items() if _cnt[k] >= _thr]
-    if _mp:
-        out["missed_points"] = _mp[:12]
     return out
 
 
@@ -3402,89 +3315,6 @@ def _robust_quality_eval(llm, current, theme, context_text, use_cv):
     med["_actual_variants"] = 1
     med["_eval_samples"] = len(samples)
     return med
-
-
-def _recover_missed_events(llm, clusters, missed_points, index, chunks, max_new=2, pool=None):
-    """G1 闭环：judge 的 missed 清单 → 定向检索 → 迷你聚类 → Phase1 摘要 → 新事件。
-
-    此前裁判每期报出的漏点清单在解析层被丢弃（第7轮外部分析坐实）。新事件由
-    调用方接回终局闸序（去重/faith 复查/占位/收口），任何异常静默降级为不补。
-    """
-    if not llm or not missed_points or len(clusters) >= PHASE1_POOL:
-        return []
-    try:
-        # 清洗：judge 常输出"无/已全覆盖"废串；RRF 检索对任意串都保证返回 15 条（审查 P1-2）
-        queries = [m for m in missed_points
-                   if isinstance(m, str) and len(m.strip()) >= 6][:5]
-        if not queries:
-            return []
-        hits = _hybrid_retrieve(index, chunks, queries, top_k=15)
-        if not hits:
-            print("[每日洞察] missed 回收: 检索无结果")
-            return []
-        _floor = max((c.get("retrieval_score", 0) for c in hits), default=0) * 0.5
-        cand = [c for c in hits if c.get("retrieval_score", 0) >= _floor]
-        if pool is not None:
-            # judge 只看池内 200 条：池外证据会造成 faith 判定域分叉（审查 P1-5）
-            cand = [c for c in cand
-                    if _norm_url(c.get("url", "") or c.get("link", "")) in pool]
-        groups = []
-        for ch in cand:
-            key = _norm_url(ch.get("url", "") or ch.get("link", ""))
-            placed = False
-            for g in groups:
-                if (key and key in g["urls"]) or \
-                   _jaccard(_dedup_tokens(g["title"]),
-                            _dedup_tokens(ch.get("title", ""))) >= 0.3:
-                    g["items"].append(ch)
-                    if key:
-                        g["urls"].add(key)
-                    placed = True
-                    break
-            if not placed:
-                groups.append({"title": (ch.get("title", "") or "").strip(),
-                               "items": [ch], "urls": {k for k in [key] if k},
-                               "score": ch.get("retrieval_score", 0)})
-        existing_toks = [_dedup_tokens(c.get("label", "")) for c in clusters]
-        new_clusters = []
-        for g in sorted(groups, key=lambda x: -x["score"]):
-            if len(new_clusters) >= max_new:
-                break
-            if not g["title"]:
-                continue
-            tok = _dedup_tokens(g["title"])
-            if len(tok) < 2:
-                continue
-            if any(_jaccard(tok, e) >= 0.35 for e in existing_toks):
-                continue
-            if not _AI_NEWS_RE.search(g["title"][:60]):
-                continue  # 回收事件必须 AI/科技相关，保护 relevance（审查 P1-2）
-            new_clusters.append({
-                "id": "evt_%s_r%02d" % (NOW_BJ.strftime("%Y%m%d"), len(clusters) + len(new_clusters) + 1),
-                "label": g["title"][:60], "summary": "", "significance": "",
-                "category": "", "items": g["items"][:8],
-                "source_types": sorted({(it.get("source_type") or it.get("_src") or "")
-                                        for it in g["items"][:8]}) or ["rss"],
-                "score": g["score"], "best_score": g["score"],
-            })
-        if not new_clusters:
-            print("[每日洞察] missed 回收: 无合格新事件(阈值挡/与既有重叠/非科技主题)")
-            return []
-        for c in new_clusters:
-            _filter_cluster_items(c, c.get("label", ""))
-        p1 = _llm_phase1(llm, new_clusters)
-        if not p1:
-            return []
-        _apply_phase1_result(new_clusters, p1)
-        kept = [c for c in new_clusters
-                if c.get("summary") and not _is_insufficient(c["summary"])
-                and _AI_NEWS_RE.search((c.get("label", "") + " " + c.get("summary", ""))[:400])]
-        print("[每日洞察] missed 回收 %d 个新事件: %s" % (
-            len(kept), "; ".join((c.get("label") or "")[:20] for c in kept)))
-        return kept
-    except Exception as exc:
-        print("[每日洞察] missed 回收异常，跳过: %s" % exc, file=sys.stderr)
-        return []
 
 
 def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
@@ -3647,7 +3477,7 @@ def _update_history(clusters, theme):
     today_events = []
     for c in clusters:
         evt = {
-            "id": c.get("id") or ("evt_" + hashlib.sha1((c.get("label") or "").encode("utf-8")).hexdigest()[:8]),
+            "id": c["id"],
             "label": c.get("label", ""),
             "category": c.get("category", ""),
             "score": c.get("score", 0),
@@ -3657,7 +3487,7 @@ def _update_history(clusters, theme):
             "status": c.get("status", "new"),
             "summary": c.get("summary", ""),
             "significance": c.get("significance", ""),
-            "key_links": _validate_key_links(c.get("key_links", []), c.get("items", []))[:3],
+            "key_links": c.get("key_links", []) or [it.get("url", "") for it in c.get("items", []) if it.get("url")][:3],
         }
         if c.get("deep_analysis"):
             evt["deep_analysis"] = c["deep_analysis"]
@@ -3701,7 +3531,7 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None, bubble_b
             }
             articles.append(art)
         evt = {
-            "id": c.get("id") or ("evt_" + hashlib.sha1((c.get("label") or "").encode("utf-8")).hexdigest()[:8]),
+            "id": c["id"],
             "label": c.get("label", ""),
             "category": c.get("category", ""),
             "score": c.get("score", 0),
@@ -4704,7 +4534,6 @@ def main():
     llm = _init_llm()
     has_analysis = False
     theme = ""
-    _yday_labels = set()  # Phase1 失败路径下 RAGAS 块刷新分数不得 NameError（审查 P1-1）
 
     if llm:
         # Phase 1 前素材预过滤：移除与事件标签明显无关的 items，防止内容串位
@@ -4745,7 +4574,13 @@ def main():
             clusters = _deduplicate_after_phase1(clusters)
 
             # Phase 1.8: AI 主题硬过滤 — 清除与 AI/科技无关的噪声事件
-            _AI_KEYWORDS = _AI_NEWS_RE
+            _AI_KEYWORDS = re.compile(
+                r'AI|GPT|Claude|LLM|AGI|模型|智能|算法|芯片|GPU|推理|训练|'
+                r'OpenAI|Anthropic|Google|Meta|微软|苹果|亚马逊|英伟达|'
+                r'\bAI\b|\bLLM\b|\bML\b|\bNLP\b|\bCV\b|\bAPI\b|\bSDK\b|'
+                r'机器人|自动驾驶|无人机|区块链|元宇宙|量子计算|'
+                r'融资|创业|独角兽|估值|收购|IPO|上市|'
+                r'开源|发布|上线|更新|版本|框架|平台|系统', re.IGNORECASE)
             _NON_AI_CATS = {'bbc top stories', 'fun', 'sport', 'entertainment',
                             'politics', 'celebrity', 'lifestyle', 'travel',
                             'food', 'fashion', 'music', 'film', 'tv'}
@@ -4788,13 +4623,10 @@ def main():
                 # Phase 2 前素材过滤：移除与 label 不相关的 items
                 _filter_cluster_items(c, c.get("label", ""))
                 prev_summary = c.get("prev_summary") if c.get("status") in ("ongoing", "escalating") else None
-                _ft_hits = _fulltext_hit_urls(c, _rss_by_url)
                 deep = _llm_phase2(llm, c, {
                     "label": c.get("label", ""),
                     "summary": c.get("summary", ""),
-                }, prev_summary,
-                    evidence=_build_evidence_pack(c, _rss_by_url, skip_urls=_ft_hits),
-                    rss_by_url=_rss_by_url)
+                }, prev_summary, evidence=_build_evidence_pack(c, _rss_by_url))
                 c["deep_analysis"] = deep
                 if deep.get("status") == "ok":
                     has_analysis = True
@@ -4832,22 +4664,13 @@ def main():
             if judge_llm:
                 clusters, ragas_eval = _ragas_evaluate_and_correct(
                     judge_llm, clusters, theme, retrieved_for_ragas, build_cfg)
-                # G1: judge 漏点回收为新事件——必须在终局去重之前进入，吃全套闸
-                _missed = (ragas_eval or {}).get("missed_points") or []
-                if _missed:
-                    _pool_urls = {_norm_url(ch.get("url", "") or ch.get("link", ""))
-                                  for ch in (retrieved_for_ragas or [])} - {""}
-                    _new_evts = _recover_missed_events(llm, clusters, _missed, index, chunks,
-                                                       pool=_pool_urls)
-                    if _new_evts:
-                        clusters = clusters + _new_evts
                 # 修正循环重写了 label/summary/category，可能事后制造重复 → 去重必须在其后再跑一轮
                 clusters = _deduplicate_after_phase1(clusters)
                 # faith 终局闸：修正环改写的正文复查一次（06:12 期幻觉回归实证），再刷新分数
                 _final_faith_recheck(llm, clusters, retrieved_for_ragas)
                 # 修正循环改写了 label/summary 后刷新门槛分，保证导出 JSON 分数描述最终内容
                 for c in clusters:
-                    if "editor_score" in c or c.get("summary"):
+                    if "editor_score" in c:
                         c["editor_score"] = _quick_score_event(c, yesterday_labels=_yday_labels)
             else:
                 print("[每日洞察] Judge LLM 不可用，跳过 RAGAS 评估", file=sys.stderr)
