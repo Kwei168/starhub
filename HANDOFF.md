@@ -799,6 +799,25 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
   其上游设计依据（G1/G2 与四条分歧判断）已从浏览器下载目录搬入仓库：
   `docs/superpowers/specs/2026-09-19-daily-insight-g1g2-design.md`、`docs/superpowers/specs/2026-09-19-daily-insight-g1g2-v2-judgment.md`。
   讨论 relevance、claim/实体中间层、rerank、12→16 预算之前先读这三份，避免重复立项。
+
+**R13 观察期收口 + R14 批1（2026-09-19 22:40 北京时间，远端 `1703e4dafe`）—— 四条易被无声破坏的事实**：
+1. **观察期已收口，结论是"没达标"**：终版口径 7 期三维同时达标 **1/7**（rel 2/7、cov 4/7、faith 6/7）。
+   原计划里的**阶段 B（对照面蒸馏清单）已撤回**：它的"池子构成漂移=共模因子"前提只在 n=7（全挤在同一天 5 小时内，
+   `chunks_total~agihunt_count` r=+0.97 的时间趋势）成立，**在 36 期草稿口径上 r 从 −0.73 塌到 −0.24 不复现**。
+   教训写死在这里：**7 个连续时间点的相关系数量到的是时间趋势，不是因果；提方案前先拿大样本复现。**
+2. **唯一跨样本复现的输入侧变量是 `deep_share`**（`has_analysis_count/total_events`）：cov r=+0.28(n=29)/+0.33(n=37)，
+   rel r=+0.29/+0.30。根因是 `DEEP_ANALYSIS_TOP_N=3` 对 12 槽 → 9 条结构上没有"意义/影响"字段，**cov 的天花板是深度预算不是检索**。
+   另：`MAIN_TOPICS = {"ai","programming"}` 让运维/工具类条目白拿 30 分相关性满分 → 主榜一半槽位并列在 62 分地板（rel 失分的直接成因）。
+3. **台账 `passed` 的口径已变，且聚合必须过滤 `eval_stage`**：新 `passed = overall≥threshold ∧ 三维达线`，
+   缺维/NaN/bool → `None`（未知不得冒充达标）。历史 45 行里 `passed=true` 而三维未达线的有 25 行（旧判据只看 overall）。
+   ⚠ `draft_only` 行的 `passed` 说的是草稿 —— 不做 `eval_stage` 过滤会把 1/7 读成 4/43。
+4. **三条会静默失效的陷阱**（都已加钉）：
+   ① `json.loads` 接受裸 `NaN`，而 `min(1.0, nan) == 1.0` → judge 吐 NaN 会被 `_clamp` 洗成满分并记 `passed=true`；
+      凡把模型返回数值夹进区间处必须先 `math.isfinite`。
+   ② 统计口径数据一律拉**远端** `daily_insight_tracking_history.jsonl`：CI 只写远端，本地副本停在 09-17（45 行 vs 本地 7 行）。
+   ③ 阶段 C 的逐事件归因第一期为 0/3（全落 `unmatched_irrelevant`）：judge 写「事件12（…）」带序号，
+      且长理由 vs 短标签用 Jaccard 永远过不了门槛 —— 现改为序号前缀优先 + 包含度且要求重合词元 ≥2（**误挂比归不上更坏**）。
+
 - **四条容易被无声破坏的设计不变量**（原先只写在 09-18 计划里，代码只有半句注释）：
   1. `TOPIC_TAXONOMY`（`:100`）**顺序敏感**：`ai` 必须排第一，否则"英伟达股价"这类科技金融交叉事件会被判去非科技类、掉出主报告；改顺序=改产品口径。
   2. Phase 2 证据包铁律（`:3001`）：同源 RSS 全文**只能用来交叉核对数字与信源分歧，不得作为引用编号来源**，`citations` 只许引上方素材 `[n]`；且别的事件里出现的人物/公司/数字严禁嫁接本事件主角（06:12 期张冠李戴实证）。这条是"每条洞察都能跳到原文"红线的技术支点。
