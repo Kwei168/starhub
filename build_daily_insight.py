@@ -2529,6 +2529,8 @@ _CONSOLIDATE_CASEBOOK = """【判定标准——来自生产复盘的真实判�
 - 「模型发布」+「该模型一周后因缺陷被撤回」→ 时间线不同阶段，是两件事，各自保留
 - 「传闻某厂将发布 X」+「官方确认发布 X」→ 传闻与确认是不同发生，不并（摘要须注明争议与确认方）
 - 「英伟达芯片供应紧张」+「云厂商上调资本开支」→ 因果相关但不是同一事件
+- 「OpenAI 研究员称气隙隔离难防失控 AI」+「英王查尔斯三世警告 AI 生存性威胁」→ 同一议题下不同主体的各自表态，是不同事件，禁并（05:48 期误并实证）
+- 「加州州长下令制定更强 AI 安全规则」+「欧洲 AI 领袖指责美国对手借安全顾虑保领先」→ 不同主体的政策言论，禁并（05:48 期误并实证）
 - 「昇腾 910C 量产」+「昇腾 910B 升级版发布」→ 同产品不同版本是不同发生，禁并
 - 两条标题相同但正文讲的是两件事 → 这是错标，不得合并，各自保留
 - C 只与 A 合并前的旧标题相似、与 A 现内容无关 → 不得搭车合并
@@ -2553,7 +2555,65 @@ def _build_consolidate_prompt(clusters):
     return head + _CONSOLIDATE_CASEBOOK + tail
 
 
-def _apply_consolidation(clusters, plan):
+def _verify_consolidation(llm, clusters, groups):
+    """提案二审：每组须被显式确认「同一主体+同一发生」；False/缺失/不可解析一律否决。
+    05:48 期实证评审 agent 会把同议题不同主体（Noam Brown vs 英王查尔斯）误并。"""
+    if not llm:
+        return []
+    lines = []
+    for gi, (keep, absorbed, g) in enumerate(groups, 1):
+        a = clusters[keep - 1]
+        seg = "组%d 保留: %s ｜ %s" % (
+            gi, (a.get("label") or "")[:34], (a.get("summary") or "")[:120])
+        for m in absorbed:
+            cm = clusters[m - 1]
+            seg += chr(10) + "     被并: %s ｜ %s" % (
+                (cm.get("label") or "")[:34], (cm.get("summary") or "")[:120])
+        lines.append(seg)
+    prompt = ("逐组复核以下合并提案。成立标准：组内所有条目是【同一主体 + 同一发生】。" + chr(10) +
+              "特别注意：同一议题下不同人物/机构各自的表态是不同事件，不得合并；" + chr(10) +
+              "拿不准一律判 false。" + chr(10) + chr(10) + (chr(10) + chr(10)).join(lines) +
+              chr(10) + chr(10) +
+              '输出 JSON：{"verdicts": [{"group": 组号, "same_event": true/false, "reason": "≤20字"}]}，每组必须给。')
+    verdicts = {}
+    try:
+        result = llm.complete(
+            [{"role": "system", "content": "你是事件合并复核员。只输出严格 JSON。"},
+             {"role": "user", "content": prompt}],
+            temperature=0.1, max_tokens=600)
+        parsed = _robust_parse_json(result)
+        if isinstance(parsed, dict):
+            def _vi(v):
+                if isinstance(v, bool):
+                    return None
+                if isinstance(v, str) and v.strip().isdigit():
+                    return int(v.strip())
+                return v if isinstance(v, int) else None
+            for v in parsed.get("verdicts") or []:
+                if isinstance(v, dict):
+                    gi = _vi(v.get("group"))
+                    if isinstance(gi, int):
+                        verdicts[gi] = v.get("same_event") is True
+    except Exception as exc:
+        print("[每日洞察] 二审调用异常，全部合并否决: %s" % exc, file=sys.stderr)
+        return []
+    if not parsed:
+        print("[每日洞察] 二审不可解析(空响应/降级)，全部合并否决(infra)")
+        return []
+    # 二审组号 0-based 漂移：整体平移，防误并组借走合法组的 true 判定
+    if verdicts and 0 in verdicts and max(verdicts) <= len(groups) - 1:
+        verdicts = {k + 1: v for k, v in verdicts.items()}
+        print("[每日洞察] 二审组号为 0-based，已整体平移")
+    kept = []
+    for gi, grp in enumerate(groups, 1):
+        if verdicts.get(gi) is True:
+            kept.append(grp)
+        else:
+            print("[每日洞察] 二审否决第 %d 组合并(keep#%d)" % (gi, grp[0]))
+    return kept
+
+
+def _apply_consolidation(clusters, plan, llm=None):
     """校验并应用合并方案：越界/自并/链式/超组一律忽略。"""
     merges = plan.get("merges") if isinstance(plan, dict) else None
     if not isinstance(merges, list) or not merges:
@@ -2619,6 +2679,12 @@ def _apply_consolidation(clusters, plan):
         print("[每日洞察] 评审方案将致事件数跌破下限(%d-%d<%d)，整案作废" % (
             n, len(dropped), MIN_EVENTS), file=sys.stderr)
         return clusters, 0
+    groups = _verify_consolidation(llm, clusters, groups)
+    if not groups:
+        return clusters, 0
+    dropped = set()
+    for _k, _v, _g in groups:
+        dropped.update(_v)
     clusters = [dict(c, items=list(c.get("items") or [])) for c in clusters]  # P2-1 原子性
     out = []
     for i, c in enumerate(clusters, 1):
@@ -2677,7 +2743,7 @@ def _llm_consolidate_events(llm, clusters):
         if not isinstance(plan, dict):
             print("[每日洞察] 评审 agent 输出不可解析，回退机械闸", file=sys.stderr)
             return clusters
-        out, n = _apply_consolidation(clusters, plan)
+        out, n = _apply_consolidation(clusters, plan, llm=llm)
         if n:
             print("[每日洞察] 评审 agent 合并 %d 组重叠事件: %d → %d" % (n, len(clusters), len(out)))
         return out

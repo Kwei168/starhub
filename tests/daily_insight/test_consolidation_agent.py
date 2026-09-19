@@ -19,13 +19,21 @@ def _c(label, cat, summary="摘要", bad=False):
 
 
 class _FakeLLM:
-    def __init__(self, plan):
+    """第一次调用返回合并提案；第二次（二审）默认全组放行。"""
+    def __init__(self, plan, verdicts="approve"):
         self._p = json.dumps(plan, ensure_ascii=False) if not isinstance(plan, str) else plan
+        self._v = verdicts
         self.prompts = []
+        self.n = 0
 
     def complete(self, messages, temperature=0.1, max_tokens=1200):
+        self.n += 1
         self.prompts.append(messages[-1]["content"])
-        return self._p
+        if self.n == 1:
+            return self._p
+        if self._v == "approve":
+            return json.dumps({"verdicts": [{"group": i, "same_event": True} for i in (1, 2, 3)]})
+        return self._v
 
 
 def test_huawei_pair_merged_survivor_keeps_good_fields():
@@ -207,3 +215,143 @@ class TestLLM429Polling:
         monkeypatch.setattr(B.time, "sleep", adv_sleep)
         assert llm.complete([{"role": "user", "content": "x"}]) == ""
         assert len(calls) >= 3, "预算内必须多轮轮询而非一次即弃"
+
+
+class TestVerificationPass:
+    """05:48 期实证：评审 agent 把「英王查尔斯警告」并入「Noam Brown 言论」
+    （主题同、主体不同）。合并方案须过二审：主体+发生同一才放行，二审失败整组作废。"""
+
+    def _cs(self):
+        return [
+            {"label": "OpenAI研究员称气隙隔离难防失控AI", "category": "policy", "id": "a",
+             "summary": "Noam Brown在播客提出气隙隔离失效观点引发安全圈激辩。",
+             "significance": "g", "items": [{"url": "https://a/1"}], "source_types": ["rss"], "score": 6.0},
+            {"label": "英王查尔斯三世警告AI生存性威胁", "category": "policy", "id": "b",
+             "summary": "英王查尔斯敦促AI巨头加强管控生存性风险。",
+             "significance": "g", "items": [{"url": "https://b/1"}], "source_types": ["rss"], "score": 5.0},
+            {"label": "英伟达发布新代数据中心芯片", "category": "industry", "id": "c",
+             "summary": "英伟达发布Rubin架构芯片。",
+             "significance": "g", "items": [{"url": "https://c/1"}], "source_types": ["rss"], "score": 4.0},
+            {"label": "某足球俱乐部宣布主教练下课", "category": "industry", "id": "d",
+             "summary": "俱乐部官方公告换帅。",
+             "significance": "g", "items": [{"url": "https://d/1"}], "source_types": ["rss"], "score": 3.0},
+            {"label": "Meta 发布桌面智能体", "category": "ai-products", "id": "e",
+             "summary": "Meta Muse for Mac 上线。",
+             "significance": "g", "items": [{"url": "https://e/1"}], "source_types": ["rss"], "score": 2.0},
+        ]
+
+    def test_verifier_rejects_different_subject(self, monkeypatch):
+        calls = []
+
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                calls.append(messages[-1]["content"])
+                if self.n == 1:  # 提案：把 1 和 2 并了
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2], "reason": "同论战"}]},
+                                      ensure_ascii=False)
+                # 二审：判定主体不同
+                return json.dumps({"verdicts": [{"group": 1, "same_event": False,
+                                                 "reason": "主体不同：研究员vs英王"}]},
+                                  ensure_ascii=False)
+        out = B._llm_consolidate_events(Seq(), self._cs())
+        assert len(out) == 5, "二审否决的合并必须撤销"
+        assert len(calls) == 2, "必须发生二审调用"
+
+    def test_verifier_approves_keeps_merge(self, monkeypatch):
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                if self.n == 1:
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2]}]}, ensure_ascii=False)
+                return json.dumps({"verdicts": [{"group": 1, "same_event": True,
+                                                 "reason": "同一表态及反响"}]}, ensure_ascii=False)
+        out = B._llm_consolidate_events(Seq(), self._cs())
+        assert len(out) == 4
+
+    def test_verifier_unparseable_voids_all_merges(self, monkeypatch):
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                if self.n == 1:
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2]}]}, ensure_ascii=False)
+                return "garbage"
+        out = B._llm_consolidate_events(Seq(), self._cs())
+        assert len(out) == 5, "二审不可解析时保守作废（错并比漏并严重）"
+
+    def test_casebook_has_today_mismerge_examples(self):
+        cs = self._cs()[:2]
+        llm = _FakeLLM({"merges": []})
+        B._llm_consolidate_events(llm, cs)
+        p = llm.prompts[0]
+        assert "英王查尔斯" in p and "不同主体的各自表态" in p and "05:48 期误并实证" in p
+
+
+class TestVerifyEdgeCases:
+    """定向审查修复：二审组号 0-based 漂移、多组部分否决、字符串 false、infra 全否决。"""
+
+    def _cs(self):
+        return TestVerificationPass()._cs()
+
+    def test_zero_based_verdict_group_shifted(self):
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                if self.n == 1:
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2]},
+                                                  {"keep": 3, "merge": [4]}]},
+                                      ensure_ascii=False)
+                return json.dumps({"verdicts": [{"group": 0, "same_event": False},
+                                                {"group": 1, "same_event": True}]})
+        out = B._llm_consolidate_events(Seq(), self._cs())
+        # 平移后：组1(1<-2 英王误并)否决、组2(3<-4)放行应用
+        assert len(out) == 4
+        assert not any(c["label"].startswith("OpenAI研究员") and "英王" in
+                       " ".join(i.get("title", "") for i in c["items"]) for c in out)
+
+    def test_multi_group_partial_rejection_keeps_dropped_consistent(self):
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                if self.n == 1:
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2]},
+                                                  {"keep": 3, "merge": [4]}]},
+                                      ensure_ascii=False)
+                return json.dumps({"verdicts": [{"group": 1, "same_event": False},
+                                                {"group": 2, "same_event": True}]})
+        cs = self._cs()
+        out = B._llm_consolidate_events(Seq(), cs)
+        assert len(out) == 4
+        labels = [c["label"] for c in out]
+        assert any(l.startswith("OpenAI研究员") for l in labels), "被否决组的成员必须都还在"
+        assert any(l.startswith("英王") for l in labels)
+        assert not any(l.startswith("某足球") for l in labels), "放行组应正常合并（被并方消失、保留方存续）"
+
+    def test_string_false_verdict_rejected(self):
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                if self.n == 1:
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2]}]},
+                                      ensure_ascii=False)
+                return json.dumps({"verdicts": [{"group": 1, "same_event": "false"}]})
+        out = B._llm_consolidate_events(Seq(), self._cs())
+        assert len(out) == 5, "same_event 非布尔 true 一律视为否决"
+
+    def test_empty_verdict_response_voids_all(self):
+        class Seq:
+            def __init__(self): self.n = 0
+            def complete(self, messages, temperature=0.1, max_tokens=1200):
+                self.n += 1
+                if self.n == 1:
+                    return json.dumps({"merges": [{"keep": 1, "merge": [2]}]},
+                                      ensure_ascii=False)
+                return ""
+        out = B._llm_consolidate_events(Seq(), self._cs())
+        assert len(out) == 5
