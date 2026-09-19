@@ -90,3 +90,18 @@ class TestIter4Hardening:
                                 "build_daily_insight.py"), encoding="utf-8").read()
         seg = src[src.index("修正有效 ("):src.index("eval_result[\"iterations\"]")]
         assert "continue" in seg, "未达标时应进入下一轮而非 break"
+
+
+class TestDisguisedPlaceholder:
+    """07:13 实证：「素材未提供…无法生成…摘要」型劣化输出绕过了 [信息不足] 闸。"""
+
+    def test_disguised_placeholder_detected(self):
+        bad = ("素材未提供华为董事长承认AI芯片产能不足的具体发言日期、场合或量化数据"
+               "（如产量限制百分比或具体缺口），无法生成包含具体数据的摘要。")
+        assert bdi._is_insufficient(bad)
+
+    def test_normal_summary_not_hit(self):
+        good = "Anthropic 披露 Claude 已主导内部 26% 的研发工作，编码速度提升 64%。"
+        assert not bdi._is_insufficient(good)
+        edge = "该报告指出模型评测数据未提供公开基准，但摘要显示能力显著提升。"
+        assert not bdi._is_insufficient(edge)
