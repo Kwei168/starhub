@@ -3526,10 +3526,13 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
     parsed = _robust_parse_json(result)
 
     def _clamp(v):
+        # judge 可返回裸 NaN/Infinity（json.loads 默认接受），而 min(1.0, nan)==1.0
+        # 会把"这一维没评出来"洗成满分并让台账记 passed=true —— 非有限值一律按解析失败处理
         try:
-            return max(0.0, min(1.0, float(v)))
+            f = float(v)
         except (TypeError, ValueError):
             return 0.5
+        return max(0.0, min(1.0, f)) if math.isfinite(f) else 0.5
 
     if isinstance(parsed, dict):
         # 优先从 scores 子对象读取，兼容旧格式（顶层字段）
@@ -3613,17 +3616,21 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
     feedback = evaluation.get("feedback", "")
     weak_indices = evaluation.get("weak_events", [])
 
-    # 识别薄弱维度（阈值对齐质量目标）
+    # 识别薄弱维度（阈值与缺失走向同 `_dims_pass_thresholds`：缺失=未评出，按薄弱处理，
+    # 不得静默当满分，也不得在提示词里谎报成 0.00）
     low_dims = []
-    if evaluation.get("context_coverage", 1) < RAGAS_MIN_COVERAGE:
-        low_dims.append("context_coverage（当前%.2f，需≥%.2f，更多利用检索上下文中的信息）" % (
-            evaluation.get("context_coverage", 0), RAGAS_MIN_COVERAGE))
-    if evaluation.get("faithfulness", 1) < RAGAS_MIN_FAITHFULNESS:
-        low_dims.append("faithfulness（当前%.2f，需≥%.2f，确保每个事实/数据都有检索上下文依据，禁止编造）" % (
-            evaluation.get("faithfulness", 0), RAGAS_MIN_FAITHFULNESS))
-    if evaluation.get("relevance", 1) < RAGAS_MIN_RELEVANCE:
-        low_dims.append("relevance（当前%.2f，需≥%.2f，更紧扣最重要的 AI/科技话题，去除边缘事件）" % (
-            evaluation.get("relevance", 0), RAGAS_MIN_RELEVANCE))
+    for _key, _min, _advice in (
+            ("context_coverage", RAGAS_MIN_COVERAGE, "更多利用检索上下文中的信息"),
+            ("faithfulness", RAGAS_MIN_FAITHFULNESS,
+             "确保每个事实/数据都有检索上下文依据，禁止编造"),
+            ("relevance", RAGAS_MIN_RELEVANCE, "更紧扣最重要的 AI/科技话题，去除边缘事件")):
+        _v = evaluation.get(_key)
+        _num = (isinstance(_v, (int, float)) and not isinstance(_v, bool)
+                and math.isfinite(_v))
+        if _num and _v >= _min:
+            continue
+        low_dims.append("%s（当前%s，需≥%.2f，%s）" % (
+            _key, "%.2f" % _v if _num else "未评出", _min, _advice))
 
     if not low_dims and not weak_indices:
         return clusters  # 无需修正
@@ -3673,21 +3680,43 @@ def _self_correct_events(llm, clusters, context_text, evaluation):
     return clusters
 
 
+def _dims_reached(eval_result):
+    """三维是否全部达线 —— 静默版，`RAGAS_MIN_*` 三个阈值唯一的判定出口。
+
+    任一维缺失/非数值/NaN/bool 返回 None（未知）：调用方自行决定未知的走向 ——
+    修正环闸把未知当不通过（继续修），追踪行把未知记为 None（不得冒充达标或冒充未达标）。
+    """
+    vals = [eval_result.get(k) for k in ("context_coverage", "faithfulness", "relevance")]
+    mins = (RAGAS_MIN_COVERAGE, RAGAS_MIN_FAITHFULNESS, RAGAS_MIN_RELEVANCE)
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+           for v in vals):
+        return None
+    return all(v >= m for v, m in zip(vals, mins))
+
+
+def _verdict(eval_result, threshold):
+    """单份评估的完整结论：overall 达阈值 且 三维达线；任一要素未知则返回 None。"""
+    dims = _dims_reached(eval_result)
+    overall = eval_result.get("overall")
+    if dims is None or isinstance(overall, bool) or not isinstance(overall, (int, float)):
+        return None
+    return bool(dims and overall >= threshold)
+
+
 def _dims_pass_thresholds(eval_result):
     """检查各维度是否达到最低阈值。任一维度不达标则返回 False。"""
-    cov = eval_result.get("context_coverage", 0)
-    faith = eval_result.get("faithfulness", 0)
-    rel = eval_result.get("relevance", 0)
+    if _dims_reached(eval_result):
+        return True
+    cov = eval_result.get("context_coverage") or 0
+    faith = eval_result.get("faithfulness") or 0
+    rel = eval_result.get("relevance") or 0
     if cov < RAGAS_MIN_COVERAGE:
         print("[每日洞察] 维度不达标: coverage=%.2f < %.2f" % (cov, RAGAS_MIN_COVERAGE))
-        return False
-    if faith < RAGAS_MIN_FAITHFULNESS:
+    elif faith < RAGAS_MIN_FAITHFULNESS:
         print("[每日洞察] 维度不达标: faithfulness=%.2f < %.2f" % (faith, RAGAS_MIN_FAITHFULNESS))
-        return False
-    if rel < RAGAS_MIN_RELEVANCE:
+    elif rel < RAGAS_MIN_RELEVANCE:
         print("[每日洞察] 维度不达标: relevance=%.2f < %.2f" % (rel, RAGAS_MIN_RELEVANCE))
-        return False
-    return True
+    return False
 
 
 def _source_mix(chunks):
@@ -3699,6 +3728,18 @@ def _source_mix(chunks):
         k = c.get("source_type") or "?"
         mix[k] = mix.get(k, 0) + 1
     return dict(sorted(mix.items()))
+
+
+_IRRELEVANT_IDX_RE = re.compile(r"^\s*(?:事件|第|event|evt|#)\s*(\d{1,2})", re.IGNORECASE)
+
+
+def _irrelevant_index(txt, n_events):
+    """从「事件12（…）」这类自由文本里取 1-based 序号；越界或非序号开头返回 None。"""
+    m = _IRRELEVANT_IDX_RE.match(txt or "")
+    if not m:
+        return None
+    i = int(m.group(1))
+    return i if 1 <= i <= n_events else None
 
 
 def _aggregate_per_event(clusters, samples):
@@ -3719,6 +3760,11 @@ def _aggregate_per_event(clusters, samples):
             if isinstance(w, (int, float)) and 1 <= int(w) <= len(clusters or []):
                 weak_ct[int(w)] = weak_ct.get(int(w), 0) + 1
         for txt in (s.get("irrelevant_events") or []):
+            # judge 常写成「事件12（铁路12306…）」，序号是它自己给的权威线索，优先直接用
+            _ix = _irrelevant_index(txt, len(clusters or []))
+            if _ix:
+                irr_ct[_ix] = irr_ct.get(_ix, 0) + 1
+                continue
             t = _dedup_tokens(txt)
             if not t:
                 continue
@@ -3726,7 +3772,10 @@ def _aggregate_per_event(clusters, samples):
             for i, lab in enumerate(label_toks, 1):
                 if not lab:
                     continue
-                scores.append((len(t & lab) / (len(t | lab) or 1), i))
+                _ov = len(t & lab)
+                # 包含度而非 Jaccard：理由整段比短标签，Jaccard 分母被理由撑大必然落空（第8期实测 3/3 归不上）。
+                # 但重合数须 ≥2 —— 只共用一个泛词（如 "ai"）就落位会造成误挂，误挂比归不上更坏。
+                scores.append((_ov / float(len(lab)) if _ov >= 2 else 0.0, i))
             scores.sort(key=lambda x: (-x[0], x[1]))
             if not scores or scores[0][0] < 0.2:
                 unmatched += 1
@@ -4212,11 +4261,12 @@ def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_e
         "temperature": 0.2,
         **_readings,
     }
+    # 缺失维度保留 None：填 0 会让"没评出来"在 passed_draft 上冒充"评了且不及格"
     out_meta["draft_eval"] = {
-        "overall": ragas_eval.get("overall", 0),
-        "context_coverage": ragas_eval.get("context_coverage", 0),
-        "faithfulness": ragas_eval.get("faithfulness", 0),
-        "relevance": ragas_eval.get("relevance", 0),
+        "overall": ragas_eval.get("overall"),
+        "context_coverage": ragas_eval.get("context_coverage"),
+        "faithfulness": ragas_eval.get("faithfulness"),
+        "relevance": ragas_eval.get("relevance"),
         "missed_points": ragas_eval.get("missed_points", []),
     }
     out_meta["eval_stage"] = "shipped_report"
@@ -4959,14 +5009,18 @@ def _log_tracking_entry(entry):
 def _build_tracking_entry(ragas_eval, clusters, theme, elapsed,
                           rss_count, hot_count, aihot_count, agihunt_count,
                           chunks_count, filtered_count, llm_available,
-                          embed_model=""):
-    """构建追踪日志条目。"""
+                          embed_model="", threshold=None):
+    """构建追踪日志条目。
+
+    `threshold` 必须传修正环实际使用的那个值（可被 `daily_insight_quality_threshold` 覆盖），
+    否则同行会出现"threshold 写 0.70、passed 按别的数判"的自相矛盾。
+    """
     now_bj = _now_bj()
     has_analysis = sum(1 for c in clusters if c.get("deep_analysis"))
 
     # RAGAS 评分
     overall = ragas_eval.get("overall")
-    threshold = RAGAS_QUALITY_THRESHOLD
+    threshold = RAGAS_QUALITY_THRESHOLD if threshold is None else threshold
     _qmeta = ragas_eval.get("meta") or {}
     _draft = _qmeta.get("draft_eval") or {}
 
@@ -4985,7 +5039,10 @@ def _build_tracking_entry(ragas_eval, clusters, theme, elapsed,
         "draft_overall": _draft.get("overall"),
         "degraded": _qmeta.get("degraded"),
         "threshold": threshold,
-        "passed": (overall >= threshold) if overall is not None else None,
+        # 09-19 起 `passed` 与同行所列 dims 同源（此前只判 overall，导致 24/43 行"看着绿、三维红"）；
+        # 旧语义可由同行 overall/threshold 精确复算，故不再另设冗余字段。草稿环结论不可从本行推出，单独存。
+        "passed": _verdict(ragas_eval, threshold),
+        "passed_draft": _verdict(_draft, threshold) if _draft else None,
         # 事件统计
         "stats": {
             "total_events": len(clusters),
@@ -5460,6 +5517,8 @@ def main():
             filtered_count=_stats_filtered,
             llm_available=bool(llm),
             embed_model=embed_model or "",
+            threshold=(build_cfg or {}).get("daily_insight_quality_threshold",
+                                            RAGAS_QUALITY_THRESHOLD),
         )
         _log_tracking_entry(tracking_entry)
     except Exception as exc:
