@@ -121,3 +121,12 @@ for f in test_insight_engine.py test_insight_guard_v3.py test_insight_bad_date.p
 - [ ] 阶段 B：蒸馏清单设计定稿 + 三项可检验预测写清验收方式
 - [ ] HANDOFF.md 登记观察期结论与口径切换时点（若 B 上线）
 - [ ] 收单口径 ①/② 由用户确认
+
+> **暂停点 / 下次开工接续（2026-09-19 17:05 北京时间，用户下令下班）**
+> - 远端 HEAD：`4658f109`（终版复评 + 审查复修 + 计划落盘 + CI 同构测试修复，均已推达远端）。
+> - 正在跑：run `35433508066`（09:00:27Z 触发），它是**观察期第 2 期**候选样本。
+>   下一件事只有这一条：跑完按第 2 节 6 项清单核 `daily-insight.json → quality`（重点 `meta.eval_stage` 是否为 `shipped_report`、
+>   `with_links` 是否等于事件数、`::warning` 是否为 0），把 cov/faith/rel 与 `meta.draft_eval` 一并记进本文件第 1 节表格。
+> - 那场构建的门禁 B 预期仍会红 1 次（它 checkout 的是推送前的测试文件）；**下一场起应恢复全绿**，
+>   若下一场还红，先比远端 `tests/daily_insight/` blob 与本地是否一致，再怀疑代码。
+> - 本会话未动 `build_rss_aggregator.py` / `update.yml` / `rss_fetch_state`（他人在途）。
