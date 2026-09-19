@@ -199,3 +199,61 @@ class TestRollbackNoNullInjection:
         assert out[0]["summary"] == "原摘要"
         assert "significance" not in out[0], \
             "回滚不能把缺失字段物化为 None——下游一律 get(k, \"\") 拿键存在即真"
+
+
+class TestNoRedundantReeval:
+    """04:00 期实证：拒绝采纳回滚后，iter1 对同一内容重评，judge 全量降级 agnes
+    打出全维 0.50 覆盖掉 iter0 的 0.80——回滚即终稿，重评是纯噪声采样。"""
+
+    def _fake(self, monkeypatch, groups):
+        import build_daily_insight as B
+        state = {"calls": 0}
+
+        def fake_eval(llm, cls, theme, ctx, prompt_variant=None):
+            d = dict(groups[min(state["calls"] // 2, len(groups) - 1)])
+            state["calls"] += 1
+            return d
+
+        def fake_correct(llm, cls, ctx, ev):
+            cls[0]["summary"] = "劣化"
+            return cls
+        monkeypatch.setattr(B, "_evaluate_report_quality", fake_eval)
+        monkeypatch.setattr(B, "_self_correct_events", fake_correct)
+        return state
+
+    def test_reject_breaks_without_reeval(self, monkeypatch):
+        import build_daily_insight as B
+        groups = [
+            {"overall": 0.60, "context_coverage": 0.60, "faithfulness": 0.95,
+             "relevance": 0.60, "feedback": "f", "weak_events": [1]},
+            {"overall": 0.78, "context_coverage": 0.80, "faithfulness": 0.55,
+             "relevance": 0.78, "feedback": "f", "weak_events": []},
+            {"overall": 0.50, "context_coverage": 0.50, "faithfulness": 0.50,
+             "relevance": 0.50, "feedback": "collapse", "weak_events": []},
+        ]
+        st = self._fake(monkeypatch, groups)
+        clusters = [{"label": "L", "summary": "原摘要", "significance": "g",
+                     "category": "research", "score": 5}]
+        out, ev = B._ragas_evaluate_and_correct(
+            object(), clusters, "t", [{"text": "素材" * 80}], {})
+        assert out[0]["summary"] == "原摘要"
+        assert ev["faithfulness"] == 0.95, "必须保留回滚内容对应的 iter0 评估"
+        assert st["calls"] == 4, "回滚后不得再发起第三组重评（每多一组=多一次降级采样机会）"
+
+    def test_adopt_dims_fail_breaks_without_reeval(self, monkeypatch):
+        import build_daily_insight as B
+        groups = [
+            {"overall": 0.60, "context_coverage": 0.60, "faithfulness": 0.95,
+             "relevance": 0.60, "feedback": "f", "weak_events": [1]},
+            {"overall": 0.75, "context_coverage": 0.60, "faithfulness": 0.95,
+             "relevance": 0.78, "feedback": "f", "weak_events": []},
+            {"overall": 0.50, "context_coverage": 0.50, "faithfulness": 0.50,
+             "relevance": 0.50, "feedback": "collapse", "weak_events": []},
+        ]
+        st = self._fake(monkeypatch, groups)
+        clusters = [{"label": "L", "summary": "原摘要", "significance": "g",
+                     "category": "research", "score": 5}]
+        out, ev = B._ragas_evaluate_and_correct(
+            object(), clusters, "t", [{"text": "素材" * 80}], {})
+        assert out[0]["summary"] == "劣化", "采纳分支保留修正文本"
+        assert ev["overall"] == 0.75 and st["calls"] == 4
