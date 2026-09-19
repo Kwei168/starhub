@@ -593,8 +593,9 @@ class _FailOnceLLM:
         self._n = 0
     def complete(self, messages, temperature=0.3, max_tokens=2000):
         self._n += 1
-        # T2 三样本后按调用序失败已失真：改为按 v1 prompt 标记失败，v1 全挂
-        if "RAG 质量评估专家" in json.dumps(messages, ensure_ascii=False):
+        # 只能按 v1 用户 prompt 独有语句标记失败：system 里也含"RAG 质量评估专家"，
+        # 用它当标记会让 v2 一起挂掉，测的其实是"全挂"分支
+        if "请按以下步骤评估每日 AI 洞察报告的质量" in json.dumps(messages, ensure_ascii=False):
             return ""  # v1 失败
         return mock_json  # v2 成功
 
@@ -605,7 +606,7 @@ _, cv_partial = B._ragas_evaluate_and_correct(
 assert cv_partial["meta"]["prompt_variants"] == 1, "一个变体失败时 prompt_variants 应为 1, got %d" % cv_partial["meta"]["prompt_variants"]
 print("对抗性 CV 部分失败: prompt_variants=%d (准确)" % cv_partial["meta"]["prompt_variants"])
 
-# 9m) 对抗性: CV 中两个变体都失败时 prompt_variants 也为 1
+# 9m) 对抗性: CV 中所有变体都失败时不得谎报变体数，必须标 degraded
 class _AlwaysFailLLM:
     def __init__(self, model="always-fail"):
         self.model = model
@@ -616,8 +617,11 @@ class _AlwaysFailLLM:
 always_fail = _AlwaysFailLLM()
 _, cv_fail = B._ragas_evaluate_and_correct(
     always_fail, events, "测试", mock_retrieved_ragas, {"daily_insight_cross_validation": True})
-assert cv_fail["meta"]["prompt_variants"] == 1, "两路均失败时 prompt_variants 应为 1"
-print("对抗性 CV 全部失败: prompt_variants=%d (准确)" % cv_fail["meta"]["prompt_variants"])
+assert cv_fail["meta"]["prompt_variants"] == 0, "两路均失败时不得谎报变体数, got %d" % cv_fail["meta"]["prompt_variants"]
+assert cv_fail["meta"]["eval_samples"] == 0, "全挂时样本数必须为 0"
+assert cv_fail["meta"]["degraded"] is True, "合成 0.5 必须标 degraded，否则与真实评分无法区分"
+print("对抗性 CV 全部失败: prompt_variants=%d eval_samples=%d degraded=%s (准确)" % (
+    cv_fail["meta"]["prompt_variants"], cv_fail["meta"]["eval_samples"], cv_fail["meta"]["degraded"]))
 
 if old_provider:
     os.environ["AGNES_API_KEY"] = old_provider

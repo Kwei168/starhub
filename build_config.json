@@ -16,7 +16,5 @@
   "daily_insight_judge_provider": "agnes",
   "daily_insight_judge_model": "agnes-2.5-flash",
   "daily_insight_judge_timeout": 60,
-  "daily_insight_cross_validation": true,
-  "daily_insight_judge_fallback": "agnes",
-  "daily_insight_openrouter_models": "qwen/qwen3.8-27b:free,z-ai/glm-5.2:free"
+  "daily_insight_cross_validation": true
 }
