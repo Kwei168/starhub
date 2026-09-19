@@ -45,9 +45,9 @@ def test_parse_missed_v1_and_v2():
 def test_median_keeps_cooccurring_missed_points():
     """共现降噪：两样本共享的漏点保留，孤本丢弃（v1/v2 措辞差异大的并集是噪声）。"""
     a = {"overall": 0.7, "context_coverage": 0.7, "faithfulness": 0.9, "relevance": 0.7,
-         "missed_points": ["英王查尔斯AI安全警告", "a独有漏点甲"], "weak_events": [], "feedback": ""}
+         "missed_points": ["英王查尔斯AI安全警告", "量子计算新进展甲"], "weak_events": [], "feedback": ""}
     b = {"overall": 0.7, "context_coverage": 0.7, "faithfulness": 0.9, "relevance": 0.7,
-         "missed_points": ["英王查尔斯ai安全警告", "b独有漏点乙"], "weak_events": [], "feedback": ""}
+         "missed_points": ["英王查尔斯ai安全警告", "足球俱乐部换帅乙"], "weak_events": [], "feedback": ""}
     m = B._median_eval_samples([a, b])
     assert m["missed_points"] == ["英王查尔斯AI安全警告"], "共现判定须大小写不敏感"
 
@@ -211,3 +211,39 @@ class TestReviewFixesG1:
 def _six(n=6):
     return [{"label": "既有事件%d" % i, "summary": "摘要%d" % i, "score": 5.0,
              "items": [], "source_types": ["rss"], "id": "evt_%02d" % i} for i in range(n)]
+
+
+class TestFuzzyCooccurrence:
+    """04:38 期实证：精确字符串共现把 missed 饿死成 0 条——改模糊分组。"""
+
+    def test_wording_drift_same_topic_groups(self):
+        a = {"overall": 0.7, "context_coverage": 0.7, "faithfulness": 0.9, "relevance": 0.7,
+             "missed_points": ["英王查尔斯AI安全警告"], "weak_events": [], "feedback": ""}
+        b = {"overall": 0.7, "context_coverage": 0.7, "faithfulness": 0.9, "relevance": 0.7,
+             "missed_points": ["英国国王查尔斯就AI安全发出警告"], "weak_events": [], "feedback": ""}
+        m = B._median_eval_samples([a, b])
+        assert len(m["missed_points"]) == 1, "措辞漂移的同主题漏点应归为一组并共现保留"
+
+    def test_all_disjoint_falls_back_to_singletons(self):
+        a = {"overall": 0.7, "context_coverage": 0.7, "faithfulness": 0.9, "relevance": 0.7,
+             "missed_points": ["量子计算突破新进展"], "weak_events": [], "feedback": ""}
+        b = {"overall": 0.7, "context_coverage": 0.7, "faithfulness": 0.9, "relevance": 0.7,
+             "missed_points": ["某足球俱乐部换帅风波"], "weak_events": [], "feedback": ""}
+        m = B._median_eval_samples([a, b])
+        assert len(m["missed_points"]) == 2, "无共现时兜底放行孤本（下游池内/AI/查重闸负责过滤）"
+
+    def test_quality_json_exposes_missed_points(self, monkeypatch, tmp_path):
+        import json as _json
+        monkeypatch.setattr(B, "INSIGHT_FILE", str(tmp_path / "di.json"))
+        monkeypatch.setattr(B, "_load_history", lambda: {"days": []})
+        written = {}
+        monkeypatch.setattr(B, "_atomic_write_json",
+                            lambda path, data: written.update({path: data}))
+        ev = [{"label": "L", "summary": "s", "significance": "", "category": "research",
+               "items": [], "source_types": ["rss"], "score": 1.0, "id": "e1"}]
+        B._write_insight_json(ev, "T", False,
+                              {"overall": 0.8, "context_coverage": 0.75,
+                               "faithfulness": 0.9, "relevance": 0.7,
+                               "missed_points": ["漏点甲"], "feedback": ""})
+        data = list(written.values())[0]
+        assert data["quality"]["missed_points"] == ["漏点甲"]

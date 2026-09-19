@@ -3355,19 +3355,30 @@ def _median_eval_samples(samples):
     ref = min(samples, key=lambda s: abs(s.get("overall", 0) - out.get("overall", 0)))
     out["feedback"] = ref.get("feedback", "")
     out["weak_events"] = ref.get("weak_events", [])
-    # 漏点须 ≥2 样本共现（v1/v2 措辞差异大，并集=噪声最大化；v1/v1' 重复才可信）
-    _cnt, _disp = {}, {}
+    # G1 漏点回收：模糊共现分组（judge 跨样本措辞漂移，精确匹配曾把回收饿死在 0 条）
+    _raw = []
     for s in samples:
-        _seen = set()
         for m in s.get("missed_points", []) or []:
-            k = (m or "").strip().lower()
-            if k and k not in _seen:
-                _seen.add(k)
-                _cnt[k] = _cnt.get(k, 0) + 1
-                _disp.setdefault(k, m)
-    _thr = 2 if len(samples) >= 2 else 1
-    _mp = [v for k, v in _disp.items() if _cnt[k] >= _thr]
-    if _mp:
+            m = (m or "").strip()
+            if m:
+                _raw.append(m)
+    if _raw:
+        groups = []
+        for m in _raw:
+            tok = _dedup_tokens(m)
+            if not tok:
+                continue
+            for g in groups:
+                if _jaccard(g["tok"], tok) >= 0.35:
+                    g["n"] += 1
+                    break
+            else:
+                groups.append({"tok": tok, "disp": m, "n": 1})
+        _mp = [g["disp"] for g in groups if g["n"] >= 2]
+        if not _mp:
+            # 兜底：无共现时取前 2 孤本，噪声交给下游池内/AI/查重闸过滤
+            _mp = [g["disp"] for g in groups[:2]]
+        print("[每日洞察] missed 回收: 原始 %d 条 → 共现分组 %d 条" % (len(_raw), len(_mp)))
         out["missed_points"] = _mp[:12]
     return out
 
@@ -3733,6 +3744,7 @@ def _write_insight_json(clusters, theme, has_analysis, ragas_eval=None, bubble_b
     if ragas_eval:
         quality = {
             "overall": ragas_eval.get("overall", 0),
+            "missed_points": ragas_eval.get("missed_points", []),
             "context_coverage": ragas_eval.get("context_coverage", 0),
             "faithfulness": ragas_eval.get("faithfulness", 0),
             "relevance": ragas_eval.get("relevance", 0),
