@@ -133,8 +133,15 @@ class TestAdoptionRollback:
             cls[0]["summary"] = "劣化摘要"
             return cls
 
+        # T2 后非 CV 路径每组评估双采样：每群消费 2 次再前进
+        state = {"i": 0, "r": 0}
+
         def fake_eval(llm, cls, theme, ctx, prompt_variant=None):
-            return dict(evals.pop(0))
+            d = dict(evals[min(state["i"], 2)])
+            state["r"] += 1
+            if state["r"] % 2 == 0:
+                state["i"] += 1
+            return d
 
         monkeypatch.setattr(B, "_self_correct_events", fake_correct)
         monkeypatch.setattr(B, "_evaluate_report_quality", fake_eval)
@@ -152,3 +159,43 @@ class TestAdoptionRollback:
     def test_adopted_correction_keeps_new_text(self, monkeypatch):
         out, ev = self._run(monkeypatch, faith_after=0.96)
         assert out[0]["summary"] == "劣化摘要", "达标采纳时保留修正文本"
+
+
+class TestRollbackNoNullInjection:
+    """第7轮回归：回滚快照不得把「原本不存在的字段」写成 None
+    （test_daily_insight 9i 实证：significance=None 让复评 prompt 构建 TypeError）。"""
+
+    def test_missing_key_not_materialized_as_none(self, monkeypatch):
+        import build_daily_insight as B
+        clusters = [{"label": "L", "summary": "原摘要", "category": "research",
+                     "score": 5}]  # 注意：无 significance 键
+        groups = [
+            {"overall": 0.60, "context_coverage": 0.60, "faithfulness": 0.95,
+             "relevance": 0.60, "feedback": "f", "weak_events": [1]},
+            {"overall": 0.78, "context_coverage": 0.80, "faithfulness": 0.55,
+             "relevance": 0.78, "feedback": "f", "weak_events": []},
+            {"overall": 0.60, "context_coverage": 0.60, "faithfulness": 0.95,
+             "relevance": 0.60, "feedback": "f", "weak_events": [1]},
+        ]
+        state = {"i": 0, "r": 0}
+
+        def fake_correct(llm, cls, ctx, ev):
+            cls[0]["summary"] = "劣化"
+            return cls
+
+        def fake_eval(llm, cls, theme, ctx, prompt_variant=None):
+            d = dict(groups[min(state["i"], 2)])
+            state["r"] += 1
+            if state["r"] % 2 == 0:
+                state["i"] += 1
+            return d
+
+        monkeypatch.setattr(B, "_self_correct_events", fake_correct)
+        monkeypatch.setattr(B, "_evaluate_report_quality", fake_eval)
+        out, ev = B._ragas_evaluate_and_correct(
+            object(), clusters, "t",
+            [{"text": "素材" * 80, "title": "x", "source_type": "rss",
+              "retrieval_score": 1.0}], {})
+        assert out[0]["summary"] == "原摘要"
+        assert "significance" not in out[0], \
+            "回滚不能把缺失字段物化为 None——下游一律 get(k, \"\") 拿键存在即真"

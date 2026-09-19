@@ -593,7 +593,8 @@ class _FailOnceLLM:
         self._n = 0
     def complete(self, messages, temperature=0.3, max_tokens=2000):
         self._n += 1
-        if self._n == 1:
+        # T2 三样本后按调用序失败已失真：改为按 v1 prompt 标记失败，v1 全挂
+        if "RAG 质量评估专家" in json.dumps(messages, ensure_ascii=False):
             return ""  # v1 失败
         return mock_json  # v2 成功
 
