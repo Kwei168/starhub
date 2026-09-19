@@ -440,5 +440,7 @@
  "0xNatoshi/jev-codex-router": "Codex 的每回合模型和推理路由，由 Jev（TypeSafe System One）驱动：选择每回合的模型、思考深度和速度模式。",
  "vercel-labs/json-render": "生成式 UI 框架",
  "shiyu-coder/Kronos": "Kronos：金融市场语言的基础模型",
- "yyjeqhc/webcodex": "在您自己的机器上为云 AI 代理提供真实的开发环境。"
+ "yyjeqhc/webcodex": "在您自己的机器上为云 AI 代理提供真实的开发环境。",
+ "supermemoryai/supermemory": "内存和上下文引擎+应用程序速度极快，可扩展，并且可以完全在本地运行。 AI时代的内存API。",
+ "tradesdontlie/tradingview-mcp": "AI 辅助 TradingView 图表分析 — 将 Claude Code 连接到您的 TradingView 桌面以实现个人工作流程自动化"
 }
