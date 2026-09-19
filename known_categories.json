@@ -250,5 +250,7 @@
  "hypit-ai/hypit": "video",
  "TencentCloud/Octop": "assistant",
  "RSSNext/Folo": "agent",
- "QwenLM/Qwen-MM-Plugins": "agent"
+ "QwenLM/Qwen-MM-Plugins": "agent",
+ "Tencent/WeKnora": "assistant",
+ "Tencent/BrowserSkill": "agent"
 }

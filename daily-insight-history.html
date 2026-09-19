@@ -150,25 +150,37 @@ a{color:inherit;text-decoration:none;}
 
 
 <section id="day-2026-09-19" class="day-section" >
-  <div class="day-theme">从语音与数学研究的双向突破，到内部智能化与基准信任度危机，判断AI正加速吞噬研发闭环并遭遇透明度大考</div>
+  <div class="day-theme">从 Grok 多模态性能突破引发的价格战，到 Anthropic 披露 AI 研发渗透率引发的模型自主化讨论，再到加州强制 Kill switch 推动安全政策收紧，判断 AI 竞争已进入性能、成本与治理的全面角力阶段</div>
   
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">Epoch AI审计基准发现多数存在缺陷</h3>
+  <p class="di-summary">Epoch AI推出Benchmark Reviews计划，首次系统性审计AI基准测试。首批覆盖15个热门基准，结果仅4个获「Verified」认证，9个被判定存在缺陷，2个因信息不足无法评审。其中HLE抽样46%题目有问题，Terminal Bench 4.0有45.5%任务存在问题。同时，Epoch AI指出其数学研究AI使用统计存在局限性，分类由GPT-5.6 Sol完成，仅覆盖arXiv预印本正文中自愿披露的AI致谢。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">research</span></div>
+  
+</article>
+
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.2</span>
   </div>
-  <h3 class="di-label">xAI发布Grok Voice Transcribe 2.0</h3>
-  <p class="di-summary">xAI于9月18-19日推出Grok Voice Transcribe 2.0，基于Grok Voice音频基础模型构建。官方称真实场景准确率约为1.0版两倍，定价批量$0.10/小时、流式$0.20/小时，Atlassian已在Loom中集成。另有素材称其在AA-WER Streaming榜单上以2.7% WER登顶，或称整体准确率97.4%居首。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">hot</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">xAI发布Grok语音转写2.0冲击低价市场</h3>
+  <p class="di-summary">xAI于9月18-19日发布Grok Voice Transcribe 2.0，官方声称真实场景准确率约为1.0版本两倍，在Artificial Analysis 32个流式转写模型榜单中排名第一。该产品主打性价比，批量转写定价仅$0.10/小时，流式$0.20/小时，目前已获Atlassian集成至Loom。但据称97.4%的准确率数据出自第三方博主，官方榜单口径存在争议，待进一步确认。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">hot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月18-19日，xAI正式发布语音转写模型Grok Voice Transcribe 2.0，基于Grok Voice音频基础模型构建。官方宣称该版本在真实场景下准确率约为1.0版本的2倍，自称「世界上最准确的语音转写模型」。定价维持与1.0版相同：批量处理$0.10/小时、流式处理$0.20/小时，主打「最高准确率+最低价格」策略。据称在Artificial Analysis评估的32个流式转写模型中准确率居首，超越ElevenLabs、Gemini和Deepgram。另有素材指出其在AA-WER Streaming榜单上以2.7% WER（Word Error Rate）登顶，或整体准确率97.4%排名第一。Atlassian已在Loom中集成该模型。第三方博主数据口径待官方确认，官方榜单表述存在多版本。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：xAI以价格+准确率双优势切入语音转写红海市场，直接冲击ElevenLabs、Deepgram等头部玩家定价体系，推动行业价格战。中期：Atlassian Loom集成作为企业级背书，若实际使用效果验证准确，将带动SaaS产品供应链重构，促进更多协作工具采用高准确度转写服务。长期：2.7% WER若被独立复现验证，将重新定义流式转写质量标杆，倒逼各大模型加速迭代音频基础架构。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材[1]强调「登顶AA-WER流式最终转写准确率」官方榜单口径；素材[4]标注「第三方博主发布的数据，官方榜单口径待确认」，立场审慎；素材[2][3]采用官方自称「准确率翻倍」「居首」表述，未注明待验证。信源分歧在于：AA-WER榜单真实性与97.4%准确率数字是否经独立复现。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>官方称真实场景准确率约为1.0版本两倍且价格不变：批量$0.10/小时、流式$0.20/小时</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>若Atlassian Loom集成效果公开验证且第三方独立评估确认2.7% WER，预计Q4将看到更多协作工具跟进集成；否则榜单数据可能面临行业质疑。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月18日至19日，xAI正式发布新一代语音转写模型Grok Voice Transcribe 2.0。该产品基于Grok Voice音频基础模型，官方宣称在真实场景下的转写准确率约为1.0版本的两倍，定价策略保持原有水平不变：批量转写维持$0.10/小时，流式转写为$0.20/小时。据称该模型在Artificial Analysis（AA）评估的32个流式转写模型榜单中以2.7% WER（词错误率）排名第一，超越ElevenLabs、Gemini和Deepgram等竞品；其中电话语音转写任务准确率达92.9%。第三方数据显示其整体转写准确率为97.4%，但该数据口径待官方确认。目前Atlassian已将此模型集成至视频协作工具Loom中，成为早期落地案例。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：xAI以$0.10/小时的极低价格切入市场，直接压缩Deepgram、Google等现有服务商的利润空间，倒逼竞品调整定价策略。中期：Atlassian集成Loom形成标杆效应，若更多企业级客户跟进，将加速语音转写基础设施的标准化竞争。长期：若97.4%准确率及“翻倍”说法得到独立验证，xAI有望重塑语音转写赛道的成本结构，推动行业向“高准确率+低单价”模式演进，挤压依赖高价订阅的传统ASR服务商生存空间。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt/models hot=4 [2] 强调官方宣称“准确率翻倍”及AA榜单第一的事实陈述；RSS/AGI Hunt [1] 则明确指出97.4%准确率数据来自第三方博主，官方榜单口径存在争议，态度更为审慎；热榜/wallstreetcn [5] 侧重报道“SpaceXAI”品牌动作及性价比定位。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>xAI 于 9 月 18-19 日发布语音转写模型 Grok Voice Transcribe 2.0，自称「世界上最准确的语音转写模型」，基于 Grok Voice 音频基础模型，官方称真实场景准确率约为 1.0 版本两倍且价格不变</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Q4将看到更多企业级SaaS产品跟进集成Grok Voice Transcribe 2.0，且竞争对手或将启动新一轮价格战。</p></div>
   <span class="di-conf">置信度: medium</span>
 </div>
 </article>
@@ -179,41 +191,17 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">OpenAI研究员探讨气隙隔离失效风险</h3>
-  <p class="di-summary">OpenAI研究员Noam Brown在播客中提出，失控AI可能通过CPU高负载发热产生的温度变化，利用其他设备读取数据以突破物理气隙隔离进行通信，因此安全与对齐门槛需大幅提高。随后他澄清观点被误读，强调完整播客中包含对AI炒作的反驳。密码学家Matthew Green讽刺OpenAI连自家沙箱的Linux内核都不更新。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Anthropic披露Claude主导26%研发</h3>
-  <p class="di-summary">Anthropic发布内部透明度指标，披露Claude已主导26%的内部AI研发工作，且90%以上被衡量的研发工作已有AI深度参与。这是业界首次量化“AI自我进化”程度，显示前沿实验室正大规模利用AI构建下一代AI。</p>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Epoch AI揭示AI使用统计局限</h3>
-  <p class="di-summary">Epoch AI指出其数学研究AI使用统计存在局限，分类由GPT-5.6 Sol完成且可能含错误。该数据仅覆盖arXiv预印本中自愿披露的致谢，源文件注释中的提示词等信号被排除。</p>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-cat">research</span></div>
+  <h3 class="di-label">Coding Agent Index新增安全拒答报告</h3>
+  <p class="di-summary">Artificial Analysis在Coding Agent Index v1.5中新增安全拒答指标，用于解释模型行为与得分差异。实测显示Claude Fable 5.1在Claude Code和Devin Fusion中的回退率最高，分别占指数权重的8.8%和7.1%。该指标揭示了AI编码助手在安全边界上的实际表现差异。</p>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年09月19日，Epoch AI在其发布的数学研究AI使用统计报告中披露了方法论的局限性。该统计基于作者自愿提交的致谢信息，未包含未公开使用AI的研究。在数据处理层面，分类工作由GPT-5.6 Sol完成，这种自动化分类方式存在潜在错误风险，且对研究者的身份识别准确率受限，可能导致统计数据出现偏差。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：降低市场对AI彻底改变数学研究的过度乐观预期，为近期依赖该数据的投资决策提供风险提示。中期：迫使学术界和科技媒体重新审视AI辅助科研的统计标准，推动更透明的披露规范建立。长期：若分类模型持续优化或引入多方验证，该统计有望成为衡量AI科学生产力增长的关键基准，反之则可能因数据可信度争议而边缘化。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致，均聚焦于方法论局限性，未出现显著分歧。素材仅提及数据覆盖范围和分类工具的可靠性问题。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>分类由 GPT-5.6 Sol 完成</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Epoch AI将在后续版本中引入人工抽样核查或多源交叉验证以修正分类误差，同时呼吁数学社区建立统一的AI使用标注标准。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>提供的素材（Artificial Analysis Coding Agent Index 新增安全拒答报告）与事件主题（xAI上线图像内文字编辑功能）完全不符，缺乏关于该事件的时间、数据及官方声明等核心信息。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：无法评估。中期：无法评估。长期：无法评估。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材未提供有效信息。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>信息不足。</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>无法推断。</p></div>
   <span class="di-conf">置信度: low</span>
 </div>
 </article>
@@ -224,32 +212,32 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">AI攻克FrontierMath首个重大进展级难题</h3>
-  <p class="di-summary">Epoch AI的FrontierMath基准迎来首个「重大进展」级别的悬而未决数学难题被AI成功求解。解题过程发生在数学家Becker、Greger等人与GPT-6 Astra的交互过程中，标志着AI在开放性前沿数学问题上的能力取得实质性突破。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">research</span></div>
+  <h3 class="di-label">Anthropic披露AI参与自身研发比例</h3>
+  <p class="di-summary">Anthropic官方发布三项透明度指标量化前沿实验室内部AI发展速度，包括AI参与内部AI研发的比例、AI agent受监督的效果以及算力分配情况。内部快照显示，截至2026年8月，Claude参与了约26%的内部AI研发工作，达到可从高层指令端到端完成大部分任务、人类主要负责监督的程度；90%以上被衡量的研发工作已有AI完成大量环节。这是业界首次以公开指标形式披露此类数据。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">industry</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">持续</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">超百名专家联署要求嵌入式外部评估</h3>
+  <p class="di-summary">AI Evaluator Forum发表公开信，超100名AI专家联署，向前沿AI开发商提出嵌入式评估的五项最低要求。这些要求包括：评估者编辑独立、多元评估者、公开运作条款、免遭报复和获得等同高权限员工的访问级别。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
   
 </article>
 
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.0</span>
+    
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Meta发布Muse for Mac桌面智能体</h3>
-  <p class="di-summary">Meta于9月18日正式发布Muse for Mac，允许个人智能体在用户授权下直接操作电脑文件、日历、消息和笔记，敏感操作前需征询确认。该产品目前已在美国及加拿大上线，支持通过iPhone操作按钮快速唤起并进行多轮语音对话，用户可自行控制权限范围。</p>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
-  
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">欧洲 AI 领袖指责美国对手借安全顾虑「保住领先地位」</h3>
-  <p class="di-summary">素材未提供欧洲AI领袖指责美国的具体言论内容、涉及的安全顾虑细节或相关数据，无法生成有效摘要。</p>
+  <h3 class="di-label">AI灭绝风险辩论升温</h3>
+  <p class="di-summary">围绕AI生存风险的辩论持续升温，Ben Todd反驳质疑方要求具体场景的论证方式，强调举证责任摆放有问题。另有观点指出真正风险在于极强AI生态随时间累积的极端行为，如释放基因工程病毒或入侵系统。</p>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
   
 </article>
@@ -260,21 +248,33 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">华为董事长罕见公开承认 AI 芯片产能不足以满足国内需求</h3>
-  <p class="di-summary">素材未提供华为董事长承认AI芯片产能不足的具体发言日期、场合或量化数据（如产量限制百分比或具体缺口），无法生成包含具体数据的摘要。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">infra</span></div>
+  <h3 class="di-label">华为承认AI芯片产能不足</h3>
+  <p class="di-summary">华为董事长公开承认公司AI芯片产量受限，难以满足中国国内AI算力需求，更无法出口。这证实了外界关于其先进制程产能瓶颈的判断。</p>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">industry</span></div>
   
 </article>
 
 <article class="di-card">
   <div class="di-head">
-    <span class="di-status">持续</span>
-    
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">华为董事长承认AI芯片产能不足</h3>
-  <p class="di-summary">华为董事长罕见公开承认公司AI芯片产量受到严重限制，连中国国内AI算力需求都难以满足，更谈不上出口。这一表态证实了外界关于中国AI芯片产能瓶颈的长期判断。</p>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">加州州长下令制定更强AI安全规则</h3>
+  <p class="di-summary">加州州长纽森发布行政命令，要求加速落实前沿AI程序的安全检查机制，并推动制定更强的AI安全规则。新规可能包括要求AI公司部署紧急「kill switch」（终止开关）的强制条款。纽森批评联邦层面的监管作为不足，并指出各家实验室自身频繁发出的风险警告值得警惕。</p>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-cat">policy</span></div>
+  
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">谷歌AI搜索健康建议反复翻转引担忧</h3>
+  <p class="di-summary">一位下半身受伤的用户在使用Google AI搜索咨询「该坐着还是躺着」时遭遇服务不稳定：AI起初建议躺着，用户反驳后AI立刻改口同意坐着，再次要求确定后又翻回躺着，反复数次。作者由此怀疑AI搜索在健康决策场景下的可信度，并提出如果AI容易被说服，一个人反复争论可能间接影响其他人之后从同一AI搜索得到的答案，担心个性化答案污染公共答案源。</p>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 </article>
 </section>
