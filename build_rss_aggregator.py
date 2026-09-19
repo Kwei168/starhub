@@ -1850,6 +1850,24 @@ def _translate_source_items(items):
 
 # ──────────────────────────── RSS 抓取 ────────────────────────────
 
+def _dedup_pub_dt(v):
+    """把条目的 pub_date 归一成可比对的 aware datetime；取不到可靠时间返回 None。
+
+    条目里的 pub_date 有三种形态：_parse_rss_date/_parse_iso 产出的 datetime、
+    上游原样字符串、以及没有日期时的空串。按字符串统一处理会在 datetime 对象上
+    调 .replace("Z", ...) —— datetime.replace 把它当位置参数，抛 TypeError。
+    """
+    if isinstance(v, datetime.datetime):
+        d = v
+    elif isinstance(v, str) and v.strip():
+        d = _parse_iso(v) or _parse_rss_date(v)
+    else:
+        d = None
+    if d is not None and d.tzinfo is None:
+        d = d.replace(tzinfo=datetime.timezone.utc)
+    return d
+
+
 def _dedup_source_items(items, source_key):
     """单源内去重：URL 归一化 + 内容重复检测。
 
@@ -1933,7 +1951,7 @@ def _dedup_source_items(items, source_key):
             t = re.sub(r"[^\w\u4e00-\u9fff]", "", t)
             return t[:50]
 
-        seen_titles = {}  # key → pub_date
+        seen_titles = {}  # 归一化标题 → 已保留的同名条目列表
         title_deduped = []
         for it in items:
             title = (it.get("title") or "").strip()
@@ -1941,25 +1959,23 @@ def _dedup_source_items(items, source_key):
                 title_deduped.append(it)
                 continue
 
-            pub_date = it.get("pub_date", "")
             dedup_key = _norm_title(title)
-
-            if dedup_key in seen_titles:
-                prev_date = seen_titles[dedup_key]
-                if pub_date and prev_date:
-                    try:
-                        pd_cur = datetime.datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
-                        pd_prev = datetime.datetime.fromisoformat(prev_date.replace("Z", "+00:00"))
-                        diff_hours = abs((pd_cur - pd_prev).total_seconds()) / 3600
-                        if diff_hours > 48:
-                            title_deduped.append(it)
-                            seen_titles[dedup_key] = pub_date
-                            continue
-                    except (ValueError, AttributeError):
-                        pass
-                continue
-
-            seen_titles[dedup_key] = pub_date
+            kept = seen_titles.setdefault(dedup_key, [])
+            cur_dt = _dedup_pub_dt(it.get("pub_date", ""))
+            if cur_dt is not None:
+                # 与任一已保留的同名条目相差 48h 以内即视为重复；超出则当作另一篇
+                if any(abs((cur_dt - d).total_seconds()) <= 48 * 3600
+                       for d in (_dedup_pub_dt(k.get("pub_date", "")) for k in kept)
+                       if d is not None):
+                    continue
+            else:
+                # 时间取不到时退回「标题 + 摘要都相同」才算重复群发：与微信源同一口径。
+                # 一律保留会让重复条目挤占 ITEMS_PER_SOURCE 名额、把真条目挡在外面；
+                # 一律折叠又会并掉每日专栏（标题同、内容不同）。
+                _sum = _norm_text(it.get("summary") or "")
+                if any(_norm_text(k.get("summary") or "") == _sum for k in kept):
+                    continue
+            kept.append(it)
             title_deduped.append(it)
         items = title_deduped
 
@@ -1997,7 +2013,7 @@ def _fetch_rss(source, timeout=None):
         raw = _fetch_url(url, timeout=timeout or FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
     except Exception as ex:
         print("[RSS聚合] %s 拉取失败: %s" % (name, ex), file=sys.stderr)
-        return []
+        return None  # 上游侧失败：与「成功但 0 条」区分开，前者才可计入域名熔断
 
     root = None
     raw_str = None
@@ -2016,10 +2032,10 @@ def _fetch_rss(source, timeout=None):
                 pass  # 回退也失败，使用原始错误
         if root is None:
             print("[RSS聚合] %s 解析失败: %s" % (name, orig_err), file=sys.stderr)
-            return []
+            return None
     except Exception as ex:
         print("[RSS聚合] %s 异常: %s" % (name, ex), file=sys.stderr)
-        return []
+        return None
 
     items = []
     ns = "{http://www.w3.org/2005/Atom}"
@@ -2071,14 +2087,39 @@ def _fetch_rss(source, timeout=None):
     return items[:ITEMS_PER_SOURCE]
 
 
+# W3C 规范 URI 里日期段是斜杠（…/1999/02/22-rdf-syntax-ns#），肉眼分不清 - 与 /，
+# 改动这两行请用码点核对而不是看渲染结果。
+_RDF_ABOUT = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about"
+_RDF_RESOURCE = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource"
+
+
+def _rss_text(it, tag):
+    """取子元素文本，兼容带默认命名空间的 feed（RSS 1.0/RDF 等）。
+
+    RDF 文档常用 xmlns="http://purl.org/rss/1.0/" 声明默认命名空间，此时 <title>
+    的真实标签是 {…}title，不带前缀的 findtext 取不到 → title 为空被 `if not title`
+    丢掉每一条，于是 DW/Nature/Science 这类上游有 37~137 条的源在我方解析出 0 条。
+    用 {*} 而非写死 rss1.0，是为了覆盖 RSS 0.9x 之类同样带默认命名空间的变体。
+    """
+    v = it.findtext(tag)
+    if v is None:
+        v = it.findtext("{*}" + tag)
+    return v or ""
+
+
 def _parse_rss_item(it, source_name, source_key, cat, items):
-    title = _strip_html(it.findtext("title") or "")
-    link = (it.findtext("link") or "").strip()
-    # RSS 1.0 RDF: link is in rdf:about attribute
+    title = _strip_html(_rss_text(it, "title"))
+    link = (_rss_text(it, "link") or "").strip()
     if not link:
-        link = (it.get("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about") or "").strip()
-    desc_raw = it.findtext("description") or ""
-    pub = (it.findtext("pubDate") or "").strip()
+        _le = it.find("link")
+        if _le is None:
+            _le = it.find("{*}link")
+        if _le is not None:
+            link = (_le.get(_RDF_RESOURCE) or "").strip()
+    if not link:
+        link = (it.get(_RDF_ABOUT) or "").strip()
+    desc_raw = _rss_text(it, "description")
+    pub = (_rss_text(it, "pubDate") or "").strip()
     # RSS 1.0 RDF: date is in dc:date
     if not pub:
         pub = (it.findtext("{http://purl.org/dc/elements/1.1/}date") or "").strip()
@@ -7716,7 +7757,10 @@ def main(mode="full"):
 
     # 并行抓取 RSS（短超时，失败快速跳过）
     # - 全局并发 12；同一域名并发 2（对单域行为接近串行，避免打爆 xgo.ing 等桥接服务）
-    # - 域级熔断：同域名连续 3 次失败则本轮跳过该域剩余源，下轮增量再试
+    # - 域级熔断：同域名连续 3 次「上游侧失败」则本轮跳过该域剩余源；成功但 0 条不计入。
+    #   注意它是尽力而为的限流、不是硬上限：熔断只在任务尚未开工时生效，已排在域名
+    #   信号量上的那批（≤12）照样会发出；且任何一次成功都会把连续计数清零，所以
+    #   "域内部分失败"的混合场景不会触发 —— 只有整域在失败才会。
     # - 流水线：某源抓完即在主线程串行翻译，与其余源的网络 IO 重叠；翻译不进线程池（翻译服务有限流）
     _results = [None] * len(RSS_SOURCES)  # 按 RSS_SOURCES 顺序回填，保持产物顺序稳定
 
@@ -7744,23 +7788,39 @@ def main(mode="full"):
         with _domain_lock:
             if dom and dom in _domain_broken:
                 return i, src, None, "domain_broken"
+        crashed = False
         try:
             if dom:
                 with _domain_sems[dom]:
                     items = _fetch_rss(src, timeout=src.get("timeout"))
             else:
                 items = _fetch_rss(src, timeout=src.get("timeout"))
-        except Exception:
-            items = []
-        ok = len(items) > 0
+        except Exception as _ex:
+            # 我方清洗/去重链路抛错：请求本身已发出并成功，不该牵连同域名兄弟源，
+            # 但必须留痕 —— 静默吞成「0 条」让 2026-09-16 起的 84 个源无声消失了三天。
+            print("[RSS聚合] %s 抓取异常: %s: %s"
+                  % (src["name"], type(_ex).__name__, _ex), file=sys.stderr)
+            items, crashed = [], True
+        hard_fail = items is None
+        ok = bool(items)
         with _domain_lock:
             if ok:
                 _domain_failstreak[dom] = 0
-            elif dom:
+            elif hard_fail and dom:
+                # 只有上游侧失败（网络/HTTP/XML 不可解析）才计入域名熔断。
+                # 「成功但 feed 0 条」是正常状态：计入会让 api.xgo.ing 这种一个域名挂
+                # 160 个源的桥接服务，被前 3 个空 feed 熔断掉其余全部源，
+                # 而提交顺序固定 ⇒ 尾部源每场都轮不到（实测 0.00 次/场 × 18 场）。
                 _domain_failstreak[dom] += 1
                 if _domain_failstreak[dom] >= 3:
                     _domain_broken.add(dom)
-        return i, src, items, ("ok" if ok else "empty")
+        if ok:
+            _status = "ok"
+        elif hard_fail or crashed:
+            _status = "error"   # 没拿到数据且不是「上游本来就空」，与 empty 分开才查得动
+        else:
+            _status = "empty"
+        return i, src, items, _status
 
     # 翻译线程池：有界并发（6 源并发），不拖住抓取主循环；Agnes 429/全链熔断时自动降级
     _trans_pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
