@@ -97,20 +97,6 @@ judge 其实已返回 `weak_events`（1-based 索引）与 `reasoning.relevance.
 `py -3.11 -m pytest tests/daily_insight -q -s` + 根测试四件与 CI 同构 → 读 CLAUDE.md → pathspec-only 提交（他人在途文件不入库）→
 Data API 推送（LF 归一）→ 触发/等整点构建 → 按第 2 节清单核验产物。
 
-**CI 同构检查（不可跳过，2026-09-19 因跳过而把红测试推上线两次）**：门禁 B 会把
-`AGNES_API_KEY / AGNES_API_KEYS / SILICONFLOW_API_KEY / ZEN_API_KEY / OPENROUTER_API_KEY / AGIHUNT_API_KEY` 全部置空
-（`.github/workflows/update.yml` 的 Quality gate B env 段），任何依赖真实 key 的断言在本地绿、CI 红。
-推送前必须原样复跑一次：
-
-```
-export AGNES_API_KEY= AGNES_API_KEYS= SILICONFLOW_API_KEY= ZEN_API_KEY= OPENROUTER_API_KEY= AGIHUNT_API_KEY=
-py -3.11 -m pytest tests/daily_insight/ -q
-for f in test_insight_engine.py test_insight_guard_v3.py test_insight_bad_date.py test_daily_insight.py; do py -3.11 "$f" >/dev/null; echo "$f exit=$?"; done
-```
-
-另：`tests/daily_insight/` 里的测试文件改完必须**确认已推到远端**——本地提交 91d4de5 只改了测试未推送，
-导致 CI 仍在跑被退役的旧契约断言（`test_small_history_single_file`），报的错与被改的东西毫无关系，极易误诊。
-
 ## 8. 进度
 
 - [x] 第12轮终版复评上线并在生产验证（`6f1736ac` / run `35431790984`）
@@ -121,12 +107,3 @@ for f in test_insight_engine.py test_insight_guard_v3.py test_insight_bad_date.p
 - [ ] 阶段 B：蒸馏清单设计定稿 + 三项可检验预测写清验收方式
 - [ ] HANDOFF.md 登记观察期结论与口径切换时点（若 B 上线）
 - [ ] 收单口径 ①/② 由用户确认
-
-> **暂停点 / 下次开工接续（2026-09-19 17:05 北京时间，用户下令下班）**
-> - 远端 HEAD：`4658f109`（终版复评 + 审查复修 + 计划落盘 + CI 同构测试修复，均已推达远端）。
-> - 正在跑：run `35433508066`（09:00:27Z 触发），它是**观察期第 2 期**候选样本。
->   下一件事只有这一条：跑完按第 2 节 6 项清单核 `daily-insight.json → quality`（重点 `meta.eval_stage` 是否为 `shipped_report`、
->   `with_links` 是否等于事件数、`::warning` 是否为 0），把 cov/faith/rel 与 `meta.draft_eval` 一并记进本文件第 1 节表格。
-> - 那场构建的门禁 B 预期仍会红 1 次（它 checkout 的是推送前的测试文件）；**下一场起应恢复全绿**，
->   若下一场还红，先比远端 `tests/daily_insight/` blob 与本地是否一致，再怀疑代码。
-> - 本会话未动 `build_rss_aggregator.py` / `update.yml` / `rss_fetch_state`（他人在途）。
