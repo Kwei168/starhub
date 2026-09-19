@@ -910,8 +910,22 @@ def _save_vector_cache(chunks, vectors, embed_model):
 
 # ──────────────────── RAG: 混合检索 ────────────────────
 
-def _hybrid_retrieve(index, chunks, queries, top_k=RETRIEVAL_TOP_K):
-    """混合检索：FAISS 向量搜索 + BM25 关键词 → RRF 融合。"""
+def _hybrid_retrieve(index, chunks, queries, top_k=RETRIEVAL_TOP_K, stats=None):
+    """混合检索：FAISS 向量搜索 + BM25 关键词 → RRF 融合。
+
+    stats 是只读出口（R13 阶段 C）：把两条通道的份额落盘。
+    BM25 窗口按"非 RSS 优先 + 剩余给近期 RSS"分配，观察期五期里 RSS 预算恒为 0，
+    没有读数的话这条结构性偏置只能靠人工挖日志确认。
+    """
+    if stats is not None:
+        non_rss_all = [c for c in chunks if isinstance(c, dict) and c.get("source_type") != "rss"]
+        rss_all = [c for c in chunks if isinstance(c, dict) and c.get("source_type") == "rss"]
+        budget = max(0, BM25_WINDOW - len(non_rss_all))
+        stats["non_rss"] = len(non_rss_all)
+        stats["rss_total"] = len(rss_all)
+        # 分配额而非实际索引数：BM25 语料按 chunk_id 去重、且 get_scores<=0 会提前 break
+        stats["rss_budget_slots"] = min(len(rss_all), budget)
+        stats["rss_crowded_out"] = bool(budget == 0 and rss_all)
     if not chunks or not queries:
         return []
 
@@ -2597,6 +2611,7 @@ def _verify_consolidation(llm, clusters, groups):
               chr(10) + chr(10) +
               '输出 JSON：{"verdicts": [{"group": 组号, "same_event": true/false, "reason": "≤20字"}]}，每组必须给。')
     verdicts = {}
+    veto_reasons = {}
     try:
         result = llm.complete(
             [{"role": "system", "content": "你是事件合并复核员。只输出严格 JSON。"},
@@ -2615,6 +2630,9 @@ def _verify_consolidation(llm, clusters, groups):
                     gi = _vi(v.get("group"))
                     if isinstance(gi, int):
                         verdicts[gi] = v.get("same_event") is True
+                        # 否决理由过去被解析层直接丢掉，导致"二审为什么拦"只能靠猜。
+                        # reason 是模型自由文本：压掉换行与冒号，防多打日志行与伪造 ::warning 注解
+                        veto_reasons[gi] = re.sub(r"[::\s]+", " ", str(v.get("reason") or ""))[:24].strip()
     except Exception as exc:
         print("[每日洞察] 二审调用异常，全部合并否决: %s" % exc, file=sys.stderr)
         return []
@@ -2624,13 +2642,15 @@ def _verify_consolidation(llm, clusters, groups):
     # 二审组号 0-based 漂移：整体平移，防误并组借走合法组的 true 判定
     if verdicts and 0 in verdicts and max(verdicts) <= len(groups) - 1:
         verdicts = {k + 1: v for k, v in verdicts.items()}
+        veto_reasons = {k + 1: v for k, v in veto_reasons.items()}
         print("[每日洞察] 二审组号为 0-based，已整体平移")
     kept = []
     for gi, grp in enumerate(groups, 1):
         if verdicts.get(gi) is True:
             kept.append(grp)
         else:
-            print("[每日洞察] 二审否决第 %d 组合并(keep#%d)" % (gi, grp[0]))
+            why = veto_reasons.get(gi) or ("无判定(infra/缺失)" if gi not in verdicts else "判 false 无理由")
+            print("[每日洞察] 二审否决第 %d 组合并(keep#%d): %s" % (gi, grp[0], why))
     return kept
 
 
@@ -3470,11 +3490,13 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
     """
     if not context_text or not clusters:
         return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                "overall": 0.5, "feedback": "无上下文可评估", "weak_events": [], "_guard": True,
+                "overall": 0.5, "feedback": "无上下文可评估", "weak_events": [],
+                "irrelevant_events": [], "_guard": True,
                 "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"}}
     if not llm:
         return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                "overall": 0.5, "feedback": "LLM 不可用", "weak_events": [], "_guard": True,
+                "overall": 0.5, "feedback": "LLM 不可用", "weak_events": [],
+                "irrelevant_events": [], "_guard": True,
                 "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"}}
 
     # 构建事件摘要文本
@@ -3526,6 +3548,9 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
             "faithfulness": reasoning.get("faithfulness", {}).get("confidence", "medium"),
             "relevance": reasoning.get("relevance", {}).get("confidence", "medium"),
         }
+        # R13 阶段 C：v2 的 irrelevant_events 过去与 missed 清单同病——prompt 要了、解析层丢
+        _irr = reasoning.get("relevance", {}).get("irrelevant_events", [])
+        irrelevant_events = [str(x).strip() for x in _irr if isinstance(x, (str, int)) and str(x).strip()][:12]
 
         # G1：回收 judge 的漏点清单（v1 键 missed / v2 键 missed_points），历史被丢弃
         missed_pts = []
@@ -3548,6 +3573,7 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
             "weak_events": [int(w) for w in weak if isinstance(w, (int, float))],
             "confidences": confidences,
             "missed_points": missed_pts[:12],
+            "irrelevant_events": irrelevant_events,
         }
 
     return None
@@ -3664,6 +3690,67 @@ def _dims_pass_thresholds(eval_result):
     return True
 
 
+def _source_mix(chunks):
+    """检索池/事件素材的来源构成计数（R13 阶段 C 读数，不参与任何判定）。"""
+    mix = {}
+    for c in (chunks or []):
+        if not isinstance(c, dict):
+            continue
+        k = c.get("source_type") or "?"
+        mix[k] = mix.get(k, 0) + 1
+    return dict(sorted(mix.items()))
+
+
+def _aggregate_per_event(clusters, samples):
+    """把"哪几条事件被点名"落成逐事件读数。
+
+    weak_events 是 1-based 索引，可直接计数；irrelevant_events 是 v2 让模型写的自由文本，
+    必须靠标签近似匹配落位（跨样本措辞会漂移，同 missed_points 的教训）。
+    生产出现过两条几乎同名的阿里 Qwen 事件（jaccard 0.917），所以匹配要有余量：
+    best 与 second 差 < 0.1 时判为"归属不了"，记进 index=0 的 unmatched 行，
+    而不是按序号硬塞给某一条 —— 错误的归因比没有归因更坏。
+    """
+    samples = [s for s in (samples or []) if isinstance(s, dict)]
+    weak_ct, irr_ct = {}, {}
+    unmatched = 0
+    label_toks = [_dedup_tokens(c.get("label", "")) for c in (clusters or [])]
+    for s in samples:
+        for w in (s.get("weak_events") or []):
+            if isinstance(w, (int, float)) and 1 <= int(w) <= len(clusters or []):
+                weak_ct[int(w)] = weak_ct.get(int(w), 0) + 1
+        for txt in (s.get("irrelevant_events") or []):
+            t = _dedup_tokens(txt)
+            if not t:
+                continue
+            scores = []
+            for i, lab in enumerate(label_toks, 1):
+                if not lab:
+                    continue
+                scores.append((len(t & lab) / (len(t | lab) or 1), i))
+            scores.sort(key=lambda x: (-x[0], x[1]))
+            if not scores or scores[0][0] < 0.2:
+                unmatched += 1
+                continue
+            if len(scores) > 1 and scores[0][0] - scores[1][0] < 0.1:
+                unmatched += 1
+                continue
+            irr_ct[scores[0][1]] = irr_ct.get(scores[0][1], 0) + 1
+    rows = []
+    for i, c in enumerate(clusters or [], 1):
+        rows.append({
+            "index": i,
+            "label": (c.get("label") or "")[:34],
+            "weak_flags": weak_ct.get(i, 0),
+            "irrelevant_flags": irr_ct.get(i, 0),
+            "sources": _source_mix(c.get("items") or []),
+        })
+    if unmatched:
+        rows.append({"index": 0, "label": "(归属不了)", "weak_flags": 0,
+                     "irrelevant_flags": 0, "unmatched_irrelevant": unmatched,
+                     "sources": {}})
+    return rows
+
+
 def _median_eval_samples(samples):
     """多样本评估中位聚合（T2：09-19 实证 v1/v2 同内容差 0.17，单点评估噪声淹没内容变化）。"""
     if not samples:
@@ -3678,6 +3765,14 @@ def _median_eval_samples(samples):
     ref = min(samples, key=lambda s: abs(s.get("overall", 0) - out.get("overall", 0)))
     out["feedback"] = ref.get("feedback", "")
     out["weak_events"] = ref.get("weak_events", [])
+    _irr_all = []
+    for s in samples:
+        for t in s.get("irrelevant_events", []) or []:
+            t = (t or "").strip()
+            if t and t not in _irr_all:
+                _irr_all.append(t)
+    out["irrelevant_events"] = _irr_all[:12]
+    out["_samples"] = samples  # 供逐事件归因用；落盘前由 meta 组装处 pop 掉
     # G1 漏点回收：模糊共现分组（judge 跨样本措辞漂移，精确匹配曾把回收饿死在 0 条）
     _raw = []
     for s in samples:
@@ -3828,7 +3923,7 @@ def _recover_missed_events(llm, clusters, missed_points, index, chunks, max_new=
         return []
 
 
-def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
+def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config, retrieval_stats=None):
     """RAGAS 评估-修正闭环：评分 → 不达标则自我修正 → 重新评分。"""
     if not RAGAS_ENABLED or not llm or not clusters:
         return clusters, {}
@@ -3917,6 +4012,18 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     actual_variants = eval_result.get("_actual_variants", 1)
     eval_result.pop("_actual_variants", None)
     _n_samples = eval_result.pop("_eval_samples", 1)
+    _attr_samples = eval_result.pop("_samples", None) or [eval_result]
+    try:
+        _readings = {
+            "retrieval_mix": _source_mix(retrieved_chunks),
+            "bm25_window": dict(retrieval_stats or {}),
+            "per_event": _aggregate_per_event(current, _attr_samples),
+            "irrelevant_events": list(eval_result.get("irrelevant_events", []) or []),
+        }
+    except Exception as _rexc:
+        _readings = {"retrieval_mix": {}, "bm25_window": {}, "per_event": [],
+                     "irrelevant_events": list(eval_result.get("irrelevant_events", []) or [])}
+        print("[每日洞察] 归因读数异常（不影响评分与产物）: %s" % _rexc, file=sys.stderr)
     eval_result["meta"] = {
         "judge_model": _effective_judge_model(llm),
         "judge_model_configured": getattr(llm, 'model', 'unknown'),
@@ -3929,6 +4036,7 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
         "call_log": getattr(llm, '_call_log', []),
         "degraded": bool(eval_result.pop("_degraded", False)),
         "temperature": 0.2,
+        **_readings,
     }
 
     return current, eval_result
@@ -4038,7 +4146,8 @@ def _update_history(clusters, theme):
 
 # ──────────────────── 终版复评（shipped report） ────────────────────
 
-def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_eval, use_cv=True):
+def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_eval,
+                                 use_cv=True, retrieval_stats=None):
     """对最终 shipped 报告复评一次，让 quality 描述用户真正看到的那份日报。
 
     07:14 期实证：导出的 quality 出自 missed 回收/终局去重/预算收口**之前**的草稿，
@@ -4077,6 +4186,18 @@ def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_e
     full_log = getattr(llm, '_call_log', None) or []
     out = dict(shipped)
     out["iterations"] = ragas_eval.get("iterations", 0)
+    _attr_samples = out.pop("_samples", None) or [out]
+    try:
+        _readings = {
+            "retrieval_mix": _source_mix(retrieved_chunks),
+            "bm25_window": dict(retrieval_stats or {}),
+            "per_event": _aggregate_per_event(clusters, _attr_samples),
+            "irrelevant_events": list(out.get("irrelevant_events", []) or []),
+        }
+    except Exception as _rexc:
+        _readings = {"retrieval_mix": {}, "bm25_window": {}, "per_event": [],
+                     "irrelevant_events": list(out.get("irrelevant_events", []) or [])}
+        print("[每日洞察] 终版归因读数异常（不影响评分与产物）: %s" % _rexc, file=sys.stderr)
     out_meta = {
         "judge_model": _effective_judge_model(llm, full_log[_log0:]),
         "judge_model_configured": getattr(llm, 'model', 'unknown'),
@@ -4089,6 +4210,7 @@ def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_e
         "call_log": full_log[_log0:],
         "degraded": bool(out.pop("_degraded", False)),
         "temperature": 0.2,
+        **_readings,
     }
     out_meta["draft_eval"] = {
         "overall": ragas_eval.get("overall", 0),
@@ -5092,7 +5214,8 @@ def main():
     queries = _build_queries(hot_clean, agihunt_clean, aihot_clean, rss_clean=rss_clean)
 
     # 4) 混合检索 → 重排序 → 事件组装
-    retrieved = _hybrid_retrieve(index, chunks, queries)
+    _retrieval_stats = {}
+    retrieved = _hybrid_retrieve(index, chunks, queries, stats=_retrieval_stats)
     if not retrieved:
         print("[每日洞察] 检索无结果，跳过生成")
         try:
@@ -5265,7 +5388,8 @@ def main():
             judge_llm = _init_judge_llm(build_cfg)
             if judge_llm:
                 clusters, ragas_eval = _ragas_evaluate_and_correct(
-                    judge_llm, clusters, theme, retrieved_for_ragas, build_cfg)
+                    judge_llm, clusters, theme, retrieved_for_ragas, build_cfg,
+                    retrieval_stats=_retrieval_stats)
                 # G1: judge 漏点回收为新事件——必须在终局去重之前进入，吃全套闸
                 _missed = (ragas_eval or {}).get("missed_points") or []
                 if _missed:
@@ -5298,7 +5422,8 @@ def main():
     try:
         ragas_eval = _confirm_shipped_report_eval(
             judge_llm, clusters, theme, retrieved_for_ragas, ragas_eval,
-            use_cv=bool(build_cfg.get("daily_insight_cross_validation", False)))
+            use_cv=bool(build_cfg.get("daily_insight_cross_validation", False)),
+            retrieval_stats=_retrieval_stats)
     except Exception as exc:
         print("[每日洞察] 终版复评兜底异常，沿用草稿分: %s" % exc, file=sys.stderr)
 
