@@ -1404,6 +1404,9 @@ def _score_events(clusters, hot_snapshot):
 _LLM_API_URL = "https://apihub.agnes-ai.com/v1/chat/completions"
 
 
+_LLM_429_POLL_SEC = 180  # 429 轮询预算（秒）
+
+
 class _LLM:
     """轻量 LLM 调用，支持多 key 轮询。"""
 
@@ -1442,24 +1445,38 @@ class _LLM:
             return None, False
 
     def complete(self, messages, temperature=0.3, max_tokens=2000):
+        # 429 轮询（用户点名）：全 key 被限流时指数退避重试至预算耗尽；
+        # 非限流失败保持旧语义（同 key 快速重试 2 次后放弃，交上层降级）。
         n_keys = len(self.api_keys)
-        for _ in range(n_keys):
-            result, is_429 = self._try(messages, temperature, max_tokens)
-            if result:
-                return result
-            if is_429:
-                self._key_idx = (self._key_idx + 1) % n_keys
-                continue
-            for _retry in range(2):
+        deadline = time.time() + _LLM_429_POLL_SEC
+        backoff = 5
+        while True:
+            saw_429 = False
+            for _ in range(n_keys):
                 result, is_429 = self._try(messages, temperature, max_tokens)
                 if result:
                     return result
                 if is_429:
+                    saw_429 = True
                     self._key_idx = (self._key_idx + 1) % n_keys
-                    break
-            else:
-                break
-        return ""
+                    continue
+                for _retry in range(2):
+                    result, is_429 = self._try(messages, temperature, max_tokens)
+                    if result:
+                        return result
+                    if is_429:
+                        saw_429 = True
+                        self._key_idx = (self._key_idx + 1) % n_keys
+                        break
+            if not saw_429:
+                return ""
+            remain = deadline - time.time()
+            if remain <= 0:
+                print("[LLM] 429 轮询超预算(%ds)，返回空由上层降级" % _LLM_429_POLL_SEC,
+                      file=sys.stderr)
+                return ""
+            time.sleep(min(backoff, max(1, int(remain))))
+            backoff = min(backoff * 2, 40)
 
 
 def _init_llm():
@@ -2492,6 +2509,181 @@ def _apply_phase1_result(clusters, p1_result):
         c["significance"] = pe.get("significance", "")
         c["key_links"] = _validate_key_links(pe.get("key_links", []), c.get("items", []))
     return theme
+
+
+_SYSTEM_PROMPT_CONSOLIDATE = """你是每日洞察的事件评审编辑。你的唯一任务：判断清单中哪些事件是同一件事，输出合并方案。只输出严格 JSON。"""
+
+
+_CONSOLIDATE_CASEBOOK = """【判定标准——来自生产复盘的真实判例】
+应当合并（同一事件）：
+- 「华为董事长罕见公开承认 AI 芯片产能不足以满足国内需求」(infra) + 「华为董事长承认AI芯片产能不足」(industry) → 同一句表态、同一事实；类别不同不构成不并的理由
+- 「Anthropic 为 Claude 推出项目分组功能」+「Claude Projects 改版支持并行工作流」→ 同一次产品更新的不同媒体转述
+- 「Claude 攻破 OpenAI 内部系统」+「OpenAI 披露智能体入侵事件」+「AI 智能体安全事件震动行业」→ 同一入侵事件被多方拆写，全部并为一组
+- 「xAI 发布 Grok 语音转写 2.0」+「Grok 语音转写 2.0 以 97.4% 准确率登顶流式转写榜」→ 发布与榜单是同一事件的两面，合并后保留发布为主体
+- 「OpenAI 研究员气隙隔离言论引 AI 安全激辩」+「Noam Brown 称算力隔离已失效」→ 同一人同一表态及其直接反响
+- 「Google 与 OpenAI 安全事件并重，行业震动」这类综述条目（无独立数据锚点、只是复述他条）→ 并入它所概括的最具体那条事件，综述不得单独占位
+不得合并（不同事件）：
+- 「xAI 发布 Grok 语音转写 2.0」+「xAI 发布 Grok 图像编辑功能」→ 同一公司不同发布物，禁并
+- 「华为董事长承认 AI 芯片产能不足」+「英伟达发布新代数据中心芯片」→ 都讲芯片，主体不同
+- 「Anthropic 披露 Claude 主导 26% 研发」+「Anthropic 湾区建湿实验室」→ 同一公司不同事件
+- 「模型发布」+「该模型一周后因缺陷被撤回」→ 时间线不同阶段，是两件事，各自保留
+- 「传闻某厂将发布 X」+「官方确认发布 X」→ 传闻与确认是不同发生，不并（摘要须注明争议与确认方）
+- 「英伟达芯片供应紧张」+「云厂商上调资本开支」→ 因果相关但不是同一事件
+- 「昇腾 910C 量产」+「昇腾 910B 升级版发布」→ 同产品不同版本是不同发生，禁并
+- 两条标题相同但正文讲的是两件事 → 这是错标，不得合并，各自保留
+- C 只与 A 合并前的旧标题相似、与 A 现内容无关 → 不得搭车合并
+- 行业趋势条目自带聚合数据（引用多家 + 独立数字）→ 与单公司事件各自保留
+
+【规则】
+1. 只有「同一主体 + 同一发生」才并；主题相近、词汇重叠不是合并理由
+2. keep 必须是事实最完整的一条（有具体数据/时间/出处），不是标题更响或分数更高的；拿不准就不并
+3. 合并后的标题（如提供 label）必须单一主题陈述句，禁止把不相关主题拼进一个标题
+4. 最多输出 3 组合并；没有重复就输出空数组
+5. 严格 JSON：merges 数组，每项含 keep(编号)、merge(被并编号数组)、label(可选,≤15字)、reason(≤20字)"""
+
+
+def _build_consolidate_prompt(clusters):
+    lines = []
+    for i, c in enumerate(clusters, 1):
+        lines.append("%d. [%s]（%d 源）%s ｜ %s" % (
+            i, c.get("category", ""), len(c.get("items") or []),
+            (c.get("label") or "")[:40], (c.get("summary") or "")[:220]))
+    head = "今日事件清单（%d 条）：\n%s\n\n" % (len(clusters), "\n".join(lines))
+    tail = "\n请输出 JSON。"
+    return head + _CONSOLIDATE_CASEBOOK + tail
+
+
+def _apply_consolidation(clusters, plan):
+    """校验并应用合并方案：越界/自并/链式/超组一律忽略。"""
+    merges = plan.get("merges") if isinstance(plan, dict) else None
+    if not isinstance(merges, list) or not merges:
+        return clusters, 0
+    n = len(clusters)
+
+    def _int(v):
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, str) and v.strip().isdigit():
+            return int(v.strip())
+        return v if isinstance(v, int) else None
+
+    # P2-2: 0-based 漂移整体平移（与 Phase1 同规则）
+    _all_idx = []
+    for g in merges:
+        if isinstance(g, dict):
+            _all_idx.append(g.get("keep"))
+            _mg = g.get("merge")
+            if isinstance(_mg, list):
+                _all_idx.extend(_mg)
+    _all_int = [_int(v) for v in _all_idx]
+    _zero_based = any(v == 0 for v in _all_int) and not any(v == n for v in _all_int)
+    dropped = set()
+    keep_used = set()
+    groups = []
+    for g in merges[:4]:
+        try:
+            if not isinstance(g, dict):
+                continue
+            keep = _int(g.get("keep"))
+            if _zero_based and isinstance(keep, int):
+                keep += 1
+            if not isinstance(keep, int) or not (1 <= keep <= n) \
+                    or keep in dropped or keep in keep_used:
+                continue
+            _mseen = set()
+            valid = []
+            _mlist = g.get("merge")
+            if not isinstance(_mlist, list):
+                continue  # P2-5: 畸形组跳过，不废整份方案
+            for m in _mlist:
+                m = _int(m)
+                if _zero_based and isinstance(m, int):
+                    m += 1
+                if (isinstance(m, int) and 1 <= m <= n and m != keep
+                        and m not in _mseen and m not in dropped and m not in keep_used):
+                    _mseen.add(m)
+                    valid.append(m)
+            valid = valid[:3]  # 单组被并不超过 3 条，防一组吞掉半张报告
+            if not valid:
+                continue
+            groups.append((keep, valid, g))
+            dropped.update(valid)
+            keep_used.add(keep)
+        except Exception:
+            continue
+        if len(groups) >= 3:
+            break
+    if not groups:
+        return clusters, 0
+    if n - len(dropped) < MIN_EVENTS:
+        print("[每日洞察] 评审方案将致事件数跌破下限(%d-%d<%d)，整案作废" % (
+            n, len(dropped), MIN_EVENTS), file=sys.stderr)
+        return clusters, 0
+    clusters = [dict(c, items=list(c.get("items") or [])) for c in clusters]  # P2-1 原子性
+    out = []
+    for i, c in enumerate(clusters, 1):
+        if i in dropped:
+            continue
+        hit = next(((k, v, g) for k, v, g in groups if k == i), None)
+        if hit:
+            _, absorbed, g = hit
+            absorbed_labels = [clusters[m - 1].get("label", "") for m in absorbed]
+            for m in absorbed:
+                cm = clusters[m - 1]
+                c["items"] = (c.get("items") or []) + (cm.get("items") or [])
+                c["source_types"] = sorted(set(c.get("source_types") or [])
+                                           | set(cm.get("source_types") or []))
+                # P1-3: keep 方 summary/significance 任一劣化且被并方完整 → 换主；分数取并集最大值
+                def _bad(x):
+                    return (_is_insufficient(x.get("summary") or "")
+                            or _is_insufficient(x.get("significance") or ""))
+                if _bad(c) and not _bad(cm):
+                    for k2 in ("label", "summary", "significance"):
+                        if cm.get(k2):
+                            c[k2] = cm[k2]
+                if not c.get("status") and cm.get("status"):
+                    for k3 in ("status", "prev_id", "prev_summary"):
+                        c[k3] = cm.get(k3)
+                c["score"] = max(c.get("score", 0), cm.get("score", 0))
+                print("[每日洞察] 评审合并: %s <= %s (%s)" % (
+                    (c.get("label") or "")[:24], (cm.get("label") or "")[:24],
+                    (g.get("reason") or "")[:20]))
+            new_label = (g.get("label") or "").strip() if isinstance(g.get("label"), str) else ""
+            if new_label and len(new_label) <= 15:
+                # P1-2: 合并名必须锚定原 label 或被并条目标题，防无锚定短名断掉
+                # 素材过滤/跨天关联/昨日罚分/终局兜底闸四条下游链（07:13 型掩盖）
+                _anchor = _dedup_tokens(c.get("label", ""))
+                for _t in [cm_label for cm_label in absorbed_labels]:
+                    _anchor |= _dedup_tokens(_t)
+                if _dedup_tokens(new_label) & _anchor:
+                    c["label"] = new_label
+                else:
+                    print("[每日洞察] 评审 label『%s』无锚定词，保留原标题" % new_label[:15])
+            c["key_links"] = _validate_key_links(c.get("key_links", []), c["items"])[:3]
+        out.append(c)
+    return out, len(groups)
+
+
+def _llm_consolidate_events(llm, clusters):
+    """事件重叠由评审 agent 主判（用户拍板治本方案）；agent 不可用/解析失败回退机械闸。"""
+    if not llm or len(clusters) < 2:
+        return clusters
+    try:
+        result = llm.complete(
+            [{"role": "system", "content": _SYSTEM_PROMPT_CONSOLIDATE},
+             {"role": "user", "content": _build_consolidate_prompt(clusters)}],
+            temperature=0.1, max_tokens=1200)
+        plan = _robust_parse_json(result)
+        if not isinstance(plan, dict):
+            print("[每日洞察] 评审 agent 输出不可解析，回退机械闸", file=sys.stderr)
+            return clusters
+        out, n = _apply_consolidation(clusters, plan)
+        if n:
+            print("[每日洞察] 评审 agent 合并 %d 组重叠事件: %d → %d" % (n, len(clusters), len(out)))
+        return out
+    except Exception as exc:
+        print("[每日洞察] 评审 agent 异常，回退机械闸: %s" % exc, file=sys.stderr)
+        return clusters
 
 
 def _llm_phase1(llm, clusters, global_context=None):
@@ -4780,6 +4972,9 @@ def main():
                 _filtered.append(c)
             if len(_filtered) < len(clusters) and len(_filtered) >= MIN_EVENTS:
                 clusters = _filtered
+
+            # 第9轮：重叠判定交评审 agent 主判（判例驱动），机械四轮闸降为 agent 不可用时兜底
+            clusters = _llm_consolidate_events(llm, clusters)
 
             # Phase 2 LLM: Top N 深度解读（快筛门槛：editor_score ≥ MIN_DEEP_SCORE 才做深度分析）
             _gate_days = [d for d in _load_history().get("days", [])
