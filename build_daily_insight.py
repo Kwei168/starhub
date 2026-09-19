@@ -172,6 +172,7 @@ RAGAS_MAX_CORRECTIONS = 1      # 修正轮数（01:12 期实证：2 轮在复评
 RAGAS_MIN_COVERAGE = 0.75      # context_coverage 最低要求
 RAGAS_MIN_FAITHFULNESS = 0.88  # faithfulness 最低要求（目标 ≥ 0.95）
 RAGAS_MIN_RELEVANCE = 0.75     # relevance 最低要求（目标 ≥ 0.80）
+_RAGAS_CTX_CHAR_BUDGET = 140000  # 评估上下文硬字符预算：全池 200 块实测约 10.8 万，留 30% 余量
 
 
 # ──────────────────── 工具函数 ────────────────────
@@ -1417,8 +1418,23 @@ class _LLM:
         self._key_idx = 0
         self.model = model
         self.timeout = timeout
+        # 真实调用台账：judge 默认走裸 _LLM 后，没有它就等于放弃
+        # "标签谎报"那套取证能力（09-19 线上 call_log 已实测为空）
+        self._call_log = []
+
+    def _record(self, status, elapsed):
+        self._call_log.append({"model": self.model, "status": status,
+                               "elapsed_s": round(elapsed, 2)})
+        if len(self._call_log) > 60:
+            del self._call_log[:-60]
 
     def _try(self, messages, temperature=0.3, max_tokens=2000):
+        _t0 = time.time()
+        result, is_429 = self._try_once(messages, temperature, max_tokens)
+        self._record("429" if is_429 else ("ok" if result else "fail"), time.time() - _t0)
+        return result, is_429
+
+    def _try_once(self, messages, temperature=0.3, max_tokens=2000):
         payload = {
             "model": self.model,
             "messages": messages,
@@ -1657,13 +1673,14 @@ class _FallbackJudgeLLM:
         return result
 
 
-def _effective_judge_model(llm):
+def _effective_judge_model(llm, log=None):
     """实际打分的模型名。
 
     _FallbackJudgeLLM.model 在构造时取主模型名且降级后不更新，直接写进 quality.meta
     会让"标签是 mimo、分数其实是 agnes 打的"长期无人察觉；只有 _call_log 记录真实调用。
+    log 可传入窗口切片（终版复评只看自己那几次调用，否则草稿期的降级会串进本期归因）。
     """
-    log = getattr(llm, '_call_log', None) or []
+    log = (getattr(llm, '_call_log', None) or []) if log is None else log
     models = [e.get("model") for e in log if e.get("model")]
     if not models:
         return getattr(llm, 'model', 'unknown')
@@ -1672,11 +1689,15 @@ def _effective_judge_model(llm):
 
 
 def _init_judge_llm(config=None):
-    """初始化 Judge LLM（mimo → agnes 两级降级链）。
-    OpenRouter 已移除（长期不通）。配置项可通过 config dict 覆盖。"""
+    """初始化 Judge LLM。默认主判 = agnes（call_log 全历史里 mimo 每次 403，从未真正打过一分）。
+
+    诚实边界：provider 显式配成 "mimo" 时才走 mimo→agnes 两级包装；
+    默认路径拿到的是裸 agnes `_LLM`，其 429 走多 key 轮询退避，非 429 失败没有第二供应商，
+    只会以 quality.meta.degraded=true 呈现（不再拿合成 0.5 冒充评分）。
+    """
     cfg = config or {}
-    judge_provider = cfg.get("daily_insight_judge_provider", "mimo")
-    judge_model = cfg.get("daily_insight_judge_model", "mimo-v2.5-free")
+    judge_provider = cfg.get("daily_insight_judge_provider", "agnes")
+    judge_model = cfg.get("daily_insight_judge_model", "agnes-2.5-flash")
     judge_timeout = cfg.get("daily_insight_judge_timeout", 60)
 
     agnes = _init_llm()  # 只创建一次 agnes 实例，避免 key rotation 状态分裂
@@ -3372,20 +3393,61 @@ _RAGAS_JUDGE_PROMPT_V2 = """你是 RAG 质量审计专家。你的任务是找�
 {"reasoning": {"coverage": {"missed_points": ["..."], "impact": "...", "confidence": "high|medium|low"}, "faithfulness": {"unsupported_claims": [{"claim": "...", "issue": "..."}], "confidence": "high|medium|low"}, "relevance": {"irrelevant_events": ["..."], "ordering_issues": ["..."], "confidence": "high|medium|low"}}, "scores": {"context_coverage": 0.8, "faithfulness": 0.9, "relevance": 0.7}, "feedback": "具体改进建议", "weak_events": [2, 5]}"""
 
 
-def _build_ragas_context(clusters, retrieved_chunks):
-    """为 RAGAS 评估构建上下文文本：将检索到的 chunks 拼接为评估参考。"""
-    # 14:29 期实证：事件证据可来自全池 200 条，judge 只看 top80 会把真实报道
-    # 误判成幻觉（faith 0.50）。判定域必须覆盖装配域：全池入上下文。
-    # 200 chunks × 1000 chars ≈ 200K chars ≈ 50K tokens，1M 上下文模型余量充足
-    sorted_chunks = sorted(retrieved_chunks, key=lambda c: c.get("retrieval_score", 0), reverse=True)
-    context_parts = []
-    for c in sorted_chunks[:200]:
+def _build_ragas_context(clusters, retrieved_chunks, stats=None):
+    """为 RAGAS 评估构建上下文文本：判定域必须覆盖装配域**和引用域**。
+
+    14:29 期实证：事件证据可来自全池 200 条，judge 只看 top80 会把真实报道
+    误判成幻觉（faith 0.50）。09-19 再加字符预算时踩到同型坑：回收事件的引用块
+    是按 URL 从全库捞的（同 URL 最多 101 块），可能根本不在 retrieved_for_ragas 里，
+    预算一咬就把它丢掉 → 终版分反而会替真实内容判幻觉。因此先铺"池外引用块"，
+    再按分数铺池内块；预算咬人必须显式告警，不得静默。
+    09-19 实测（26944 块）：入选块均值 474 字，200 块约 9.5 万字符≈6.7 万 token。
+    """
+    pool = sorted(retrieved_chunks or [],
+                  key=lambda c: c.get("retrieval_score", 0), reverse=True)[:200]
+    pool_urls = set()
+    for c in pool:
+        u = _norm_url(c.get("url", "") or c.get("link", ""))
+        if u:
+            pool_urls.add(u)
+
+    extras, seen_ref = [], set(pool_urls)
+    for c in (clusters or []):
+        for it in (c.get("items") or []):
+            if not isinstance(it, dict):
+                continue
+            u = _norm_url(it.get("url", "") or it.get("link", ""))
+            if not u or u in seen_ref or not (it.get("text") or "").strip():
+                continue
+            seen_ref.add(u)
+            extras.append(it)
+
+    ordered = extras + pool
+    context_parts, used, dropped, kept_extras = [], 0, 0, 0
+    for idx, c in enumerate(ordered):
         text = c.get("text", "")[:1000]
         title = c.get("title", "")[:100]
         src = c.get("source_type", "")
-        if text:
-            context_parts.append("[%s] %s\n%s" % (src, title, text))
-    return "\n---\n".join(context_parts)
+        if not text:
+            continue
+        part = "[%s] %s\n%s" % (src, title, text)
+        if used + len(part) + 5 > _RAGAS_CTX_CHAR_BUDGET:
+            dropped = len(ordered) - idx
+            break
+        used += len(part) + 5
+        context_parts.append(part)
+        if idx < len(extras):
+            kept_extras += 1
+    if dropped:
+        print("::warning title=RAGAS 上下文截断::预算 %d 字符仅容纳 %d 块，丢弃 %d 块（判定域可能缺引用）" % (
+            _RAGAS_CTX_CHAR_BUDGET, len(context_parts), dropped))
+    joined = "\n---\n".join(context_parts)
+    if stats is not None:
+        stats["chunks"] = len(context_parts)
+        stats["chars"] = len(joined)
+        stats["cited_extra"] = kept_extras
+        stats["truncated"] = bool(dropped)
+    return joined
 
 
 def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant="v1"):
@@ -3406,11 +3468,11 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
     """
     if not context_text or not clusters:
         return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                "overall": 0.5, "feedback": "无上下文可评估", "weak_events": [],
+                "overall": 0.5, "feedback": "无上下文可评估", "weak_events": [], "_guard": True,
                 "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"}}
     if not llm:
         return {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                "overall": 0.5, "feedback": "LLM 不可用", "weak_events": [],
+                "overall": 0.5, "feedback": "LLM 不可用", "weak_events": [], "_guard": True,
                 "confidences": {"coverage": "low", "faithfulness": "low", "relevance": "low"}}
 
     # 构建事件摘要文本
@@ -3643,17 +3705,24 @@ def _median_eval_samples(samples):
 
 
 def _robust_quality_eval(llm, current, theme, context_text, use_cv):
-    """多样本稳健评估：CV 下 v1/v2/v1' 三样本取中位，非 CV 双样本。全失败返回 None。"""
+    """多样本稳健评估：CV 下 v1/v2/v1' 三样本取中位，非 CV 双样本。全失败返回 None。
+
+    守卫返回（空上下文/无 LLM 的 0.5）不是"一次评分"，必须与真正的解析失败同等剔除，
+    否则 meta 会写出 eval_samples=3 / degraded=false 的谎报（09-19 审查 P1-2）。
+    """
+    def _real(s):
+        return bool(s) and not s.get("_guard")
+
     if use_cv:
         e1 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v1")
         e2 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v2")
         e3 = (_evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v1")
-              if (e1 and e2) else None)
-        samples = [s for s in (e1, e2, e3) if s]
+              if (_real(e1) and _real(e2)) else None)
+        samples = [s for s in (e1, e2, e3) if _real(s)]
         if not samples:
             return None
         med = _median_eval_samples(samples)
-        if e1 and e2:
+        if _real(e1) and _real(e2):
             med["cross_validation"] = {"v1_overall": e1["overall"], "v2_overall": e2["overall"]}
             med["_actual_variants"] = 2
             print("[每日洞察] RAGAS 交叉验证: v1=%.2f v2=%.2f v1'=%s → med=%.2f" % (
@@ -3665,7 +3734,7 @@ def _robust_quality_eval(llm, current, theme, context_text, use_cv):
         return med
     e1 = _evaluate_report_quality(llm, current, theme, context_text)
     e2 = _evaluate_report_quality(llm, current, theme, context_text)
-    samples = [s for s in (e1, e2) if s]
+    samples = [s for s in (e1, e2) if _real(s)]
     if not samples:
         return None
     med = _median_eval_samples(samples)
@@ -3766,7 +3835,8 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     max_iterations = config.get("daily_insight_max_corrections", RAGAS_MAX_CORRECTIONS)
 
     # 构建评估上下文
-    context_text = _build_ragas_context(clusters, retrieved_chunks)
+    _ctx_stats = {}
+    context_text = _build_ragas_context(clusters, retrieved_chunks, stats=_ctx_stats)
     if not context_text:
         return clusters, {}
 
@@ -3779,8 +3849,12 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
         eval_result = _robust_quality_eval(llm, current, theme, context_text,
                                            use_cv=use_cross_validation)
         if eval_result is None:
+            # 合成 0.5 只在"全部样本调用失败"时出现，必须带降级标记与 0 样本，
+            # 否则与真实 1 样本 0.5 无法区分（04:00 期假崩分无人察觉）
             eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                           "overall": 0.5, "feedback": "评估全部路径失败", "weak_events": []}
+                           "overall": 0.5, "feedback": "评估全部路径失败", "weak_events": [],
+                           "_eval_samples": 0, "_actual_variants": 0, "_degraded": True}
+            print("::warning title=RAGAS 评估降级::三样本评估全部失败，本期 quality 为合成 0.5，不代表内容质量")
         print("[每日洞察] RAGAS eval iter=%d: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
             iteration, eval_result["overall"], eval_result["context_coverage"],
             eval_result["faithfulness"], eval_result["relevance"]))
@@ -3846,9 +3920,12 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
         "judge_model_configured": getattr(llm, 'model', 'unknown'),
         "prompt_variants": actual_variants,
         "eval_samples": _n_samples,
-        "context_chunks": context_text.count("---") + 1 if context_text else 0,
-        "context_chars": len(context_text or ""),
+        "context_chunks": _ctx_stats.get("chunks", 0),
+        "context_chars": _ctx_stats.get("chars", len(context_text or "")),
+        "context_cited_extra": _ctx_stats.get("cited_extra", 0),
+        "context_truncated": _ctx_stats.get("truncated", False),
         "call_log": getattr(llm, '_call_log', []),
+        "degraded": bool(eval_result.pop("_degraded", False)),
         "temperature": 0.2,
     }
 
@@ -3955,6 +4032,77 @@ def _update_history(clusters, theme):
         print("[每日洞察] 历史更新: %d 天" % len(history["days"]))
     except Exception as e:
         print("[每日洞察] 历史写入失败: %s" % e, file=sys.stderr)
+
+
+# ──────────────────── 终版复评（shipped report） ────────────────────
+
+def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_eval, use_cv=True):
+    """对最终 shipped 报告复评一次，让 quality 描述用户真正看到的那份日报。
+
+    07:14 期实证：导出的 quality 出自 missed 回收/终局去重/预算收口**之前**的草稿，
+    指标里写着"漏了霍奇猜想"而报告第 4 条就是它——迭代因此在优化一份不存在的产物。
+    只观测不修正：修正环已在草稿阶段跑完，对同一内容重评等于多掷骰子（03:49 期崩塌实证）。
+    复评失败或无 Judge 时原样回退草稿分，并标注 eval_stage 供跨期对齐。
+    """
+    if not ragas_eval or not llm or not clusters:
+        return ragas_eval
+    meta = dict(ragas_eval.get("meta") or {})
+    _ctx_stats = {}
+    _log0 = len(getattr(llm, '_call_log', None) or [])
+    try:
+        context_text = _build_ragas_context(clusters, retrieved_chunks or [], stats=_ctx_stats)
+    except Exception as exc:
+        print("[每日洞察] 终版复评上下文异常，沿用草稿分: %s" % exc, file=sys.stderr)
+        context_text = ""
+    if not context_text:
+        # 空上下文里 _evaluate_report_quality 会返回守卫 0.5，绝不能当成 shipped 分数发布
+        out = dict(ragas_eval)
+        meta["eval_stage"] = "draft_only"
+        out["meta"] = meta
+        print("[每日洞察] 终版复评无可用上下文，沿用草稿分 overall=%.2f" % ragas_eval.get("overall", 0))
+        return out
+    try:
+        shipped = _robust_quality_eval(llm, clusters, theme, context_text, use_cv=use_cv)
+    except Exception as exc:
+        print("[每日洞察] 终版复评异常，沿用草稿分: %s" % exc, file=sys.stderr)
+        shipped = None
+    if not shipped:
+        meta["eval_stage"] = "draft_only"
+        out = dict(ragas_eval)
+        out["meta"] = meta
+        print("[每日洞察] 终版复评未产出，沿用草稿分 overall=%.2f" % ragas_eval.get("overall", 0))
+        return out
+    full_log = getattr(llm, '_call_log', None) or []
+    out = dict(shipped)
+    out["iterations"] = ragas_eval.get("iterations", 0)
+    out_meta = {
+        "judge_model": _effective_judge_model(llm, full_log[_log0:]),
+        "judge_model_configured": getattr(llm, 'model', 'unknown'),
+        "prompt_variants": out.pop("_actual_variants", 1),
+        "eval_samples": out.pop("_eval_samples", 1),
+        "context_chunks": _ctx_stats.get("chunks", 0),
+        "context_chars": _ctx_stats.get("chars", len(context_text or "")),
+        "context_cited_extra": _ctx_stats.get("cited_extra", 0),
+        "context_truncated": _ctx_stats.get("truncated", False),
+        "call_log": full_log[_log0:],
+        "degraded": bool(out.pop("_degraded", False)),
+        "temperature": 0.2,
+    }
+    out_meta["draft_eval"] = {
+        "overall": ragas_eval.get("overall", 0),
+        "context_coverage": ragas_eval.get("context_coverage", 0),
+        "faithfulness": ragas_eval.get("faithfulness", 0),
+        "relevance": ragas_eval.get("relevance", 0),
+        "missed_points": ragas_eval.get("missed_points", []),
+    }
+    out_meta["eval_stage"] = "shipped_report"
+    out["meta"] = out_meta
+    print("[每日洞察] 终版复评: overall=%.2f cov=%.2f faith=%.2f rel=%.2f（草稿 %.2f/%.2f/%.2f）" % (
+        out.get("overall", 0), out.get("context_coverage", 0),
+        out.get("faithfulness", 0), out.get("relevance", 0),
+        ragas_eval.get("overall", 0), ragas_eval.get("faithfulness", 0),
+        ragas_eval.get("relevance", 0)))
+    return out
 
 
 # ──────────────────── Phase 3: 输出 JSON ────────────────────
@@ -4695,6 +4843,8 @@ def _build_tracking_entry(ragas_eval, clusters, theme, elapsed,
     # RAGAS 评分
     overall = ragas_eval.get("overall")
     threshold = RAGAS_QUALITY_THRESHOLD
+    _qmeta = ragas_eval.get("meta") or {}
+    _draft = _qmeta.get("draft_eval") or {}
 
     return {
         "ts": now_bj.isoformat(),
@@ -4706,6 +4856,10 @@ def _build_tracking_entry(ragas_eval, clusters, theme, elapsed,
         "relevance": ragas_eval.get("relevance"),
         "feedback": ragas_eval.get("feedback", ""),
         "iterations": ragas_eval.get("iterations"),
+        # overall 自 09-19 起描述 shipped 终版报告；不记这两项就无法跨期比较
+        "eval_stage": _qmeta.get("eval_stage", "draft_only"),
+        "draft_overall": _draft.get("overall"),
+        "degraded": _qmeta.get("degraded"),
         "threshold": threshold,
         "passed": (overall >= threshold) if overall is not None else None,
         # 事件统计
@@ -5101,6 +5255,8 @@ def main():
 
     # ── Phase 2.5: RAGAS 质量评估与自我修正 ──
     ragas_eval = {}
+    judge_llm = None
+    build_cfg = {}
     if clusters:
         try:
             build_cfg = load_config()
@@ -5134,6 +5290,15 @@ def main():
     clusters = _drop_insufficient(clusters)
     clusters = _order_events_for_output(clusters)  # 闸与分数刷新后重排，保证导出 editor_score 单调
     clusters = clusters[:MAX_EVENTS]  # T1: 输出预算收口 12，被去重/占位闸砍掉的槽位由池内后位候选顶上
+
+    # 终版复评：quality 必须描述收口后的 shipped 报告，而非回收前的草稿（07:14 期实证）
+    # use_cv 与草稿评估同源，保证两期分数在同一口径上可比；纯观测项，异常绝不挡写盘
+    try:
+        ragas_eval = _confirm_shipped_report_eval(
+            judge_llm, clusters, theme, retrieved_for_ragas, ragas_eval,
+            use_cv=bool(build_cfg.get("daily_insight_cross_validation", False)))
+    except Exception as exc:
+        print("[每日洞察] 终版复评兜底异常，沿用草稿分: %s" % exc, file=sys.stderr)
 
     # ── Phase 3.1: 破茧栏 + 输出 JSON ──
     history = _load_history()
