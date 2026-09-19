@@ -16,14 +16,18 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 import urllib.request
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+# 只在作为脚本跑时改挂载 stdout：pytest 捕获态下重挂载会吞掉测试输出
+if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 API = "https://api.github.com"
 REPO = "repos/Kwei168/starhub"
+WF = ".github/workflows/update.yml"
 
 
 def req(method, path, body=None, tries=6):
@@ -81,6 +85,62 @@ def risky_runs(push_ts):
     return [r for r in runs(10) if r["created_at"] < push_ts and r["status"] != "completed"]
 
 
+def expand_paths(paths):
+    """目录参数展开成其中的文件（原子推送要靠一次列出全部路径，逐个数文件正是漏项的来源）。"""
+    out = []
+    for p in paths:
+        lp = p.replace("/", os.sep)
+        if os.path.isdir(lp):
+            for root, dirs, files in os.walk(lp):
+                dirs[:] = [d for d in dirs if d != "__pycache__"]
+                for fn in sorted(files):
+                    if fn.endswith((".pyc", ".pyo")):
+                        continue
+                    out.append(os.path.join(root, fn).replace(os.sep, "/"))
+        else:
+            out.append(p)
+    return out
+
+
+def ci_atomic_deps(push_paths):
+    """推 `.github/workflows/update.yml` 时的原子性检查：它引用的每条测试路径必须"这次一起推"或"远端已有"。
+
+    实测依据（09-20 07:1x 核实）：门禁 A2 `python -m pytest tests/rss_history/ tests/rss_source_coverage/ -q -s`
+    没有 `continue-on-error`（是 blocking），而 `Deploy to Vercel` 也没有 `if:` → 默认 success()。
+    pytest 找不到目录会退出码 4，于是**提交步骤与部署一起被跳过**，站点整小时冻住。
+    """
+def ci_atomic_deps(push_paths, wf=WF):
+    """推 workflow 时的原子性检查：它引用的每条测试路径必须"这次一起推"或"远端已有"。
+
+    实测依据（09-20 07:1x 核实）：门禁 A2 `python -m pytest tests/rss_history/ tests/rss_source_coverage/ -q -s`
+    没有 `continue-on-error`（是 blocking），而 `Deploy to Vercel` 也没有 `if:` → 默认 success()。
+    pytest 找不到目录会退出码 4，于是**提交步骤与部署一起被跳过**，站点整小时冻住。
+    调用方负责只在推送集含 workflow 时才调它（wf 参数可指向 fixture，供测试用）。
+    """
+    try:
+        text = open(wf.replace("/", os.sep), encoding="utf-8").read()
+    except OSError:
+        return [wf + " 本地读不到"]
+    refs = set()
+    for line in text.splitlines():
+        if "pytest" in line or re.search(r"python[^\n]*test_[\w/]+\.py", line):
+            for tok in re.findall(r"[\w./-]*(?:tests/[\w./-]+|test_[\w.-]+\.py)", line):
+                refs.add(tok.rstrip("/"))
+    problems = []
+    for p in sorted(refs):
+        if not os.path.exists(p.replace("/", os.sep)):
+            problems.append("%s —— 本地不存在，推上去 A2 必红" % p)
+            continue
+        if p in push_paths or any(x.startswith(p + "/") for x in push_paths):
+            continue
+        try:
+            req("GET", "%s/contents/%s" % (REPO, p), tries=2)
+        except Exception:
+            problems.append("%s —— 本地有但远端没有，且不在本次推送里 → A2 会退出码 4，"
+                            "连 Commit 带 Vercel 部署一起停摆。把它加进同一次推送" % p)
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("paths", nargs="*")
@@ -88,10 +148,21 @@ def main():
     ap.add_argument("--msg-file", default="", help="从 UTF-8 文件读提交信息（CJK 走 argv 容易被 shell 吃掉）")
     ap.add_argument("--wait-window", action="store_true", help="守门不过就每 60s 重试，最多 30 分钟")
     ap.add_argument("--check-only", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="只做守门+原子性检查并列出将要推的路径，不写远端")
     ap.add_argument("--allow-running", action="store_true")
     a = ap.parse_args()
     if a.msg_file:
         a.msg = open(a.msg_file, encoding="utf-8").read().strip()
+
+    a.paths = expand_paths(a.paths or [])
+    if a.paths and WF in a.paths:
+        bad_set = ci_atomic_deps(a.paths)
+        if bad_set:
+            print("原子性检查未通过：")
+            for b in bad_set:
+                print("  [NG] " + b)
+            return 1
+        print("原子性检查通过：update.yml 引用的测试路径都已随本次推送或已在远端")
 
     ok, why = gate()
     print(why)
@@ -104,6 +175,9 @@ def main():
             print(why)
     if a.check_only:
         return 0 if ok else 1
+    if a.dry_run:
+        print("dry-run：将推 %d 个路径：%s" % (len(a.paths), ", ".join(a.paths)))
+        return 0
     if not ok and not a.allow_running:
         print("拒绝推送（加 --allow-running 可强行推，但大概率几分钟后被回滚）")
         return 1
@@ -148,4 +222,5 @@ def main():
     return 0 if bad == 0 else 1
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())
