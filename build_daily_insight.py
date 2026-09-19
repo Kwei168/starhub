@@ -2012,11 +2012,16 @@ _SYSTEM_PROMPT_P1 = """
 
 
 _INSUFFICIENT_RE = re.compile(r'\[信息不足')
+# 劣化占位（07:13 实证「素材未提供…无法生成…摘要」）须双信号同现，防误杀正常报道摘要
+_DISGUISED_RE = re.compile(r'无法生成.{0,20}摘要')
 
 
 def _is_insufficient(text):
-    """[信息不足] 占位判断：出现即判（search），覆盖 [信息不足] 与 [信息不足：...] 两种输出。"""
-    return bool(_INSUFFICIENT_RE.search(text or ""))
+    """[信息不足] 标记出现即判；伪装占位需「素材未提供 + 无法生成…摘要」组合信号。"""
+    t = text or ""
+    if _INSUFFICIENT_RE.search(t):
+        return True
+    return "素材未提供" in t and bool(_DISGUISED_RE.search(t))
 
 
 def _validate_key_links(links, items):
@@ -2101,23 +2106,131 @@ def _quick_score_event(cluster, yesterday_labels=None):
     return int(max(0, min(100, raw - ded)))
 
 
+def _dedup_tokens(title):
+    """去重专用分词：英文按词切分 + 中文按 character bigrams。"""
+    text = (title or "").lower()
+    tokens = set()
+    for w in re.findall(r'[a-z0-9]{2,}', text):
+        tokens.add(w)
+    cjk = re.findall(r'[\u4e00-\u9fff]', text)
+    for k in range(len(cjk) - 1):
+        tokens.add(cjk[k] + cjk[k + 1])
+    return tokens
+
+
+# ── 第4轮语义去重：词袋门槛漏网的跨类别同题对（07:13 华为对 infra/industry）由 embedding 兜住 ──
+_TEXT_EMB_CACHE = {}
+_SEM_EMB_DEAD = {"flag": False}
+_SEM_LABEL_COS = 0.85
+_SEM_SIG_COS = 0.80
+
+
+def _embed_for_sem(texts):
+    """带模块级缓存的批量向量化；返回 {text: vec}。不可用（无 key/失败/异常）返回 None。"""
+    if _SEM_EMB_DEAD["flag"]:
+        return None
+    todo = [t for t in dict.fromkeys(texts) if t and t not in _TEXT_EMB_CACHE]
+    if todo:
+        if not os.environ.get("SILICONFLOW_API_KEY"):
+            return None
+        try:
+            vecs, _model = _embed_chunks(todo)
+        except Exception as exc:
+            print("[每日洞察] 语义去重 embedding 异常: %s" % exc, file=sys.stderr)
+            return None
+        if not vecs or len(vecs) != len(todo):
+            _SEM_EMB_DEAD["flag"] = True
+            print("[每日洞察] 语义去重 embedding 不可用，本构建内跳过该闸", file=sys.stderr)
+            return None
+        _TEXT_EMB_CACHE.update(dict(zip(todo, vecs)))
+    return {t: _TEXT_EMB_CACHE.get(t) for t in texts if t}
+
+
+def _cos_sim(a, b):
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = na = nb = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        na += x * x
+        nb += y * y
+    return dot / (math.sqrt(na) * math.sqrt(nb)) if na > 0 and nb > 0 else 0.0
+
+
+def _semantic_dup_round(clusters):
+    """语义同题合并：label 与 summary 双余弦过线 + 文本佐证才并。
+
+    护栏：summary 独立成签名（不含 label），使 9/17「同 label 不同内容」错标对
+    因 summary 余弦不过线而保持拆分；跨类别另要求 summary 词面重叠>=3。
+    """
+    if len(clusters) < 2:
+        return clusters
+    labels = [(c.get("label") or "").strip() for c in clusters]
+    sigs = [((c.get("summary") or "").strip()[:200] or lbl)
+            for lbl, c in zip(labels, clusters)]
+    vec_map = _embed_for_sem(labels + sigs)
+    if not vec_map or any(vec_map.get(t) is None for t in labels + sigs if t):
+        return clusters
+    used = set()
+    merged = []
+    for i in range(len(clusters)):
+        if i in used:
+            continue
+        ci = clusters[i]
+        for j in range(i + 1, len(clusters)):
+            if j in used:
+                continue
+            cj = clusters[j]
+            if not labels[i] or not labels[j]:
+                continue
+            _cl = _cos_sim(vec_map.get(labels[i]), vec_map.get(labels[j]))
+            _cs = _cos_sim(vec_map.get(sigs[i]), vec_map.get(sigs[j]))
+            if _cl < _SEM_LABEL_COS or _cs < _SEM_SIG_COS:
+                continue
+            same_cat = ci.get("category") == cj.get("category")
+            if same_cat:
+                tok_hit = len(_dedup_tokens(labels[i]) & _dedup_tokens(labels[j])) >= 2
+                urls_i = {_norm_url(it.get("url", "")) for it in ci.get("items", []) if it.get("url")}
+                urls_j = {_norm_url(it.get("url", "")) for it in cj.get("items", []) if it.get("url")}
+                if not tok_hit and not (urls_i & urls_j):
+                    continue
+            else:
+                si = _dedup_tokens(sigs[i])
+                sj = _dedup_tokens(sigs[j])
+                if len(si & sj) < 3:
+                    continue
+            ci["items"].extend(cj.get("items", []))
+            ci["source_types"] = list(set(ci.get("source_types", []) or []) | set(cj.get("source_types", []) or []))
+            # 劣化正文（占位/伪装占位）不得因压分更高而存活；翻转须整套换，防字段间文不对题
+            _ci_bad = (_is_insufficient(ci.get("summary") or "")
+                       or _is_insufficient(ci.get("significance") or ""))
+            _cj_ok = not (_is_insufficient(cj.get("summary") or "")
+                          or _is_insufficient(cj.get("significance") or ""))
+            if cj.get("score", 0) > ci.get("score", 0) or (_ci_bad and _cj_ok):
+                for k in ("label", "summary", "significance"):
+                    if cj.get(k):
+                        ci[k] = cj[k]
+                _lk = [u for u in (cj.get("key_links") or []) if u]
+                _lk += [u for u in (ci.get("key_links") or []) if u and u not in _lk]
+                ci["key_links"] = _validate_key_links(_lk, ci["items"])[:3]
+                ci["deep_analysis"] = None  # 旧深度解读属被抛弃正文，禁用防张冠李戴
+                # P1-3：展示文本已换成 j 的，证据向量必须同步刷新，防 C 借旧 A 搭车链式合并
+                labels[i], sigs[i] = labels[j], sigs[j]
+            ci["score"] = max(ci.get("score", 0), cj.get("score", 0))
+            print("[每日洞察] 语义合并 cos_l=%.2f cos_s=%.2f: %s ⇐ %s" % (
+                _cl, _cs, (ci.get("label") or "")[:30], (cj.get("label") or "")[:30]))
+            used.add(j)
+        merged.append(ci)
+    return merged
+
+
 def _deduplicate_after_phase1(clusters):
     """Phase 1 后去重：合并同 category 且标签高度相似的相邻事件。"""
     if len(clusters) < 2:
         return clusters
 
     def _simple_tokens(title):
-        """去重专用分词：英文按词切分 + 中文按 character bigrams。"""
-        text = (title or "").lower()
-        tokens = set()
-        # 提取英文单词（连续 ASCII 字符，≥2 字母）
-        for w in re.findall(r'[a-z0-9]{2,}', text):
-            tokens.add(w)
-        # 提取中文字符 bigrams（覆盖中文语义重叠）
-        cjk = re.findall(r'[\u4e00-\u9fff]', text)
-        for k in range(len(cjk) - 1):
-            tokens.add(cjk[k] + cjk[k + 1])
-        return tokens
+        return _dedup_tokens(title)
 
     merged = []
     used = set()
@@ -2250,6 +2363,14 @@ def _deduplicate_after_phase1(clusters):
         if len(merged3) < len(merged):
             print("[每日洞察] Phase 1 后去重(entity): %d → %d 个事件" % (len(merged), len(merged3)))
         merged = merged3
+
+    _before_sem = len(merged)
+    try:
+        merged = _semantic_dup_round(merged)
+    except Exception as exc:
+        print("[每日洞察] 语义去重异常，跳过: %s" % exc, file=sys.stderr)
+    if len(merged) < _before_sem:
+        print("[每日洞察] Phase 1 后去重(semantic): %d → %d 个事件" % (_before_sem, len(merged)))
 
     return merged
 
@@ -2403,6 +2524,19 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
     print("[每日洞察] 事实核查完成: %d 个事件" % len(clusters))
 
 
+def _final_faith_recheck(llm, clusters, context_chunks):
+    """RAGAS 修正环+去重会再次改写 summary → 终局事实核查（faith 最后一道闸）。
+    与 Phase 1.5 共用 _verify_faithfulness；llm 缺失/异常时静默降级不阻断落盘。"""
+    if not llm or not clusters:
+        return False
+    try:
+        _verify_faithfulness(llm, clusters, context_chunks)
+        return True
+    except Exception as exc:
+        print("[每日洞察] 终局事实核查异常，跳过: %s" % exc, file=sys.stderr)
+        return False
+
+
 # ── Phase 2 LLM：Top N 深度解读 ──
 
 _SYSTEM_PROMPT_P2 = """
@@ -2465,7 +2599,7 @@ def _llm_phase2(llm, cluster, phase1_summary, prev_summary=None, evidence=""):
 
     if evidence:
         prompt += """
-### 补充全文参考（同源 RSS 存档原文，用于交叉核对数据与信源观点分歧；不可作为引用编号来源，citations 仍只能引用上方素材 [n] 编号）
+### 补充全文参考（本事件专属的同源 RSS 存档原文，仅用于交叉核对数据与信源观点分歧；不可作为引用编号来源，citations 仍只能引用上方素材 [n] 编号；文中出现的其他人物/公司/事件只能作为背景，严禁把其事实或数字嫁接到本事件主角（06:12 期张冠李戴教训））
 %s
 """ % evidence[:8000]
 
@@ -3129,6 +3263,10 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             print("[每日洞察] RAGAS 未达标 (overall=%.2f 阈值=%.2f)，执行自我修正..." % (
                 eval_result["overall"], threshold), file=sys.stderr)
             pre_score = eval_result["overall"]
+            # _self_correct_events 原地写回 clusters，拒绝时必须回滚快照（P1-1 实证）
+            _snapshot = [{k: c.get(k) for k in
+                          ("label", "summary", "significance", "category")}
+                         for c in current]
             corrected = _self_correct_events(llm, current, context_text, eval_result)
             # 重新评估修正结果（保持与初始评估一致的方法）
             if use_cross_validation:
@@ -3147,8 +3285,11 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
             print("[每日洞察] RAGAS 修正后: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
                 corrected_result["overall"], corrected_result["context_coverage"],
                 corrected_result["faithfulness"], corrected_result["relevance"]))
-            # 采纳须超出复评噪声带（±0.02 实测漂移），防采纳劣化版
-            if corrected_result["overall"] > pre_score + 0.02:
+            # 采纳须超出复评噪声带（±0.02 实测漂移），防采纳劣化版；
+            # faith 单维劣化同样拦截（09-19 04:14 期 0.90→0.66 被综合分掩盖实证）
+            pre_faith = eval_result["faithfulness"]
+            if (corrected_result["overall"] > pre_score + 0.02
+                    and corrected_result["faithfulness"] >= pre_faith - 0.02):
                 print("[每日洞察] 修正有效 (%.2f → %.2f)，采纳" % (pre_score, corrected_result["overall"]))
                 current = corrected
                 eval_result = corrected_result
@@ -3158,7 +3299,10 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
                     break
                 continue
             else:
-                print("[每日洞察] 修正未改善 (%.2f → %.2f)，保留原版" % (pre_score, corrected_result["overall"]))
+                for _c, _s in zip(current, _snapshot):
+                    _c.update(_s)
+                print("[每日洞察] 修正未采纳 (overall %.2f → %.2f, faith %.2f → %.2f)，已回滚原版" % (
+                    pre_score, corrected_result["overall"], pre_faith, corrected_result["faithfulness"]))
                 if corrected_result["overall"] >= threshold and _dims_pass_thresholds(corrected_result):
                     break
                 continue  # 保留原版，下一轮换写法重试（temp 采样），轮数封顶
@@ -3397,6 +3541,7 @@ def _build_history_html():
   %s
   <div class="di-deep-sec"><strong>后续展望</strong><p>%s</p></div>
   <span class="di-conf">置信度: %s</span>
+  %s
 </div>''' % (
                     _esc(deep.get("event_reconstruction", "")),
                     _esc(deep.get("impact_analysis", "")),
@@ -3405,6 +3550,7 @@ def _build_history_html():
                      % _esc(deep["quote"])) if deep.get("quote") else "",
                     _esc(deep.get("outlook", "")),
                     _esc(deep.get("confidence", "")),
+                    _cited_sources_html(deep),
                 )
 
             sources_tags = " ".join(
@@ -3420,6 +3566,7 @@ def _build_history_html():
   </div>
   <h3 class="di-label">%s</h3>
   <p class="di-summary">%s</p>
+  %s
   <div class="di-meta">%s %s</div>
   %s
 </article>''' % (
@@ -3428,6 +3575,7 @@ def _build_history_html():
                 evt.get("score", 0),
                 _esc(evt.get("label", "")),
                 _esc(evt.get("summary", "")),
+                _source_links_html(evt.get("key_links")),
                 sources_tags,
                 '<span class="di-cat">%s</span>' % _esc(evt.get("category", "")) if evt.get("category") else "",
                 deep_html,
@@ -3535,6 +3683,11 @@ a{color:inherit;text-decoration:none;}
 .di-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
 .di-src{font-size:10px;padding:1px 5px;border:1px solid var(--line);color:var(--faint);}
 .di-cat{font-size:10px;padding:1px 5px;color:var(--accent-ink);border:1px solid var(--accent);}
+.di-links{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px;}
+.di-link{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 7px;border-radius:10px;background:var(--accent-weak);}
+.di-cites{font-size:11px;margin-top:4px;}
+.di-cite{color:var(--accent-ink);border-bottom:1px dotted var(--accent);margin-right:8px;}
+.di-bubble-link{color:var(--accent-ink);border-bottom:1px solid var(--accent);}
 
 /* deep analysis */
 .di-deep{margin-top:10px;padding:10px 0 10px 16px;border-left:2px solid var(--line-strong);font-size:0.88em;}
@@ -3632,6 +3785,51 @@ function switchDay(id){
 _AI_DAILY_FILE = "ai-daily.html"
 
 
+def _link_host(u):
+    """URL 域名作为原文链接文案（去 www.，失败回退「原文」）。"""
+    try:
+        from urllib.parse import urlparse
+        h = (urlparse(u).hostname or "").lower()
+        return h[4:] if h.startswith("www.") else (h or "原文")
+    except Exception:
+        return "原文"
+
+
+def _source_links_html(links, items=None):
+    """可跳转原文链接组：仅放行 http(s)，去重保序 cap 3；
+    key_links 为空时回退 items URL（红线：每个洞察必须带可跳转原文引用）。"""
+    seen, out = set(), []
+
+    def _add(u):
+        if isinstance(u, str) and re.match(r'https?://', u, re.I):
+            k = _norm_url(u)
+            if k and k not in seen:
+                seen.add(k)
+                out.append(u)
+
+    for u in links or []:
+        _add(u)
+    if not out:
+        for it in items or []:
+            _add(it.get("url") or it.get("link") if isinstance(it, dict) else "")
+    chips = "".join(
+        '<a class="di-link" href="%s" target="_blank" rel="noopener">%s&#8599;</a>'
+        % (_esc(u), _esc(_link_host(u))) for u in out[:3])
+    return '<div class="di-links">%s</div>' % chips if chips else ""
+
+
+def _cited_sources_html(deep):
+    """深度解读实际引用的素材编号 → 可点击链接列表。"""
+    chips = ""
+    for s in (deep.get("cited_sources") or [])[:5]:
+        u = s.get("url", "") if isinstance(s, dict) else ""
+        if not u or not re.match(r'https?://', u, re.I):
+            continue
+        chips += '<a class="di-cite" href="%s" target="_blank" rel="noopener">[%s] %s&#8599;</a> ' % (
+            _esc(u), _esc(str(s.get("index", ""))), _esc(_link_host(u)))
+    return ('<p class="di-cites"><b>引用来源</b> %s</p>' % chips) if chips else ""
+
+
 # ──────────────────── 破茧栏 HTML 构建 ────────────────────
 
 def _build_bubble_html(bubble_breaker):
@@ -3640,12 +3838,16 @@ def _build_bubble_html(bubble_breaker):
         return ""
     cards = []
     for item in bubble_breaker:
+        _bu = item.get("url", "")
+        _bl = _esc(item.get("label", ""))
+        _bh = ('<a class="di-bubble-link" href="%s" target="_blank" rel="noopener">%s&#8599;</a>'
+               % (_esc(_bu), _bl)) if re.match(r'https?://', _bu or "", re.I) else _bl
         cards.append('''
 <div class="di-bubble-card">
   <div class="di-bubble-label">%s</div>
   <div class="di-bubble-summary">%s</div>
   <div class="di-bubble-reason">%s</div>
-</div>''' % (_esc(item.get("label", "")),
+</div>''' % (_bh,
              _esc(item.get("summary", "")),
              _esc(item.get("reason", ""))))
     return '''
@@ -3705,6 +3907,7 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
 %s
 <p><b>后续展望</b><br>%s</p>
 <p class="di-conf">置信度: %s</p>
+%s
 </div>''' % (
                 _esc(deep.get("event_reconstruction", "")),
                 _esc(deep.get("impact_analysis", "")),
@@ -3712,6 +3915,7 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
                 ('<blockquote class="di-quote">%s</blockquote>' % _esc(deep["quote"])) if deep.get("quote") else "",
                 _esc(deep.get("outlook", "")),
                 _esc(deep.get("confidence", "")),
+                _cited_sources_html(deep),
             )
 
         cards_html.append('''
@@ -3723,6 +3927,7 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
   </div>
   <h3 class="di-label">%s</h3>
   <p class="di-summary">%s</p>
+  %s
   <div class="di-meta">%s <span class="di-cat">%s</span></div>
   %s
 </div>''' % (
@@ -3731,6 +3936,7 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
             evt.get("score", 0),
             _esc(evt.get("label", "")),
             _esc(evt.get("summary", "")),
+            _source_links_html(evt.get("key_links"), evt.get("items")),
             src_tags,
             _esc(evt.get("category", "")),
             deep_html,
@@ -3753,6 +3959,11 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
 .di-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
 .di-src{font-size:10px;padding:1px 5px;border:1px solid var(--line);color:var(--faint);}
 .di-cat{font-size:10px;padding:1px 5px;color:var(--accent-ink);border:1px solid var(--accent);}
+.di-links{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px;}
+.di-link{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 7px;border-radius:10px;background:var(--accent-weak);}
+.di-cites{font-size:11px;margin-top:4px;}
+.di-cite{color:var(--accent-ink);border-bottom:1px dotted var(--accent);margin-right:8px;}
+.di-bubble-link{color:var(--accent-ink);border-bottom:1px solid var(--accent);}
 .di-deep{margin-top:10px;padding:10px 0 10px 16px;border-left:2px solid var(--line-strong);font-size:0.88em;}
 .di-deep-title{font-family:var(--display);font-weight:700;font-size:0.95em;margin-bottom:6px;color:var(--ink);}
 .di-deep p{margin:5px 0;line-height:1.7;}
@@ -4374,6 +4585,8 @@ def main():
                     judge_llm, clusters, theme, retrieved_for_ragas, build_cfg)
                 # 修正循环重写了 label/summary/category，可能事后制造重复 → 去重必须在其后再跑一轮
                 clusters = _deduplicate_after_phase1(clusters)
+                # faith 终局闸：修正环改写的正文复查一次（06:12 期幻觉回归实证），再刷新分数
+                _final_faith_recheck(llm, clusters, retrieved_for_ragas)
                 # 修正循环改写了 label/summary 后刷新门槛分，保证导出 JSON 分数描述最终内容
                 for c in clusters:
                     if "editor_score" in c:
