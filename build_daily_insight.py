@@ -2177,6 +2177,28 @@ def _drop_insufficient(clusters):
 MIN_DEEP_SCORE = 55  # 快筛 ≥55 才进 Phase 2 深度分析
 
 
+def _deep_candidate_order(clusters):
+    """深度名额给 editor_score 最高的 `DEEP_ANALYSIS_TOP_N` 条（返回下标；并列保持 Phase 1 原序，可复现）。
+
+    为什么单列出来：Phase 2 原先直接取 `clusters[0:top_n]`（Phase 1 输出序），
+    而"按 editor_score 重排"要到 `_order_events_for_output` 才发生 —— 排序晚于名额分配，
+    第 9 期因此出现"终版榜第 1 名（68 分）没有深度解读，三条 62 分的有"。
+
+    非有限值（NaN/inf）、bool、非 dict 元素一律按 0 处理：`min(100, nan)==100` 会把 NaN 洗成满分
+    并抢下第一个名额，与 R14 批1 在 judge 侧修掉的是同族缺陷（打分这一侧此前无闸）。
+    调用上限恒为 `DEEP_ANALYSIS_TOP_N`；但快筛不再因 Phase 1 排位空耗名额，
+    **实际 `_llm_phase2` 调用次数只增不减**（第 6 期那种 deep=0 的场次会变成最多 3 次）。
+    """
+    def _score(c):
+        v = c.get("editor_score") if isinstance(c, dict) else None
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            return 0
+        return int(v)
+
+    return sorted(range(len(clusters or [])),
+                  key=lambda i: (-_score(clusters[i]), i))[:DEEP_ANALYSIS_TOP_N]
+
+
 def _quick_score_event(cluster, yesterday_labels=None):
     """4 维快筛（借鉴 BestBlogs v4 权重）：信号深度40/科技相关性30/事实密度20/新颖度10 + 减分。"""
     items = cluster.get("items", []) or []
@@ -3754,14 +3776,18 @@ def _aggregate_per_event(clusters, samples):
     samples = [s for s in (samples or []) if isinstance(s, dict)]
     weak_ct, irr_ct = {}, {}
     unmatched = 0
-    label_toks = [_dedup_tokens(c.get("label", "")) for c in (clusters or [])]
+    # 可归因域 = judge 真正看过的条目：编号到 MAX_EVENTS 为止。
+    # 草稿口径下 clusters 可能有 16 条（PHASE1_POOL），序号路径与文本兜底路径都必须同样收口，
+    # 否则幻觉"事件14"会经文本匹配挂到没被评过的尾条上。
+    n_judged = min(len(clusters or []), MAX_EVENTS)
+    label_toks = [_dedup_tokens(c.get("label", "")) for c in (clusters or [])[:n_judged]]
     for s in samples:
         for w in (s.get("weak_events") or []):
-            if isinstance(w, (int, float)) and 1 <= int(w) <= len(clusters or []):
+            if isinstance(w, (int, float)) and 1 <= int(w) <= n_judged:
                 weak_ct[int(w)] = weak_ct.get(int(w), 0) + 1
         for txt in (s.get("irrelevant_events") or []):
             # judge 常写成「事件12（铁路12306…）」，序号是它自己给的权威线索，优先直接用
-            _ix = _irrelevant_index(txt, len(clusters or []))
+            _ix = _irrelevant_index(txt, n_judged)
             if _ix:
                 irr_ct[_ix] = irr_ct.get(_ix, 0) + 1
                 continue
@@ -4167,7 +4193,7 @@ def _update_history(clusters, theme):
             "significance": c.get("significance", ""),
             "key_links": _validate_key_links(c.get("key_links", []), c.get("items", []))[:3],
         }
-        if c.get("deep_analysis"):
+        if c.get("deep_analysis") and c["deep_analysis"].get("status") != "degraded":
             evt["deep_analysis"] = c["deep_analysis"]
         today_events.append(evt)
 
@@ -4386,7 +4412,7 @@ def _build_history_html():
 
             deep = evt.get("deep_analysis") or {}
             deep_html = ""
-            if deep:
+            if deep.get("status") != "degraded":
                 deep_html = '''
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -5016,7 +5042,9 @@ def _build_tracking_entry(ragas_eval, clusters, theme, elapsed,
     否则同行会出现"threshold 写 0.70、passed 按别的数判"的自相矛盾。
     """
     now_bj = _now_bj()
-    has_analysis = sum(1 for c in clusters if c.get("deep_analysis"))
+    has_analysis = sum(1 for c in clusters
+                       if c.get("deep_analysis")
+                       and c["deep_analysis"].get("status") != "degraded")
 
     # RAGAS 评分
     overall = ragas_eval.get("overall")
@@ -5386,12 +5414,17 @@ def main():
                           if d.get("date") != NOW_BJ.strftime("%Y-%m-%d")]
             _yday_labels = {(e.get("label") or "").strip()
                             for e in (_gate_days[-1].get("events", []) if _gate_days else [])}
+            # 素材过滤必须在打分之前对**全部**簇执行。原先只对入选深挖的簇补一次过滤，
+            # 而后段还会用剪过的 items 重算 editor_score 再排序 —— 被选中者单方面被降分，
+            # 于是"榜首仍可能没有深度解读"（审查 P0-2 实测：75 分被剪到 62，反超者无深挖）。
+            for c in clusters:
+                _filter_cluster_items(c, c.get("label", ""))
             for c in clusters:
                 c["editor_score"] = _quick_score_event(c, yesterday_labels=_yday_labels)
-            top_n = min(DEEP_ANALYSIS_TOP_N, len(clusters))
+            _deep_idx = _deep_candidate_order(clusters)
             _rss_by_url = {_norm_url(k): v for k, v in rss_history.items() if isinstance(v, dict)}
             _skipped_low = 0
-            for i in range(top_n):
+            for i in _deep_idx:
                 c = clusters[i]
                 if c["editor_score"] < MIN_DEEP_SCORE:
                     c["deep_analysis"] = None
