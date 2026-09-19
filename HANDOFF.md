@@ -101,7 +101,7 @@
 | 文件 | 行数 | 作用 |
 |---|---|---|
 | `insight_engine.py` | ~1984 | **LlamaIndex 语义分析引擎**（服务于 RSS 聚合页 AI 动态面板的 `analysis_snapshot.json`，与 build_daily_insight 是两条独立管线）。AgnesLLM 多 key 轮询 + 429 自动切换（2026-09-18 起统一为 `AGNES_API_KEYS` 逗号方案，与其余模块一致，见 §8.14）；SiliconFlow bge-m3 API embedding（本地 fastembed 回退）；层级索引 + 手动余弦相似度检索（避向量维度不匹配）；RAGAS-inspired 评估 + 自纠错循环；话题聚类（embedding + TF-IDF 加权）；关键词提取（LLM + 分源关键词池）；深度洞察三视角独立生成（core_trends / rss_insights / narrative）；嵌入缓存 `emb_cache.json` 跨 run 持久化（5000 条上限） |
-| `build_config.json` | 22 | 构建配置外置文件。控制 insight_engine 开关、LLM provider、max_documents、top_keywords/topics；`daily_insight_enabled`、`daily_insight_judge_provider/model/timeout`（当前 mimo / mimo-v2.5-free / 60s）、`daily_insight_cross_validation`（当前 true，双 prompt 交叉验证）等每日洞察参数；缺失键自动填充默认值 |
+| `build_config.json` | 21 | 构建配置外置文件。控制 insight_engine 开关、LLM provider、max_documents、top_keywords/topics；`daily_insight_enabled`、`daily_insight_judge_provider/model/timeout`（当前 agnes / agnes-2.5-flash / 60s；2026-09-19 起主判正式改为实际在打分的 agnes，见 §8.7）、`daily_insight_cross_validation`（当前 true，双 prompt 交叉验证）等每日洞察参数；缺失键自动填充默认值。`daily_insight_judge_fallback` 与 `daily_insight_openrouter_models` 是从无代码读取的死键，已删除 |
 | `build_logger.py` | ~120 | **构建日志系统**。JSONL 格式每日追加，14 天滚动清理；提供 `append()` / `cleanup()` / `summary()` API；供 workflow 与 `api/build_log.js` 消费 |
 
 ### 测试文件
@@ -790,8 +790,20 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 - ⚠ **主力 mimo 实际从未生效（2026-09-18 实证）**：因为 mimo 走的就是上面那个已被封的 Zen 端点，**它与 Zen 是同一个故障源**。当日线上产物 `daily-insight.json → quality.meta.call_log` 6 条全部为 `{"model": "agnes-2.5-flash", "fallback": true}`，即 **0/6 命中 mimo，三个分数一直由 agnes 打**。"mimo 评估一致性优于 agnes 故做主力"是配置意图，不是运行事实。
 - ⚠ **`judge_model` 标签历史缺陷（已修）**：`_FallbackJudgeLLM.model` 在构造时取主模型名且降级后不更新，而 `quality.meta.judge_model` 直接读它，导致标签长期谎报 `mimo-v2.5-free`。现改为 `_effective_judge_model()` 从 `_call_log` 取实际模型（单一模型直接报名名，混合报 `mixed(a+b)`，无记录才回退配置值），并新增 `judge_model_configured` 保留配置值以便对照。**读历史产物时注意：2026-09-18 之前的 `judge_model` 不可信，要看 `call_log`。**
 - 触发修正的条件（任一即触发，最多 1 轮）：overall < 0.70，**或**任一维度低于最低线：coverage ≥ 0.75 / faithfulness ≥ 0.88 / relevance ≥ 0.75。
-- 交叉验证已开启（`daily_insight_cross_validation: true`）：v1/v2 双 prompt 独立评分后加权平均，降低单 judge 抖动。
+- 交叉验证已开启（`daily_insight_cross_validation: true`）：v1/v2 + v1' 三样本**逐维取中位**（`_median_eval_samples`），不是加权平均；同内容复评漂移实测可达 ±0.05，所以采纳阈值要求 `overall > 原分 + 0.02` 且 faith 不明显劣化，否则回滚快照并立即收尾（回滚后重评=纯噪声）。
+- **2026-09-19 起主判正式为 agnes**：`build_config.json` 的 judge_provider/model 改成 agnes/agnes-2.5-flash，代码默认值同步（配置缺失也不会回到从未打通的 mimo 403 路径），每期少一次无效 403 探测。`_FallbackJudgeLLM` 仅在显式配 `mimo` 时才包装。
+- ⚠ **`quality` 现在描述 shipped 报告**（`_confirm_shipped_report_eval`）：预算收口后对最终 12 条再复评一次，草稿分（回收/去重/收口前）保存在 `quality.meta.draft_eval`，`meta.eval_stage` = `shipped_report` / `draft_only`。此前 `quality` 描述的是回收前草稿——07:14 期指标写着"漏了霍奇猜想"，而当天报告第 4 条就是它。
+- ⚠ **合成分必须自证降级**：三样本全挂时写出的 0.5 带 `meta.degraded=true` + `eval_samples=0` + `prompt_variants=0`，并在 CI 打 `::warning::`；否则与真实 1 样本 0.5 完全无法区分（04:00 期假崩分就是这样静默覆盖了一次真实评估）。
 - 评分原始输出记录在 `daily-insight.json` 的 `quality` 字段，可回溯。
+- **现行路线（2026-09-19 起）**：终版口径观察期 + 候选方案与决策树见 `docs/superpowers/plans/2026-09-19-daily-insight-shipped-baseline.md`；
+  其上游设计依据（G1/G2 与四条分歧判断）已从浏览器下载目录搬入仓库：
+  `docs/superpowers/specs/2026-09-19-daily-insight-g1g2-design.md`、`docs/superpowers/specs/2026-09-19-daily-insight-g1g2-v2-judgment.md`。
+  讨论 relevance、claim/实体中间层、rerank、12→16 预算之前先读这三份，避免重复立项。
+- **四条容易被无声破坏的设计不变量**（原先只写在 09-18 计划里，代码只有半句注释）：
+  1. `TOPIC_TAXONOMY`（`:100`）**顺序敏感**：`ai` 必须排第一，否则"英伟达股价"这类科技金融交叉事件会被判去非科技类、掉出主报告；改顺序=改产品口径。
+  2. Phase 2 证据包铁律（`:3001`）：同源 RSS 全文**只能用来交叉核对数字与信源分歧，不得作为引用编号来源**，`citations` 只许引上方素材 `[n]`；且别的事件里出现的人物/公司/数字严禁嫁接本事件主角（06:12 期张冠李戴实证）。这条是"每条洞察都能跳到原文"红线的技术支点。
+  3. 深度分析门槛：事件级 4 维快筛权重 40/30/20/10（借 BestBlogs v4），`MIN_DEEP_SCORE = 55`（`:2163`）以上才进 Phase 2；`DEEP_ANALYSIS_TOP_N = 3`。
+  4. 破茧栏选取必须**排除全部主类别**后正向选非科技 topic，不是拿主事件筛剩的边角料兜底。
 
 **破茧栏（反信息茧房）**：
 - 设计意图：展示 AI/科技**之外**的世界大事，不是主事件筛剩的边角料。
