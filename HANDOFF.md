@@ -810,13 +810,39 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
    另：`MAIN_TOPICS = {"ai","programming"}` 让运维/工具类条目白拿 30 分相关性满分 → 主榜一半槽位并列在 62 分地板（rel 失分的直接成因）。
 3. **台账 `passed` 的口径已变，且聚合必须过滤 `eval_stage`**：新 `passed = overall≥threshold ∧ 三维达线`，
    缺维/NaN/bool → `None`（未知不得冒充达标）。历史 45 行里 `passed=true` 而三维未达线的有 25 行（旧判据只看 overall）。
-   ⚠ `draft_only` 行的 `passed` 说的是草稿 —— 不做 `eval_stage` 过滤会把 1/7 读成 4/43。
+   ⚠ `draft_only` 行的 `passed` 说的是草稿 —— 不做 `eval_stage` 过滤会把窗口的 1/9 读成 4/45。
 4. **三条会静默失效的陷阱**（都已加钉）：
    ① `json.loads` 接受裸 `NaN`，而 `min(1.0, nan) == 1.0` → judge 吐 NaN 会被 `_clamp` 洗成满分并记 `passed=true`；
       凡把模型返回数值夹进区间处必须先 `math.isfinite`。
    ② 统计口径数据一律拉**远端** `daily_insight_tracking_history.jsonl`：CI 只写远端，本地副本停在 09-17（45 行 vs 本地 7 行）。
    ③ 阶段 C 的逐事件归因第一期为 0/3（全落 `unmatched_irrelevant`）：judge 写「事件12（…）」带序号，
       且长理由 vs 短标签用 Jaccard 永远过不了门槛 —— 现改为序号前缀优先 + 包含度且要求重合词元 ≥2（**误挂比归不上更坏**）。
+      ⚠ 归因域必须按 `MAX_EVENTS` 收口（序号与文本兜底**两条路径同闸**）：草稿口径下 `clusters` 有 16 条，
+      越界序号会挂到 judge 根本没评过的尾条上。
+
+**R14 批2（2026-09-19 23:54 北京时间，远端 `f4f7a52e91`）—— 深度名额与两个口径修正**：
+- **Phase 2 名额从"Phase 1 输出序前 3"改成"`editor_score` 前 3"**（并列保序）。旧写法与更晚执行的
+  `_order_events_for_output` 是两套序：第 9 期实测榜首 68 分没有 `deep_analysis`，三条 62 分的反而有。
+  ⚠ 这只修了**分配**，没动 `DEEP_ANALYSIS_TOP_N=3` 这个**预算** —— "67 分已过门槛但排第 4 拿不到名额"那类仍需拍板。
+- **素材剪枝 `_filter_cluster_items` 必须在打分之前对全部簇执行**：原先只对入选深挖的簇补剪，而后段又用剪过的
+  items 重算 `editor_score` 再排序 —— 等于**只给入选者降分**，会造出"榜首仍无深挖"的新变体（审查实测 75→62 被反超）。
+- **`status=="degraded"` 的深挖不再计作 `has_analysis`**（前端也不再渲染五个空字段的壳）。
+  ⚠ 这让 `deep_share` 的历史口径整体偏高，跨期比较要从批2 之后重算。
+- **本地危险动作**：`test_daily_insight.py` 会把 fixture 直接写进真实路径
+  （`daily-insight.json` / `daily_insight_history.json` / `daily-insight-history.html` / `ai-daily.html`）。
+  CI 有 "Restore worktree after insight tests" 兜住，**本地没有**。跑完根脚本别提交这些产物，
+  也别拿被注过的本地 `ai-daily.html` 量红线 —— 要量就拉线上 `https://Kwei168.github.io/starhub/ai-daily.html`。
+
+**推送 docs 的时机（09-20 06:20 北京，第二次实测坐实）**：
+- 22:06:06Z 的 `39a48b20cd`（含 §10/§11 全部新内容）被 **22:00:28Z 起跑、22:16:00Z 提交**的整点构建
+  `5b070527f0` 按文件名回滚成旧 blob（计划文档 51869B→40986B、HANDOFF 76838B→75129B，blob 逐提交核过）。
+- **规则**：Data API 推 docs 之前必须列 run 并确认
+  ① 没有 `status!=completed` 的 run，② 没有"`created_at` 早于本次推送"的 completed run（它的 Commit 步骤可能还没走）；
+  整点 `HH:00:2xZ` 那场约 15 分钟后才提交 → **安全窗口只有"上一场 Commit 落地之后 ~ 下一个整点检出之前"**。
+- **推完必须复查** `tools/remote_drift_check.py HANDOFF.md <plan.md>` 报 `内容不同=0`；
+  只信 `gh api …/commits/<sha>` 返回成功不够，工作树里的旧 docs 会回头覆盖它。
+- ⚠ 我那次吞档的直接原因是**守门 jq 表达式本身写错**（`.[]|"\(.databaseId@…)"` 非法 → 变量空 → 误判"无在跑构建"）。
+  守门命令要和判据一起被验证过才算存在；照抄上面两条判据，别再自创表达式。
 
 - **四条容易被无声破坏的设计不变量**（原先只写在 09-18 计划里，代码只有半句注释）：
   1. `TOPIC_TAXONOMY`（`:100`）**顺序敏感**：`ai` 必须排第一，否则"英伟达股价"这类科技金融交叉事件会被判去非科技类、掉出主报告；改顺序=改产品口径。
