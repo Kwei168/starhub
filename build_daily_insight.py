@@ -144,6 +144,7 @@ JACCARD_EVENT_THRESHOLD = 0.35   # 检索后事件组装用
 # ── TopK ──
 MIN_EVENTS = 3
 MAX_EVENTS = 12
+PHASE1_POOL = MAX_EVENTS + 4  # T1: 候选扩池，去重/丢弃空槽由后位候选顶上，终局仍收口 MAX_EVENTS
 DEEP_ANALYSIS_TOP_N = 3
 
 # ── RAG 参数 ──
@@ -1185,9 +1186,9 @@ def _assemble_events(reranked_chunks):
     # 按最高 chunk 分数排序
     events.sort(key=lambda e: e["best_score"], reverse=True)
 
-    # 动态 TopK
-    if len(events) > MAX_EVENTS:
-        events = events[:MAX_EVENTS]
+    # 动态 TopK：T1 扩池点——上游唯一真截断在此，Phase1 候选放宽到 PHASE1_POOL
+    if len(events) > PHASE1_POOL:
+        events = events[:PHASE1_POOL]
 
     print("[每日洞察] 事件组装: %d 个事件 (从 %d chunks)" % (len(events), len(reranked_chunks)))
     return events
@@ -1390,9 +1391,9 @@ def _score_events(clusters, hot_snapshot):
         if cur_idx > 2:
             clusters.insert(min(2, len(clusters) - 1), clusters.pop(cur_idx))
 
-    # 动态 TopK
-    if len(clusters) > MAX_EVENTS:
-        clusters = clusters[:MAX_EVENTS]
+    # 动态 TopK：Phase1 候选池放宽到 PHASE1_POOL，输出预算在终局闸后收口
+    if len(clusters) > PHASE1_POOL:
+        clusters = clusters[:PHASE1_POOL]
 
     print("[每日洞察] 打分排序完成: %d 个事件" % len(clusters))
     return clusters
@@ -2119,6 +2120,7 @@ def _dedup_tokens(title):
 
 
 # ── 第4轮语义去重：词袋门槛漏网的跨类别同题对（07:13 华为对 infra/industry）由 embedding 兜住 ──
+_ROLLBACK_UNSET = object()
 _TEXT_EMB_CACHE = {}
 _SEM_EMB_DEAD = {"flag": False}
 _SEM_LABEL_COS = 0.85
@@ -2173,6 +2175,7 @@ def _semantic_dup_round(clusters):
         return clusters
     used = set()
     merged = []
+    near_miss = []  # T3: 每期打印 top-3 近邻对，积累 bge-m3 真实分布供阈值校准
     for i in range(len(clusters)):
         if i in used:
             continue
@@ -2185,6 +2188,8 @@ def _semantic_dup_round(clusters):
                 continue
             _cl = _cos_sim(vec_map.get(labels[i]), vec_map.get(labels[j]))
             _cs = _cos_sim(vec_map.get(sigs[i]), vec_map.get(sigs[j]))
+            if _cl >= 0.70:
+                near_miss.append((_cl, _cs, labels[i], labels[j]))
             if _cl < _SEM_LABEL_COS or _cs < _SEM_SIG_COS:
                 continue
             same_cat = ci.get("category") == cj.get("category")
@@ -2221,6 +2226,10 @@ def _semantic_dup_round(clusters):
                 _cl, _cs, (ci.get("label") or "")[:30], (cj.get("label") or "")[:30]))
             used.add(j)
         merged.append(ci)
+    if near_miss:
+        for _c1, _c2, _l1, _l2 in sorted(near_miss, key=lambda t: -t[0])[:3]:
+            print("[每日洞察] 语义近邻(未并) cos_l=%.2f cos_s=%.2f: %s <=> %s" % (
+                _c1, _c2, _l1[:26], _l2[:26]))
     return merged
 
 
@@ -2375,6 +2384,56 @@ def _deduplicate_after_phase1(clusters):
     return merged
 
 
+def _apply_phase1_result(clusters, p1_result):
+    """按 event_num 严格配对 Phase 1 输出。
+
+    P0 修复（08:31 期文不对题实证）：旧逻辑按下标 p1_events[i] 喂 clusters[i]，
+    LLM 跳过任一事件后全部错位一格。缺号事件保持原文，宁缺勿错位。
+    """
+    theme = p1_result.get("theme", "")
+    p1_events = [e for e in p1_result.get("events", []) if isinstance(e, dict)]
+    by_num = {}
+    _raw_nums = []
+    for e in p1_events:
+        n = e.get("event_num")
+        if isinstance(n, str) and n.strip().isdigit():
+            n = int(n.strip())
+        if isinstance(n, int):
+            _raw_nums.append(n)
+        if isinstance(n, int) and 1 <= n <= len(clusters) and n not in by_num:
+            by_num[n] = e
+    # 0-based 漂移（LLM 从 0 编号）：整体平移而非静默错位一格
+    if _raw_nums and 0 in _raw_nums:
+        by_num = {}
+        for e in p1_events:
+            n = e.get("event_num")
+            if isinstance(n, str) and n.strip().isdigit():
+                n = int(n.strip())
+            if isinstance(n, int) and 0 <= n < len(clusters) and (n + 1) not in by_num:
+                by_num[n + 1] = e
+        print("[每日洞察] Phase1 event_num 为 0-based，已整体平移对齐", file=sys.stderr)
+    numbered = bool(by_num)
+    for i, c in enumerate(clusters):
+        if numbered:
+            pe = by_num.get(i + 1)
+            if pe is None:
+                # 缺号事件：打占位标记交给占位闸，防「原标题+空正文」卡片
+                c["summary"] = "[信息不足] Phase1 未返回该事件输出"
+                print("[每日洞察] Phase1 缺事件 %d 输出，打占位标记防错位" % (i + 1),
+                      file=sys.stderr)
+                continue
+        else:
+            if i >= len(p1_events):
+                continue
+            pe = p1_events[i]  # 旧格式无 event_num：回退下标配对
+        c["label"] = pe.get("label", c["label"])
+        c["category"] = pe.get("category", c.get("category", ""))
+        c["summary"] = pe.get("summary", "")
+        c["significance"] = pe.get("significance", "")
+        c["key_links"] = _validate_key_links(pe.get("key_links", []), c.get("items", []))
+    return theme
+
+
 def _llm_phase1(llm, clusters, global_context=None):
     """Phase 1: 为每个事件生成结构化摘要 + 今日主题导语。"""
     if not llm or not clusters:
@@ -2420,19 +2479,20 @@ def _llm_phase1(llm, clusters, global_context=None):
 
 约束：
 - label 必须是陈述句，不是疑问句
+- events 数组必须输出全部 %d 项，event_num 必须与素材事件编号一一对应，禁止跳过或合并条目
 - summary 必须包含具体数据（参数量/融资金额/用户数等），不能是空泛描述
 - category 必须从枚举中选
 - 如果素材不足以判断，summary 里标注[信息不足]
 - 所有陈述必须基于素材，不要编造
 - 每个事件的 summary 必须覆盖该事件素材中的所有关键事实点（至少 3 个独立信息点）
 - 不要只挑最重要的 1-2 条素材，要综合所有素材
-- 如果全局上下文中有重要信息未被任何事件覆盖，请在 theme 中提及""" % (NOW_BJ.strftime("%Y年%m月%d日"), len(clusters), "\n\n".join(events_text), _gc_block)
+- 如果全局上下文中有重要信息未被任何事件覆盖，请在 theme 中提及""" % (NOW_BJ.strftime("%Y年%m月%d日"), len(clusters), "\n\n".join(events_text), _gc_block, len(clusters))
 
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P1},
         {"role": "user", "content": prompt},
     ]
-    result = llm.complete(messages, temperature=0.3, max_tokens=3000)
+    result = llm.complete(messages, temperature=0.3, max_tokens=4200)
     parsed = _robust_parse_json(result)
     if not parsed:
         print("[每日洞察] Phase 1 LLM 输出解析失败", file=sys.stderr)
@@ -3038,7 +3098,7 @@ def _evaluate_report_quality(llm, clusters, theme, context_text, prompt_variant=
     events_text = []
     for i, c in enumerate(clusters[:MAX_EVENTS]):
         summary = c.get("summary", "") or c.get("label", "")
-        significance = c.get("significance", "")
+        significance = c.get("significance", "") or ""
         deep = c.get("deep_analysis", {})
         deep_text = ""
         if deep:
@@ -3208,6 +3268,55 @@ def _dims_pass_thresholds(eval_result):
     return True
 
 
+def _median_eval_samples(samples):
+    """多样本评估中位聚合（T2：09-19 实证 v1/v2 同内容差 0.17，单点评估噪声淹没内容变化）。"""
+    if not samples:
+        return {}
+    out = {}
+    for d in ("context_coverage", "faithfulness", "relevance", "overall"):
+        vals = sorted(s[d] for s in samples if isinstance(s.get(d), (int, float)))
+        if not vals:
+            continue
+        n = len(vals)
+        out[d] = vals[n // 2] if n % 2 else round((vals[n // 2 - 1] + vals[n // 2]) / 2.0, 2)
+    ref = min(samples, key=lambda s: abs(s.get("overall", 0) - out.get("overall", 0)))
+    out["feedback"] = ref.get("feedback", "")
+    out["weak_events"] = ref.get("weak_events", [])
+    return out
+
+
+def _robust_quality_eval(llm, current, theme, context_text, use_cv):
+    """多样本稳健评估：CV 下 v1/v2/v1' 三样本取中位，非 CV 双样本。全失败返回 None。"""
+    if use_cv:
+        e1 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v1")
+        e2 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v2")
+        e3 = (_evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v1")
+              if (e1 and e2) else None)
+        samples = [s for s in (e1, e2, e3) if s]
+        if not samples:
+            return None
+        med = _median_eval_samples(samples)
+        if e1 and e2:
+            med["cross_validation"] = {"v1_overall": e1["overall"], "v2_overall": e2["overall"]}
+            med["_actual_variants"] = 2
+            print("[每日洞察] RAGAS 交叉验证: v1=%.2f v2=%.2f v1'=%s → med=%.2f" % (
+                e1["overall"], e2["overall"], ("%.2f" % e3["overall"]) if e3 else "n/a",
+                med["overall"]))
+        else:
+            med["_actual_variants"] = 1
+        med["_eval_samples"] = len(samples)
+        return med
+    e1 = _evaluate_report_quality(llm, current, theme, context_text)
+    e2 = _evaluate_report_quality(llm, current, theme, context_text)
+    samples = [s for s in (e1, e2) if s]
+    if not samples:
+        return None
+    med = _median_eval_samples(samples)
+    med["_actual_variants"] = 1
+    med["_eval_samples"] = len(samples)
+    return med
+
+
 def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     """RAGAS 评估-修正闭环：评分 → 不达标则自我修正 → 重新评分。"""
     if not RAGAS_ENABLED or not llm or not clusters:
@@ -3227,29 +3336,11 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     iteration_count = 0
     use_cross_validation = config.get("daily_insight_cross_validation", False)
     for iteration in range(max_iterations + 1):
-        if use_cross_validation:
-            # 交叉验证：两个 prompt 变体各评估一次
-            eval_v1 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v1")
-            eval_v2 = _evaluate_report_quality(llm, current, theme, context_text, prompt_variant="v2")
-            if eval_v1 and eval_v2:
-                eval_result = _weighted_avg_scores(eval_v1, eval_v2)
-                eval_result["cross_validation"] = {
-                    "v1_overall": eval_v1["overall"], "v2_overall": eval_v2["overall"]}
-                eval_result["_actual_variants"] = 2
-                print("[每日洞察] RAGAS 交叉验证: v1=%.2f v2=%.2f → avg=%.2f" % (
-                    eval_v1["overall"], eval_v2["overall"], eval_result["overall"]))
-            else:
-                eval_result = eval_v1 or eval_v2 or None
-                if eval_result is None:
-                    eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                                   "overall": 0.5, "feedback": "交叉验证两路均失败", "weak_events": []}
-                else:
-                    eval_result["_actual_variants"] = 1
-        else:
-            eval_result = _evaluate_report_quality(llm, current, theme, context_text)
+        eval_result = _robust_quality_eval(llm, current, theme, context_text,
+                                           use_cv=use_cross_validation)
         if eval_result is None:
             eval_result = {"context_coverage": 0.5, "faithfulness": 0.5, "relevance": 0.5,
-                           "overall": 0.5, "feedback": "JSON 解析最终失败", "weak_events": []}
+                           "overall": 0.5, "feedback": "评估全部路径失败", "weak_events": []}
         print("[每日洞察] RAGAS eval iter=%d: overall=%.2f, cov=%.2f, faith=%.2f, rel=%.2f" % (
             iteration, eval_result["overall"], eval_result["context_coverage"],
             eval_result["faithfulness"], eval_result["relevance"]))
@@ -3264,20 +3355,13 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
                 eval_result["overall"], threshold), file=sys.stderr)
             pre_score = eval_result["overall"]
             # _self_correct_events 原地写回 clusters，拒绝时必须回滚快照（P1-1 实证）
-            _snapshot = [{k: c.get(k) for k in
-                          ("label", "summary", "significance", "category")}
-                         for c in current]
+            _snapshot = [{k: c.get(k, _ROLLBACK_UNSET) for k in
+                         ("label", "summary", "significance", "category")}
+                        for c in current]
             corrected = _self_correct_events(llm, current, context_text, eval_result)
             # 重新评估修正结果（保持与初始评估一致的方法）
-            if use_cross_validation:
-                cr_v1 = _evaluate_report_quality(llm, corrected, theme, context_text, prompt_variant="v1")
-                cr_v2 = _evaluate_report_quality(llm, corrected, theme, context_text, prompt_variant="v2")
-                if cr_v1 and cr_v2:
-                    corrected_result = _weighted_avg_scores(cr_v1, cr_v2)
-                else:
-                    corrected_result = cr_v1 or cr_v2
-            else:
-                corrected_result = _evaluate_report_quality(llm, corrected, theme, context_text)
+            corrected_result = _robust_quality_eval(llm, corrected, theme, context_text,
+                                                    use_cv=use_cross_validation)
             if corrected_result is None:
                 corrected_result = {"overall": 0.0, "context_coverage": 0.0,
                                     "faithfulness": 0.0, "relevance": 0.0,
@@ -3300,7 +3384,11 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
                 continue
             else:
                 for _c, _s in zip(current, _snapshot):
-                    _c.update(_s)
+                    for _k, _v in _s.items():
+                        if _v is _ROLLBACK_UNSET:
+                            _c.pop(_k, None)
+                        else:
+                            _c[_k] = _v
                 print("[每日洞察] 修正未采纳 (overall %.2f → %.2f, faith %.2f → %.2f)，已回滚原版" % (
                     pre_score, corrected_result["overall"], pre_faith, corrected_result["faithfulness"]))
                 if corrected_result["overall"] >= threshold and _dims_pass_thresholds(corrected_result):
@@ -3312,10 +3400,12 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
     # 评估元数据：准确记录实际运行的变体数
     actual_variants = eval_result.get("_actual_variants", 1)
     eval_result.pop("_actual_variants", None)
+    _n_samples = eval_result.pop("_eval_samples", 1)
     eval_result["meta"] = {
         "judge_model": _effective_judge_model(llm),
         "judge_model_configured": getattr(llm, 'model', 'unknown'),
         "prompt_variants": actual_variants,
+        "eval_samples": _n_samples,
         "call_log": getattr(llm, '_call_log', []),
         "temperature": 0.2,
     }
@@ -4454,16 +4544,7 @@ def main():
         _ragas_ctx = _build_ragas_context(clusters, retrieved_for_ragas) if retrieved_for_ragas else ""
         p1_result = _llm_phase1(llm, clusters, global_context=_ragas_ctx[:12000] if _ragas_ctx else None)
         if p1_result:
-            theme = p1_result.get("theme", "")
-            p1_events = p1_result.get("events", [])
-            for i, c in enumerate(clusters):
-                if i < len(p1_events):
-                    pe = p1_events[i]
-                    c["label"] = pe.get("label", c["label"])
-                    c["category"] = pe.get("category", c.get("category", ""))
-                    c["summary"] = pe.get("summary", "")
-                    c["significance"] = pe.get("significance", "")
-                    c["key_links"] = _validate_key_links(pe.get("key_links", []), c.get("items", []))
+            theme = _apply_phase1_result(clusters, p1_result)
 
             # Phase 1.2: 丢弃 [信息不足] 事件 — 防止占位事件拉低质量（前缀匹配，覆盖 [信息不足：...]）
             _before = len(clusters)
@@ -4599,6 +4680,7 @@ def main():
     # 占位闸（无条件）：事实核查/自审/RAGAS 修正环都可能在 Phase 1.2 之后注入[信息不足]
     clusters = _drop_insufficient(clusters)
     clusters = _order_events_for_output(clusters)  # 闸与分数刷新后重排，保证导出 editor_score 单调
+    clusters = clusters[:MAX_EVENTS]  # T1: 输出预算收口 12，被去重/占位闸砍掉的槽位由池内后位候选顶上
 
     # ── Phase 3.1: 破茧栏 + 输出 JSON ──
     history = _load_history()
