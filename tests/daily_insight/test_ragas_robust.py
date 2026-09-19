@@ -257,3 +257,60 @@ class TestNoRedundantReeval:
             object(), clusters, "t", [{"text": "素材" * 80}], {})
         assert out[0]["summary"] == "劣化", "采纳分支保留修正文本"
         assert ev["overall"] == 0.75 and st["calls"] == 4
+
+
+class TestEvidenceDomainAlignment:
+    """14:29 期实证 faith 0.50：judge 只看 top80 chunk，事件证据在第 81-200 位
+    ——判定域必须覆盖装配域（同一 200 池），否则真实报道被判幻觉。"""
+
+    def test_ragas_context_covers_full_pool(self):
+        import build_daily_insight as B
+        chunks = [{"text": "正文%d" % i, "title": "T%d" % i, "source_type": "rss",
+                   "retrieval_score": 1.0 - i * 0.001} for i in range(200)]
+        ctx = B._build_ragas_context([{"label": "x"}], chunks)
+        assert "T199" in ctx, "评估上下文须覆盖全池，含尾部低分 chunk"
+        assert ctx.count("---") >= 190
+
+    def test_verify_faithfulness_covers_full_pool(self):
+        import build_daily_insight as B
+        seen = {}
+
+        class L:
+            def complete(self, messages, temperature=0.1, max_tokens=2500):
+                seen["p"] = messages[-1]["content"]
+                return "{}"
+        chunks = [{"text": "正文%d" % i, "title": "T%d" % i, "source_type": "rss",
+                   "retrieval_score": 1.0 - i * 0.001} for i in range(200)]
+        B._verify_faithfulness(L(), [{"label": "a", "summary": "s", "items": []}], chunks)
+        assert "T199" in seen["p"], "事实核查素材域须与评估域一致（同一 200 池）"
+
+    def test_verify_faithfulness_depth_matches_judge(self):
+        """核查编辑与 judge 同用 1000 字深度：700-1000 区间的支撑必须可见。"""
+        import build_daily_insight as B
+        seen = {}
+
+        class L:
+            def complete(self, messages, temperature=0.1, max_tokens=2500):
+                seen["p"] = messages[-1]["content"]
+                return "{}"
+        filler = "经" * 900 + "关键证据句"
+        chunks = [{"text": filler, "title": "T", "source_type": "rss",
+                   "retrieval_score": 1.0}]
+        B._verify_faithfulness(L(), [{"label": "a", "summary": "s", "items": []}], chunks)
+        assert "关键证据句" in seen["p"], "900-1000 字区间的证据不得被截掉（旧 [:700] 输出缺陷）"
+
+    def test_meta_records_context_footprint(self, monkeypatch):
+        import build_daily_insight as B
+        groups = [{"overall": 0.80, "context_coverage": 0.8, "faithfulness": 0.9,
+                   "relevance": 0.8, "feedback": "f", "weak_events": []}]
+
+        def fake_eval(llm, cls, theme, ctx, prompt_variant=None):
+            return dict(groups[0])
+        monkeypatch.setattr(B, "_evaluate_report_quality", fake_eval)
+        clusters = [{"label": "L", "summary": "s", "significance": "g",
+                     "category": "research", "score": 5}]
+        chunks = [{"text": "正文" * 500, "title": "T%d" % i, "source_type": "rss",
+                   "retrieval_score": 1.0 - i * 0.001} for i in range(120)]
+        _, ev = B._ragas_evaluate_and_correct(object(), clusters, "t", chunks, {})
+        assert ev["meta"]["context_chunks"] >= 100
+        assert ev["meta"]["context_chars"] > 10000

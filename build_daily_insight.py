@@ -2825,18 +2825,18 @@ def _verify_faithfulness(llm, clusters, global_context_chunks=None):
     if not llm or not clusters:
         return
 
-    # 构建全局素材上下文（与 RAGAS 评估器使用相同的 chunks）
-    # LLM 有 1M 上下文，充分利用：60 chunks × 800 chars ≈ 48K chars ≈ 12K tokens (1.2%)
+    # 构建全局素材上下文（与 RAGAS 评估器同一 200 池、同 1000 字深度，
+    # 防"judge 看得见、核查编辑看不见"造成删真实报道的假性 faith 提升）
     global_ctx = ""
     if global_context_chunks:
         sorted_gc = sorted(global_context_chunks, key=lambda c: c.get("retrieval_score", 0), reverse=True)
         parts = []
-        for c in sorted_gc[:60]:
-            text = c.get("text", "")[:800]
+        for c in sorted_gc[:200]:  # 与评估域对齐（同一 200 池），防核查/判定分叉
+            text = c.get("text", "")[:1000]
             title = c.get("title", "")[:100]
             src = c.get("source_type", "")
             if text:
-                parts.append("[%s] %s: %s" % (src, title, text[:700]))
+                parts.append("[%s] %s: %s" % (src, title, text))
         global_ctx = "\n---\n".join(parts)
 
     # 批量处理：每批 5 个事件
@@ -3374,11 +3374,12 @@ _RAGAS_JUDGE_PROMPT_V2 = """你是 RAG 质量审计专家。你的任务是找�
 
 def _build_ragas_context(clusters, retrieved_chunks):
     """为 RAGAS 评估构建上下文文本：将检索到的 chunks 拼接为评估参考。"""
-    # 取 top chunks 作为评估上下文（按检索分数排序）
-    # LLM 有 1M 上下文，充分利用：80 chunks × 1000 chars ≈ 80K chars ≈ 20K tokens (2%)
+    # 14:29 期实证：事件证据可来自全池 200 条，judge 只看 top80 会把真实报道
+    # 误判成幻觉（faith 0.50）。判定域必须覆盖装配域：全池入上下文。
+    # 200 chunks × 1000 chars ≈ 200K chars ≈ 50K tokens，1M 上下文模型余量充足
     sorted_chunks = sorted(retrieved_chunks, key=lambda c: c.get("retrieval_score", 0), reverse=True)
     context_parts = []
-    for c in sorted_chunks[:80]:
+    for c in sorted_chunks[:200]:
         text = c.get("text", "")[:1000]
         title = c.get("title", "")[:100]
         src = c.get("source_type", "")
@@ -3845,6 +3846,8 @@ def _ragas_evaluate_and_correct(llm, clusters, theme, retrieved_chunks, config):
         "judge_model_configured": getattr(llm, 'model', 'unknown'),
         "prompt_variants": actual_variants,
         "eval_samples": _n_samples,
+        "context_chunks": context_text.count("---") + 1 if context_text else 0,
+        "context_chars": len(context_text or ""),
         "call_log": getattr(llm, '_call_log', []),
         "temperature": 0.2,
     }
