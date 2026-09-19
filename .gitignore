@@ -27,6 +27,10 @@ _verify_*
 daily_insight_snapshot.json
 source_quality.json
 rss_api_snapshot*.json
+# 72h 文章历史改由 actions/cache 承载（此前提交进 git 会让每场构建多写一个 64MB blob）
+rss_history.json
+rss_history_*.json
+rss_history_index.json
 
 # 工具/IDE 本地产物
 .workbuddy/

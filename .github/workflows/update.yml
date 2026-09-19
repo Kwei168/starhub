@@ -80,6 +80,11 @@ jobs:
           for f in api/*.js; do node --check "$f"; done
           echo "语法门禁通过"
 
+      # ── 质量门禁 A2：72h 历史持久化与抓取策略（blocking）──
+      # 无网络、无凭证、毫秒级；断言含"每场抓全部源"的策略守卫与 update.yml 自身的缓存步骤。
+      - name: Quality gate A2 — RSS history persistence (blocking)
+        run: python -m pytest tests/rss_history/ -q
+
       # ── 质量门禁 B：洞察测试（advisory）──
       # 本 job 是唯一产出者（stars/RSS/ai-daily/每日洞察 + bot 提交 + Vercel 部署），
       # 硬失败会冻结每天 5 个定时档并阻断一行热修的上线，故先观察再收紧。
@@ -136,6 +141,32 @@ jobs:
             fi
           done
 
+      # 72h 文章历史的跨构建持久化：构建写 rss_history_N.json + index，缓存放进来读。
+      # 不提交进 git（单代 64MB，五场/天会把 .git 再撑爆），也不缓存主文件 rss_history.json。
+      - name: Restore RSS history cache
+        id: history-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            rss_history_*.json
+            rss_history_index.json
+          key: rss-history-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            rss-history-${{ runner.os }}-
+
+      - name: Diagnose RSS history cache restore
+        run: |
+          # cache-hit/matched-key 在 restore-keys 前缀命中时并不可信（实测 emb 那步命中
+          # 下载了 221MB 却报 false/空），唯一可信信号是磁盘上有没有 index。
+          echo "  cache-hit: ${{ steps.history-cache-restore.outputs.cache-hit }}"
+          echo "  matched-key: ${{ steps.history-cache-restore.outputs.matched-key }}"
+          echo "  chunks on disk: $(ls rss_history_*.json 2>/dev/null | wc -l)"
+          if [ -f rss_history_index.json ]; then
+            echo "  ✓ rss_history_index.json ($(python -c "import json;print(json.load(open('rss_history_index.json'))['total'],'篇 /',json.load(open('rss_history_index.json'))['chunks'],'块')"))"
+          else
+            echo "  ✗ 无历史索引：本场按冷启动全量抓取（增量跳过不触发）"
+          fi
+
       - name: Fetch stars & build
         run: python fetch_and_build.py $MODE
 
@@ -173,7 +204,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
           if [ -f hot_history.json ]; then git add hot_history.json; fi
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -189,7 +220,7 @@ jobs:
               # git reset --soft 保留工作区（含构建产物），将 HEAD 对齐到最新 origin/main
               git reset --soft origin/main
               # 重新 stage 所有产物 + 日志（现在也包含 remote 带来的变更）
-              git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+              git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -200,7 +231,7 @@ jobs:
                 echo "Rebase retry also failed. Falling back to full rebuild..."
                 git reset --hard origin/main
                 python fetch_and_build.py $MODE
-                git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_history.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+                git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
                 if [ -f hot_history.json ]; then git add hot_history.json; fi
                 if [ -f daily-insight.json ]; then git add daily-insight.json; fi
                 if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -219,12 +250,23 @@ jobs:
             daily_insight_faiss.index
           key: emb-cache-${{ runner.os }}-${{ github.run_id }}
 
+      - name: Save RSS history cache (before prune deletes chunks)
+        # Actions 缓存配额实测已用 7.05/10GB 且每场新增一条 run 键（94% 构建来自页面
+        # 实时刷新的 workflow_dispatch）；保存失败只能降级为下轮全量，不能连坐 Deploy。
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            rss_history_*.json
+            rss_history_index.json
+          key: rss-history-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Prune large build artifacts before Vercel deploy
         run: |
           # 构建产物只供 GitHub Pages 加载，Vercel 只需要 api/ + HTML 入口 + vercel.json
           # 直接删除避免 .vercelignore glob 不可靠导致 367MB 上传超限
           rm -f rss-data-*.js rss_api_snapshot*.json
-          rm -f rss_cache.json rss_history.json hot_history.json hot_snapshot.json
+          rm -f rss_cache.json rss_history*.json hot_history.json hot_snapshot.json
           rm -f analysis_snapshot.json translations.json trending_snapshot.json
           rm -f source_quality.json rss_trend_history.json known_categories.json descriptions_zh.json
           rm -f daily-insight.json daily_insight_history.json daily_insight_snapshot.json
