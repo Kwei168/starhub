@@ -316,12 +316,25 @@ class TestEvidenceDomainAlignment:
         assert ev["meta"]["context_chars"] > 10000
 
 
+class _AgnesSentinel:
+    model = "agnes-2.5-flash"
+    _call_log = []
+
+
+class _BoomMimo:
+    def __init__(self, *a, **k):
+        raise AssertionError("默认配置下不得构造 mimo 主判（它会白打一次 403 并谎报 judge 身份）")
+
+
 class TestJudgeIsAgnesByConfig:
     """09-19 数据核实：call_log 记录以来所有真实打分全部由 agnes 完成
     （mimo 403 从未生效，旧 meta"judge=mimo"是标签谎报）。
-    生产配置必须与实际一致：judge_provider=agnes，不再伪装 mimo→agnes 链。"""
+    生产配置必须与实际一致：judge_provider=agnes，不再伪装 mimo→agnes 链。
 
-    def test_production_config_resolves_plain_agnes(self):
+    注意 CI 门禁 B 会把 AGNES_API_KEY 等全部清空（防测试打网络），
+    所以这里必须注入 _init_llm 哨兵只验"分支选择"，绝不能依赖真实 key。"""
+
+    def test_production_config_resolves_plain_agnes(self, monkeypatch):
         import json as _json
         import os
         import build_daily_insight as B
@@ -329,6 +342,14 @@ class TestJudgeIsAgnesByConfig:
                                            "build_config.json"), encoding="utf-8"))
         assert cfg.get("daily_insight_judge_provider") == "agnes", \
             "配置仍钉 mimo 会让每期白打一次 403 并谎报 judge 身份"
+        monkeypatch.setattr(B, "_init_llm", lambda: _AgnesSentinel())
+        monkeypatch.setattr(B, "_MimoLLM", _BoomMimo)
         llm = B._init_judge_llm(cfg)
         assert llm is not None and not isinstance(llm, B._FallbackJudgeLLM)
         assert "agnes" in getattr(llm, "model", "")
+
+    def test_keyless_ci_env_degrades_without_crash(self, monkeypatch):
+        """无 key 是 CI 门禁 B 的真实环境：拿不到 agnes 就返回 None，不得抛错。"""
+        import build_daily_insight as B
+        monkeypatch.setattr(B, "_init_llm", lambda: None)
+        assert B._init_judge_llm({"daily_insight_judge_provider": "agnes"}) is None

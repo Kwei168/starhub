@@ -97,6 +97,20 @@ judge 其实已返回 `weak_events`（1-based 索引）与 `reasoning.relevance.
 `py -3.11 -m pytest tests/daily_insight -q -s` + 根测试四件与 CI 同构 → 读 CLAUDE.md → pathspec-only 提交（他人在途文件不入库）→
 Data API 推送（LF 归一）→ 触发/等整点构建 → 按第 2 节清单核验产物。
 
+**CI 同构检查（不可跳过，2026-09-19 因跳过而把红测试推上线两次）**：门禁 B 会把
+`AGNES_API_KEY / AGNES_API_KEYS / SILICONFLOW_API_KEY / ZEN_API_KEY / OPENROUTER_API_KEY / AGIHUNT_API_KEY` 全部置空
+（`.github/workflows/update.yml` 的 Quality gate B env 段），任何依赖真实 key 的断言在本地绿、CI 红。
+推送前必须原样复跑一次：
+
+```
+export AGNES_API_KEY= AGNES_API_KEYS= SILICONFLOW_API_KEY= ZEN_API_KEY= OPENROUTER_API_KEY= AGIHUNT_API_KEY=
+py -3.11 -m pytest tests/daily_insight/ -q
+for f in test_insight_engine.py test_insight_guard_v3.py test_insight_bad_date.py test_daily_insight.py; do py -3.11 "$f" >/dev/null; echo "$f exit=$?"; done
+```
+
+另：`tests/daily_insight/` 里的测试文件改完必须**确认已推到远端**——本地提交 91d4de5 只改了测试未推送，
+导致 CI 仍在跑被退役的旧契约断言（`test_small_history_single_file`），报的错与被改的东西毫无关系，极易误诊。
+
 ## 8. 进度
 
 - [x] 第12轮终版复评上线并在生产验证（`6f1736ac` / run `35431790984`）
