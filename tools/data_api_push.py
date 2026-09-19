@@ -64,16 +64,44 @@ def gate():
         newest["id"], newest["created_at"][11:19])
 
 
+def verify(expect, tag):
+    bad = 0
+    for p, want in expect.items():
+        got = req("GET", "%s/contents/%s" % (REPO, p))
+        if got["sha"] != want:
+            bad += 1
+            print("  [NG] %s %s 远端=%s 期望=%s" % (tag, p, got["sha"][:10], want[:10]))
+        else:
+            print("  [OK] %s %s %s" % (tag, p, want[:10]))
+    return bad
+
+
+def risky_runs(push_ts):
+    """检出时刻早于本次推送、且还没提交的 run —— 它结束后会用旧 index 覆盖我们刚推的内容。"""
+    return [r for r in runs(10) if r["created_at"] < push_ts and r["status"] != "completed"]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("paths", nargs="*")
     ap.add_argument("--msg", default="")
+    ap.add_argument("--msg-file", default="", help="从 UTF-8 文件读提交信息（CJK 走 argv 容易被 shell 吃掉）")
+    ap.add_argument("--wait-window", action="store_true", help="守门不过就每 60s 重试，最多 30 分钟")
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--allow-running", action="store_true")
     a = ap.parse_args()
+    if a.msg_file:
+        a.msg = open(a.msg_file, encoding="utf-8").read().strip()
 
     ok, why = gate()
     print(why)
+    if a.wait_window:
+        for _ in range(30):
+            if ok:
+                break
+            time.sleep(60)
+            ok, why = gate()
+            print(why)
     if a.check_only:
         return 0 if ok else 1
     if not ok and not a.allow_running:
@@ -83,6 +111,7 @@ def main():
         print("缺参数：需要 --msg 与至少一个文件路径")
         return 1
 
+    push_t = time.time()
     head = req("GET", REPO + "/git/ref/heads/main")["object"]["sha"]
     items, expect = [], {}
     for p in a.paths:
@@ -97,15 +126,25 @@ def main():
     ref = req("PATCH", REPO + "/git/refs/heads/main", {"sha": commit["sha"], "force": False})
     print("parent %s -> commit %s -> ref %s" % (head[:10], commit["sha"][:10], ref["object"]["sha"][:10]))
 
-    bad = 0
-    for p, want in expect.items():
-        got = req("GET", "%s/contents/%s" % (REPO, p))
-        if got["sha"] != want:
-            bad += 1
-            print("  [NG] 复查不符 %s 远端=%s 期望=%s" % (p, got["sha"][:10], want[:10]))
-        else:
-            print("  [OK] 复查一致 %s %s" % (p, want[:10]))
-    print("推完自查：内容不同=%d" % bad)
+    bad = verify(expect, "即时复查")
+    # Actions 的 run 列表有 10~20s 延迟：守门通过≠真的没有在跑的场，推后必须再看一次
+    # 减 120s 是为了抵消本机与 GitHub 时钟的偏差（判据方向是"更保守"，不会漏判）
+    push_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(push_t - 120))
+    print("等待 90s 让 run 列表落定，再确认没有『检出早于本次推送』的构建…")
+    time.sleep(90)
+    risky = risky_runs(push_ts)
+    if risky:
+        print("  [风险] 有 %d 场在本推送之前检出、尚未提交：%s" % (
+            len(risky), ["%s created=%s %s" % (r["id"], r["created_at"][11:19], r["status"]) for r in risky]))
+        for _ in range(40):
+            if not risky_runs(push_ts):
+                break
+            time.sleep(30)
+        print("那批构建已结束，复查是否被回滚：")
+        bad = verify(expect, "构建后复查")
+    else:
+        print("  [OK] 无早于本次推送且未提交的 run")
+    print("最终：内容不同=%d" % bad)
     return 0 if bad == 0 else 1
 
 
