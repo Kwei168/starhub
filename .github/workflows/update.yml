@@ -80,10 +80,12 @@ jobs:
           for f in api/*.js; do node --check "$f"; done
           echo "语法门禁通过"
 
-      # ── 质量门禁 A2：72h 历史持久化与抓取策略（blocking）──
+      # ── 质量门禁 A2：72h 历史持久化、抓取策略与源覆盖率健康（blocking）──
       # 无网络、无凭证、毫秒级；断言含"每场抓全部源"的策略守卫与 update.yml 自身的缓存步骤。
+      # rss_source_coverage 锁住 2026-09-16 起让"有数据源"从 968 掉到 776 的三条路径：
+      # 去重把 datetime 当字符串、域名熔断把"合法空 feed"计为失败、异常被静默吞成 0 条。
       - name: Quality gate A2 — RSS history persistence (blocking)
-        run: python -m pytest tests/rss_history/ -q -s
+        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ -q -s
 
       # ── 质量门禁 B：洞察测试（advisory）──
       # 本 job 是唯一产出者（stars/RSS/ai-daily/每日洞察 + bot 提交 + Vercel 部署），
