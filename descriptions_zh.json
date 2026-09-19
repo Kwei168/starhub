@@ -437,5 +437,8 @@
  "lakeday-org/perch": "使用 Jev 进行语义代码检查",
  "RectangleStory/Superpowers_Multi_AI": "⚡ AI 代理的模块化提示工程框架（Cursor、Claude Code、Copilot）。通过独立的 Windows 启动器强制结构化 SDLC、线性执行、上下文隔离和系统调试。停止振动编码，开始代理纪律！ 🚀",
  "higgsfield-ai/higgsfield": "容错、高度可扩展的 GPU 编排以及专为训练具有数十亿至数万亿参数的模型而设计的机器学习框架",
- "0xNatoshi/jev-codex-router": "Codex 的每回合模型和推理路由，由 Jev（TypeSafe System One）驱动：选择每回合的模型、思考深度和速度模式。"
+ "0xNatoshi/jev-codex-router": "Codex 的每回合模型和推理路由，由 Jev（TypeSafe System One）驱动：选择每回合的模型、思考深度和速度模式。",
+ "vercel-labs/json-render": "生成式 UI 框架",
+ "shiyu-coder/Kronos": "Kronos：金融市场语言的基础模型",
+ "yyjeqhc/webcodex": "在您自己的机器上为云 AI 代理提供真实的开发环境。"
 }
