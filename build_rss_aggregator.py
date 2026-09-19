@@ -26,9 +26,20 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 if sys.stdout and hasattr(sys.stdout, 'buffer'):
-    sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+    # 仅为 Windows 控制台 GBK 问题重挂 UTF-8 流。closefd=False 是必须的：直接
+    # open(fileno) 得到的对象被回收时会关掉共用 fd，pytest 恢复自己的捕获流后
+    # 再读就报 Bad file descriptor，整场 CI 在收尾处崩掉。
+    try:
+        sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8',
+                          buffering=1, closefd=False)
+    except (OSError, ValueError):
+        pass
 if sys.stderr and hasattr(sys.stderr, 'buffer'):
-    sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8', buffering=1)
+    try:
+        sys.stderr = open(sys.stderr.fileno(), mode='w', encoding='utf-8',
+                          buffering=1, closefd=False)
+    except (OSError, ValueError):
+        pass
 
 OUT = "rss-aggregator.html"
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Accept": "application/rss+xml, application/xml, text/xml, */*"}

@@ -44,12 +44,18 @@ def offline_build(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "RSS_SOURCES", srcs)
     monkeypatch.setattr(mod, "_fetch_rss", fake_fetch)
     for name in ("_translate_source_items", "_tag_articles", "write_data_chunks",
-                 "_save_api_snapshot", "_save_caches", "_load_caches", "_save_history"):
+                 "_save_api_snapshot", "_save_caches", "_load_caches", "_save_history",
+                 "_audit_image_quality", "_accumulate_hot_history"):
         monkeypatch.setattr(mod, name, lambda *a, **k: None)
+    monkeypatch.setattr(mod, "fetch_newsnow_snapshot", lambda *a, **k: [])
     monkeypatch.setattr(mod, "_run_analysis", lambda *a, **k: {})
     monkeypatch.setattr(mod, "build_html", lambda *a, **k: "<html></html>")
     monkeypatch.setattr(mod, "build_logger",
                         types.SimpleNamespace(append=lambda *a, **k: None, cleanup=lambda n: 0))
+    # 兜底：门禁里任何漏 stub 的出网调用都立刻失败，而不是留下 35 秒超时与偶发红
+    def _no_network(*a, **k):
+        raise OSError("门禁不应发起网络请求：" + str(a[:1]))
+    monkeypatch.setattr(mod.urllib.request, "urlopen", _no_network)
     monkeypatch.chdir(tmp_path)
     return fetched
 
@@ -90,3 +96,11 @@ def test_fetch_state_mechanism_is_fully_removed():
 def test_ci_does_not_commit_fetch_state():
     text = io.open(WORKFLOW, encoding="utf-8").read()
     assert "rss_fetch_state" not in text
+
+
+def test_ci_runs_this_gate_without_output_capture():
+    """构建脚本导入时会重挂 sys.stdout；pytest 开着 fd 捕获时该对象回收会关掉共用 fd，
+    整场 job 在收尾处报 Bad file descriptor。-s 是唯一让它 behave 如本地的开关。"""
+    text = io.open(WORKFLOW, encoding="utf-8").read()
+    seg = text.split("Quality gate A2")[1].split("- name:")[0]
+    assert "-s" in seg, "门禁 A2 必须带 -s，否则 CI 收尾崩"
