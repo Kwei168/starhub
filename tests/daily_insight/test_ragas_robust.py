@@ -314,3 +314,21 @@ class TestEvidenceDomainAlignment:
         _, ev = B._ragas_evaluate_and_correct(object(), clusters, "t", chunks, {})
         assert ev["meta"]["context_chunks"] >= 100
         assert ev["meta"]["context_chars"] > 10000
+
+
+class TestJudgeIsAgnesByConfig:
+    """09-19 数据核实：call_log 记录以来所有真实打分全部由 agnes 完成
+    （mimo 403 从未生效，旧 meta"judge=mimo"是标签谎报）。
+    生产配置必须与实际一致：judge_provider=agnes，不再伪装 mimo→agnes 链。"""
+
+    def test_production_config_resolves_plain_agnes(self):
+        import json as _json
+        import os
+        import build_daily_insight as B
+        cfg = _json.load(open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                           "build_config.json"), encoding="utf-8"))
+        assert cfg.get("daily_insight_judge_provider") == "agnes", \
+            "配置仍钉 mimo 会让每期白打一次 403 并谎报 judge 身份"
+        llm = B._init_judge_llm(cfg)
+        assert llm is not None and not isinstance(llm, B._FallbackJudgeLLM)
+        assert "agnes" in getattr(llm, "model", "")
