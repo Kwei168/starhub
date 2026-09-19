@@ -140,7 +140,6 @@ _LAST_UNRELIABLE_SRCS = set()  # D4：最近一场 bad_date 审计判定的不�
 # ── Fix 4: T4 长尾层常量 ──
 # T4 源：低优先级/长尾源，使用更宽松的跳过阈值和更短的历史保留窗口
 # 目的：给频繁失败的低优先级源更多恢复机会，同时避免它们占用过多历史空间
-_TIER4_SKIP_THRESHOLD_SEC = 30 * 60   # T4 源增量跳过阈值：30 分钟（T2=1h, T3=2h）
 _TIER4_HISTORY_HOURS = 48              # T4 源历史保留窗口：48h（默认 72h）
 _TIER_PROMOTION_THRESHOLD = 3          # 连续 3 次成功抓取后自动升级到 T3
 _tier4_success_streak = {}             # {source_key: 连续成功次数}
@@ -302,15 +301,16 @@ def _load_history():
 
 
 def _save_history_chunked(max_size=40 * 1024 * 1024):
-    """分块保存文章历史，避免单文件超 max_size 字节。"""
+    """分块保存文章历史。
+
+    始终走分块格式（含小历史）：跨构建持久化由 CI 的 actions/cache 承载 chunk+index，
+    若小历史改写主文件而留下上一代 index，_load_history_chunked 会优先信 index 而忽略
+    刚写好的主文件。
+    """
     data = json.dumps(_rss_history, ensure_ascii=False, separators=(",", ":"))
     total_bytes = len(data.encode("utf-8"))
+    n_chunks = max(1, (total_bytes + max_size - 1) // max_size)
 
-    if total_bytes <= max_size:
-        _atomic_write_json(RSS_HISTORY_FILE, _rss_history, ensure_ascii=False)
-        return
-
-    n_chunks = (total_bytes // max_size) + 1
     buckets = [{} for _ in range(n_chunks)]
     for link, record in _rss_history.items():
         bucket_idx = int(hashlib.md5(link.encode()).hexdigest()[:8], 16) % n_chunks
@@ -324,6 +324,17 @@ def _save_history_chunked(max_size=40 * 1024 * 1024):
     _atomic_write_json(os.path.join(base_dir, "rss_history_index.json"),
                        {"chunks": n_chunks, "total": len(_rss_history)},
                        ensure_ascii=False)
+
+    import glob
+    for old_file in glob.glob(os.path.join(base_dir, "rss_history_*.json")):
+        try:
+            num = int(os.path.basename(old_file).replace("rss_history_", "").replace(".json", ""))
+            if num >= n_chunks:
+                os.remove(old_file)
+                print("[历史] 清理旧分块: %s" % old_file)
+        except ValueError:
+            pass
+
     print("[历史] 分块保存: %d 篇 → %d 个文件" % (len(_rss_history), n_chunks))
 
 
@@ -343,8 +354,15 @@ def _load_history_chunked(hist_file=None, index_file=None):
                 if os.path.exists(fname):
                     with open(fname, "r", encoding="utf-8") as f:
                         merged.update(json.load(f))
-            if merged:
-                return merged
+            # index 存在即以它为准：回落到主文件会读出上一代被冻结的旧历史
+            # （rss_history.json 已不参与跨构建持久化）。数量对不上说明只还原了半套
+            # 分块，按无历史处理让守卫逼出全量，否则缺的那部分会被当成正常数据继续跳源。
+            expected = int(index.get("total", -1))
+            if len(merged) != expected:
+                print("[历史] 索引声明 %d 篇、实读 %d 篇（分块缺失或缓存半套），按无历史处理"
+                      % (expected, len(merged)), file=sys.stderr)
+                return {}
+            return merged
         except Exception:
             pass
 
@@ -620,17 +638,7 @@ def _accumulate_history(sources_with_items):
     return result, total
 
 
-def _load_snapshot_meta():
-    """从现有快照读取 meta.last_fetch（各源上次抓取时间）"""
-    try:
-        with open("rss_api_snapshot.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("meta", {}).get("last_fetch", {})
-    except Exception:
-        return {}
-
-
-def _save_api_snapshot(sources_with_items, meta=None):
+def _save_api_snapshot(sources_with_items):
     """生成 API 快照 JSON（分块），供 /api/rss 直接返回，避免实时抓取丢失历史累积数据。
     按 ~80MB 上限拆分为 rss_api_snapshot.json + rss_api_snapshot_1.json ...，
     避免超过 GitHub 100MB 单文件限制。"""
@@ -698,8 +706,7 @@ def _save_api_snapshot(sources_with_items, meta=None):
         for idx, bucket in enumerate(buckets):
             fname = "rss_api_snapshot.json" if idx == 0 else "rss_api_snapshot_%d.json" % idx
             chunk_data = {"t": _now_bj().isoformat(), "sources": bucket}
-            if idx == 0 and meta:
-                chunk_data["meta"] = meta
+            if idx == 0:
                 chunk_data["_total_chunks"] = n_chunks
             _atomic_write_json(fname, chunk_data, ensure_ascii=False)
             size_mb = bucket_sizes[idx] / 1024 / 1024
@@ -7689,35 +7696,12 @@ def main(mode="full"):
     _load_caches()
     _load_history()
 
-    # 增量模式：加载各源上次抓取时间
-    last_fetch = {}
-    if mode == "incremental":
-        last_fetch = _load_snapshot_meta()
-        print("[增量模式] 已加载 %d 个源的上次抓取记录" % len(last_fetch))
-
     sources_with_items = []
     total_items = 0
     ok_count = 0
-    skipped_count = 0
     failed_count = 0
     _source_log = []  # 每源抓取结果
     _build_start = time.time()
-
-    # 增量模式：预建历史索引（source_key → items），避免每源遍历全部历史
-    _hist_by_key = {}
-    if mode == "incremental":
-        for _v in _rss_history.values():
-            _sk = _v.get("source_key", "")
-            if _sk not in _hist_by_key:
-                _hist_by_key[_sk] = []
-            _hist_by_key[_sk].append({
-                "link": _v["link"], "pub_date": _v.get("pub_date", ""),
-                "title": _v.get("title", ""), "title_zh": _v.get("title_zh", ""),
-                "summary": _v.get("summary", ""), "summary_zh": _v.get("summary_zh", ""),
-                "full_content": _v.get("full_content", ""), "image": _v.get("image", ""),
-                "media_url": _v.get("media_url", ""), "media_type": _v.get("media_type", ""),
-            })
-        print("[增量模式] 历史索引: %d 源有历史数据" % len(_hist_by_key))
 
     # 并行抓取 RSS（短超时，失败快速跳过）
     # - 全局并发 12；同一域名并发 2（对单域行为接近串行，避免打爆 xgo.ing 等桥接服务）
@@ -7725,59 +7709,9 @@ def main(mode="full"):
     # - 流水线：某源抓完即在主线程串行翻译，与其余源的网络 IO 重叠；翻译不进线程池（翻译服务有限流）
     _results = [None] * len(RSS_SOURCES)  # 按 RSS_SOURCES 顺序回填，保持产物顺序稳定
 
-    # 主线程分流：增量跳过判断（含 T1/缓存命中回填）不涉及网络 IO，直接定结果
-    _to_fetch = []
-    for _i, src in enumerate(RSS_SOURCES):
-        key = src["key"]
-        tier = src.get("tier", 3)
-
-        # 增量模式跳过规则（按 tier 分级阈值）：
-        # 1. T1 源始终跳过（由 api/rss.js 实时抓取）
-        # 2. T2 源：距上次抓取 < 1h 跳过
-        # 3. T3 源：距上次抓取 < 2h 跳过
-        if mode == "incremental":
-            if tier == 1:
-                skipped_count += 1
-                # 从历史索引填充 T1 源（增量构建不抓取 T1，但不能传空 items 导致历史数据流失）
-                _results[_i] = {
-                    "key": key, "name": src["name"], "cat": src["cat"],
-                    "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
-                    "items": _hist_by_key.get(key, []),
-                    "tier": tier,
-                }
-                _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_t1", "items": len(_hist_by_key.get(key, []))})
-                continue
-            prev = last_fetch.get(key)
-            if prev:
-                try:
-                    prev_time = datetime.datetime.fromisoformat(prev)
-                    # Fix 4: T4 源使用更宽松的跳过阈值
-                    if tier == 4:
-                        threshold_sec = _TIER4_SKIP_THRESHOLD_SEC
-                    elif tier <= 2:
-                        threshold_sec = 1 * 3600
-                    else:
-                        threshold_sec = 2 * 3600
-                    if (now - prev_time).total_seconds() < threshold_sec:
-                        # Fix 1v2: 无历史数据的源强制重抓（无论是否有 prev 记录）
-                        # 场景：源上次抓取返回 0 条 → prev 有值但 _hist_by_key 为空
-                        # 旧版 `and not prev` 在 if prev: 块内永远 False → 死代码
-                        if not _hist_by_key.get(key):
-                            pass  # 强制重抓，不跳过
-                        else:
-                            skipped_count += 1
-                            # 从历史索引填充跳过的 T2/T3 源（避免空 items 导致历史数据流失）
-                            _results[_i] = {
-                                "key": key, "name": src["name"], "cat": src["cat"],
-                                "color": src.get("color", "#6366f1"), "url": src.get("url", ""),
-                                "items": _hist_by_key.get(key, []),
-                                "tier": tier,
-                            }
-                            _source_log.append({"key": key, "name": src["name"], "cat": src["cat"], "tier": tier, "status": "skipped_cached", "items": len(_hist_by_key.get(key, []))})
-                            continue
-                except (ValueError, TypeError):
-                    pass
-        _to_fetch.append((_i, src))
+    # 每场构建都抓全部源：跳过会让被跳源的内容完全依赖存档跨构建存活，而存档正是
+    # 2026-09-17 故障里断掉的那一环。RSS 也没有增量协议，省下的只是请求数。
+    _to_fetch = list(enumerate(RSS_SOURCES))
 
     # 域名信号量与熔断状态全部在提交任务前于主线程建好，规避运行期并发初始化竞争
     def _src_domain(url):
@@ -7794,7 +7728,7 @@ def main(mode="full"):
     _domain_broken = set()  # 本轮已熔断域名
 
     def _worker(i, src):
-        """只做网络 IO 与域名熔断判定；计数、翻译、last_fetch 由主线程汇总"""
+        """只做网络 IO 与域名熔断判定；计数与翻译由主线程汇总"""
         dom = _src_domain(src.get("url", ""))
         with _domain_lock:
             if dom and dom in _domain_broken:
@@ -7836,7 +7770,6 @@ def main(mode="full"):
             n = len(items) if items else 0
             if status == "ok":
                 ok_count += 1
-                last_fetch[key] = now.isoformat()
                 # Fix 4: T4 源连续成功后自动升级到 T3
                 if tier == 4:
                     _tier4_success_streak[key] = _tier4_success_streak.get(key, 0) + 1
@@ -7878,8 +7811,6 @@ def main(mode="full"):
 
     sources_with_items.extend(r for r in _results if r is not None)
 
-    if mode == "incremental":
-        print("[增量模式] 跳过 %d 个源，抓取 %d 个源" % (skipped_count, len(RSS_SOURCES) - skipped_count))
 
     if total_items == 0 and mode == "full":
         print("[RSS聚合] 所有源均失败，尝试使用历史数据", file=sys.stderr)
@@ -7980,8 +7911,7 @@ def main(mode="full"):
     # 生成 API 快照（供 /api/rss 直接返回，避免实时抓取丢失历史累积数据）
     # 必须晚于 _tag_articles()：快照构造只搬用白名单字段，早于打标则 tags 恒为空。
     # 仍早于 build_html / write_data_chunks，保证产物写出异常时快照已落地。
-    meta = {"last_fetch": last_fetch}
-    _save_api_snapshot(sources_with_items, meta=meta)
+    _save_api_snapshot(sources_with_items)
 
     html_doc = build_html(sources_with_items, build_time, total_items, build_ts_ms, analysis_data=analysis_data,
                           diverse_window_minutes=DIVERSE_CFG["window_minutes"],
@@ -8021,7 +7951,6 @@ def main(mode="full"):
         "sources_total": len(RSS_SOURCES),
         "sources_fetched": ok_count,
         "sources_with_data": _sources_with_data_before,
-        "sources_skipped": skipped_count,
         "sources_failed": failed_count,
         "items_fetched": _items_fetched,
         "items_snapshot": _snapshot_items,

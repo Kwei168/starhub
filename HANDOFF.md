@@ -127,7 +127,7 @@
 | `known_categories.json` | 项目→分类映射缓存（避免每次重新分类） |
 | `descriptions_zh.json` | 项目→中文描述缓存（避免重复翻译） |
 | `trending_snapshot.json` | 趋势分析快照数据 |
-| `rss_api_snapshot.json` (+`_1`...) | RSS API 分块快照（72h 累积历史 + meta.last_fetch 增量状态）。**已移出仓库**（单文件 82MB 导致 Actions checkout 超时），`.gitignore` 忽略，仅存于 CI 工作区并随 `vercel --prod` 上传供 `api/rss.js` 读取（见 §8.13） |
+| `rss_api_snapshot.json` (+`_1`...) | RSS API 分块快照（72h 累积历史 + meta.last_fetch 增量状态）。**已移出仓库**（单文件 82MB 导致 Actions checkout 超时），`.gitignore` 忽略，且被部署前的 prune 删掉，线上读不到（见 §8.13） |
 | `rss_sources.json` | RSS 源元数据（1005 条，含 tier/cat/color 字段；8 分类：wechat 386 / dev 178 / twitter 160 / podcast 70 / tech 66 / ai 61 / news 61 / cn_tech 23） |
 | `rss_history.json` | RSS 文章历史累积（跨构建持久化） |
 | `translations.json` | 翻译缓存（MD5 hash → 中文，供构建和 API 共享） |
@@ -151,7 +151,7 @@
 | `api/events.js` | `/api/events` | GET | Origin 白名单（无 key） | 60s | 关注用户 24h 动态聚合，10min 缓存，前端相对时间显示+分类筛选+游标分页 |
 | `api/search.js` | `/api/search` | POST | X-Search-Key (= REFRESH_KEY) + Origin 白名单 | 30s | 全网 GitHub 仓库搜索，中文翻译，10min 缓存 |
 | `api/news.js` | `/api/news` | GET | Origin 白名单（放行无 Origin 同源请求） | 30s | 36 氪 (RSSHub 镜像链)+Redis 博客 RSS 代理，输出干净 JSON，10min 缓存 |
-| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。**快照优先**：加载 `rss_api_snapshot.json` 并自动合并分块 `_1.._N`（1005 源 72h 累积）；`?refresh=1` 时仅实时抓取 T1 高频源（6 个），T2/T3 从快照读取；T1 英文源实时翻译 |
+| `api/rss.js` | `/api/rss` | GET | CORS 允许所有来源（`*`） | 60s | RSS 聚合 API。`?refresh=1` 实时抓 T1（6 源）；`?batch_info=1` / `?batch=N` 供前端逐批实时抓 T2/T3（每批 200 源）。快照分支代码仍在但生产恒不生效（文件被 prune，见 §8.13）；T1 英文源实时翻译 |
 | `api/article.js` | `/api/article` | GET/OPTIONS | CORS 允许所有来源（`*`） | 15s（函数配置） | 阅读器全文兜底：快照全文 map → 特殊源提取/GitHub/YouTube → Readability 通用提取；OPTIONS 返回 204 |
 | `api/agihunt.js` | `/api/agihunt` | GET | 公开读取 | 15s | AI 动态侧栏的 AGI Hunt 频道代理 |
 | `api/translate.js` | `/api/translate` | POST | Origin 白名单 | 30s | **翻译代理**。两种 mode **共用同一条服务端降级链** GTX → MyMemory → Agnes → Zen（`translateWithFallback`）；mode 只改并发与配额：`full`（全文/摘要按钮）并发 4、Agnes 不限额；`bulk`（缺省，批量补翻）并发 2、**Agnes 兜底上限 30 条**（`AGNES_FALLBACK_MAX`），另有浏览器端直连 GTX 分担。实测 GTX 在 Vercel 出口 IP 长期 429，大量落 MyMemory |
@@ -531,16 +531,14 @@ function _mergeLiveSources(liveData, silent) {
 **增量构建逻辑**（`build_rss_aggregator.py`）：
 ```
 incremental 模式：
-  1. 读取 rss_api_snapshot.json 的 meta.last_fetch
-  2. 跳过所有 T1 源（由 api/rss.js 实时负责）
-  3. 跳过 4h 内已成功抓取的源
-  4. 抓取剩余 T2/T3 源，合并到历史
-  5. 更新 meta.last_fetch，保存快照
+  1. 抓取全部 1005 个源（含 T1；2026-09-19 起不再有按时间的跳过）
+  2. 合并进 72h 历史（分块存储，跨构建由 actions/cache 承载）
+  3. 翻译 / 打标 / 生成 HTML 与数据分块
 ```
 
-**API 层分层抓取**（`api/rss.js`）：
-- 快照优先：默认返回构建时生成的 72h 累积快照
-- `?refresh=1` 时：仅实时抓取 6 个 T1 源（~3s），T2/T3 从快照读取
+**API 层抓取**（`api/rss.js`，2026-09-19 实测校正）：
+- ~~快照优先~~ 不成立：`update.yml` 在 `vercel --prod` 前 `rm -f rss_api_snapshot*.json`，函数工作区没有快照，`loadSnapshot()` 恒为 null（线上 `/api/rss?meta=1` 实测返回 `{"total":0}`）
+- 实际路径：`?refresh=1` 实时抓 6 个 T1；前端再按 `?batch_info=1` → `?batch=N`（每批 200 源、共 5 批）逐批实时抓 T2/T3 并合并渲染
 - T1 英文源实时翻译：Agnes → Zen → GTX → Bing → MyMemory 五端点降级
 
 **卡片墙交织算法**（`tierInterleave`）：
@@ -551,9 +549,9 @@ incremental 模式：
 **源面板排序**：每个分类内按文章数降序排列，用户可快速定位活跃源。
 
 **经验教训**：
-- **源数量增长时必须引入分级** — 大规模源全量抓取不可行，T1 实时 + T2/T3 快照是合理分工
-- **增量状态嵌入快照** — meta.last_fetch 放在 rss_api_snapshot.json 内，不引入额外存储
-- **快照只增不减** — 不主动清理旧条目，72h 窗口自然过期
+- **跨构建状态不能寄生在大产物里** — last_fetch 放在 42.6MB 快照内，快照一出仓增量就静默退化成全量，两天无人察觉；72h 历史放在未提交的 chunk 里同理
+- **持久化落点要与体积约束一起设计** — 主文件 64MB 提交进 git 会撑爆仓库与 checkout；改走 actions/cache 分块后，状态与存档都必须保留读不到就老实全抓的降级路径
+- **抓取策略已定为每场全量** — 跳过省的是请求数，代价是把页面内容押在存档存活上（2026-09-19 决策，守卫测试见 tests/rss_history/test_source_selection.py）
 
 ---
 
@@ -834,7 +832,7 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 `rss_api_snapshot.json` 已达 **82MB** 并拆分为 `_1.._N` 多文件，提交进 git 导致 Actions checkout/fetch 超时。处理：
 - 从版本控制移除并 gitignore（`ee0e4fd` + `e400660` 从 git add 列表剔除）。
 - `api/rss.js` 的 `loadSnapshot()` 自动合并主文件 + 分块；本地文件缺失时回退实时抓取。
-- **快照不进 GitHub 仓库，但仍随 `vercel --prod` 从 Actions 工作区上传**，线上 `/api/rss` 行为不变。
+- **快照同时被 `update.yml` 的 prune 步骤在部署前 rm -f 删掉**：线上 `loadSnapshot()` 恒为 null，`?meta=1` 实测恒返回 total=0。所谓「快照优先」在生产里从未生效，API 实际走 refresh + 前端分批实时抓取。
 - 连带影响：**增量构建的 `meta.last_fetch` 状态不再能从 git 恢复**，每次全新 checkout 后第一场构建按 full 逻辑补偿；本地跑 `build_rss_aggregator.py` 时无快照属正常。
 
 ### 8.14 Agnes 多 key 轮询统一（2026-09-18）
