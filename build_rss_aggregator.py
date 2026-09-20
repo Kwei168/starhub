@@ -416,6 +416,56 @@ RETENTION_MAX_ITEMS = 120                 # 每源条数上限：防高频源把
 RETENTION_MIN_SAMPLES = 3                 # 样本不足 3 条不放宽 —— 两条间隔不构成「本就来得慢」
 RETENTION_EPOCH_YEAR = 1971               # 0001-01-01 这类占位值不是发布时间
 
+# 缓存侧的每源上限。为什么 72h 窗口还不够：出厂每源封顶 RETENTION_MAX_ITEMS 条，
+# 但历史里一个高频源可以堆几千条（本地快照实测最大源 1,366 条），arXiv/聚合站每天就倒
+# 几千条进来 —— "72 小时的工作集"本身就是随上游放量线性增长的量，生产日志实测
+# history 9,622 → 11,017（6 场 +14.5%）仍在爬坡。
+# 这一步对出厂内容**结构上**不可见：调用点在 src_map 回填与日期审计之后（见
+# _bound_history_per_source 的说明），它只约束下一场能读到多少历史。
+HISTORY_MAX_PER_SOURCE = 400
+# 不能写 tzinfo=_BJ_TZ：那个常量在本文件 1500 行之后才定义，模块级求值会 NameError。
+_RECENCY_FLOOR = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=8)))
+_LAST_HISTORY_BOUND = {}                  # 本场因每源上限淘汰的条数（构建日志消费）
+
+
+def _hist_recency_key(item, offsets=None):
+    """淘汰排序键 = (有没有龄期, 龄期基准, link)。
+
+    基准必须与出口闸门同源（_retention_ref_dt = 校正后的发布时间，取不到才退 first_seen）。
+    用 first_seen 是"到达序"、闸门是"发布序"，两套序一旦反向，上限就会把闸门要发的条目删掉
+    （对抗审查实测：120 个槽位里 50 个被换掉）。
+    取不到龄期的排最后 = 最先被淘汰，不许赖着不走。
+    平票一律按 link 定序：同源同批抓到的条目 first_seen 逐字节相同（实测切分点上有 12–30 条
+    并列），落在 dict 插入序上会让同一批链接逐场抖动。
+    """
+    d = _retention_ref_dt(item, offsets, item.get("source_key"))
+    return (d is not None, d if d is not None else _RECENCY_FLOOR, item.get("link", ""))
+
+
+def _bound_history_per_source(history, keep=None, report=False, offsets=None):
+    """每个源在历史里最多留最新 N 条，其余淘汰。返回被淘汰条数。"""
+    keep = HISTORY_MAX_PER_SOURCE if keep is None else keep
+    groups = {}
+    for link, item in history.items():
+        groups.setdefault(item.get("source_key") or "?", []).append(link)
+    evicted = 0
+    over_cap = 0
+    for _key, links in groups.items():
+        if keep <= 0 or len(links) <= keep:
+            continue
+        over_cap += 1
+        links.sort(key=lambda l: _hist_recency_key(history[l], offsets), reverse=True)
+        for l in links[keep:]:
+            if history.pop(l, None) is not None:
+                evicted += 1
+    # 无条件播报（不许 if evicted 才印）：生产实测单场单源最多抓 30 条，上线头几场很可能
+    # 真的淘汰 0 条，"静默"与"没跑到"在日志里长得一样，退化就永远没人看得见。
+    if report:
+        print("[历史] 每源上限 %d 条：%d 个源超限，淘汰 %d 条，历史剩 %d 条（出厂每源封顶 %d 条"
+              "，本步在回填之后跑，只约束缓存体积不约束可见内容）" % (
+                  keep, over_cap, evicted, len(history), RETENTION_MAX_ITEMS))
+    return evicted
+
 
 def _retention_ref_dt(item, offsets=None, source_key=None):
     """闸门判龄用的时间基准（北京时间 aware）；两条时间线索都不可得时返回 None。
@@ -682,6 +732,10 @@ def _accumulate_history(sources_with_items):
     for link in expired:
         del _rss_history[link]
 
+    # 过期裁剪的净效果当场结清。每源上限稍后还会再删一批，两件事若混成一个数，
+    # "缓存体积约束"就会被报成"过期清理"，而生产验证正是分别读这两个数（doc §待验）。
+    pruned_expired = before - len(_rss_history)
+
     # 按源重组，更新相对时间
     # 构建 source_key -> url 映射（用于识别 BestBlogs 源）
     _src_url_map = {s["key"]: s.get("url", "") for s in sources_with_items}
@@ -827,10 +881,20 @@ def _accumulate_history(sources_with_items):
               "（其中 %d 条按批次保序回拉，未折叠为同一时刻）" % (
                   _n_tz_fixed, _n_falsified, _n_shifted))
 
+    # 缓存侧每源上限：高频源一天能堆几千条，光靠时间窗挡不住体积。
+    # 位置是硬约束 —— 必须在本函数的日期审计（_src_date_stats / _detect_uniform_dates /
+    # _plan_falsify_shifts）与 src_map 回填**之后**：那几步逐条读 _rss_history，先裁会改统计
+    # 样本，让某源的异常率跨过 30% 阈值 ⇒ 出厂条目的 bad_date / pub_date 回拉跟着变
+    # （对抗审查实测：120 条被凭空贴上 bad_date、21 条出厂日期被挪）。
+    # 裁在回填之后，本步的作用域只剩"下一场读到多少历史"，出厂内容对它零敏感
+    # —— tests/rss_history/test_history_bounds.py 用 keep=1 把这条不变量钉成断言。
+    _LAST_HISTORY_BOUND["evicted"] = _bound_history_per_source(
+        _rss_history, report=True, offsets=_pd_offsets)
+
     result = list(src_map.values())
-    pruned = before - len(_rss_history)
     print("[历史] 合并 %d 篇新文（其中 %d 篇为新增链接，%d 篇为覆盖更新），裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
-        new_count, genuinely_new, new_count - genuinely_new, pruned, len(_rss_history), RSS_HISTORY_HOURS))
+        new_count, genuinely_new, new_count - genuinely_new,
+        pruned_expired, len(_rss_history), RSS_HISTORY_HOURS))
     # 出口闸门：窗口 → 保底 → 上限。放在 return 之前，本函数的三个消费者
     # （_save_api_snapshot / build_html / write_data_chunks）共用同一个返回值，
     # 所以**构建期产物**不会出现「页面裁了 API 没裁」的双标口径。
@@ -8244,7 +8308,13 @@ def main(mode="full"):
         "items_over_hard_h": _LAST_RETENTION_STATS.get("over"),
         "history_before": _history_before,
         "history_after": _history_after,
-        "history_expired": _history_before - _history_after,
+        # 两条账互斥：每源上限删的也算"消失了"，但它是体积约束不是过期清理。混在
+        # history_expired 里就会让 §待验 读到虚高的过期数。
+        "history_expired": _history_before - _history_after - (
+            _LAST_HISTORY_BOUND.get("evicted") or 0),
+        # 每源上限淘汰条数。None = 这一步压根没跑到，0 = 跑到了但没东西可淘汰
+        # （生产实测单场单源最多抓 30 条，上线头几场很可能真是 0，两种语义不许都写成 0）。
+        "history_evicted_per_source": _LAST_HISTORY_BOUND.get("evicted"),
         "trans_cache_hit": _TRANS_STATS.get("cache_hit", 0),
         "trans_google": _TRANS_STATS.get("google", 0),
         "trans_mymemory": _TRANS_STATS.get("mymemory", 0),

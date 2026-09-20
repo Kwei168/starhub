@@ -322,3 +322,40 @@ per-source window 小时数 + 版本），`api/rss.js` 读它并对三条实时�
   配一条"分块内 link 不许重复"的用例。这条排在每源上限那批之后单独做，别混进留存批次放大风险。
 
 
+
+## 11. 缓存侧每源上限：两路独立对抗审查的结论与复修（2026-09-20 第三批）
+
+`6531efd` 那一版**没通过审查**，两路 fresh-eyes 各自独立报了同一批缺陷（互为佐证，不是复述）。
+逐条自验后全部成立，本批复修如下。
+
+| # | 审查结论（我都复现过） | 复修 | 证据 |
+|---|---|---|---|
+| P0-1 | 唯一的"反向锚点"是空跑：造数最老 300h，72h 裁剪先把尾部删光，上限一场没动手（实测 `evicted=0`）；变异体"上限永不生效"照样绿 | 造数全部压进 72h 窗内 + 自证 `evicted > 0` + 比对**完整 payload**（link/pub_date/bad_date/date_fallback/time_str）而非只比 link | `test_bound_does_not_change_shipped_payload`；变异体 B1 被 6 条打死 |
+| P0-2 | 上限跑在 `bad_date` 统计与 src_map 回填**之前** ⇒ 改了审计样本：真实快照重放实测 120 条出厂条目凭空多出 `bad_date`、21 条出厂 `pub_date` 被回拉、"不可信源"集合多出 `nodeseek_54` | 调用点移到回填与审计**之后**（`result = list(src_map.values())` 之前）⇒ 本步作用域只剩"下一场读到多少历史" | 位置 AST 锁 + 行为锁 `test_eviction_cannot_change_date_audit`（异常率 40%↔0% 翻转的判别造数）；变异体 B11 红 |
+| P0-3 | "对出厂不可见"不是结构保证：上限按 `first_seen`（到达序）裁、闸门按 `pub_date`（发布序）发，两套序反向时 120 个槽位有 50 个被换掉 | 排序键改用 `_retention_ref_dt`（与判龄同一只表），并加 `(有龄期, 龄期, link)` 三元组 | `test_eviction_follows_publish_age_not_arrival_order`；变异体 B3（退回 first_seen）红 |
+| P1-1 | 平票真实存在：10 个超限源每一个的第 400/401 名 `first_seen` 逐字节相同（并列 12–30 条），去留由 dict 插入序决定 ⇒ 同一批链接逐场抖动 | 排序键末位加 `link` | `test_eviction_tie_is_deterministic`；变异体 B4 红 |
+| P1-2 | 淘汰数用 `0` 兜底，与 `fc41136` 刚立的规矩自相矛盾；且生产单场单源最多抓 30 条 ⇒ 上线头几场真是 0，"没跑到"与"没东西可淘汰"不可区分 | 日志改 `.get("evicted")`（无默认）；播报改为无条件一行（含超限源数与历史余量） | `test_eviction_count_reaches_build_log`（key 一致性 + 禁 0 兜底）、`test_report_prints_even_when_nothing_evicted`；变异体 B5/B8/B9 红 |
+| P1-3 | 淘汰被计进"裁剪 N 篇过期"与 `history_expired` ⇒ 体积约束冒充过期清理，§待验 读的正是这个数 | `pruned_expired` 在裁剪循环处当场结清；`history_expired` 减去本场淘汰数 | `test_expired_log_excludes_cap_evictions`；变异体 B14 红 |
+| P1-4 | 接线只有 AST 锁：`if False:` 包住调用、不写回 `_LAST_HISTORY_BOUND`、日志读错 key 三种变异体 CI 全绿 | 补行为级集成用例（真跑 `_accumulate_history`，断言历史被压到上限 + 状态写回 + 播报） | `test_bound_wired_and_state_written_in_accumulate`；变异体 B6/B7 红 |
+
+### 复修后的实测（不是"看着对"）
+- 变异自检 `_mut_bounds.py`：**15 个变异体全部被红，survived=0**，每轮跑完 `sha256` 断言字节级还原。
+  每个变异体都对应上面一条审查结论（B1..B15），基线 `tests/rss_history` 91 passed。
+- CI 同构集本地全绿：`tests/rss_history + tests/rss_source_coverage` **110 passed / 0 failed**。
+- **真实历史重放**（`_scratch/_replay_bounds.py`，18,037 条 / 613 源，时间轴整体前移 74h 使其次窗内、
+  并冻结时钟消除两遍之间的秒级漂移）：
+  10 个超限源淘汰 **1,984** 条、历史 15,680 → 13,696；出厂 613 源 / **9,497** 条逐字段比对
+  **差异 0 源**；"不可信源"集合 22 ↔ 22 全等；`evicted=1,984 > 0` 自证不是空跑。
+  - 同一条重放第一次跑得出 `shipped_total=2`：快照比真实墙上时钟老 3 天，prune 把所有内容删光，
+    "0 差异"恒成立 —— 这正是 P0-1 那类空跑，判据里必须钉 `evicted > 0`。
+
+### 仍未闭合的一条（量化了，单独一批做）
+淘汰/裁剪掉的条目若下一场被上游 feed 重新列出，合并循环会给它写**新的 `first_seen`**，
+等于把刚删的条目重新计时（第三条永生通道，`git diff 6531efd~1 6531efd --numstat` 证明
+本批零删除 ⇒ 该通道是既有的，本批不引入）。本批的复修把它压到最小：
+排序键与判龄同源后，被优先淘汰的是**发布最老**的条目，而 `pub_date` 为空的条目
+按自己的 `first_seen` 排位（`test_first_seen_only_entries_rank_by_their_own_clock`），
+不再一律沉底。真实暴露量：超限源里靠 `first_seen` 存活的 12 条（全库 660 条无 pub_date，
+其中 253 条 pub_date 为 JSON null）；生产单场单源最多抓 30 条 ⇒ 每场被重置的量有限。
+彻底闭合要留 `link → first_seen` 墓碑（§5 选项 b），会改到出厂内容（那些条目真的消失），
+故单列一批，等拍板后按同一套流程做。
