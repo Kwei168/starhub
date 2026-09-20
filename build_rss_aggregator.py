@@ -734,7 +734,10 @@ def _accumulate_history(sources_with_items):
 
     # 过期裁剪的净效果当场结清。每源上限稍后还会再删一批，两件事若混成一个数，
     # "缓存体积约束"就会被报成"过期清理"，而生产验证正是分别读这两个数（doc §待验）。
+    # 口径必须是"删掉的条数"而不是历史首尾差：后者在生产全天 12 场实测全是负数
+    # （-264/-201/.../-235），因为每场新抓进来的比删掉的多 —— 那本账从来没存在过。
     pruned_expired = before - len(_rss_history)
+    _LAST_HISTORY_BOUND["expired"] = pruned_expired
 
     # 按源重组，更新相对时间
     # 构建 source_key -> url 映射（用于识别 BestBlogs 源）
@@ -8308,10 +8311,9 @@ def main(mode="full"):
         "items_over_hard_h": _LAST_RETENTION_STATS.get("over"),
         "history_before": _history_before,
         "history_after": _history_after,
-        # 两条账互斥：每源上限删的也算"消失了"，但它是体积约束不是过期清理。混在
-        # history_expired 里就会让 §待验 读到虚高的过期数。
-        "history_expired": _history_before - _history_after - (
-            _LAST_HISTORY_BOUND.get("evicted") or 0),
+        # 两条账互斥，且都不是首尾差：首尾差被每场新增的条目抵成负数（生产实测全天恒负），
+        # "过期删了多少"这本账必须由裁剪循环自己报数。
+        "history_expired": _LAST_HISTORY_BOUND.get("expired"),
         # 每源上限淘汰条数。None = 这一步压根没跑到，0 = 跑到了但没东西可淘汰
         # （生产实测单场单源最多抓 30 条，上线头几场很可能真是 0，两种语义不许都写成 0）。
         "history_evicted_per_source": _LAST_HISTORY_BOUND.get("evicted"),
