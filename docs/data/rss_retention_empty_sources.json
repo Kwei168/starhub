@@ -1,0 +1,1496 @@
+{
+ "_meta": {
+  "produced_at": "2026-09-20 15:48",
+  "what": "RSS 留存出口闸门（保底钳 168h）上线后，出厂 0 条卡片的源名单",
+  "source_of_truth": "线上产物 rss-data-0/1/2.js（961 源 / 20,904 条）经 build_rss_aggregator._apply_retention 实跑",
+  "cohorts": {
+   "undatable": "该源所有条目 pub_date 与 first_seen 都不可用（数据缺陷，非窗口选择）",
+   "st_over_30d": "最新一条已超 30 天 —— 停更候选，交换源/删源",
+   "slow_7_30d": "最新一条在 7–30 天 —— 真慢源（月更博客），是否给空态待产品拍板"
+  },
+  "note": "覆盖率门禁不受影响：sources_with_data 与 per_source 取的是闸门之前的抓取阶段数字",
+  "spec": "docs/superpowers/specs/2026-09-20-rss-72h-retention-design.md §5.2"
+ },
+ "counts": {
+  "undatable": 5,
+  "st_over_30d": 99,
+  "slow_7_30d": 142
+ },
+ "undatable": [
+  {
+   "name": "Google Developers",
+   "key": "google_dev_76",
+   "fetched_items": 20
+  },
+  {
+   "name": "美团技术团队",
+   "key": "美团技术团队_0",
+   "fetched_items": 10
+  },
+  {
+   "name": "中国日报双语",
+   "key": "中国日报双语_2",
+   "fetched_items": 5
+  },
+  {
+   "name": "BBC英语教学",
+   "key": "bbc英语教学_13",
+   "fetched_items": 5
+  },
+  {
+   "name": "Google Developers Blog",
+   "key": "google_developers_blog_406",
+   "fetched_items": 20
+  }
+ ],
+ "st_over_30d": [
+  {
+   "name": "老钱说钱",
+   "key": "老钱说钱_223",
+   "newest_age_days": 1542.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "Tiny Projects",
+   "key": "tinyprojects_37",
+   "newest_age_days": 1503.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "CNN International",
+   "key": "cnn_intl_781",
+   "newest_age_days": 1250.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "CNN",
+   "key": "CNN_16",
+   "newest_age_days": 1243.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "小胡子哥",
+   "key": "小胡子哥_44",
+   "newest_age_days": 1059.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "Vue Blog",
+   "key": "vue_blog_799",
+   "newest_age_days": 749.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "晚点对话",
+   "key": "晚点对话_255",
+   "newest_age_days": 489.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "跑步指南",
+   "key": "跑步指南_263",
+   "newest_age_days": 398.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "Xuanwo",
+   "key": "xuanwo_23",
+   "newest_age_days": 262.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "GeekPlux",
+   "key": "geekplux_21",
+   "newest_age_days": 244.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "Barsee 🐶(@heyBarsee)",
+   "key": "barsee_heybarsee_530",
+   "newest_age_days": 213.7,
+   "fetched_items": 9
+  },
+  {
+   "name": "FlowiseAI(@FlowiseAI)",
+   "key": "flowiseai_flowiseai_507",
+   "newest_age_days": 187.5,
+   "fetched_items": 15
+  },
+  {
+   "name": "有赞coder",
+   "key": "有赞coder_122",
+   "newest_age_days": 165.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "得意忘形",
+   "key": "得意忘形_7",
+   "newest_age_days": 151.8,
+   "fetched_items": 30
+  },
+  {
+   "name": "Google Security Blog",
+   "key": "google_security_blog_785",
+   "newest_age_days": 149.4,
+   "fetched_items": 25
+  },
+  {
+   "name": "风叔云",
+   "key": "风叔云_185",
+   "newest_age_days": 146.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "梁永安的播客",
+   "key": "梁永安的播客_49",
+   "newest_age_days": 142.8,
+   "fetched_items": 15
+  },
+  {
+   "name": "Fellou(@FellouAI)",
+   "key": "fellou_fellouai_552",
+   "newest_age_days": 119.5,
+   "fetched_items": 30
+  },
+  {
+   "name": "web.dev",
+   "key": "webdev_3",
+   "newest_age_days": 114.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "披萨盒的赛博日志",
+   "key": "披萨盒的赛博日志_755",
+   "newest_age_days": 112.1,
+   "fetched_items": 30
+  },
+  {
+   "name": "admin",
+   "key": "admin_744",
+   "newest_age_days": 111.0,
+   "fetched_items": 3
+  },
+  {
+   "name": "转转技术",
+   "key": "转转技术_285",
+   "newest_age_days": 110.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "laike9m's blog",
+   "key": "laike9m_s_blog_612",
+   "newest_age_days": 110.0,
+   "fetched_items": 5
+  },
+  {
+   "name": "pseudoyu",
+   "key": "pseudoyu_617",
+   "newest_age_days": 105.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "飞哥说AI",
+   "key": "飞哥说ai_175",
+   "newest_age_days": 103.2,
+   "fetched_items": 9
+  },
+  {
+   "name": "Randy's Blog",
+   "key": "randy'sblog_12",
+   "newest_age_days": 102.3,
+   "fetched_items": 1
+  },
+  {
+   "name": "Monica_IM(@hey_im_monica)",
+   "key": "monica_im_hey_im_monica_573",
+   "newest_age_days": 101.9,
+   "fetched_items": 18
+  },
+  {
+   "name": "AI闲谈",
+   "key": "ai闲谈_128",
+   "newest_age_days": 100.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "YangXuan's Blog",
+   "key": "yangxuan_s_blog_752",
+   "newest_age_days": 96.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "捕蛇者说",
+   "key": "捕蛇者说_58",
+   "newest_age_days": 96.4,
+   "fetched_items": 15
+  },
+  {
+   "name": "Velas电波站",
+   "key": "velas电波站_692",
+   "newest_age_days": 95.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "StudyingLover's Blog",
+   "key": "studyinglover_s_blog_751",
+   "newest_age_days": 94.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "Deepzz",
+   "key": "deepzz_26",
+   "newest_age_days": 93.7,
+   "fetched_items": 20
+  },
+  {
+   "name": "Chrome Developer Blog",
+   "key": "chrome_developer_blog_795",
+   "newest_age_days": 90.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "艾逗笔",
+   "key": "艾逗笔_233",
+   "newest_age_days": 89.6,
+   "fetched_items": 10
+  },
+  {
+   "name": "蒋方舟·一寸",
+   "key": "蒋方舟·一寸_43",
+   "newest_age_days": 86.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "maxOS",
+   "key": "maxos_19",
+   "newest_age_days": 83.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "Weishu's Notes",
+   "key": "weishu_s_notes_634",
+   "newest_age_days": 83.2,
+   "fetched_items": 20
+  },
+  {
+   "name": "赫赫文王",
+   "key": "赫赫文王_733",
+   "newest_age_days": 82.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "UX Magazine",
+   "key": "ux_magazine_394",
+   "newest_age_days": 82.1,
+   "fetched_items": 30
+  },
+  {
+   "name": "A List Apart",
+   "key": "a_list_apart_787",
+   "newest_age_days": 81.6,
+   "fetched_items": 20
+  },
+  {
+   "name": "小Lin说的公众号",
+   "key": "小lin说的公众号_373",
+   "newest_age_days": 80.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "王登科DK",
+   "key": "王登科dk_43",
+   "newest_age_days": 80.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "investguru",
+   "key": "investguru_304",
+   "newest_age_days": 79.4,
+   "fetched_items": 10
+  },
+  {
+   "name": "鸟窝",
+   "key": "鸟窝_657",
+   "newest_age_days": 78.0,
+   "fetched_items": 20
+  },
+  {
+   "name": "DBA Notes",
+   "key": "dbanotes_45",
+   "newest_age_days": 77.0,
+   "fetched_items": 8
+  },
+  {
+   "name": "Josh Comeau",
+   "key": "joshcomeau_5",
+   "newest_age_days": 75.8,
+   "fetched_items": 30
+  },
+  {
+   "name": "高可用架构",
+   "key": "高可用架构_168",
+   "newest_age_days": 75.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "大橘和朋友们的周刊",
+   "key": "大橘和朋友们的周刊_764",
+   "newest_age_days": 70.3,
+   "fetched_items": 5
+  },
+  {
+   "name": "Engineering at Slack",
+   "key": "engineering_at_slack_608",
+   "newest_age_days": 67.6,
+   "fetched_items": 8
+  },
+  {
+   "name": "笨方法学写作",
+   "key": "笨方法学写作_38",
+   "newest_age_days": 66.5,
+   "fetched_items": 9
+  },
+  {
+   "name": "通义实验室",
+   "key": "通义实验室_38",
+   "newest_age_days": 62.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Julia Evans",
+   "key": "juliaevans_0",
+   "newest_age_days": 61.3,
+   "fetched_items": 20
+  },
+  {
+   "name": "Berkeley AI Research(@berkeley_ai)",
+   "key": "berkeley_ai_research_berkeley_ai_471",
+   "newest_age_days": 58.3,
+   "fetched_items": 17
+  },
+  {
+   "name": "deeplearning.ai",
+   "key": "deeplearning_ai_385",
+   "newest_age_days": 57.7,
+   "fetched_items": 1
+  },
+  {
+   "name": "AI at Meta Blog",
+   "key": "ai_at_meta_blog_429",
+   "newest_age_days": 55.7,
+   "fetched_items": 12
+  },
+  {
+   "name": "Nuxt Blog",
+   "key": "nuxt_blog_792",
+   "newest_age_days": 55.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "Lilian Weng(@lilianweng)",
+   "key": "lilian_weng_lilianweng_560",
+   "newest_age_days": 54.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "MCP Specification Releases",
+   "key": "mcp_spec_rel_18",
+   "newest_age_days": 53.6,
+   "fetched_items": 9
+  },
+  {
+   "name": "前端早读课",
+   "key": "前端早读课_7",
+   "newest_age_days": 51.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "郑立涛",
+   "key": "郑立涛_226",
+   "newest_age_days": 51.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Etsy Engineering | Code as Craft",
+   "key": "etsy_engineering_code_as_craft_610",
+   "newest_age_days": 50.6,
+   "fetched_items": 20
+  },
+  {
+   "name": "硬地骇客",
+   "key": "硬地骇客_4",
+   "newest_age_days": 48.5,
+   "fetched_items": 15
+  },
+  {
+   "name": "言午",
+   "key": "言午_111",
+   "newest_age_days": 48.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Sekyoro的博客小屋",
+   "key": "sekyoro的博客小屋_750",
+   "newest_age_days": 46.7,
+   "fetched_items": 20
+  },
+  {
+   "name": "字节跳动Seed",
+   "key": "字节跳动seed_51",
+   "newest_age_days": 46.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "保持偏见",
+   "key": "保持偏见_21",
+   "newest_age_days": 45.6,
+   "fetched_items": 15
+  },
+  {
+   "name": "陈鲁豫的电影沙发",
+   "key": "陈鲁豫的电影沙发_286",
+   "newest_age_days": 44.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "东评西就",
+   "key": "东评西就_731",
+   "newest_age_days": 44.7,
+   "fetched_items": 20
+  },
+  {
+   "name": "Seven's blog",
+   "key": "seven_s_blog_622",
+   "newest_age_days": 44.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "sjdhome",
+   "key": "sjdhome_623",
+   "newest_age_days": 42.8,
+   "fetched_items": 23
+  },
+  {
+   "name": "Geoffrey Hinton(@geoffreyhinton)",
+   "key": "geoffrey_hinton_geoffreyhinton_480",
+   "newest_age_days": 42.7,
+   "fetched_items": 25
+  },
+  {
+   "name": "smallyu的博客",
+   "key": "smallyu的博客_624",
+   "newest_age_days": 41.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "David Heinemeier Hansson",
+   "key": "david_heinemeier_hansson_389",
+   "newest_age_days": 41.5,
+   "fetched_items": 30
+  },
+  {
+   "name": "Usubeni Fantasy",
+   "key": "usubeni_fantasy_633",
+   "newest_age_days": 40.8,
+   "fetched_items": 20
+  },
+  {
+   "name": "Abyss的小屋",
+   "key": "abyss的小屋_603",
+   "newest_age_days": 40.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "Andrej Karpathy(@karpathy)",
+   "key": "andrej_karpathy_karpathy_443",
+   "newest_age_days": 40.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "Nick St. Pierre(@nickfloats)",
+   "key": "nick_st_pierre_nickfloats_572",
+   "newest_age_days": 39.4,
+   "fetched_items": 30
+  },
+  {
+   "name": "千里之豪的格物垛",
+   "key": "千里之豪的格物垛_638",
+   "newest_age_days": 38.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "Aman Sanger(@amanrsanger)",
+   "key": "aman_sanger_amanrsanger_525",
+   "newest_age_days": 38.7,
+   "fetched_items": 25
+  },
+  {
+   "name": "Tw93 Blog",
+   "key": "tw93_blog_632",
+   "newest_age_days": 35.7,
+   "fetched_items": 10
+  },
+  {
+   "name": "王建硕",
+   "key": "王建硕_324",
+   "newest_age_days": 35.7,
+   "fetched_items": 10
+  },
+  {
+   "name": "jax",
+   "key": "jax_691",
+   "newest_age_days": 34.7,
+   "fetched_items": 10
+  },
+  {
+   "name": "四喜丸子",
+   "key": "四喜丸子_714",
+   "newest_age_days": 34.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "一派胡言 · Blog",
+   "key": "一派胡言_blog_710",
+   "newest_age_days": 34.2,
+   "fetched_items": 8
+  },
+  {
+   "name": "Qunar技术沙龙",
+   "key": "qunar技术沙龙_77",
+   "newest_age_days": 34.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "哔哩哔哩技术",
+   "key": "哔哩哔哩技术_70",
+   "newest_age_days": 34.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "独树不成林",
+   "key": "独树不成林_46",
+   "newest_age_days": 33.8,
+   "fetched_items": 15
+  },
+  {
+   "name": "佳芮的创业笔记",
+   "key": "佳芮的创业笔记_227",
+   "newest_age_days": 33.7,
+   "fetched_items": 10
+  },
+  {
+   "name": "AI炼金术",
+   "key": "ai炼金术_44",
+   "newest_age_days": 33.4,
+   "fetched_items": 10
+  },
+  {
+   "name": "oldj blog",
+   "key": "oldjblog_8",
+   "newest_age_days": 32.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "农码生涯，无酒无花 – The coding life, no wine, no shine.",
+   "key": "农码生涯_无酒无花_the_coding_life_no_wine_no_shine_637",
+   "newest_age_days": 32.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "Sualeh Asif(@sualehasif996)",
+   "key": "sualeh_asif_sualehasif996_463",
+   "newest_age_days": 32.4,
+   "fetched_items": 21
+  },
+  {
+   "name": "刘言飞语",
+   "key": "刘言飞语_181",
+   "newest_age_days": 32.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "支付宝体验科技",
+   "key": "支付宝体验科技_163",
+   "newest_age_days": 32.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "晚点AI",
+   "key": "晚点ai_258",
+   "newest_age_days": 31.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "信号与噪声",
+   "key": "信号与噪声_26",
+   "newest_age_days": 31.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "腾讯NBA",
+   "key": "腾讯nba_234",
+   "newest_age_days": 30.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "Hanselminutes with Scott Hanselman",
+   "key": "hanselminutes_with_scott_hanselman_736",
+   "newest_age_days": 30.2,
+   "fetched_items": 1
+  }
+ ],
+ "slow_7_30d": [
+  {
+   "name": "程序员的喵",
+   "key": "程序员的喵_7",
+   "newest_age_days": 29.9,
+   "fetched_items": 20
+  },
+  {
+   "name": "Data4Fun",
+   "key": "data4fun_746",
+   "newest_age_days": 29.7,
+   "fetched_items": 20
+  },
+  {
+   "name": "rxliuli blog",
+   "key": "rxliuli_blog_620",
+   "newest_age_days": 29.6,
+   "fetched_items": 20
+  },
+  {
+   "name": "RYANUO",
+   "key": "ryanuo_621",
+   "newest_age_days": 28.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "肥话连篇",
+   "key": "肥话连篇_57",
+   "newest_age_days": 27.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "Mozilla Hacks",
+   "key": "mozilla_hacks_77",
+   "newest_age_days": 26.7,
+   "fetched_items": 20
+  },
+  {
+   "name": "Ian Goodfellow(@goodfellow_ian)",
+   "key": "ian_goodfellow_goodfellow_ian_469",
+   "newest_age_days": 26.5,
+   "fetched_items": 18
+  },
+  {
+   "name": "Groq Inc(@GroqInc)",
+   "key": "groq_inc_groqinc_470",
+   "newest_age_days": 26.4,
+   "fetched_items": 25
+  },
+  {
+   "name": "产品犬舍",
+   "key": "产品犬舍_196",
+   "newest_age_days": 26.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "王圆圆 - ICONPIK",
+   "key": "王圆圆_iconpik_648",
+   "newest_age_days": 26.2,
+   "fetched_items": 15
+  },
+  {
+   "name": "无人知晓",
+   "key": "无人知晓_34",
+   "newest_age_days": 25.8,
+   "fetched_items": 15
+  },
+  {
+   "name": "风雪之隅",
+   "key": "风雪之隅_14",
+   "newest_age_days": 25.1,
+   "fetched_items": 30
+  },
+  {
+   "name": "Adam D'Angelo(@adamdangelo)",
+   "key": "adam_d_angelo_adamdangelo_579",
+   "newest_age_days": 24.6,
+   "fetched_items": 17
+  },
+  {
+   "name": "Arthur's Review",
+   "key": "arthur_s_review_745",
+   "newest_age_days": 24.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "HelloGitHub",
+   "key": "hellogithub_17",
+   "newest_age_days": 23.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "毛有话说",
+   "key": "毛有话说_208",
+   "newest_age_days": 23.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "携程技术",
+   "key": "携程技术_142",
+   "newest_age_days": 23.2,
+   "fetched_items": 9
+  },
+  {
+   "name": "廊桥遗梦",
+   "key": "廊桥遗梦_717",
+   "newest_age_days": 22.9,
+   "fetched_items": 15
+  },
+  {
+   "name": "三点下班",
+   "key": "三点下班_4",
+   "newest_age_days": 22.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "Tripper Press - Take Photo, Think Seriously.",
+   "key": "tripper_press_take_photo_think_seriously_730",
+   "newest_age_days": 22.3,
+   "fetched_items": 21
+  },
+  {
+   "name": "42章经",
+   "key": "42章经_3",
+   "newest_age_days": 21.8,
+   "fetched_items": 15
+  },
+  {
+   "name": "42章经",
+   "key": "42章经_1",
+   "newest_age_days": 21.8,
+   "fetched_items": 30
+  },
+  {
+   "name": "胡涂说",
+   "key": "胡涂说_6",
+   "newest_age_days": 21.3,
+   "fetched_items": 20
+  },
+  {
+   "name": "全栈应用开发",
+   "key": "全栈应用开发_36",
+   "newest_age_days": 20.9,
+   "fetched_items": 20
+  },
+  {
+   "name": "寒夜雨",
+   "key": "寒夜雨_644",
+   "newest_age_days": 20.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "Gino Notes",
+   "key": "gino_notes_426",
+   "newest_age_days": 20.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "阁子",
+   "key": "阁子_656",
+   "newest_age_days": 20.1,
+   "fetched_items": 20
+  },
+  {
+   "name": "Dify",
+   "key": "dify_36",
+   "newest_age_days": 20.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "NHK World",
+   "key": "NHK World_21",
+   "newest_age_days": 20.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "Microsoft Research Blog",
+   "key": "microsoft_research_blog_396",
+   "newest_age_days": 19.7,
+   "fetched_items": 10
+  },
+  {
+   "name": "CSS-Tricks",
+   "key": "csstricks_789",
+   "newest_age_days": 19.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "MCP Servers Releases",
+   "key": "mcp_servers_rel_19",
+   "newest_age_days": 19.5,
+   "fetched_items": 10
+  },
+  {
+   "name": "Python Insider",
+   "key": "python_insider_618",
+   "newest_age_days": 19.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "Svelte Blog",
+   "key": "svelte_blog_791",
+   "newest_age_days": 19.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "罗永浩的十字路口",
+   "key": "罗永浩的十字路口_1",
+   "newest_age_days": 19.2,
+   "fetched_items": 15
+  },
+  {
+   "name": "hidecloud(@hidecloud)",
+   "key": "hidecloud_hidecloud_590",
+   "newest_age_days": 19.2,
+   "fetched_items": 30
+  },
+  {
+   "name": "LiesAuer's Blog",
+   "key": "liesauer_s_blog_613",
+   "newest_age_days": 19.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "Darknet Diaries",
+   "key": "darknet_diaries_735",
+   "newest_age_days": 19.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "字节跳动开源",
+   "key": "字节跳动开源_197",
+   "newest_age_days": 18.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "61’s life",
+   "key": "61_s_life_690",
+   "newest_age_days": 18.8,
+   "fetched_items": 30
+  },
+  {
+   "name": "李诞",
+   "key": "李诞_41",
+   "newest_age_days": 18.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "宝玉的分享",
+   "key": "宝玉的分享_383",
+   "newest_age_days": 18.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "思特沃克洞见",
+   "key": "思特沃克洞见_112",
+   "newest_age_days": 18.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "Google AI Developers(@googleaidevs)",
+   "key": "google_ai_developers_googleaidevs_533",
+   "newest_age_days": 17.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "Skywork(@Skywork_ai)",
+   "key": "skywork_skywork_ai_545",
+   "newest_age_days": 17.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "Jake blog",
+   "key": "jake_blog_703",
+   "newest_age_days": 17.5,
+   "fetched_items": 20
+  },
+  {
+   "name": "张小珺Jùn｜商业访谈录",
+   "key": "张小珺jùn｜商业访谈录_0",
+   "newest_age_days": 17.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "Meta Engineering",
+   "key": "meta_eng_81",
+   "newest_age_days": 16.7,
+   "fetched_items": 9
+  },
+  {
+   "name": "Ideogram(@ideogram_ai)",
+   "key": "ideogram_ideogram_ai_510",
+   "newest_age_days": 16.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "Next.js Blog",
+   "key": "next_js_blog_388",
+   "newest_age_days": 16.2,
+   "fetched_items": 30
+  },
+  {
+   "name": "Jim Fan(@DrJimFan)",
+   "key": "jim_fan_drjimfan_538",
+   "newest_age_days": 16.2,
+   "fetched_items": 30
+  },
+  {
+   "name": "闲人LIFE",
+   "key": "闲人life_722",
+   "newest_age_days": 15.9,
+   "fetched_items": 25
+  },
+  {
+   "name": "起朱楼宴宾客",
+   "key": "起朱楼宴宾客_8",
+   "newest_age_days": 15.8,
+   "fetched_items": 15
+  },
+  {
+   "name": "皓子的小站",
+   "key": "皓子的小站_650",
+   "newest_age_days": 14.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "M-x Chris-An-Emacser",
+   "key": "m_x_chris_an_emacser_706",
+   "newest_age_days": 14.2,
+   "fetched_items": 20
+  },
+  {
+   "name": "Fragmented - AI Developer Podcast",
+   "key": "fragmented_ai_developer_podcast_763",
+   "newest_age_days": 14.2,
+   "fetched_items": 22
+  },
+  {
+   "name": "42章经",
+   "key": "42章经_86",
+   "newest_age_days": 13.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "李继刚",
+   "key": "李继刚_57",
+   "newest_age_days": 13.7,
+   "fetched_items": 10
+  },
+  {
+   "name": "慢速生长",
+   "key": "慢速生长_38",
+   "newest_age_days": 13.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "一泽Eze",
+   "key": "一泽eze_199",
+   "newest_age_days": 13.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "体验进阶",
+   "key": "体验进阶_64",
+   "newest_age_days": 13.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "岩中花述",
+   "key": "岩中花述_42",
+   "newest_age_days": 13.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "高瓴时间",
+   "key": "高瓴时间_212",
+   "newest_age_days": 13.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "冰冻大西瓜",
+   "key": "冰冻大西瓜_753",
+   "newest_age_days": 13.1,
+   "fetched_items": 30
+  },
+  {
+   "name": "二一的笔记",
+   "key": "二一的笔记_198",
+   "newest_age_days": 13.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Tianhe Gao",
+   "key": "tianhe_gao_631",
+   "newest_age_days": 13.0,
+   "fetched_items": 20
+  },
+  {
+   "name": "腾讯混元",
+   "key": "腾讯混元_40",
+   "newest_age_days": 12.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "人民公园说AI",
+   "key": "人民公园说ai_27",
+   "newest_age_days": 12.4,
+   "fetched_items": 15
+  },
+  {
+   "name": "天真不天真",
+   "key": "天真不天真_52",
+   "newest_age_days": 12.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "Qdrant",
+   "key": "qdrant_417",
+   "newest_age_days": 12.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "Astro Blog",
+   "key": "astro_blog_790",
+   "newest_age_days": 12.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "先生制造",
+   "key": "先生制造_732",
+   "newest_age_days": 12.2,
+   "fetched_items": 20
+  },
+  {
+   "name": "BAI YUN",
+   "key": "baiyun_30",
+   "newest_age_days": 12.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "老钱日日谈",
+   "key": "老钱日日谈_224",
+   "newest_age_days": 12.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Xiaomi MiMo",
+   "key": "xiaomi_mimo_139",
+   "newest_age_days": 12.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "疯投圈",
+   "key": "疯投圈_18",
+   "newest_age_days": 11.9,
+   "fetched_items": 15
+  },
+  {
+   "name": "疯投圈",
+   "key": "疯投圈_29",
+   "newest_age_days": 11.9,
+   "fetched_items": 30
+  },
+  {
+   "name": "月光博客",
+   "key": "月光博客_15",
+   "newest_age_days": 11.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "峰瑞资本",
+   "key": "峰瑞资本_211",
+   "newest_age_days": 11.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "AI at Meta(@AIatMeta)",
+   "key": "ai_at_meta_aiatmeta_478",
+   "newest_age_days": 11.5,
+   "fetched_items": 30
+  },
+  {
+   "name": "唐巧的博客",
+   "key": "唐巧的博客_640",
+   "newest_age_days": 11.4,
+   "fetched_items": 20
+  },
+  {
+   "name": "唐巧博客",
+   "key": "唐巧博客_28",
+   "newest_age_days": 11.4,
+   "fetched_items": 20
+  },
+  {
+   "name": "Docker",
+   "key": "docker_408",
+   "newest_age_days": 11.4,
+   "fetched_items": 10
+  },
+  {
+   "name": "React Blog",
+   "key": "react_blog_798",
+   "newest_age_days": 11.3,
+   "fetched_items": 24
+  },
+  {
+   "name": "虹墨空间站",
+   "key": "虹墨空间站_654",
+   "newest_age_days": 11.3,
+   "fetched_items": 10
+  },
+  {
+   "name": "产品二姐",
+   "key": "产品二姐_182",
+   "newest_age_days": 11.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "雷蒙三十｜幫助忙碌現代人的聰明工作、好好生活的生產力指南",
+   "key": "雷蒙三十_幫助忙碌現代人的聰明工作_好好生活的生產力指南_698",
+   "newest_age_days": 11.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "Supabase Blog",
+   "key": "supabase_blog_79",
+   "newest_age_days": 11.0,
+   "fetched_items": 30
+  },
+  {
+   "name": "卡瓦邦噶",
+   "key": "卡瓦邦噶_13",
+   "newest_age_days": 11.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Memm设计知识分享",
+   "key": "memm设计知识分享_346",
+   "newest_age_days": 11.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "翔宇工作流",
+   "key": "翔宇工作流_758",
+   "newest_age_days": 11.0,
+   "fetched_items": 15
+  },
+  {
+   "name": "43 Talks",
+   "key": "43_talks_110",
+   "newest_age_days": 11.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "孟岩",
+   "key": "孟岩_292",
+   "newest_age_days": 11.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "钉钉",
+   "key": "钉钉_140",
+   "newest_age_days": 10.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "Tailwind CSS Blog",
+   "key": "tailwind_css_blog_793",
+   "newest_age_days": 10.8,
+   "fetched_items": 30
+  },
+  {
+   "name": "Rowan Cheung(@rowancheung)",
+   "key": "rowan_cheung_rowancheung_458",
+   "newest_age_days": 10.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "Poe(@poe_platform)",
+   "key": "poe_poe_platform_555",
+   "newest_age_days": 10.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "稀土掘金技术社区",
+   "key": "稀土掘金技术社区_20",
+   "newest_age_days": 10.6,
+   "fetched_items": 10
+  },
+  {
+   "name": "Marc Andreessen 🇺🇸(@pmarca)",
+   "key": "marc_andreessen_pmarca_441",
+   "newest_age_days": 10.5,
+   "fetched_items": 30
+  },
+  {
+   "name": "ElevenLabs Blog",
+   "key": "elevenlabs_blog_424",
+   "newest_age_days": 10.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "扯氮集",
+   "key": "扯氮集_25",
+   "newest_age_days": 10.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "爱奇艺技术产品团队",
+   "key": "爱奇艺技术产品团队_144",
+   "newest_age_days": 10.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "也谈钱",
+   "key": "也谈钱_216",
+   "newest_age_days": 10.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "DeepSeek",
+   "key": "deepseek_31",
+   "newest_age_days": 10.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "DeepSeek(@deepseek_ai)",
+   "key": "deepseek_deepseek_ai_542",
+   "newest_age_days": 10.1,
+   "fetched_items": 30
+  },
+  {
+   "name": "范冰的二次学习",
+   "key": "范冰的二次学习_332",
+   "newest_age_days": 10.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "Shuibaco • 水八口",
+   "key": "shuibaco_水八口_708",
+   "newest_age_days": 10.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "局域自由博客",
+   "key": "局域自由博客_716",
+   "newest_age_days": 9.9,
+   "fetched_items": 30
+  },
+  {
+   "name": "小米技术",
+   "key": "小米技术_69",
+   "newest_age_days": 9.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "百度Geek说",
+   "key": "百度geek说_75",
+   "newest_age_days": 9.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "腾讯云中间件",
+   "key": "腾讯云中间件_169",
+   "newest_age_days": 9.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "滴滴技术",
+   "key": "滴滴技术_72",
+   "newest_age_days": 9.8,
+   "fetched_items": 10
+  },
+  {
+   "name": "Hugging Face(@huggingface)",
+   "key": "hugging_face_huggingface_452",
+   "newest_age_days": 9.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "Amazon Science",
+   "key": "amazon_science_773",
+   "newest_age_days": 9.7,
+   "fetched_items": 25
+  },
+  {
+   "name": "Eric Jing(@ericjing_ai)",
+   "key": "eric_jing_ericjing_ai_536",
+   "newest_age_days": 9.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "Jan Leike(@janleike)",
+   "key": "jan_leike_janleike_576",
+   "newest_age_days": 9.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "Cursor(@cursor_ai)",
+   "key": "cursor_cursor_ai_524",
+   "newest_age_days": 9.4,
+   "fetched_items": 30
+  },
+  {
+   "name": "枫言枫语",
+   "key": "枫言枫语_20",
+   "newest_age_days": 9.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "游荡集",
+   "key": "游荡集_44",
+   "newest_age_days": 9.3,
+   "fetched_items": 15
+  },
+  {
+   "name": "Amiya的书桌",
+   "key": "amiya的书桌_604",
+   "newest_age_days": 9.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "阿虚同学",
+   "key": "阿虚同学_342",
+   "newest_age_days": 9.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "夜法之书",
+   "key": "夜法之书_642",
+   "newest_age_days": 9.2,
+   "fetched_items": 10
+  },
+  {
+   "name": "DeeplearningAI",
+   "key": "deeplearningai_48",
+   "newest_age_days": 9.1,
+   "fetched_items": 10
+  },
+  {
+   "name": "Binyuan Hui(@huybery)",
+   "key": "binyuan_hui_huybery_466",
+   "newest_age_days": 9.0,
+   "fetched_items": 25
+  },
+  {
+   "name": "phodal",
+   "key": "phodal_207",
+   "newest_age_days": 9.0,
+   "fetched_items": 10
+  },
+  {
+   "name": "阿里云设计中心",
+   "key": "阿里云设计中心_694",
+   "newest_age_days": 8.9,
+   "fetched_items": 20
+  },
+  {
+   "name": "三五环",
+   "key": "三五环_22",
+   "newest_age_days": 8.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "for_the_zero的个人博客",
+   "key": "for_the_zero的个人博客_748",
+   "newest_age_days": 8.7,
+   "fetched_items": 30
+  },
+  {
+   "name": "Andrew Ng(@AndrewYNg)",
+   "key": "andrew_ng_andrewyng_453",
+   "newest_age_days": 8.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "Windsurf(@windsurf_ai)",
+   "key": "windsurf_windsurf_ai_517",
+   "newest_age_days": 8.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "心智工具箱",
+   "key": "心智工具箱_276",
+   "newest_age_days": 7.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "太阳照常升起",
+   "key": "太阳照常升起_353",
+   "newest_age_days": 7.9,
+   "fetched_items": 10
+  },
+  {
+   "name": "皮蛋漫游记",
+   "key": "皮蛋漫游记_23",
+   "newest_age_days": 7.9,
+   "fetched_items": 15
+  },
+  {
+   "name": "自我进化论",
+   "key": "自我进化论_36",
+   "newest_age_days": 7.8,
+   "fetched_items": 15
+  },
+  {
+   "name": "Dario Amodei(@DarioAmodei)",
+   "key": "dario_amodei_darioamodei_436",
+   "newest_age_days": 7.7,
+   "fetched_items": 18
+  },
+  {
+   "name": "谭立人",
+   "key": "谭立人_40",
+   "newest_age_days": 7.7,
+   "fetched_items": 15
+  },
+  {
+   "name": "Scott Wu(@ScottWu46)",
+   "key": "scott_wu_scottwu46_474",
+   "newest_age_days": 7.6,
+   "fetched_items": 30
+  },
+  {
+   "name": "ollama(@ollama)",
+   "key": "ollama_ollama_506",
+   "newest_age_days": 7.4,
+   "fetched_items": 30
+  },
+  {
+   "name": "Eric's Blog",
+   "key": "eric_s_blog_609",
+   "newest_age_days": 7.3,
+   "fetched_items": 30
+  },
+  {
+   "name": "icodex | 前端技术博客 | 专注 React、TypeScript、AI 与性能优化 Blog",
+   "key": "icodex_前端技术博客_专注_react_typescript_ai_与性能优化_blog_611",
+   "newest_age_days": 7.3,
+   "fetched_items": 20
+  },
+  {
+   "name": "happy xiao",
+   "key": "happy_xiao_702",
+   "newest_age_days": 7.2,
+   "fetched_items": 6
+  },
+  {
+   "name": "投资实习所",
+   "key": "投资实习所_92",
+   "newest_age_days": 7.2,
+   "fetched_items": 10
+  }
+ ]
+}

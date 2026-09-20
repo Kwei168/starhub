@@ -147,6 +147,7 @@ RSS_HISTORY_FILE = "rss_history.json"
 RSS_HISTORY_HOURS = 72
 _rss_history = {}  # {link: {source, source_key, cat, color, title, title_zh, summary, summary_zh, pub_date, time_str}}
 _LAST_UNRELIABLE_SRCS = set()  # D4：最近一场 bad_date 审计判定的不可信日期源（关键词降权消费）
+_LAST_RETENTION_STATS = {}     # 最近一场留存闸门的统计（构建日志消费：闸后口径唯一可见面）
 
 # ── Fix 4: T4 长尾层常量 ──
 # T4 源：低优先级/长尾源，使用更宽松的跳过阈值和更短的历史保留窗口
@@ -395,8 +396,189 @@ def _save_history():
         print("[历史] 保存失败: %s" % e, file=sys.stderr)
 
 
+# ── 留存出口闸门（设计见 docs/superpowers/specs/2026-09-20-rss-72h-retention-design.md）──
+# 为什么要有这道闸门：上面那套 72h 裁剪只遍历 _rss_history，而当次抓取的条目在
+# src_map[key]["items"] = list(_fetched) 处原样进输出、从未与 cutoff 比较。
+# 线上实测产物 20,904 条里 59% 超过 72h（中位 137h、p99 4 年），主体就是上游 feed
+# 自己挂着的老文章 —— 它们走的是「当次抓取」这条旁路，调历史裁剪参数治不到。
+RETENTION_BASE_H = RSS_HISTORY_HOURS      # 基线窗口 = 用户可见契约 72h
+RETENTION_MAX_WINDOW_H = 168              # 慢源最多放宽到 7 天，再长就不算「近期」了
+RETENTION_COEF = 2.0                      # 窗口 = 系数 × 该源中位发布间隔（实测系数不敏感）
+RETENTION_FLOOR = 3                       # 每源最少留几条：没有它实测 286/938 源会变空
+RETENTION_FLOOR_MAX_H = RETENTION_MAX_WINDOW_H
+# ↑ 保底自己的龄限。线上实测：不设这道限时「保底」一个人放进产物 1,012 条 >168h 的内容
+#   （最老 41,791h ≈ 4.7 年的 CNN 旧文，散在 426 个源上）—— 那和被判死的「无日期回退成 now」
+#   是同一个 bug 换了件衣服。保底的目的是别让卡片整块消失，不是给停更源发永生签证。
+#   代价实测可接受：钳在 168h 后出厂 7,075 条，246 个源颗粒无收，但覆盖率统计
+#   (sources_with_data / per_source) 全部取闸门**之前**的抓取阶段数字，门禁不会因此变红；
+#   那 246 个源是停更源，归信源清单健康度那条线处理，不该由留存策略替它们遮掩。
+RETENTION_MAX_ITEMS = 120                 # 每源条数上限：防高频源把全站可见性吃光
+RETENTION_MIN_SAMPLES = 3                 # 样本不足 3 条不放宽 —— 两条间隔不构成「本就来得慢」
+RETENTION_EPOCH_YEAR = 1971               # 0001-01-01 这类占位值不是发布时间
+
+
+def _retention_ref_dt(item, offsets=None, source_key=None):
+    """闸门判龄用的时间基准（北京时间 aware）；两条时间线索都不可得时返回 None。
+
+    一律回到 _rss_history 里那份**原始** pub_date 再套声明偏移：出口处那份可能已被
+    _accumulate_history 第二段平移过，在这里再套一次就是二次校正（条目凭空挪 ±偏移）。
+    pub_date 缺失、是纪元占位值、或晚于 first_seen 超容忍（物理上不可能，已被证伪）时
+    改用 first_seen —— 那是我方记录的真实收录时刻。**不再回退成 now**，那正是永生条目的来源。
+
+    降级键（date_fallback）不需要单独认：它只在历史条目缺 pub_date 时才写，所以
+    「历史里没有 pub_date」就等于「出口那份是降级键」，此时基准直接取 first_seen（不套偏移）。
+
+    source_key 必传兜底：当次抓取的 item 字典里没有 source_key（只有历史条目有），
+    少了它就取不到该源声明的 pub_date_offset_min —— 合并阶段是用 src["key"] 现拼的。
+    """
+    _raw = _rss_history.get(item.get("link", "")) or {}
+    in_hist = bool(_raw)
+    fs = _parse_hist_dt(_raw.get("first_seen") or item.get("first_seen"))
+    # 原始 pub_date 只认两个来源：历史里那份（一定是原始值），或压根没入过历史的本轮抓取值。
+    # 绝不能「历史没有就退回 item 的」：第二轮会给历史条目写上 first_seen 派生的降级键，
+    # 那串不是发布时间，再套一次源偏移就凭空挪 ±偏移（对抗审查 P1-3 实测 68h → 76h）。
+    raw_pd = _raw.get("pub_date") if in_hist else item.get("pub_date", "")
+    if not raw_pd:
+        return fs
+    probe = {"pub_date": raw_pd,
+             "source_key": item.get("source_key") or _raw.get("source_key") or source_key}
+    d = _effective_pub_dt(probe, offsets)
+    if d is None or d.year <= RETENTION_EPOCH_YEAR:
+        return fs
+    # 证伪判据用**我方自己的** first_seen：已入历史的条目必须与本轮实际抓取时刻比对 ——
+    # 降级条目的 first_seen 恰是被评估的那个值，d - fs 恒 <= 0，"还没抓到就已发布"的假日期
+    # 反而永远判不倒（实测 d - first_seen = 48h 也放行）。
+    fs_ref = _parse_hist_dt(_raw.get("first_seen")) if in_hist else fs
+    if fs_ref is not None and (d - fs_ref) > datetime.timedelta(minutes=FUTURE_DATE_TOLERANCE_MIN):
+        return fs_ref
+    return d
+
+
+def _retention_age_h(item, offsets=None, now_bj=None, source_key=None):
+    """条目的龄（小时）。返回 None 表示判不了龄 —— 闸门按丢弃处理。"""
+    d = _retention_ref_dt(item, offsets, source_key)
+    if d is None:
+        return None
+    return ((now_bj or _now_bj()) - d).total_seconds() / 3600.0
+
+
+def _source_window_h(items, offsets=None, source_key=None):
+    """该源的保留窗口（小时）：min(168, max(72, 系数 × 中位发布间隔))，样本不足不放宽。
+
+    放宽是给低频源（周更博客、播客一期 30 条）的：一刀切 72h 会把它们整源清空。
+    中位口径与 _detect_pub_date_anomalies 一致（取排序后中位偏上那个）。
+    """
+    ds = []
+    for it in items:
+        d = _retention_ref_dt(it, offsets, source_key)
+        if d is not None:
+            ds.append(d)
+    if len(ds) < RETENTION_MIN_SAMPLES:
+        return float(RETENTION_BASE_H)
+    ds.sort()
+    gaps = sorted((ds[i + 1] - ds[i]).total_seconds() / 3600.0 for i in range(len(ds) - 1))
+    med = gaps[len(gaps) // 2]
+    return min(float(RETENTION_MAX_WINDOW_H),
+               max(float(RETENTION_BASE_H), RETENTION_COEF * med))
+
+
+def _apply_retention(sources, offsets=None, now_bj=None):
+    """出口闸门：窗口 → 每源保底（受硬上限约束）→ 每源上限。返回 (过滤后的 sources, 统计)。
+
+    顺序固定为「窗口 → 保底 → 上限」，且**只删条目**：过滤后按原始下标回填，
+    因为 write_data_chunks 按顺序取首屏前 CHUNK0_SIZE 条，打乱顺序就是改首页。
+    """
+    now_bj = now_bj or _now_bj()
+    before = after = undatable = widened = floored = capped = 0
+    b_le72 = b_mid = b_over = 0
+    emptied = []
+    out = []
+    for src in sources:
+        items = src.get("items", [])
+        before += len(items)
+        if not items:
+            out.append(src)
+            continue
+        window = _source_window_h(items, offsets, src.get("key"))
+        if window > RETENTION_BASE_H:
+            widened += 1
+        dated = []          # (原始下标, 龄, item)
+        for idx, it in enumerate(items):
+            age = _retention_age_h(it, offsets, now_bj, src.get("key"))
+            if age is None:
+                undatable += 1
+            else:
+                dated.append((idx, age, it))
+        sel = [t for t in dated if t[1] <= window]
+        # 保底只从「可判龄且没超硬上限」的条目里取最新的，凑不满就算了：
+        # 拿无日期条目填空等于留后门，拿 7 天前的旧文填空等于把保底改成永生通道。
+        pad = [t for t in dated if t[1] <= RETENTION_FLOOR_MAX_H]
+        if len(sel) < RETENTION_FLOOR and len(pad) > len(sel):
+            chosen = {t[0] for t in sel}
+            for t in sorted(pad, key=lambda x: x[1]):
+                if len(sel) >= RETENTION_FLOOR:
+                    break
+                if t[0] not in chosen:
+                    sel.append(t)
+                    chosen.add(t[0])
+            floored += 1
+        if len(sel) > RETENTION_MAX_ITEMS:
+            sel = sorted(sel, key=lambda x: x[1])[:RETENTION_MAX_ITEMS]
+            capped += 1
+        retained = sorted(sel, key=lambda x: x[0])
+        kept = [t[2] for t in retained]
+        # 分项按**出厂那串 pub_date**独立算，不复用上面的判定龄：
+        # 判龄走原始 pub_date + 偏移，降级条目（date_fallback）出厂的是收录时刻，两者可以差一个
+        # 偏移量 —— 复用判定龄会得到一个"和用户看到的不一样"的分布（实测显示 20h 的条目被归进
+        # 72-168h 桶）。独立算既对齐外显，也让 ">168h 应为 0" 这条不变量真的可证伪。
+        for _t in retained:
+            _disp = _parse_hist_dt(_t[2].get("pub_date"))
+            if _disp is None:
+                continue
+            _dage = (now_bj - _disp).total_seconds() / 3600.0
+            if _dage <= RETENTION_BASE_H:
+                b_le72 += 1
+            elif _dage <= RETENTION_MAX_WINDOW_H:
+                b_mid += 1
+            else:
+                b_over += 1
+        if items and not kept:
+            emptied.append(src.get("name") or src.get("key", "?"))
+        src["items"] = kept
+        after += len(kept)
+        out.append(src)
+    stats = {"before": before, "after": after, "dropped": before - after,
+             "undatable": undatable, "widened": widened,
+             "floored": floored, "capped": capped, "emptied": emptied,
+             "sources_after": sum(1 for s in out if s.get("items")),
+             "le72": b_le72, "mid": b_mid, "over": b_over}
+    print("[留存] 出口闸门：进 %d 条 → 留 %d 条（丢弃 %d，其中判不了龄 %d）"
+          "｜窗口放宽 %d 源｜保底 %d 源｜封顶 %d 源" % (
+              before, after, stats["dropped"], undatable, widened, floored, capped))
+    # 分项直接进构建日志：验收要的是「出厂内容里没有超硬上限的」，
+    # 这个数字不能只存在于本地一次性脚本里，否则下一场构建就没人知道了。
+    print("[留存] 出厂龄期分项：≤%dh %d 条｜%d-%dh %d 条｜>%dh %d 条" % (
+        RETENTION_BASE_H, b_le72, RETENTION_BASE_H, RETENTION_MAX_WINDOW_H, b_mid,
+        RETENTION_MAX_WINDOW_H, b_over))
+    if b_over:
+        # 不变量破了要出声。沉默的 0 和沉默的非 0 一样没人看见 —— 本仓库为这类"静默退化"
+        # 付过两次代价（每日洞察连败数天、72h 存档断两天）。
+        print("::warning title=RSS 留存超硬上限::出厂内容里有 %d 条龄期超过 %dh（7 天硬上限被绕过）"
+              % (b_over, RETENTION_MAX_WINDOW_H))
+    if emptied:
+        print("[留存] 无内容可出厂的源 %d 个（停更或全源判不了龄，交信源清单健康度跟进）: %s" % (
+            len(emptied), ", ".join(emptied[:10]) + (" ..." if len(emptied) > 10 else "")),
+            file=sys.stderr)
+    global _LAST_RETENTION_STATS
+    _LAST_RETENTION_STATS = dict(stats, emptied=list(emptied))
+    return out, stats
+
+
 def _accumulate_history(sources_with_items):
-    """将新抓取的文章合并到 72 小时历史，裁剪过期内容，返回重组后的 sources_with_items"""
+    """将新抓取的文章合并到 72 小时历史，裁剪过期内容，返回重组后的 sources_with_items
+
+    返回值已过一道留存出口闸门（_apply_retention）：抓取侧与历史侧同一口径，超窗即丢。
+    """
     now_bj = _now_bj()
     cutoff = now_bj.replace(tzinfo=None) - datetime.timedelta(hours=RSS_HISTORY_HOURS)
 
@@ -475,23 +657,27 @@ def _accumulate_history(sources_with_items):
     before = len(_rss_history)
     expired = []
     for link, item in _rss_history.items():
-        pd_str = item.get("pub_date", "")
-        pd_bj = now_bj.replace(tzinfo=None)  # 默认当前时间
+        # 参照日必须是**真取到的**时刻，不能拿 now 兜底：兜底等于「判不了龄就永生」。
+        # 这条与出口闸门 _retention_ref_dt 同一口径（那边判不了龄返回 None 直接丢）。
+        # 2026-09-20 对抗审查实测：线上确实存在 pub_date 为空且 first_seen 也拿不到值的条目
+        # （本地 18,037 条历史里 68 条 pub_date 为空），旧写法对它们永久跳过。
+        ref_bj = None
         # 与合并阶段同一口径：用校正后的发布时间判定是否过期。
         # 不校正的话，被标成 +00:00 的源会「多活 8 小时」（其 pub_date 偏晚）。
         _eff = _effective_pub_dt(item, _pd_offsets)
         if _eff is not None:
-            pd_bj = _eff.replace(tzinfo=None)
+            ref_bj = _eff.replace(tzinfo=None)
         else:
             # pub_date 缺失或不可解析，使用 first_seen
-            fs_str = item.get("first_seen", "")
-            if fs_str:
-                try:
-                    fs = datetime.datetime.fromisoformat(fs_str)
-                    pd_bj = fs.replace(tzinfo=None) if fs.tzinfo else fs
-                except ValueError:
-                    pass
-        if pd_bj < cutoff:
+            _fs = _parse_hist_dt(item.get("first_seen"))
+            if _fs is not None:
+                ref_bj = _fs.replace(tzinfo=None)
+        if ref_bj is None:
+            # 两条时间线索都不可得：按过期删除。合并阶段随后会用本轮的 first_seen 重新入库，
+            # 于是它的寿命重新从「真实收录时刻」起算 72h —— 有界，而不是永生。
+            expired.append(link)
+            continue
+        if ref_bj < cutoff:
             expired.append(link)
     for link in expired:
         del _rss_history[link]
@@ -642,10 +828,16 @@ def _accumulate_history(sources_with_items):
                   _n_tz_fixed, _n_falsified, _n_shifted))
 
     result = list(src_map.values())
-    total = sum(len(s["items"]) for s in result)
     pruned = before - len(_rss_history)
     print("[历史] 合并 %d 篇新文（其中 %d 篇为新增链接，%d 篇为覆盖更新），裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
         new_count, genuinely_new, new_count - genuinely_new, pruned, len(_rss_history), RSS_HISTORY_HOURS))
+    # 出口闸门：窗口 → 保底 → 上限。放在 return 之前，本函数的三个消费者
+    # （_save_api_snapshot / build_html / write_data_chunks）共用同一个返回值，
+    # 所以**构建期产物**不会出现「页面裁了 API 没裁」的双标口径。
+    # 注意边界：运行时 api/rss.js 的 ?batch / ?source 自己发 HTTP 抓取，不吃这些产物，
+    # 那条出口要单独过闸（对抗审查 P0-2），别把这句注释当成它已经管住了全站。
+    result, _ret_stats = _apply_retention(result, _pd_offsets, now_bj)
+    total = _ret_stats["after"]
     return result, total
 
 
@@ -790,6 +982,13 @@ for _s in RSS_SOURCES:
 
 ITEMS_PER_SOURCE = 30
 FETCH_TIMEOUT = 8
+# 单个 feed 的读取上限。曾经写死 5_000_000，把 4 个健康源（实测 10.5/7.8/7.4/5.5MB）
+# 切在 CDATA 中间 → ET 报 "unclosed CDATA" → 整源 0 条，看起来像上游 XML 坏了。
+# 12MB 覆盖已观测最大值(10.5MB)只留 14% 余量，但代价是悬崖式的：踩线即整源归零。
+# 内存由并发度决定而非源数：实测 12.2MB 的 feed 走完 read→decode→建树→抽字段
+# 峰值约 71MB（≈原文 5.8 倍），全局并发 12 同级 ≈ 850MB；再叠上下面那段 CDATA
+# 回退会复制全文并二次建树。要抬这个数，必须同时把回退改成不复制全文。
+MAX_FEED_BYTES = 12 * 1024 * 1024
 TRANSLATE_TIMEOUT = 3
 
 
@@ -1987,13 +2186,17 @@ def _dedup_source_items(items, source_key):
     return items
 
 
-def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None):
+def _fetch_url(url, timeout=FETCH_TIMEOUT, accept=None, ua=None):
     headers = dict(UA)
+    if ua:
+        # 少数站点按 UA 拦（Engadget 的 CloudFront 对 Chrome 串稳定 403、对 curl 串 200），
+        # 这类源在 rss_sources.json 里带一个 ua 字段单独覆盖，不动全局默认。
+        headers["User-Agent"] = ua
     if accept:
         headers["Accept"] = accept
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read(5000000).decode("utf-8", errors="replace")
+        return r.read(MAX_FEED_BYTES).decode("utf-8", errors="replace")
 
 
 def _fetch_rss(source, timeout=None):
@@ -2010,7 +2213,8 @@ def _fetch_rss(source, timeout=None):
             return cached.get("items", [])
 
     try:
-        raw = _fetch_url(url, timeout=timeout or FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml")
+        raw = _fetch_url(url, timeout=timeout or FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml",
+                         ua=source.get("ua"))
     except Exception as ex:
         print("[RSS聚合] %s 拉取失败: %s" % (name, ex), file=sys.stderr)
         return None  # 上游侧失败：与「成功但 0 条」区分开，前者才可计入域名熔断
@@ -8025,6 +8229,16 @@ def main(mode="full"):
         "sources_failed": failed_count,
         "items_fetched": _items_fetched,
         "items_snapshot": _snapshot_items,
+        # 闸门**之后**的口径。这三个键不是锦上添花，而是 2026-09-20 对抗审查 P0-1 的对策：
+        # sources_with_data / per_source 全是抓取阶段的数，留存闸门砍掉约四分之一内容时
+        # 构建日志纹丝不动 —— 塌陷只在产物里可见，等于给回归装了个没有观测面的开关。
+        "sources_after_gate": _LAST_RETENTION_STATS.get("sources_after", 0),
+        "sources_empty_after_gate": len(_LAST_RETENTION_STATS.get("emptied", [])),
+        "items_after_gate": _LAST_RETENTION_STATS.get("after", 0),
+        # 出厂龄期三段也落日志：跨构建趋势不用回去 grep stdout
+        "items_le_base_h": _LAST_RETENTION_STATS.get("le72", 0),
+        "items_base_to_hard_h": _LAST_RETENTION_STATS.get("mid", 0),
+        "items_over_hard_h": _LAST_RETENTION_STATS.get("over", 0),
         "history_before": _history_before,
         "history_after": _history_after,
         "history_expired": _history_before - _history_after,
