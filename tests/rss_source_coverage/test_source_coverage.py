@@ -96,13 +96,19 @@ def test_dedup_without_reliable_time_collapses_only_full_duplicates():
 
 # ────────────────── 2. 抓取失败与"确实空"必须可区分 ──────────────────
 
-def test_fetch_rss_returns_none_on_network_failure():
+def test_fetch_rss_returns_none_on_network_failure(monkeypatch):
     """网络/HTTP 失败 ⇒ None（可计入域名熔断）；成功但 0 条 ⇒ []（中性）。
 
     今天两种情况都返回 []，调用方无从区分，于是把上游正常的空 feed 当成域名故障。
+
+    必须同时断言"日志里是我们注入的那个错误"：只断言 got is None 的话，
+    替身与 _fetch_rss 的签名对不上（TypeError 同样被吞成 None）会让这条假绿 ——
+    _fetch_url 加 ua 参数后就真实发生过一次。
     """
-    def boom(url, timeout=None, accept=None):
+    def boom(url, timeout=None, accept=None, ua=None):
         raise OSError("connection refused")
+    buf = io.StringIO()
+    monkeypatch.setattr(mod.sys, "stderr", buf)
     orig = mod._fetch_url
     mod._fetch_url = boom
     try:
@@ -111,6 +117,9 @@ def test_fetch_rss_returns_none_on_network_failure():
     finally:
         mod._fetch_url = orig
     assert got is None, "网络失败必须与『合法空 feed』可区分，实际 %r" % (got,)
+    err = buf.getvalue()
+    assert "connection refused" in err, \
+        "没走到真实失败分支，日志是：%r（签名漂移会在这里暴露，而不是假绿）" % err[:200]
 
 
 def test_fetch_rss_parses_rss10_rdf_items():
@@ -131,7 +140,7 @@ def test_fetch_rss_parses_rss10_rdf_items():
         '</rdf:RDF>'
     )
     orig = mod._fetch_url
-    mod._fetch_url = lambda url, timeout=None, accept=None: rdf
+    mod._fetch_url = lambda url, timeout=None, accept=None, ua=None: rdf
     mod._rss_cache = {}
     try:
         got = mod._fetch_rss({"key": "rdf_probe_1", "name": "RdfProbe",
@@ -149,7 +158,7 @@ def test_fetch_rss_parses_rss10_rdf_items():
 def offline_main(tmp_path, monkeypatch):
     """让 main() 整体离线跑一遍，抓取结果由测试逐个指定。
 
-    delay 用来还原生产的时序形态：真实构建里 1005 个源排在 12 线程的队列后面，
+    delay 用来还原生产的时序形态：真实构建里近千个源排在 12 线程的队列后面，
     熔断是在"前面的源已失败、后面的还排着队"时命中的。延迟为 0 时整场瞬间跑完，
     测不出这条，只会给反向错误信心。
     """
