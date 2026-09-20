@@ -12,6 +12,75 @@ const CACHE_TTL = 5 * 60 * 1000;  // 服务端缓存 5 分钟
 const BATCH_SIZE = 200;          // 分批刷新每批源数量（200源 × 20并发 ≈ 10s/批）
 const UA = 'starhub-rss-aggregator/1.0';
 
+// ── 运行时留存闸门 ──
+// 规则在 lib/rss_retention.js，与构建期 build_rss_aggregator._apply_retention 同一套口径
+// （基线 72h、按源发布间隔放宽到最多 168h、每源保底 3 条且保底也受 168h、判不了龄一律丢）。
+// 为什么运行时也要过：?batch=N 与 ?source=KEY 是本函数自己发 HTTP 抓上游，完全不吃构建产物，
+// 只裁构建产物会出现"页面刷新一下，4 年前的旧文整批回来"（2026-09-20 对抗审查 P0-2）。
+// 加载失败绝不打断响应（宁可放过不可 500），但必须出声：打 ::warning 并在响应头留痕，
+// 静默退化是本项目付过两次代价的形态。
+let RETENTION = null;
+let RETENTION_FAILED = false;   // 计算期异常也算降级，见 gateSources
+try {
+  RETENTION = require('../lib/rss_retention.js');
+} catch (e) {
+  console.error('[rss] 留存闸门模块加载失败:', e && e.message);
+  console.log('::warning title=RSS 运行时留存闸门不可用::' + (e && e.message));
+}
+
+/** 响应头口径：装载失败或计算异常都必须显式露出来，不许静默当成"已过滤"。 */
+function retentionHeader() {
+  return (RETENTION && !RETENTION_FAILED) ? 'on' : 'unavailable';
+}
+
+/** 从**已加载**的快照对象建 URL→日期索引（等价于 Python 侧的 first_seen）。
+ *  刻意不在这里 loadSnapshot()：快照有 ~80MB，每次 batch 请求多解析一遍会在
+ *  serverless 内存上限下把端点自己打挂 —— 调用方手里已经有快照，必须由它传进来。 */
+function buildDateIndex(snap) {
+  const map = new Map();
+  try {
+    if (snap && snap.sources) {
+      for (const s of snap.sources) {
+        for (const it of (s.items || [])) {
+          if (it.u && it.d && !map.has(it.u)) map.set(it.u, it.d);
+        }
+      }
+    }
+  } catch (e) { /* 快照结构异常时按"没有可核时间"处理，闸门会丢掉判不了龄的条目 */ }
+  return map;
+}
+
+/** 源声明的 pub_date 时区偏移（rss_sources.json 的 pub_date_offset_min）。 */
+function snapshotOffsets(sources) {
+  const off = {};
+  for (const s of (sources || [])) {
+    if (s && s.key && s.pub_date_offset_min) off[s.key] = s.pub_date_offset_min;
+  }
+  return off;
+}
+
+/** 唯一的出口闸门调用：任何失败都降级为"不过闸"，绝不打断响应。
+ *  注释承诺过"宁可放过不可 500"，所以 require 之外的计算异常也必须兜住
+ *  （2026-09-20 对抗审查 P1-2：只兜 require 时，lib 抛异常会把 ?source 打成 500）。
+ *  降级必须留痕：X-RSS-Retention: unavailable，别让它变成静默失效。 */
+function gateSources(sources, sourcesMeta, knownDates) {
+  if (!RETENTION) return sources;
+  try {
+    const res = RETENTION.applyRetention(sources, {
+      nowMs: Date.now(),
+      offsets: snapshotOffsets(sourcesMeta || []),
+      knownDates: knownDates || null,
+    });
+    console.log(`[rss] 留存闸门: 进 ${res.stats.before} → 出 ${res.stats.after}`
+      + `（判不了龄 ${res.stats.undatable}）`);
+    return res.sources;
+  } catch (e) {
+    console.error('[rss] 留存闸门执行失败，本条响应未过闸:', e && e.message);
+    RETENTION_FAILED = true;
+    return sources;
+  }
+}
+
 // 滚动缓存：每个源保留上次成功抓取的数据
 let rollingCache = new Map();  // key → { items, lastModified }
 let fullCache = { t: 0, v: null };  // 完整响应缓存
@@ -328,7 +397,7 @@ function parseFeed(xml, sourceKey, maxItems) {
           title: stripHtml(title),
           link: link || '#',
           summary: truncate(stripHtml(summary), 200),
-          pub_date: pubDate || new Date().toISOString(),
+          pub_date: pubDate || '',
         };
         const media = extractMediaFromEntry(entry);
         if (media.media_url) { item.media_url = media.media_url; item.media_type = media.media_type; }
@@ -351,7 +420,7 @@ function parseFeed(xml, sourceKey, maxItems) {
         title: stripHtml(title),
         link: link || '#',
         summary: truncate(stripHtml(desc || contentEncoded), 200),
-        pub_date: pubDate || new Date().toISOString(),
+        pub_date: pubDate || '',
       };
       if (fullContent) {
         result.fullContent = deepCleanHtml(sanitizeHtml(fullContent)).slice(0, 50000);
@@ -609,22 +678,29 @@ export default async function handler(req, res) {
 
       const results = await fetchAllBatched(batchSources);
 
-      // 加载快照翻译索引（URL → 已翻译标题），避免重复翻译构建时已翻译的条目
+      // 快照只加载一次：既给闸门当"我方已见过该 URL"的时间索引（等价 Python 侧的 first_seen），
+      // 也给标题翻译复用已译结果。loadSnapshot() 解析的是几十 MB 的分块快照，
+      // 在同一次请求里加载两遍会在 serverless 内存上限下把端点自己打挂。
+      let snapObj = null;
+      try { snapObj = loadSnapshot(); } catch (e) { /* 快照不可用：闸门按"没有可核时间"处理 */ }
+      const knownDates = buildDateIndex(snapObj);
+
+      // 出口闸门：本端点完全不吃构建产物，不过闸就等于把 72h 契约绕过去了
+      const gated = gateSources(results, batchSources, knownDates);
+
+      // 快照翻译索引（URL → 已翻译标题），避免重复翻译构建时已翻译的条目
       let snapshotTrans = null;
-      try {
-        const snap = loadSnapshot();
-        if (snap && snap.sources) {
-          snapshotTrans = new Map();
-          for (const src of snap.sources) {
-            for (const it of (src.items || [])) {
-              if (it.u && it.t) snapshotTrans.set(it.u, it.t);
-            }
+      if (snapObj && snapObj.sources) {
+        snapshotTrans = new Map();
+        for (const src of snapObj.sources) {
+          for (const it of (src.items || [])) {
+            if (it.u && it.t) snapshotTrans.set(it.u, it.t);
           }
         }
-      } catch (e) { /* 快照不可用时跳过复用 */ }
+      }
 
       // 格式化返回（与快照格式对齐）
-      const formattedSources = results.map(src => ({
+      const formattedSources = gated.map(src => ({
         key: src.key,
         name: src.name,
         cat: src.cat,
@@ -655,6 +731,7 @@ export default async function handler(req, res) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-RSS-Batch', `${batchIdx}/${totalBatches}`);
+      res.setHeader('X-RSS-Retention', retentionHeader());
       return res.status(200).json({
         batch: batchIdx,
         totalBatches: totalBatches,
@@ -678,7 +755,12 @@ export default async function handler(req, res) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-RSS-Single', src.key);
-      return res.status(200).json(result);
+      // 单源抽屉也是实时抓取出口：不过闸的话，点开一个停更源就能看到几年前的旧文。
+      // knownDates 传 null：这里没有已加载的快照，为一次点击去解析几十 MB 不值得，
+      // 代价是"上游没给日期且快照没见过"的条目在单源视图里会被判不了龄丢掉（墙侧仍按快照续命）。
+      const [gatedOne] = result && result.items ? gateSources([result], [src], null) : [result];
+      res.setHeader('X-RSS-Retention', retentionHeader());
+      return res.status(200).json(gatedOne || result);
     } catch (err) {
       console.error('[rss] Single source error:', err);
       return res.status(500).json({ error: 'Internal server error' });
@@ -750,18 +832,13 @@ export default async function handler(req, res) {
       console.error('[rss] T1 title translation failed (non-fatal):', e.message);
     }
 
-    // 日期过滤：只保留最近 72 小时的文章
-    const cutoff = new Date(now - 72 * 60 * 60 * 1000);
-    const filterItems = (items) => (items || []).filter(item => {
-      if (!item.d) return true;  // 无日期保留（快照数据可能缺日期）
-      try { return new Date(item.d) >= cutoff; } catch { return false; }
-    });
-
     // 合并 T1 实时 + T2/T3 快照
+    // （原先这里有个 filterItems 只做"72h + 无日期一律保留"，两道口子都补在闸门里：
+    //   无日期不再无条件保留，超龄不再靠源自动放宽到永久）
     const mergedSources = t1Results.map(src => ({
       key: src.key, name: src.name, cat: src.cat, color: src.color,
       tier: 1,
-      items: filterItems(src.items).map(item => ({
+      items: (src.items || []).map(item => ({
         ...item,
         t: stripHtml(item.t || ''),
         t_zh: item.t_zh || '',
@@ -772,7 +849,7 @@ export default async function handler(req, res) {
       return {
         key: src.key, name: src.name, cat: src.cat, color: src.color,
         tier: src.tier || 3,
-        items: filterItems(snap ? snap.items : []).map(item => ({
+        items: (snap ? snap.items : []).map(item => ({
           ...item,
           t: stripHtml(item.t || ''),
           s: truncate(stripHtml(item.s || ''), 200),
@@ -780,16 +857,20 @@ export default async function handler(req, res) {
       };
     }));
 
+    // 出口闸门：refresh 走的是"实时 T1 + 快照 T2/T3"合并结果，同样必须过同一套规则
+    const gatedMerged = gateSources(mergedSources, sources, buildDateIndex(snapshot));
+    res.setHeader('X-RSS-Retention', retentionHeader());
+
     const response = {
       t: new Date().toISOString(),
-      sources: mergedSources,
+      sources: gatedMerged,
     };
 
     // 更新完整响应缓存
     fullCache = { t: now, v: response };
 
     const liveItemCount = t1Results.reduce((n, s) => n + (s.items || []).length, 0);
-    const snapItemCount = mergedSources.reduce((n, s) => n + (s.items || []).length, 0);
+    const snapItemCount = gatedMerged.reduce((n, s) => n + (s.items || []).length, 0);
     console.log(`[rss] Refresh merge: T1 live=${liveItemCount} items from ${t1Sources.length} sources, total merged=${snapItemCount} items`);
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');

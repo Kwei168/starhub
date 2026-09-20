@@ -8232,13 +8232,16 @@ def main(mode="full"):
         # 闸门**之后**的口径。这三个键不是锦上添花，而是 2026-09-20 对抗审查 P0-1 的对策：
         # sources_with_data / per_source 全是抓取阶段的数，留存闸门砍掉约四分之一内容时
         # 构建日志纹丝不动 —— 塌陷只在产物里可见，等于给回归装了个没有观测面的开关。
-        "sources_after_gate": _LAST_RETENTION_STATS.get("sources_after", 0),
-        "sources_empty_after_gate": len(_LAST_RETENTION_STATS.get("emptied", [])),
-        "items_after_gate": _LAST_RETENTION_STATS.get("after", 0),
+        # 取 None 而不是 0 兜底：闸门没跑到（早退/异常路径）与"闸门把内容全裁光"必须可区分，
+        # 否则日志里两种故障长得一模一样。
+        "sources_after_gate": _LAST_RETENTION_STATS.get("sources_after"),
+        "sources_empty_after_gate": (
+            len(_LAST_RETENTION_STATS["emptied"]) if _LAST_RETENTION_STATS else None),
+        "items_after_gate": _LAST_RETENTION_STATS.get("after"),
         # 出厂龄期三段也落日志：跨构建趋势不用回去 grep stdout
-        "items_le_base_h": _LAST_RETENTION_STATS.get("le72", 0),
-        "items_base_to_hard_h": _LAST_RETENTION_STATS.get("mid", 0),
-        "items_over_hard_h": _LAST_RETENTION_STATS.get("over", 0),
+        "items_le_base_h": _LAST_RETENTION_STATS.get("le72"),
+        "items_base_to_hard_h": _LAST_RETENTION_STATS.get("mid"),
+        "items_over_hard_h": _LAST_RETENTION_STATS.get("over"),
         "history_before": _history_before,
         "history_after": _history_after,
         "history_expired": _history_before - _history_after,
