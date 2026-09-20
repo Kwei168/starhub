@@ -446,5 +446,11 @@
  "agentscope-ai-java/agentscope-java": "构建分布式、生产级、长期运行的代理。",
  "pallavi-shekhar/ai-engineering-interview-questions-company-wise": "顶级人工智能公司人工智能工程面试备忘单 - 问题与解答。",
  "isas1/skills": "解释和总结人工智能输出的技巧：eli5-succinct、simple-summary、summary",
- "AppitStudio/awesome-jev": "为类型化 AI 决策精心策划的 Jev 资源和可运行示例。"
+ "AppitStudio/awesome-jev": "为类型化 AI 决策精心策划的 Jev 资源和可运行示例。",
+ "zhouxiaoka/autoclip": "AutoClip : AI-powered video clipping and highlight generation · 一款智能高光提取与剪辑的二创工具",
+ "krillinai/OpenCreator": "前身为 KrillinAI。由 Codex 提供支持的面向创作者的开源 AI 工作区。使用代理在一处创建视频、图像、语音、头像、翻译和编辑。",
+ "FareedKhan-dev/train-llm-from-scratch": "培训法学硕士的简单方法，从下载数据到生成文本。",
+ "browserbase/stagehand": "用于提取数据并与网络上的任何网站交互的 SDK。开始使用 Claude Code、Codex、Eve、Mastra 等。",
+ "docling-project/docling": "为 gen AI 准备好您的文档",
+ "nidhi-singh02/agent-router": "CLI 为任务选择 Cursor、Claude Code、Codex 或 OpenCode + 模型/工作量，然后启动它。由 Jev 和 Herdr 提供支持"
 }
