@@ -416,55 +416,55 @@ RETENTION_MAX_ITEMS = 120                 # 每源条数上限：防高频源把
 RETENTION_MIN_SAMPLES = 3                 # 样本不足 3 条不放宽 —— 两条间隔不构成「本就来得慢」
 RETENTION_EPOCH_YEAR = 1971               # 0001-01-01 这类占位值不是发布时间
 
-# 缓存侧的每源上限。为什么 72h 窗口还不够：出厂每源封顶 RETENTION_MAX_ITEMS 条，
-# 但历史里一个高频源可以堆几千条（本地快照实测最大源 1,366 条），arXiv/聚合站每天就倒
-# 几千条进来 —— "72 小时的工作集"本身就是随上游放量线性增长的量，生产日志实测
-# history 9,622 → 11,017（6 场 +14.5%）仍在爬坡。
-# 这一步对出厂内容**结构上**不可见：调用点在 src_map 回填与日期审计之后（见
-# _bound_history_per_source 的说明），它只约束下一场能读到多少历史。
-HISTORY_MAX_PER_SOURCE = 400
-# 不能写 tzinfo=_BJ_TZ：那个常量在本文件 1500 行之后才定义，模块级求值会 NameError。
-_RECENCY_FLOOR = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=8)))
-_LAST_HISTORY_BOUND = {}                  # 本场因每源上限淘汰的条数（构建日志消费）
+# 缓存侧只有一条体积约束：**72h 时间窗**。2026-09-20 曾加过一道"每源上限 400 条"，
+# 当天就撤销，三条理由全部来自生产实测（台账 §13）：
+#   1) 时间窗本身就把体积框住了 —— 上限上线前的 93 场历史斜率是 **-46.9 条/场**（在往下走）。
+#      我先前看到的 +230/场 只是窗口填装期的暂态，把暂态当成趋势是错的。
+#   2) 条数上限并不省体积：上线后 10 场斜率反而 **+65.7 条/场**（被腾空的名额又填满），
+#      同期却累计淘汰 2,231 条窗内条目 —— 代价是持续的，省下的是暂时的。
+#   3) 它切的几乎全是窗内内容：首落地那场淘汰 1,547 条，同场真过期的只有 21 条。
+# 换留下来的是更有用的一件事：把**深度**报出来，让"总有一天会撑爆"在发生前就看得见。
+HISTORY_WATCH_PER_SOURCE = 2000           # 警戒线：只报警，不淘汰
+_LAST_HISTORY_ACCOUNT = {}                # 本场历史账（过期数 + 深度），构建日志消费
 
 
-def _hist_recency_key(item, offsets=None):
-    """淘汰排序键 = (有没有龄期, 龄期基准, link)。
+def _history_depth_watch(history, offsets=None, watch=None, now_bj=None, report=False):
+    """每源深度哨兵：最深源、越警戒线的源数、保留条目的最老龄期。**只看不删。**
 
-    基准必须与出口闸门同源（_retention_ref_dt = 校正后的发布时间，取不到才退 first_seen）。
-    用 first_seen 是"到达序"、闸门是"发布序"，两套序一旦反向，上限就会把闸门要发的条目删掉
-    （对抗审查实测：120 个槽位里 50 个被换掉）。
-    取不到龄期的排最后 = 最先被淘汰，不许赖着不走。
-    平票一律按 link 定序：同源同批抓到的条目 first_seen 逐字节相同（实测切分点上有 12–30 条
-    并列），落在 dict 插入序上会让同一批链接逐场抖动。
+    oldest_age_h 是"清理到底没有"的哨兵：裁剪按 72h cutoff 走，保留集里最老那条理应贴着 72h；
+    显著超过 cutoff 就说明有条目绕过了清理（上一轮"首尾差"口径把 12 场的过期账全报成负数，
+    就是这类"看着有数、其实数是假的"的形态）。判不了龄的条目不计入龄期 —— 出口闸门丢它们。
     """
-    d = _retention_ref_dt(item, offsets, item.get("source_key"))
-    return (d is not None, d if d is not None else _RECENCY_FLOOR, item.get("link", ""))
-
-
-def _bound_history_per_source(history, keep=None, report=False, offsets=None):
-    """每个源在历史里最多留最新 N 条，其余淘汰。返回被淘汰条数。"""
-    keep = HISTORY_MAX_PER_SOURCE if keep is None else keep
-    groups = {}
-    for link, item in history.items():
-        groups.setdefault(item.get("source_key") or "?", []).append(link)
-    evicted = 0
-    over_cap = 0
-    for _key, links in groups.items():
-        if keep <= 0 or len(links) <= keep:
+    watch = HISTORY_WATCH_PER_SOURCE if watch is None else watch
+    now_bj = now_bj or _now_bj()
+    counts = {}
+    oldest = None
+    for item in history.values():
+        sk = item.get("source_key") or "?"
+        counts[sk] = counts.get(sk, 0) + 1
+        d = _retention_ref_dt(item, offsets, sk)
+        if d is None:
             continue
-        over_cap += 1
-        links.sort(key=lambda l: _hist_recency_key(history[l], offsets), reverse=True)
-        for l in links[keep:]:
-            if history.pop(l, None) is not None:
-                evicted += 1
-    # 无条件播报（不许 if evicted 才印）：生产实测单场单源最多抓 30 条，上线头几场很可能
-    # 真的淘汰 0 条，"静默"与"没跑到"在日志里长得一样，退化就永远没人看得见。
+        age = (now_bj - d).total_seconds() / 3600.0
+        if oldest is None or age > oldest:
+            oldest = age
+    over = sorted(k for k, n in counts.items() if n > watch)
+    out = {
+        "max_per_source": max(counts.values()) if counts else 0,
+        "over_watch": len(over),
+        "oldest_age_h": None if oldest is None else round(oldest, 1),
+    }
+    # 无条件播报（不许"没越线就一个字都不印"）：0 与"哨兵没跑到"必须是两个不同的样子。
     if report:
-        print("[历史] 每源上限 %d 条：%d 个源超限，淘汰 %d 条，历史剩 %d 条（出厂每源封顶 %d 条"
-              "，本步在回填之后跑，只约束缓存体积不约束可见内容）" % (
-                  keep, over_cap, evicted, len(history), RETENTION_MAX_ITEMS))
-    return evicted
+        deepest = max(counts.items(), key=lambda kv: kv[1])[0] if counts else "-"
+        print("[历史] 每源深度 最大 %d 条（源 %s，警戒线 %d 条）｜越警戒 %d 源｜保留最老 %s h｜共 %d 条" % (
+            out["max_per_source"], deepest, watch, out["over_watch"],
+            out["oldest_age_h"], len(history)))
+        if over:
+            print("::warning title=RSS 缓存深度超警戒::%d 个源窗内条目数超过 %d 条: %s"
+                  "（时间窗是唯一体积约束，此处只报警不淘汰）" % (
+                      len(over), watch, ", ".join(over[:6])))
+    return out
 
 
 def _retention_ref_dt(item, offsets=None, source_key=None):
@@ -711,23 +711,13 @@ def _accumulate_history(sources_with_items):
         # 这条与出口闸门 _retention_ref_dt 同一口径（那边判不了龄返回 None 直接丢）。
         # 2026-09-20 对抗审查实测：线上确实存在 pub_date 为空且 first_seen 也拿不到值的条目
         # （本地 18,037 条历史里 68 条 pub_date 为空），旧写法对它们永久跳过。
-        ref_bj = None
-        # 与合并阶段同一口径：用校正后的发布时间判定是否过期。
-        # 不校正的话，被标成 +00:00 的源会「多活 8 小时」（其 pub_date 偏晚）。
-        _eff = _effective_pub_dt(item, _pd_offsets)
-        if _eff is not None:
-            ref_bj = _eff.replace(tzinfo=None)
-        else:
-            # pub_date 缺失或不可解析，使用 first_seen
-            _fs = _parse_hist_dt(item.get("first_seen"))
-            if _fs is not None:
-                ref_bj = _fs.replace(tzinfo=None)
-        if ref_bj is None:
-            # 两条时间线索都不可得：按过期删除。合并阶段随后会用本轮的 first_seen 重新入库，
-            # 于是它的寿命重新从「真实收录时刻」起算 72h —— 有界，而不是永生。
-            expired.append(link)
-            continue
-        if ref_bj < cutoff:
+        # 判龄与出口闸门共用一只表。旧写法只看 pub_date（含时区校正），于是
+        # 「pub_date 被证伪（晚于 first_seen 超容差）」的条目在裁剪眼里还年轻、在闸门眼里
+        # 已经 140h —— 缓存在替假日期的死重续命（真实重放实测保留最老 140.1h）。
+        # 两只时间线索都取不到 ⇒ 按过期删除：合并阶段会用本轮 first_seen 重新入库，
+        # 寿命重新从真实收录时刻起算 72h —— 有界，而不是永生。
+        _ref = _retention_ref_dt(item, _pd_offsets, item.get("source_key"))
+        if _ref is None or _ref.replace(tzinfo=None) < cutoff:
             expired.append(link)
     for link in expired:
         del _rss_history[link]
@@ -737,7 +727,13 @@ def _accumulate_history(sources_with_items):
     # 口径必须是"删掉的条数"而不是历史首尾差：后者在生产全天 12 场实测全是负数
     # （-264/-201/.../-235），因为每场新抓进来的比删掉的多 —— 那本账从来没存在过。
     pruned_expired = before - len(_rss_history)
-    _LAST_HISTORY_BOUND["expired"] = pruned_expired
+    _LAST_HISTORY_ACCOUNT["expired"] = pruned_expired
+    # 体积不再按条数管，改成把深度报出来（只读，绝不碰审计样本）
+    _depth = _history_depth_watch(_rss_history, offsets=_pd_offsets,
+                                  report=True, now_bj=now_bj)
+    _LAST_HISTORY_ACCOUNT["max_per_source"] = _depth["max_per_source"]
+    _LAST_HISTORY_ACCOUNT["over_watch"] = _depth["over_watch"]
+    _LAST_HISTORY_ACCOUNT["oldest_age_h"] = _depth["oldest_age_h"]
 
     # 按源重组，更新相对时间
     # 构建 source_key -> url 映射（用于识别 BestBlogs 源）
@@ -883,16 +879,6 @@ def _accumulate_history(sources_with_items):
         print("[pub_date] 口径修正：时区校正 %d 条 / 未来日期改用收录时刻 %d 条"
               "（其中 %d 条按批次保序回拉，未折叠为同一时刻）" % (
                   _n_tz_fixed, _n_falsified, _n_shifted))
-
-    # 缓存侧每源上限：高频源一天能堆几千条，光靠时间窗挡不住体积。
-    # 位置是硬约束 —— 必须在本函数的日期审计（_src_date_stats / _detect_uniform_dates /
-    # _plan_falsify_shifts）与 src_map 回填**之后**：那几步逐条读 _rss_history，先裁会改统计
-    # 样本，让某源的异常率跨过 30% 阈值 ⇒ 出厂条目的 bad_date / pub_date 回拉跟着变
-    # （对抗审查实测：120 条被凭空贴上 bad_date、21 条出厂日期被挪）。
-    # 裁在回填之后，本步的作用域只剩"下一场读到多少历史"，出厂内容对它零敏感
-    # —— tests/rss_history/test_history_bounds.py 用 keep=1 把这条不变量钉成断言。
-    _LAST_HISTORY_BOUND["evicted"] = _bound_history_per_source(
-        _rss_history, report=True, offsets=_pd_offsets)
 
     result = list(src_map.values())
     print("[历史] 合并 %d 篇新文（其中 %d 篇为新增链接，%d 篇为覆盖更新），裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
@@ -6067,6 +6053,39 @@ def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
             chunk1.append(s)
     return chunk0, chunk1
 
+def _empty_stale_chunk(path, num, dump):
+    """旧块**清空而不是删除**。CI 的提交步骤是 `git add ... rss-data-*.js`（磁盘 glob 展开）：
+    文件一旦被 os.remove 掉就匹配不到，删除永远进不了提交 ⇒ 旧块留在仓库里继续被分发，
+    页面照样把它合并进来（2026-09-21 实测：闸门报"出厂 9,045 条 / >168h 0 条"，
+    而残留的 rss-data-2.js 里还挂着 11,486 条旧数据，其中 5,060 条 >168h）。
+    留着空文件才是可提交的变更，内容清空后合并进来也不带任何旧条目。
+    """
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("/* StarHub data chunk %d emptied (kept so git can commit the change) */" % num + chr(10))
+        f.write("(window.__CHUNKS=window.__CHUNKS||[])[" + str(num) + "]=" + dump({"sources": []}) + ";" + chr(10))
+
+
+def _retire_stale_chunks(out_dir, n_chunks, dump):
+    """把上一场多出来的旧块**清空**（不是删除）。CI 的提交步骤是 `git add ... rss-data-*.js`
+    按磁盘 glob 展开：文件被 os.remove 掉就匹配不到，删除永远进不了提交 ⇒ 旧块留在仓库
+    继续被 Pages/Vercel 分发，页面照样把它合并进来（真实事故见
+    tests/rss_history/test_stale_chunk_guard.py 的 docstring）。
+    """
+    import glob as _glob
+    emptied = 0
+    for old_file in _glob.glob(os.path.join(out_dir, "rss-data-*.js")):
+        basename = os.path.basename(old_file)
+        try:
+            num = int(basename.replace("rss-data-", "").replace(".js", ""))
+        except ValueError:
+            continue
+        if num > n_chunks:
+            _empty_stale_chunk(old_file, num, dump)
+            emptied += 1
+    if emptied:
+        print("[数据分块] 清空 %d 个多余旧块（删除不会被 git add 的 glob 匹配到）" % emptied)
+
+
 def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     """写出 rss-data-0.js + rss-data-{1..N}.js（与 OUT 同目录），页面经 script 标签加载。
     chunk1 按 ~80MB 上限自动拆分，避免超过 GitHub 100MB 单文件限制。"""
@@ -6090,6 +6109,7 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
         with open(os.path.join(out_dir, "rss-data-1.js"), "w", encoding="utf-8") as f:
             f.write("/* StarHub data chunk 1 - auto generated, do not edit */\n")
             f.write("(window.__CHUNKS=window.__CHUNKS||[])[1]={sources:[]};\n")
+        _retire_stale_chunks(out_dir, 1, _dump)
         print("[数据分块] chunk0 %d 篇 / chunk1 0 篇（共 %d）" % (n0, n0))
         return
 
@@ -6123,17 +6143,7 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
         size_mb = bucket_sizes[idx] / 1024 / 1024
         print("[数据分块] %s: %d 源 %d 篇 %.1f MB" % (fname, len(bucket), n_items, size_mb))
 
-    # 清理旧的多余 chunk 文件（如果上次构建分了更多块）
-    import glob
-    for old_file in glob.glob(os.path.join(out_dir, "rss-data-*.js")):
-        basename = os.path.basename(old_file)
-        try:
-            num = int(basename.replace("rss-data-", "").replace(".js", ""))
-            if num > n_chunks:
-                os.remove(old_file)
-                print("[数据分块] 清理旧文件: %s" % basename)
-        except ValueError:
-            pass
+    _retire_stale_chunks(out_dir, n_chunks, _dump)
 
     print("[数据分块] chunk0 %d 篇 / %d 个后台块 %d 篇（共 %d）" % (n0, n_chunks, n1_total, n0 + n1_total))
 
@@ -8313,10 +8323,12 @@ def main(mode="full"):
         "history_after": _history_after,
         # 两条账互斥，且都不是首尾差：首尾差被每场新增的条目抵成负数（生产实测全天恒负），
         # "过期删了多少"这本账必须由裁剪循环自己报数。
-        "history_expired": _LAST_HISTORY_BOUND.get("expired"),
-        # 每源上限淘汰条数。None = 这一步压根没跑到，0 = 跑到了但没东西可淘汰
-        # （生产实测单场单源最多抓 30 条，上线头几场很可能真是 0，两种语义不许都写成 0）。
-        "history_evicted_per_source": _LAST_HISTORY_BOUND.get("evicted"),
+        "history_expired": _LAST_HISTORY_ACCOUNT.get("expired"),
+        # 三条深度账：涨到哪儿了（max/over_watch）+ 清理到底没有（oldest_age_h）。
+        # 一律不用 0 兜底：字段为 None = 这一步没跑到，与"跑到了但是 0"必须可区分。
+        "history_max_per_source": _LAST_HISTORY_ACCOUNT.get("max_per_source"),
+        "history_over_watch": _LAST_HISTORY_ACCOUNT.get("over_watch"),
+        "history_oldest_age_h": _LAST_HISTORY_ACCOUNT.get("oldest_age_h"),
         "trans_cache_hit": _TRANS_STATS.get("cache_hit", 0),
         "trans_google": _TRANS_STATS.get("google", 0),
         "trans_mymemory": _TRANS_STATS.get("mymemory", 0),
