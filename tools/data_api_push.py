@@ -144,20 +144,55 @@ def _git_blob_sha(rel):
         return ""
 
 
-def remote_matches_local(rel):
-    """远端该路径是否存在**且每个文件的 blob 都与本地一致**。
+def _head_blob_sha(rel):
+    """HEAD 里该路径的 blob（拿不到=未跟踪，视为脏）。"""
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD:%s" % rel],
+                                       cwd=ROOT, stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        return ""
 
-    只判"目录存在"会放行一份远端已过期的测试 —— 那照样让 A2 红。所以要逐文件比 sha。
+
+def local_is_clean(rel):
+    """工作树该文件与 HEAD 一致 ⇒ 本地没动过它：与远端的差异属于"别人推得更新"，不是本次的事。"""
+    h, w = _head_blob_sha(rel), _git_blob_sha(rel)
+    return bool(h) and h == w
+
+
+def remote_matches_local(rel):
+    """远端该路径是否存在（目录要看能不能列出条目）。
+
+    只判"存在与否"才是门禁的硬条件：`pytest tests/x/` 目录不存在才退出码 4；
+    目录在、但缺几个**只在本地**的文件（另一会话的在途用例），门禁照样能跑完 ——
+    那种情况降级为提示，不该把别人的未推文件裹进这次推送，也不该因此挡住这次发布。
+    返回 (ok, 提示)。
     """
-    for f in list_files(rel):
+    files = list_files(rel)
+    if not files:
+        return False, "%s —— 本地拿不到可枚举的文件" % rel
+    missing_local_only, notes = [], []
+    for f in files:
         try:
             got = req("GET", "%s/contents/%s" % (REPO, f), tries=2)
         except Exception:
-            return False
+            missing_local_only.append(f)
+            continue
         want = _git_blob_sha(f)
-        if not want or got.get("sha") != want:
-            return False
-    return True
+        if want and got.get("sha") != want:
+            if local_is_clean(f):
+                # 本仓常态：Data API 不回写 ⇒ 本地干净却落后远端。这时远端那份是更新的内容，
+                # base_tree 会原样保留它，把它判成阻塞就等于每次发布都被别人的进度卡住。
+                notes.append("%s —— 本地干净但落后远端（远端是更新的一版，本次不推它）" % f)
+                continue
+            return False, "%s —— 本地有未提交改动且与远端不一致（这次会把旧内容推回去）：%s" % (rel, f)
+    if len(missing_local_only) == len(files):
+        return False, "%s —— 远端不存在（门禁会退出码 4，连 Commit 带 Vercel 部署一起停摆）" % rel
+    if notes:
+        return True, "；".join(notes)
+    if missing_local_only:
+        return True, "%s —— 远端缺 %d 个仅本地文件 %s：门禁仍能跑，但那些用例不会在 CI 里执行" % (
+            rel, len(missing_local_only), ", ".join(os.path.basename(x) for x in missing_local_only[:3]))
+    return True, ""
 
 
 # 这类写法不是字面路径，交给解析器判红会误报；单列出来要人看一眼
@@ -176,22 +211,35 @@ def ci_atomic_deps(push_paths, wf):
             text = fh.read()
     except OSError:
         return [wf + " 本地读不到"], []
-    refs, odd = set(), set()
-    for raw_line in text.splitlines():
-        line = raw_line
-        if "pytest" not in line and not re.search(r"python[^\n]*test_[\w/]+\.py", line):
-            continue
-        # `--ignore=tests/slow` / `--deselect=tests/x.py::t` 的值是"排除项"，不是"必须存在的路径"
-        # （原实现把等号后的路径当要求项 → 对不存在的被忽略目录误判红）
-        line = re.sub(r"--[\w-]+=\S+", " ", line)
-        for tok in re.findall(r"[\w./$*{}<>-]*(?:tests/[\w./$*{}<>-]+|test_[\w.$*{}<>-]+\.py)", line):
-            tok = tok.rstrip("/")
-            if tok.startswith("-") or "--ignore" in tok:      # 选项（含 --ignore=tests/x）不是路径要求
+    refs, odd, advisory = set(), set(), set()
+    # 按步骤分块解析：advisory（带 continue-on-error，如门禁 B）引用的路径缺了不会红掉作业，
+    # 拿它去阻塞发布是误伤（审查 P1-4）。
+    blocks = re.split("\n      - name:", text)
+    for block in blocks:
+        is_adv = "continue-on-error: true" in block
+        for line in block.splitlines():
+            for m in re.finditer(r"(?:python3?|bash|sh)\s+((?:[\w./-]+/)?[\w.-]+\.(?:py|sh))", line):
+                tok = norm_path(m.group(1))
+                if any(h in tok for h in UNPARSED_HINTS):
+                    odd.add("%s —— 通配/matrix 模板写法，无法机器判定，请人工确认已同批推送" % tok)
+                elif is_adv:
+                    advisory.add(tok)
+                else:
+                    refs.add(tok)
+            if "pytest" not in line and not re.search(r"python[^\n]*test_[\w/]+\.py", line):
                 continue
-            if any(h in tok for h in UNPARSED_HINTS):
-                odd.add(tok)                                   # 通配/matrix 模板 → 交给人判
-                continue
-            refs.add(norm_path(tok))
+            line = re.sub(r"--[\w-]+=\S+", " ", line)
+            for tok in re.findall(r"[\w./$*{}<>-]*(?:tests/[\w./$*{}<>-]+|test_[\w.$*{}<>-]+\.py)", line):
+                tok = tok.rstrip("/")
+                if tok.startswith("-"):
+                    continue
+                if any(h in tok for h in UNPARSED_HINTS):
+                    odd.add("%s —— 通配/matrix 模板写法，无法机器判定，请人工确认已同批推送" % tok)
+                elif is_adv:
+                    advisory.add(norm_path(tok))
+                else:
+                    refs.add(norm_path(tok))
+    refs -= advisory          # 只要有一个 blocking 步引用它，才需要强制
     problems = []
     for p in sorted(refs):
         if not os.path.exists(_abs(p)):
@@ -199,9 +247,14 @@ def ci_atomic_deps(push_paths, wf):
             continue
         if p in push_paths or any(x.startswith(p + "/") for x in push_paths):
             continue
-        if not remote_matches_local(p):
-            problems.append("%s —— 本地有、但远端缺失或与本地不一致，又不在本次推送里 → "
-                            "门禁会退出码 4，连 Commit 带 Vercel 部署一起停摆。加进同一次推送" % p)
+        ok, note = remote_matches_local(p)
+        if not ok:
+            problems.append(note)
+        elif note:
+            odd.add(note)
+    for p in sorted(advisory - refs):
+        if not os.path.exists(_abs(p)):
+            odd.add("%s —— 仅 advisory 步引用且本地不存在（不阻塞发布，但该步会红）" % p)
     return problems, sorted(odd)
 
 
@@ -224,7 +277,7 @@ def main():
     for wf in wfs:
         problems, odd = ci_atomic_deps(a.paths, wf)
         for o in odd:
-            print("  [?] %s 引用了无法解析的路径写法 %s（通配/matrix 模板），请人工确认已同批推送" % (wf, o))
+            print("  [?] %s：%s" % (wf, o))
         if problems:
             print("原子性检查未通过（%s）：" % wf)
             for b in problems:

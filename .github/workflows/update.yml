@@ -16,6 +16,8 @@ on:
 
 permissions:
   contents: write
+  # 缺这一行时 update.yml 的缓存淘汰步会 403，而它是 continue-on-error —— 静默空转
+  actions: write
 
 concurrency:
   group: starhub-update
@@ -255,14 +257,33 @@ jobs:
             }
           fi
 
+      - name: Trim Actions cache keys (keep newest per family)
+        # 实测 09-20：缓存 9.97 / 10 GB 已用满、79 个键 —— emb-cache 45 键 9.64GB 是元凶，
+        # rss-history 34 键仅 0.33GB。键里带 run_id ⇒ 每场新增一键从不覆盖，而既有测试又要求
+        # 保留 run_attempt（重跑同 run 时"键已存在→静默不保存"），所以只能按族淘汰最旧键。
+        # 配额满时 Save 是 continue-on-error ⇒ 会静默不保存。尚未实际观察到失败（29/29 场都有键），
+# 但剩余额度只有约 10 MB 而单个 emb 键均 219 MB ⇒ 这是悬崖前的预防性回收，不是在修已发生的退化。
+        # 本场键（含 run_id）永不删除；淘汰失败不得连坐 Vercel 部署。
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python tools/trim_actions_cache.py --repo "$GITHUB_REPOSITORY" \
+            --keep emb-cache=4 --keep rss-history=5 --run-id "$GITHUB_RUN_ID"
+
       - name: Save embedding cache (before prune deletes .npy)
+        # 无 continue-on-error 时这一步会红掉整个作业、连 Commit 与部署一起跳过；
+        # 键不含 run_attempt 时同一个 run 重跑会因"键已存在"直接失败（实测 rss 那步两条都补齐了）。
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: |
             daily_insight_vectors.npy
             daily_insight_chunks.json
             daily_insight_faiss.index
-          key: emb-cache-${{ runner.os }}-${{ github.run_id }}
+          key: emb-cache-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Save RSS history cache (before prune deletes chunks)
         # Actions 缓存配额实测已用 7.05/10GB 且每场新增一条 run 键（94% 构建来自页面

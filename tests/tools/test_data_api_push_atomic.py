@@ -147,3 +147,143 @@ def test_real_workflows_resolve_from_repo_root():
             continue
         problems, _odd = D.ci_atomic_deps([], ".github/workflows/" + fn)
         assert not [p for p in problems if "本地不存在" in p], "%s: %s" % (fn, problems)
+
+
+def test_workflow_script_references_are_checked(tmp_path, monkeypatch):
+    """工作流调用的脚本（python tools/x.py）也必须同批推送或远端已有 —— 与 tests/ 同一风险。"""
+    def boom(*a, **k):
+        raise RuntimeError("404")
+    monkeypatch.setattr(D, "req", boom)
+    wf = tmp_path / "update.yml"
+    wf.write_text("      - name: Trim\n        run: python tools/no_such_trim_tool.py --keep a=1\n",
+                  encoding="utf-8")
+    problems = _problems([D.WF], str(wf))
+    assert any("no_such_trim_tool" in p for p in problems), \
+        "被调用的脚本缺失却没判不通过：下一次构建会因找不到脚本而停摆"
+
+
+def test_module_invocations_are_not_mistaken_for_scripts(tmp_path):
+    wf = tmp_path / "update.yml"
+    wf.write_text("      - name: Gate\n        run: python -m pytest tests/rss_history/ -q -s\n",
+                  encoding="utf-8")
+    problems, odd = D.ci_atomic_deps([D.WF, "tests/rss_history"], str(wf))
+    assert problems == [], problems
+    assert odd == [], odd
+
+
+def test_script_in_same_push_set_is_accepted(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(D, "req", lambda *a, **k: calls.append(a[1]))
+    wf = tmp_path / "update.yml"
+    wf.write_text("      - name: Trim\n        run: python tools/trim_actions_cache.py --keep a=1\n",
+                  encoding="utf-8")
+    assert D.ci_atomic_deps([D.WF, "tools/trim_actions_cache.py"], str(wf))[0] == []
+    assert calls == [], "同批已带脚本就不该再查远端"
+
+
+def test_local_only_extra_file_downgrades_to_note(tmp_path, monkeypatch):
+    """目录在远端存在、只缺几个"仅本地"文件（别人的在途用例）→ 门禁仍能跑：不判红，只提示。
+
+    否则守门工具会把别人的未推文件裹进这次提交，正好造成"吞掉别的会话改动"。
+    """
+    def fake_req(method, path, body=None, tries=6):
+        f = path.split("/contents/")[-1]
+        if f.endswith("test_cache_quota.py"):
+            raise RuntimeError("404 仅本地")
+        return {"sha": D._git_blob_sha(f)}
+    monkeypatch.setattr(D, "req", fake_req)
+    problems, odd = D.ci_atomic_deps([D.WF], _wf(tmp_path, name="rss_history"))
+    assert problems == [], "只缺仅本地文件不该阻塞发布：%s" % problems
+    assert any("test_cache_quota" in o for o in odd), odd
+
+
+def test_clean_local_copy_behind_remote_is_not_a_blocker(tmp_path, monkeypatch):
+    """审查 P0-1：本仓的常态是"本地干净但落后远端"（Data API 不回写）。
+    这种差异不是这次推送的事（base_tree 会保留远端那份更新），必须降级为提示。"""
+    monkeypatch.setattr(D, "_git_blob_sha", lambda rel: "a" * 40)
+    monkeypatch.setattr(D, "_head_blob_sha", lambda rel: "a" * 40)      # 工作树 == HEAD ⇒ 本地干净
+    monkeypatch.setattr(D, "req", lambda *a, **k: {"sha": "b" * 40})     # 远端是另一份（更新）
+    problems, odd = D.ci_atomic_deps([D.WF], _wf(tmp_path, name="rss_history"))
+    assert problems == [], "本地干净却落后远端被误判为阻塞：%s" % problems
+    assert any("rss_history" in o for o in odd), odd
+
+
+def test_dirty_local_copy_behind_remote_still_blocks(tmp_path, monkeypatch):
+    """反例：本地有未提交改动时，远端不一致就是真风险（这次会把旧内容推回去）。"""
+    monkeypatch.setattr(D, "_git_blob_sha", lambda rel: "a" * 40)
+    monkeypatch.setattr(D, "_head_blob_sha", lambda rel: "c" * 40)      # 工作树 ≠ HEAD ⇒ 脏
+    monkeypatch.setattr(D, "req", lambda *a, **k: {"sha": "b" * 40})
+    problems, _odd = D.ci_atomic_deps([D.WF], _wf(tmp_path, name="rss_history"))
+    assert problems, "脏工作树 + 远端不一致必须判不通过"
+
+
+def test_advisory_gate_refs_are_notes_not_blockers(tmp_path):
+    """continue-on-error 的步骤（advisory）引用的路径不该阻塞发布。"""
+    wf = tmp_path / "update.yml"
+    wf.write_text(
+        "      - name: Blocking gate\n"
+        "        run: python -m pytest tests/nope_blocking/ -q\n"
+        "      - name: Advisory gate\n"
+        "        continue-on-error: true\n"
+        "        run: python -m pytest tests/nope_advisory/ -q\n", encoding="utf-8")
+    problems, odd = D.ci_atomic_deps([], str(wf))
+    assert any("nope_blocking" in p for p in problems), problems
+    assert not any("nope_advisory" in p for p in problems), \
+        "advisory 步的路径缺失被判成阻塞发布：%s" % problems
+    assert any("nope_advisory" in o for o in odd), odd
+
+
+def test_run_performs_the_deletions():
+    """审查 P1-1：没有任何测试跑过 dry_run=False 的删除路径 ⇒ 整批可以空转。"""
+    calls = []
+    import trim_actions_cache as TT
+    caches = [_ck("emb-cache-Linux-111-1", 1, "2026-09-20T00:00:00Z"),
+              _ck("emb-cache-Linux-112-1", 2, "2026-09-20T01:00:00Z"),
+              _ck("emb-cache-Linux-113-1", 3, "2026-09-20T02:00:00Z"),
+              _ck("rss-history-Linux-111-1", 4, "2026-09-20T00:10:00Z"),
+              _ck("rss-history-Linux-112-1", 5, "2026-09-20T01:10:00Z"),
+              _ck("rss-history-Linux-113-1", 6, "2026-09-20T02:10:00Z")]
+    out = TT.run(caches, {"emb-cache": 1, "rss-history": 1}, "113",
+                 lambda cid: calls.append(cid) or True)
+    assert sorted(out["deleted"]) == [1, 2, 4, 5], out
+    assert len(calls) == 4, "delete 根本没被调用（空转）"
+
+
+def _ck(key, sid, ts):
+    return {"id": sid, "key": key, "size_in_bytes": 10, "created_at": ts, "last_accessed_at": ts}
+
+
+def test_token_uses_job_token_before_gh_cli(monkeypatch):
+    """runner 上没有 gh 登录态：只测"字符串出现过 GH_TOKEN"是假测试，要测行为。"""
+    import trim_actions_cache as TT
+    monkeypatch.setenv("GH_TOKEN", "tok-from-env")
+    def boom(*a, **k):
+        raise AssertionError("不该回退到 gh CLI：runner 上没有 gh 登录态")
+    monkeypatch.setattr(TT.subprocess, "check_output", boom)
+    assert TT._token() == "tok-from-env"
+
+
+def test_script_reference_with_existing_local_file_is_enforced(tmp_path, monkeypatch):
+    """上一版用了一个本地也不存在的文件名 ⇒ 被"本地不存在"分支抢先命中，新逻辑没被覆盖。"""
+    monkeypatch.setattr(D, "req", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("404")))
+    wf = tmp_path / "update.yml"
+    wf.write_text("      - name: Trim\n        run: python tools/trim_actions_cache.py --keep a=1\n",
+                  encoding="utf-8")
+    problems = _problems([D.WF], str(wf))
+    assert any("trim_actions_cache" in p for p in problems), \
+        "脚本本地存在、远端没有、又不在推送集 → 必须判不通过"
+
+
+def test_partial_success_emits_no_warning(capsys):
+    out = D_OK = None
+    import trim_actions_cache as TT
+    plan = [_c2("emb-cache-Linux-a-1", 1), _c2("emb-cache-Linux-b-1", 2)]
+    out = TT.report({"deleted": [1], "failed": [2], "would_delete": plan}, before_bytes=0, dry_run=False)
+    printed = capsys.readouterr().out
+    assert out == "", out
+    assert "::warning" not in printed, "有成功就不该刷整批失败的告警"
+
+
+def _c2(key, sid):
+    return {"id": sid, "key": key, "size_in_bytes": 10, "created_at": "2026-09-20T00:00:00Z",
+            "last_accessed_at": "2026-09-20T00:00:00Z"}
