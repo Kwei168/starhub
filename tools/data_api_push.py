@@ -28,6 +28,8 @@ if __name__ == "__main__":
 API = "https://api.github.com"
 REPO = "repos/Kwei168/starhub"
 WF = ".github/workflows/update.yml"
+# 所有路径都相对仓库根解析（本文件在 <root>/tools/ 下），不依赖调用时的 CWD
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def req(method, path, body=None, tries=6):
@@ -85,60 +87,122 @@ def risky_runs(push_ts):
     return [r for r in runs(10) if r["created_at"] < push_ts and r["status"] != "completed"]
 
 
+def _abs(p):
+    """一律相对仓库根解析 —— 原实现用 CWD 相对路径，从别的目录调用会误判"本地不存在"。"""
+    return p if os.path.isabs(p) else os.path.join(ROOT, p.replace("/", os.sep))
+
+
+def norm_path(p):
+    return re.sub(r"^\./", "", p.replace("\\", "/"))
+
+
+def is_binary_bytes(b):
+    return b"\x00" in b[:8000]
+
+
+def _rel(full):
+    """ROOT 相对化；跨盘符（Windows 临时目录在 C:）时 relpath 会抛 ValueError，退回绝对路径。"""
+    try:
+        return os.path.relpath(full, ROOT).replace(os.sep, "/")
+    except ValueError:
+        return full.replace(os.sep, "/")
+
+
+def list_files(rel):
+    """列出一个路径（文件或目录）下的文件；排除 __pycache__ 与 .pyc。"""
+    ap = _abs(rel)
+    if os.path.isfile(ap):
+        return [rel]
+    out = []
+    for root, dirs, files in os.walk(ap):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for fn in sorted(files):
+            if fn.endswith((".pyc", ".pyo")):
+                continue
+            out.append(_rel(os.path.join(root, fn)))
+    return out
+
+
 def expand_paths(paths):
     """目录参数展开成其中的文件（原子推送要靠一次列出全部路径，逐个数文件正是漏项的来源）。"""
     out = []
     for p in paths:
-        lp = p.replace("/", os.sep)
-        if os.path.isdir(lp):
-            for root, dirs, files in os.walk(lp):
-                dirs[:] = [d for d in dirs if d != "__pycache__"]
-                for fn in sorted(files):
-                    if fn.endswith((".pyc", ".pyo")):
-                        continue
-                    out.append(os.path.join(root, fn).replace(os.sep, "/"))
+        p = norm_path(p)
+        if os.path.isdir(_abs(p)):
+            out.extend(list_files(p))
         else:
             out.append(p)
     return out
 
 
-def ci_atomic_deps(push_paths):
-    """推 `.github/workflows/update.yml` 时的原子性检查：它引用的每条测试路径必须"这次一起推"或"远端已有"。
+def _git_blob_sha(rel):
+    """用 git hash-object 取本地 blob sha：会套用与提交时相同的转换（含 CRLF 归一），可直接与远端比。"""
+    try:
+        return subprocess.check_output(
+            ["git", "hash-object", "--", rel], cwd=ROOT, stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        return ""
 
-    实测依据（09-20 07:1x 核实）：门禁 A2 `python -m pytest tests/rss_history/ tests/rss_source_coverage/ -q -s`
-    没有 `continue-on-error`（是 blocking），而 `Deploy to Vercel` 也没有 `if:` → 默认 success()。
-    pytest 找不到目录会退出码 4，于是**提交步骤与部署一起被跳过**，站点整小时冻住。
+
+def remote_matches_local(rel):
+    """远端该路径是否存在**且每个文件的 blob 都与本地一致**。
+
+    只判"目录存在"会放行一份远端已过期的测试 —— 那照样让 A2 红。所以要逐文件比 sha。
     """
-def ci_atomic_deps(push_paths, wf=WF):
-    """推 workflow 时的原子性检查：它引用的每条测试路径必须"这次一起推"或"远端已有"。
+    for f in list_files(rel):
+        try:
+            got = req("GET", "%s/contents/%s" % (REPO, f), tries=2)
+        except Exception:
+            return False
+        want = _git_blob_sha(f)
+        if not want or got.get("sha") != want:
+            return False
+    return True
+
+
+# 这类写法不是字面路径，交给解析器判红会误报；单列出来要人看一眼
+UNPARSED_HINTS = ("*", "$", "{", "<", ">")
+
+
+def ci_atomic_deps(push_paths, wf):
+    """推 workflow 时的原子性检查：它引用的每条测试路径必须"同批推送"或"远端已有且与本地一致"。
 
     实测依据（09-20 07:1x 核实）：门禁 A2 `python -m pytest tests/rss_history/ tests/rss_source_coverage/ -q -s`
     没有 `continue-on-error`（是 blocking），而 `Deploy to Vercel` 也没有 `if:` → 默认 success()。
     pytest 找不到目录会退出码 4，于是**提交步骤与部署一起被跳过**，站点整小时冻住。
-    调用方负责只在推送集含 workflow 时才调它（wf 参数可指向 fixture，供测试用）。
     """
     try:
-        text = open(wf.replace("/", os.sep), encoding="utf-8").read()
+        with open(_abs(wf), encoding="utf-8") as fh:
+            text = fh.read()
     except OSError:
-        return [wf + " 本地读不到"]
-    refs = set()
-    for line in text.splitlines():
-        if "pytest" in line or re.search(r"python[^\n]*test_[\w/]+\.py", line):
-            for tok in re.findall(r"[\w./-]*(?:tests/[\w./-]+|test_[\w.-]+\.py)", line):
-                refs.add(tok.rstrip("/"))
+        return [wf + " 本地读不到"], []
+    refs, odd = set(), set()
+    for raw_line in text.splitlines():
+        line = raw_line
+        if "pytest" not in line and not re.search(r"python[^\n]*test_[\w/]+\.py", line):
+            continue
+        # `--ignore=tests/slow` / `--deselect=tests/x.py::t` 的值是"排除项"，不是"必须存在的路径"
+        # （原实现把等号后的路径当要求项 → 对不存在的被忽略目录误判红）
+        line = re.sub(r"--[\w-]+=\S+", " ", line)
+        for tok in re.findall(r"[\w./$*{}<>-]*(?:tests/[\w./$*{}<>-]+|test_[\w.$*{}<>-]+\.py)", line):
+            tok = tok.rstrip("/")
+            if tok.startswith("-") or "--ignore" in tok:      # 选项（含 --ignore=tests/x）不是路径要求
+                continue
+            if any(h in tok for h in UNPARSED_HINTS):
+                odd.add(tok)                                   # 通配/matrix 模板 → 交给人判
+                continue
+            refs.add(norm_path(tok))
     problems = []
     for p in sorted(refs):
-        if not os.path.exists(p.replace("/", os.sep)):
-            problems.append("%s —— 本地不存在，推上去 A2 必红" % p)
+        if not os.path.exists(_abs(p)):
+            problems.append("%s —— 本地不存在，推上去该门禁必红" % p)
             continue
         if p in push_paths or any(x.startswith(p + "/") for x in push_paths):
             continue
-        try:
-            req("GET", "%s/contents/%s" % (REPO, p), tries=2)
-        except Exception:
-            problems.append("%s —— 本地有但远端没有，且不在本次推送里 → A2 会退出码 4，"
-                            "连 Commit 带 Vercel 部署一起停摆。把它加进同一次推送" % p)
-    return problems
+        if not remote_matches_local(p):
+            problems.append("%s —— 本地有、但远端缺失或与本地不一致，又不在本次推送里 → "
+                            "门禁会退出码 4，连 Commit 带 Vercel 部署一起停摆。加进同一次推送" % p)
+    return problems, sorted(odd)
 
 
 def main():
@@ -155,14 +219,18 @@ def main():
         a.msg = open(a.msg_file, encoding="utf-8").read().strip()
 
     a.paths = expand_paths(a.paths or [])
-    if a.paths and WF in a.paths:
-        bad_set = ci_atomic_deps(a.paths)
-        if bad_set:
-            print("原子性检查未通过：")
-            for b in bad_set:
+    # 任一 workflow 被推都要过原子性检查（原实现只认 update.yml 这一个字符串）
+    wfs = [p for p in a.paths if p.startswith(".github/workflows/") and p.endswith((".yml", ".yaml"))]
+    for wf in wfs:
+        problems, odd = ci_atomic_deps(a.paths, wf)
+        for o in odd:
+            print("  [?] %s 引用了无法解析的路径写法 %s（通配/matrix 模板），请人工确认已同批推送" % (wf, o))
+        if problems:
+            print("原子性检查未通过（%s）：" % wf)
+            for b in problems:
                 print("  [NG] " + b)
             return 1
-        print("原子性检查通过：update.yml 引用的测试路径都已随本次推送或已在远端")
+        print("原子性检查通过：%s 引用的测试路径都已随本次推送，或远端已有且与本地逐文件一致" % wf)
 
     ok, why = gate()
     print(why)
@@ -189,7 +257,11 @@ def main():
     head = req("GET", REPO + "/git/ref/heads/main")["object"]["sha"]
     items, expect = [], {}
     for p in a.paths:
-        raw = open(p.replace("/", os.sep), "rb").read().replace(b"\r\n", b"\n")
+        with open(_abs(p), "rb") as fh:
+            raw = fh.read()
+        # 无条件 CRLF→LF 会毁掉被跟踪的二进制（仓库里有 4 个 .png）；只对文本做归一
+        if not is_binary_bytes(raw):
+            raw = raw.replace(b"\r\n", b"\n")
         blob = req("POST", REPO + "/git/blobs",
                    {"content": base64.b64encode(raw).decode(), "encoding": "base64"})
         expect[p] = blob["sha"]
