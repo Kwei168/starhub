@@ -410,6 +410,68 @@ def test_eviction_cannot_change_date_audit(clean):
     assert flagged_capped == flagged_full
 
 
+def test_prune_count_is_published_for_the_log(clean):
+    """`history_expired` 必须是"被判定过期而删除的条数"，不能是历史首尾差。
+
+    生产日志实测：`history_before - history_after` 在场场都在**负数**
+    （-264 / -201 / -174 / ... / -235，2026-09-20 全天 12 场无一例外）—— 因为新抓进来的
+    比删掉的多。也就是说"过期到底删了多少"这个用户点名要的账，在日志里从来没有过。
+    本用例把口径钉死：只要 prune 删了 N 条，发布的 expired 就必须是 N，且永不为负。
+    """
+    cap = mod.HISTORY_MAX_PER_SOURCE
+    hist = {}
+    for i in range(120):                       # 真过期（>72h）
+        l = "http://exp/old%03d" % i
+        hist[l] = _hist_entry(l, "exp", 80.0 + i * 0.1)
+    for i in range(cap):                       # 窗内，且把上限撑出淘汰
+        l = "http://exp/new%04d" % i
+        hist[l] = _hist_entry(l, "exp", 1.0 + i * 0.05)
+    mod._LAST_HISTORY_BOUND.clear()
+    _accumulate(hist, key="exp")
+    assert mod._LAST_HISTORY_BOUND.get("expired") == 120, (
+        "过期删除数没发布（实为 %r）：日志里的 history_expired 只能是首尾差" % (
+            mod._LAST_HISTORY_BOUND,))
+    assert mod._LAST_HISTORY_BOUND.get("expired") >= 0
+
+
+def test_build_log_expired_field_reads_prune_count(clean):
+    """日志字段必须接上那个数，且不许再用首尾差（首尾差在生产恒为负）。"""
+    tree = ast.parse(io.open(SRC, encoding="utf-8").read())
+    main = _fn(tree, "main")
+    assert main is not None
+    vals = {}
+    for node in ast.walk(main):
+        if not isinstance(node, ast.Dict):
+            continue
+        for k, v in zip(node.keys, node.values):
+            if isinstance(k, ast.Constant) and k.value in (
+                    "history_expired", "history_evicted_per_source"):
+                vals[k.value] = v
+    assert "history_expired" in vals, "history_expired 没进 build_logger"
+    expr = ast.dump(vals["history_expired"])
+    names = {n.id for n in ast.walk(vals["history_expired"]) if isinstance(n, ast.Name)}
+    assert "_history_before" not in expr and "_history_after" not in expr, (
+        "history_expired 仍是首尾差 %s：生产实测恒为负数" % sorted(names))
+    assert "_LAST_HISTORY_BOUND" in names, "history_expired 没读 prune 计数的发布点"
+    # 两个字段读的是同一份 dict 的不同 key，key 名必须与写入侧一致（拼错就恒为 None）
+    fn = _fn(tree, "_accumulate_history")
+    written = set()
+    for st in ast.walk(fn):
+        if isinstance(st, ast.Assign):
+            for t in st.targets:
+                if isinstance(t, ast.Subscript) and \
+                        getattr(t.value, "id", "") == "_LAST_HISTORY_BOUND" and \
+                        isinstance(t.slice, ast.Constant):
+                    written.add(t.slice.value)
+    read = set()
+    for key in ("history_expired", "history_evicted_per_source"):
+        for c in ast.walk(vals[key]):
+            if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                read.add(c.value)
+    assert read and read <= written, (
+        "日志读的 key %s 与写入的 key %s 对不上" % (sorted(read), sorted(written)))
+
+
 def test_expired_log_excludes_cap_evictions(clean, capsys):
     """"裁剪 N 篇过期"只许统计真过期的条目。
 
