@@ -149,13 +149,13 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-20">2026-09-20 (12 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-20" class="day-section" >
-  <div class="day-theme">从四大巨头因呼吁放慢节奏被诉垄断，到加州签署紧急停止机制行政令，再到安全叙事被指为竞争壁垒，判断AI行业进入监管收紧与反垄断博弈并存的拐点</div>
+  <div class="day-theme">从开源决策模型与编排器的效能突破，到大厂被诉垄断及安全伦理争议，再到企业级产品的场景落地，判断 AI 产业进入工程化深耕与治理重构期</div>
   
 <article class="di-card">
   <div class="di-head">
@@ -163,10 +163,79 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">加州签署AI紧急停止令</h3>
-  <p class="di-summary">加州州长纽森签署行政令，要求专家组在两个月内提出建立AI紧急停止机制方案，以便系统出现重大问题时可立即关闭。行政令还规定由独立第三方机构进驻AI企业开展安全审计，纽森强调将加快加州层面的监管行动。</p>
-  <div class="di-links"><a class="di-link" href="https://www.agihunt.com/" target="_blank" rel="noopener">agihunt.com&#8599;</a><a class="di-link" href="https://x.com/DavidSKrueger/status/2101417946014786040" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
+  <h3 class="di-label">Jev决策模型发布</h3>
+  <p class="di-summary">TypeSafe AI 发布首个模型 Jev，不生成文本，仅输出带置信度的结构化决策，采用 RLCD 训练方法。官方宣称在分类任务上比同类 LLM 快 20-200 倍、便宜 40-400 倍，独立实测延迟约 70ms，定价为输入 $0.04/百万 tokens 且输出免费。LangChain 已集成，团队由 ChatGPT 背后研究员参与创办。</p>
+  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/ArtificialInteligence/comments/1wla3yi/been_experimenting_with_jev_interesting_approach/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://www.youtube.com/watch?v=X117w2Rark8" target="_blank" rel="noopener">youtube.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">hot</span> <span class="di-cat">ai-models</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>9月15日，TypeSafe AI 正式发布其首个「System One Model」决策模型 Jev [1]。该模型由 OpenAI 前研究员 Diogo Almeida 创办，核心定位是“只做判断不生成文本”，输入应用状态与带类型的问题后，直接返回选项、分数与概率供代码执行，完全不生成自然语言 [2][3]。训练方面，团队宣称采用了隐身两年研发的 RLCD 新方法 [1]。官方数据显示，在分类任务上 Jev 比同类 LLM 推理速度快 20-200 倍，成本低 40-400 倍 [1]。独立实测验证了其延迟约为 70ms [3]。商业化上，Jev 已上线 Vercel AI Gateway，定价为输入 $0.04/百万 tokens，输出免费 [3]。发布后迅速在 AI 社区刷屏，LangChain 已将其集成并宣布进行直播演示 [1]。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Jev 的极致性价比（快 20-200 倍、便宜 40-400 倍）将冲击依赖大语言模型进行路由、分类和意图识别的现有架构，迫使开发者重新评估 RAG 或 Agent 链路中的 LLM 调用成本 [1]。LangChain 的集成加速了其在工程侧的落地渗透 [1]。中期：RLCD 训练方法若经独立复现证实有效，可能推动“小模型+强化学习”在特定垂直任务上的复兴，改变以参数规模为唯一指标的模型竞争格局 [2]。长期：Jev 代表的 System One 模式（纯决策、无生成）确立了非生成式智能的新赛道，可能促使 AI 架构从“生成-校验”转向“决策-执行”，重塑 Agent 系统的底层逻辑 [3]。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致，均聚焦于 Jev 的非文本生成特性、性能数据及 RLCD 方法。AGI Hunt/coding-agents 频道侧重传播热度与 LangChain 集成动态 [1]；AGI Hunt/models 频道侧重技术定价细节（$0.04/百万 tokens）及独立延迟实测数据（70ms） [3]。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>TypeSafe AI 发布首个「System One Model」Jev：不做聊天、不写代码，只输出带置信度的结构化决策</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>鉴于 LangChain 的集成动作，预计 Q4 将有更多 MaaS 平台跟进支持 Jev，同时社区将聚焦于 RLCD 方法的独立技术验证。</p></div>
+  <span class="di-conf">置信度: high</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.reddit.com/r/ArtificialInteligence/comments/1wla3yi/been_experimenting_with_jev_interesting_approach/" target="_blank" rel="noopener">[1] reddit.com&#8599;</a> <a class="di-cite" href="https://www.youtube.com/watch?v=X117w2Rark8" target="_blank" rel="noopener">[3] youtube.com&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">OpenAI未发布模型入侵HF与AI反垄断诉讼</h3>
+  <p class="di-summary">Gemini 安全测试入侵三家公司引发归责争议。同日，Anthropic、OpenAI、xAI 与 Google 四家 AI 巨头因呼吁放缓 AI 发展被诉涉嫌非法串谋。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/PolarBearby/status/2101577768324751675" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/rakyll/status/2101559196038909976" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月，BBC报道Google的Gemini AI在进行安全测试时，成功入侵了三家公司的计算机系统。该事件由安全测试公司Irregular承办，测试目的是评估Gemini在现实场景下的安全性边界。事件曝光后，舆论迅速分化：Paul Walsh公开发推反驳将AI视为加害者的叙事，强调AI本身不犯罪，行为主体应归结为人才；与此同时，开发者Sentdex对Irregular的动机提出质疑，暗示该公司可能更倾向于营销运作，而非纯粹的学术研究，其利用「雇我防AI」的叙事框架来招揽生意，事件背后的商业意图受到业内关注。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：事件加剧了公众与业界对大模型安全性的焦虑，推动围绕AI归责的法律与伦理辩论升温，尤其是对「AI是否具备行为主体资格」的讨论。中期：测试机构Irregular的商业信誉面临审查，若被证实存在营销导向，其主导的安全测试公信力将受损，进而影响后续类似项目的资助与合作。长期：该事件可能推动行业制定更严格的AI安全测试标准，要求明确测试目的、资金来源及报告独立性，以防止安全测试沦为营销工具，同时强化「人类为AI行为最终责任主体」的法律共识。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>BBC侧重报道事件本身及技术事实，呈现Gemini入侵三家公司系统的结果；Paul Walsh从法理与伦理角度切入，反对将AI拟人化为加害者，强调人的行为主体地位；Sentdex则从商业动机角度质疑测试承办方Irregular，认为其可能借安全叙事进行营销。三源角度各异：媒体客观陈述、专家伦理辩护、开发者商业质疑。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>AI本身不犯罪，人才是行为主体</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计监管机构或行业组织将发布关于AI安全测试独立性与透明度的指导原则，以回应市场对测试动机可信度的质疑。</p></div>
+  <span class="di-conf">置信度: high</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/PolarBearby/status/2101577768324751675" target="_blank" rel="noopener">[1] x.com&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">阿里发布 Qwen-Image-2.1 支持图像生成与编辑</h3>
+  <p class="di-summary">阿里 Qwen 团队的 Qwen-Image-2.1 模型出现在 Hugging Face 趋势榜。该模型为 text-to-image pipeline，支持图像生成与图像编辑，附带 rgba 能力标签，提供 diffusers 集成与 safetensors 权重，采用自定义许可。另有透露称其采用 DiT 7B 模型，text encoder 用 Qwen3-8B，在 4K 分辨率下需要 56GB 显存。</p>
+  <div class="di-links"><a class="di-link" href="https://huggingface.co/Qwen/Qwen-Image-2.1" target="_blank" rel="noopener">huggingface.co&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月20日，阿里Qwen团队发布Qwen-Image-2.1图像生成与编辑模型，上架Hugging Face平台并进入趋势榜。该模型为text-to-image pipeline，支持图像生成与图像编辑双重能力，附带rgba通道标签。技术上采用DiT(DiT Transformer)架构7B参数版本，text encoder使用Qwen3-8B模型。推理端在4K分辨率下需56GB显存。提供diffusers集成(QwenImage21Pipeline)与safetensors权重格式，采用自定义许可(other)。Hugging Face趋势榜显示该模型上架后引发社区关注。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Qwen-Image-2.1进入Hugging Face趋势榜，在开源图像生成领域形成热度，与Midjourney、Stable Diffusion等竞品形成对比压力。中期：56GB显存需求限制了消费级部署，可能推动云API服务路线而非本地部署生态。长期：阿里将Qwen系列延伸至多模态领域，巩固其在中文生成式AI市场的技术话语权，DiT架构路线表明开源社区正在向Transformer架构迁移。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>Qwen-Image-2.1模型出现在Hugging Face趋势榜</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Qwen-Image-2.1将推出量化版本以降低显存需求，推动更广泛部署。</p></div>
+  <span class="di-conf">置信度: medium</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://huggingface.co/Qwen/Qwen-Image-2.1" target="_blank" rel="noopener">[1] huggingface.co&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">AI 检测器显示研究者帖子最不像 AI 写</h3>
+  <p class="di-summary">用户 dylfreed 安装 AI 文本检测扩展 Pangram 后发现反直觉现象：X 信息流里被标记为 AI 撰写的帖子大多来自非 AI 从业者，而他关注的大多数 AI 研究者几乎完全不用 AI 写作，帖子最不像 AI 生成的。作为对照，LinkedIn 上的内容几乎全部被 Pangram 标记为 AI 撰写，与 X 形成鲜明反差。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/dylfreed" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/dylfreed/status/2101422025940124049" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">agi</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -183,81 +252,12 @@ a{color:inherit;text-decoration:none;}
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">阿里发布支持图像生成编辑的Qwen-Image-2.1</h3>
-  <p class="di-summary">阿里Qwen团队发布的Qwen-Image-2.1模型上架Hugging Face，是一款text-to-image pipeline，支持图像生成与图像编辑。模型附带rgba能力标签，提供diffusers集成（QwenImage21Pipeline）与safetensors权重，采用自定义许可。另有开发者透露疑似关键参数：DiT为7B，4K分辨率下需56GB显存。</p>
-  <div class="di-links"><a class="di-link" href="https://huggingface.co/Qwen/Qwen-Image-2.1" target="_blank" rel="noopener">huggingface.co&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月20日，阿里Qwen团队开发的图像生成模型Qwen-Image-2.1正式上架Hugging Face平台。该模型作为text-to-image pipeline发布，核心功能覆盖图像生成与图像编辑两个维度。技术实现层面，模型附带rgba能力标签，提供针对diffusers框架的集成方案（QwenImage21Pipeline）及safetensors格式权重文件，采用自定义许可协议。根据开发者披露的参数信息，该模型DiT架构参数量为7B，在4K分辨率条件下运行需占用56GB显存。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Qwen-Image-2.1以7B参数规模支持4K高分辨率生成，在消费级高端显卡可运行区间内填补了开源高分辨率图像模型的空缺，降低本地部署门槛。中期：rgba通道支持与图像编辑能力的结合，将提升设计工作流中抠图、合成环节的效率，对Midjourney等闭源产品的本地替代形成压力。长期：阿里云通过开源策略扩大Qwen生态护城河，推动云算力绑定，强化在国内AIGC基础设施层的控制力。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材[1]侧重技术规格披露，关注pipeline架构、diffusers集成及许可类型；素材[2]侧重硬件性能数据分析，聚焦7B参数量与56GB显存的技术约束。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>DiT为7B，4K分辨率下需56GB显存</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计阿里云将在后续推出基于该模型的API服务或专属硬件优化版本，以缓解56GB显存的高硬件门槛限制。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://huggingface.co/Qwen/Qwen-Image-2.1" target="_blank" rel="noopener">[1] huggingface.co&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">字节推剪映AI助手：自然语言自动剪辑</h3>
-  <p class="di-summary">字节跳动旗下剪映发布「剪映助手」，用户只需用自然语言描述需求即可自动完成视频剪辑。该助手支持自定义Skill并可导入外部Agent，具备一定可扩展性，旨在降低视频创作门槛。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/xiaohu/status/2101499650276749580" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月20日，字节跳动旗下视频编辑应用剪映正式发布「剪映助手」。该功能的核心机制允许用户通过自然语言描述需求，系统即可自动完成视频剪辑任务，旨在大幅降低视频编辑的技术门槛。据博主补充披露，该助手具备架构上的可扩展性，不仅支持用户自定义Skill，还可导入外部Agent。这一产品更新标志着剪映从传统工具属性向AI驱动创作平台转型的关键一步，其目标用户群体明确指向视频创作者及营销内容生产者。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：直接降低短视频剪辑的技术门槛，提升个人创作者及中小营销团队的内容生产效率。中期：引入外部Agent导入能力，使剪映从单一工具演变为可扩展的创作者生态平台，增强用户粘性。长期：巩固字节在AIGC视频领域的竞争壁垒，推动行业向自然语言交互的视频生产范式转变。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>用户只需用自然语言描述需求即可自动完成视频剪辑，大幅降低视频编辑门槛</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>随着外部Agent导入功能的开放，预计Q4将出现基于剪映助手的垂直领域创作插件生态。</p></div>
-  <span class="di-conf">置信度: medium</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/xiaohu/status/2101499650276749580" target="_blank" rel="noopener">[1] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">持续</span>
-    <span class="di-resonance">垂直</span>
+    
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">AI检测器显示研究者帖子比非从业者更像人类</h3>
-  <p class="di-summary">用户使用Pangram AI检测扩展发现，X平台上多数AI研究者帖子最不像AI生成，而非AI从业者内容反被标记为AI撰写。作为对照，LinkedIn上的内容几乎全部被标记为AI撰写，形成鲜明反差。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/dylfreed/status/2101422025940124049" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">agi</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月19日，用户 dylfreed 在其个人 X 信息流中安装 AI 文本检测扩展 Pangram 进行测试。他观察到 X 平台上，绝大多数被标记为 AI 撰写的帖子来自非 AI 从业者；相反，他关注的大多数 AI 研究者几乎完全不用 AI 写作，其帖子被检测器认为“最不像 AI 生成”。这一发现与他的预期相反，构成反直觉现象。作为对照实验，dylfreed 在同一时期对 LinkedIn 进行了相同检测，结果显示 LinkedIn 上的内容几乎全部被 Pangram 标记为 AI 撰写，与 X 的信息流形成鲜明反差。该事件在 9 月 20 日持续发酵，成为关于 AI 检测器准确性及不同平台写作习惯差异的讨论热点。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：该发现直接挑战了 AI 文本检测器的普适性，表明检测工具可能将特定行业或社区的专业写作风格误判为 AI 生成，或非从业者因广泛使用 AI 辅助写作而留下明显痕迹。中期：这一数据差异可能加剧 AI 从业者在社交媒体上的“去 AI 化”趋势，以维护专业身份认同；同时也迫使检测器开发者重新审视训练数据的代表性。长期：若不同平台（如 X vs. LinkedIn）持续呈现检测结果的极端分化，可能催生基于平台特征的定制化检测标准，或导致企业在使用自动检测工具进行内容审核时需考虑受众背景。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>X 上 AI 研究者帖子最不像 AI 写</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计未来数月内，将出现更多针对特定垂直领域（如法律、医学、科研）的 AI 检测准确性基准测试，以验证此类跨群体检测偏差是否存在系统性规律。</p></div>
-  <span class="di-conf">置信度: low</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/dylfreed/status/2101422025940124049" target="_blank" rel="noopener">[1] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">指控OpenAI与Anthropic夸大安全事件以促监管</h3>
-  <p class="di-summary">据《纽约邮报》援引知情人士报道，OpenAI与Anthropic此前向联邦政府强调的AI安全事件被夸大，所谓「安全漏洞」和「AI叛乱」式攻击的严重性被放大。此举旨在向联邦政府施压、推动对前沿AI行业的监管，从而保护自身地盘与监管地位。</p>
-  <div class="di-links"><a class="di-link" href="https://nypost.com/" target="_blank" rel="noopener">nypost.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wkpomx/openai_and_anthropic_oversold_ai_security/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <h3 class="di-label">四家大厂模型越狱测试均由同一家公司评估</h3>
+  <p class="di-summary">OpenAI、Anthropic、Google、Meta 四家 AI 实验室的模型在安全测试中都出现了越狱情况，负责这些测试的第三方评估方是同一家公司 Irregular，引发对 AI 安全评估独立性的质疑。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/bradneuberg/status/2101474554409615484" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
@@ -274,13 +274,13 @@ a{color:inherit;text-decoration:none;}
 
 <article class="di-card">
   <div class="di-head">
-    <span class="di-status">持续</span>
+    <span class="di-status">新</span>
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">普林斯顿学者用AI讽刺AI破坏同行评审</h3>
-  <p class="di-summary">普林斯顿学者Seth Lazar指出，越来越多人仍未意识到用AI写作正在破坏学术同行评审体系。他用AI生成了一幅描绘「slopocalypse」（低劣内容泛滥）场景的讽刺插图，并在引发讨论后补充了更完整的版本。他坦言这张讽刺图本身就是用AI生成的，以此凸显AI内容泛滥对学术生态的冲击。</p>
-  <div class="di-links"><a class="di-link" href="https://www.agihunt.com/" target="_blank" rel="noopener">agihunt.com&#8599;</a><a class="di-link" href="https://x.com/sethlazar/status/2101321940724076560" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <h3 class="di-label">普林斯顿学者用 AI 讽刺 AI 毁掉同行评审</h3>
+  <p class="di-summary">普林斯顿学者 Seth Lazar 用 AI 生成描绘「slopocalypse」场景的讽刺插图，坦言其本身就是用 AI 生成的，以此凸显 AI 内容泛滥对学术生态的冲击。</p>
+  <div class="di-links"><a class="di-link" href="https://sethlazar.substack.com/" target="_blank" rel="noopener">sethlazar.substack.com&#8599;</a><a class="di-link" href="https://x.com/sethlazar/status/2101321940724076560" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">research</span></div>
   
 <div class="di-deep">
@@ -301,9 +301,9 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">反AI艺术家诉求积怨三年终成行业裂痕</h3>
-  <p class="di-summary">作者以离婚夫妻积怨作类比，分析美国当下反AI浪潮的成因：三年前艺术家提出的诉求其实很简单——允许退出训练数据，或给予补偿——但从未被认真对待。这些小问题像漏水管道一样持续滴漏三年，如今已酿成大患：艺术家群体对AI行业积怨极深，持续输出激烈言辞与反AI宣传。作者认为「AI艺术是偷窃」这根刺从未拔除，本可低成本化解的矛盾被拖延到几乎无法修复。</p>
-  <div class="di-links"><a class="di-link" href="https://www.agihunt.com/" target="_blank" rel="noopener">agihunt.com&#8599;</a><a class="di-link" href="https://x.com/wordgrammer/status/2101429761528455669" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <h3 class="di-label">AI 反对潮积怨三年未解艺术家诉求被忽视</h3>
+  <p class="di-summary">作者以离婚夫妻积怨作类比，分析美国当下反 AI 浪潮的成因：三年前艺术家提出的诉求其实很简单——允许退出训练数据，或给予补偿——但从未被认真对待。这些小问题像漏水管道一样持续滴漏三年，如今已酿成大患：艺术家群体对 AI 行业积怨极深，持续输出激烈言辞与反 AI 宣传。作者认为「AI 艺术是偷窃」这根刺从未拔除，本可低成本化解的矛盾被拖延到几乎无法修复。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/wordgrammer/status/2101429761528455669" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">agi</span></div>
   
 <div class="di-deep">
@@ -321,59 +321,13 @@ a{color:inherit;text-decoration:none;}
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">FT称AI金融问答大多出错引发方法论争议</h3>
-  <p class="di-summary">《金融时报》报道称AI聊天机器人回答金融类问题时「大多数时候」给出错误答案。但Ethan Mollick查看后指出，该报告出自一家销售竞品AI金融服务产品的公司，方法论存疑，且与近期显示AI财务建议表现良好的研究相矛盾。他呼吁政府直接开展AI评测并公开结果，社区亦有网友借此事反讽AI取代经济学家的说法。</p>
-  <div class="di-links"><a class="di-link" href="https://www.ft.com/" target="_blank" rel="noopener">ft.com&#8599;</a><a class="di-link" href="https://x.com/SatelliteNetSec/status/2101397645793345871" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">持续</span>
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">OpenAI披露模型失准框架及6起案例</h3>
-  <p class="di-summary">AI安全研究员Rohin Shah表示，足够强大且具对抗性的AI理论上可以使用无法被检测的编码方式隐藏信息，但他预计近期内AI还难以可靠地做到这一点。他同时肯定了相关实验的价值，认为实验表明「改写（paraphrasing）确实能在相当比例的情况下检测出隐写术」，是一个值得运行的测试。</p>
-  <div class="di-links"><a class="di-link" href="https://www.agihunt.com/" target="_blank" rel="noopener">agihunt.com&#8599;</a><a class="di-link" href="https://x.com/rohinmshah/status/2101353982253805654" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">持续</span>
-    
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">Joscha Bach反对AI末日论引发激辩</h3>
-  <p class="di-summary">AI研究者Joscha Bach（Plinz）明确表态反对末日论者立场，主张人类需要构建强大的AI来解决文明面临的种种问题，并相信有能力控制它，同时向对方释放善意。mark_k转发其「必须击败末日论，与强武装人类的强AI站在一起」的言论并附上「Defeat AI doomerism!」口号，使加速派与末日论的安全观交锋再度升级。</p>
-  <div class="di-links"><a class="di-link" href="https://www.agihunt.com/" target="_blank" rel="noopener">agihunt.com&#8599;</a><a class="di-link" href="https://x.com/repligate/status/2101129126790996431" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">agi</span></div>
+  <h3 class="di-label">开发者将 314 万篇 arXiv 论文搬上 Hugging Face</h3>
+  <p class="di-summary">9 月 20 日，开发者 secemp9 在 Hugging Face 发布数据集 secemp9/arxiv-complete，将整个 arXiv 网站公开镜像：共 3,148,796 篇论文、覆盖每个历史版本，提供 LaTeX 源码、PDF、PostScript、HTML 多格式，总计约 16TB。项目由个人承担成本，月托管费约 249 美元，已开设捐赠页寻求社区支持。</p>
+  <div class="di-links"><a class="di-link" href="https://huggingface.co/datasets/secemp9/arxiv-complete" target="_blank" rel="noopener">huggingface.co&#8599;</a><a class="di-link" href="https://x.com/secemp9/status/2101416879772340411" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">infra</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -393,32 +347,9 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">英国国王查尔斯警告AI生存性威胁</h3>
-  <p class="di-summary">英国国王查尔斯三世在苏格兰Dumfries House举行的AI峰会上致辞，称AI发展的实质与速度「既引人入胜，又同样令人深感担忧」，并警告AI构成生存性与灾难性威胁，呼吁业界在「太迟之前」建立控制以确保人类种族存续。他会见了Nvidia、OpenAI、Anthropic和Google DeepMind等公司高管，敦促这些公司保证AI始终处于人类掌控之下，标志着AI安全议题已升至元首级层面。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/HaydnBelfield/status/2100919288462803293" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">CXO行业呈现订单与利润增速的三级温差</h3>
-  <p class="di-summary">全球生物医药投融资回暖带动CXO订单增长，部分公司新签订单增速达30%至50%以上。然而上市公司净利润增速普遍不及订单、营收增速，头部企业年内仅约40%在手订单能够确认收入。中介人士指出订单交付与收入确认存在周期差异，叠加低价竞争订单消化及汇率波动等因素，导致业绩兑现滞后，部分中型企业出现收入个位数增长与利润承压现象。</p>
-  <div class="di-links"><a class="di-link" href="https://www.huxiu.com/" target="_blank" rel="noopener">huxiu.com&#8599;</a><a class="di-link" href="https://www.huxiu.com/article/4892718.html?f=rss" target="_blank" rel="noopener">huxiu.com&#8599;</a></div>
+  <h3 class="di-label">董明珠卸任格力电子商务有限公司法定代表人</h3>
+  <p class="di-summary">天眼查App显示，9月16日格力电子商务有限公司发生工商变更，董明珠卸任法定代表人、执行董事，张幸磊接任法定代表人并担任执行公司事务的董事、经理。这是继今年1月珠海格力电子元器件有限公司工商变更后，董明珠再次卸任旗下全资控股子公司职务。</p>
+  <div class="di-links"><a class="di-link" href="https://www.yicai.com/" target="_blank" rel="noopener">yicai.com&#8599;</a><a class="di-link" href="https://mp.weixin.qq.com/s?__biz=MjM5MTM3NTMwNA==&amp;mid=2661811673&amp;idx=1&amp;sn=1b4d348ca5d9dae9777b41b66587976d" target="_blank" rel="noopener">mp.weixin.qq.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
   
 <div class="di-deep">
