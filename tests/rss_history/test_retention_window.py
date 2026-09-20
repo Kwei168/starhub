@@ -450,6 +450,13 @@ def test_build_log_carries_post_gate_counts(clean):
     for need in ("sources_after_gate", "sources_empty_after_gate", "items_after_gate",
                  "items_le_base_h", "items_base_to_hard_h", "items_over_hard_h"):
         assert need in keys, "构建日志缺 %s：闸门效果只落在产物里，CI 日志上看不出来" % need
+    src = io.open(BUILD, encoding="utf-8").read()
+    # 这六个字段不能用 0 兜底：闸门没跑到的构建（早退/异常路径）会记成 0，
+    # 而 0 又正好是"闸门把内容全裁光"的样子 —— 两种故障在日志里长一样，等于没有观测面。
+    for getter in ('get("sources_after", 0)', 'get("after", 0)', 'get("le72", 0)',
+                   'get("mid", 0)', 'get("over", 0)'):
+        assert getter not in src, "闸后字段退回 0 兜底了：%s" % getter
+    assert '_LAST_RETENTION_STATS.get("after")' in src, "items_after_gate 不再读闸后统计"
 
 
 def test_breakdown_line_reports_real_numbers(clean, capsys):
