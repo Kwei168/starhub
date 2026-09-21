@@ -333,3 +333,75 @@ def test_non_url_guid_does_not_become_a_link():
         mod._parse_rss_item(ET.fromstring(xml)[0][0], u"S", "s_1", "security", out)
         assert not out or (out[0].get("link") or "").startswith("http"), \
             "%s 被当成链接用了：%r" % (why, out[:1])
+
+import urllib.error as _uerr
+
+
+class RateLimitedTest(Exception):
+    pass
+
+
+def _rl(key="429 source"):
+    """构造一个与生产同形的限流异常：_fetch_rss 将把 429 折成这个类型抛出。"""
+    return _uerr.HTTPError("http://bridge.test/feed0", 429, "Too Many Requests", {}, None)
+
+
+def test_429_is_its_own_status_not_error(offline_main):
+    """限流必须是第四种状态。
+
+    混进 error 的代价现成就有一份：域熔断按"连续 3 次硬失败"触发，而 429 被算硬失败，
+    于是同域其余源被连坐（我们明知是限速却按源坏处理），并且在被连坐之前那几个请求
+    还在继续锤限流器 —— 既扩大伤害又加深伤害（台账 §21）。
+    """
+    def handler(src):
+        if src["key"] == "b0":
+            raise _rl()
+        return _item(src["key"])
+
+    res = offline_main(handler, n=6, delay=0.02)
+    st = {k: v.get("status") for k, v in res.per_source.items()}
+    assert st.get("b0") == "rate_limited", "429 没被单独定性：%s" % st
+
+
+def test_429_cooldown_stops_hammering_same_domain(offline_main):
+    """命中 429 之后，同域剩余源本场不得再发请求。"""
+    def handler(src):
+        if src["key"] in ("b0", "b1"):
+            raise _rl()
+        return _item(src["key"])
+
+    res = offline_main(handler, n=6, delay=0.02)
+    after = [k for k in res.calls if k not in ("b0", "b1")]
+    assert not after, "同域已限流，还在继续锤：%s" % after
+    st = {k: v.get("status") for k, v in res.per_source.items()}
+    assert st.get("b2") == "rate_limited" and st.get("b3") == "rate_limited", \
+        "被冷却的源状态没标成 rate_limited：%s" % st
+
+
+def test_403_and_timeout_must_not_enter_the_cooldown(offline_main):
+    """反向判据（必须绿）：只有 429 触发冷却。
+
+    403/404/500 那类是真死源（wechat2rss 五源、CISA、AP News 都是），
+    若也进这个分支，日志会把"永久坏"说成"限流，等会儿再来"，
+    于是既不会删源也不会换源 —— 状态语义一旦被污染，可判决性就没了。
+    """
+    def handler(src):
+        if src["key"] == "b0":
+            raise _uerr.HTTPError("http://bridge.test/feed0", 403, "Forbidden", {}, None)
+        return _item(src["key"])
+
+    res = offline_main(handler, n=6, delay=0.02)
+    st = {k: v.get("status") for k, v in res.per_source.items()}
+    assert st.get("b0") == "error", "403 被当成限流：%s" % st
+    assert "b4" in res.calls, "403 触发了域冷却，同域其他源不再被抓：%s" % res.calls
+
+
+def test_single_source_domain_keeps_today_behaviour(offline_main):
+    """反向判据：单源域没有"兄弟源"可保护，行为与今天一致（记 rate_limited，不引入跳过逻辑）。"""
+    def handler(src):
+        raise _rl()
+
+    res = offline_main(handler, n=1, delay=0)
+    st = {k: v.get("status") for k, v in res.per_source.items()}
+    assert st.get("b0") == "rate_limited", "单源域的 429 定性不稳定：%s" % st
+    assert res.calls == ["b0"], "单源域多抓了一次：%s" % res.calls
