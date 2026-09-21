@@ -728,3 +728,88 @@ survived=0。其中一条值得记：**第一版造数只有 900 条（低于警
   验收必须读磁盘，不能读计数器。
 - 我拿 shell heredoc 写含反引号的中文台账，反引号被当命令替换吃掉，第一次推送出去的就是残缺文本
   （本节即为重写）。仓库里已有一条同类规矩（文件写入只走 Write、路径一律正斜杠），这次是反引号版本。
+
+## 16. 逐条无发布日期的源：4 删 2 改址（2026-09-21，用户指令批次）
+
+用户指令原文分两半："把这种内容源可以去掉，给了日期但被判伪装的要优化算法"。
+两半都不能照旧账执行 —— 上一轮的"无日期"清单（_nodate_sources.txt）是在修 _RSS_DATE_RE 之前测的，
+那时裸两位偏移 +08 整串匹配失败会被误判成"上游没给日期"。照旧账删就是拿我的算法缺陷去删别人的内容。
+所以先用**修复后的解析器**把 13 个源重测一遍（_scratch/_probe_dateless.py → _dateless_recheck.txt）。
+
+### 判据分三层，缺一个都不算证据
+
+tag（feed 里有没有日期元素）→ raw（元素里有没有文本）→ parsed（过解析器能不能成时刻）。
+只有 tag=0 才是"上游压根不给"；tag>0 而 parsed=0 是我的问题，必须修不许删。
+
+本轮实测 **13 个源里非空文本解析失败 = 0 条**（_probe_dateraw.py → _dateraw.txt），
+也就是说超能网那批"给了日期被判没给"的算法缺陷，随着正则修复已经清零：
+超能网_31 从 0/68 变 30/30，财新 caixin_latest_rsshub_806 从"0 字节死源"变 20/20 带 pubDate。
+顺带证伪了一条旧判定：**死源清单会过期**，任何删除动作前都得重抓一次。
+
+### 删 4 条（feed 逐条真的没有日期元素）
+
+| key | 现行地址 | 实测 |
+|---|---|---|
+| nikkei_rsshub_802 | rsshub.rssforever.com/nikkei/index | 抓到 0 条；bestblogs 镜像 28 条、日期标签 0 |
+| 喷嚏网铂程斋_11 | plink.anyfeeder.com/dapenti/xilei | 14 条，条目字段只有 title/link/content:encoded/guid |
+| bbc英语教学_13 | plink.anyfeeder.com/bbc/learningenglish | 5 条，同上 |
+| 中国日报双语_2 | plink.anyfeeder.com/chinadaily/dual | 5 条，同上 |
+
+plink.anyfeeder 这类代理结构性丢日期（同域名的超能网/人民网有日期是因为源站自己写了 pubDate），
+留着只会让卡片把收录时间显示成发布时间 —— 正是用户点名要去掉的那类。
+
+### 改址 2 条：不是"没日期"，是我们接错了地址
+
+| key | 旧地址（逐条零日期） | 新地址 | 实测 |
+|---|---|---|---|
+| google_developers_blog_406 | developers.googleblog.com/feeds/posts/default（旧 Blogger 残留，条目只有 title/link/description/guid） | blog.google/technology/developers/rss/ | 20/20 带 pubDate，最新 2026-09-15，同分钟最大 1/20 |
+| 美团技术团队_0 | tech.meituan.com/feed | tech.meituan.com/atom.xml | 10/10 带 pubDate，最新 2026-09-15，同分钟最大 2/10 |
+
+这两个如果按"tag=0 即删源"处理，就是白白丢掉两个优质源。判据里特意加了
+"同分钟最大占比"一项：换过去的地址不能是批次时间戳（那是另一种假日期，属指令 2）。
+
+### 顺手修掉补丁工具的一个静默失效
+
+tools/rss_source_list_patch.py 的写盘条件是 `if apply and len(src) != n0`，
+纯改址不动条数 ⇒ **根本不写盘**。删 4 条那半边生效、换 2 个地址那半边静默丢失，
+而日志会照样打"重放完成"。改成 `len(src) != n0 or changed or added`。
+判据：test_url_only_replay_actually_persists（变异体 M6 专打这条，其余 5 条都看不见它）。
+
+### 一批只重放一批：--scope dateless
+
+推送前查基线时发现一件比本批更大的事：**origin/main 的 rss_sources.json 至今是没打过任何补丁的
+1005 条**，09-20 那批 21 条删除 + 7 处改址只存在于本地提交里，连 tools/ 目录在远端都不存在
+（远端 tools 只有 data_api_push.py / remote_drift_check.py / trim_actions_cache.py）。
+于是"把整个工具重放到远端基线"等于把别人一批 09-20 的旧判定混进今天这一批落地 ——
+项目规矩本来就写了"不夹带进留存批次"。所以 run() 增加 scope 参数，本批只声明
+DATELESS_DELETE_KEYS / DATED_URL_FIX 两块，按 scope="dateless" 单独重放，
+其余批次留在原处等它自己那一轮。
+
+推送文件 = 远端基线(1005) + 本批(删 4 / 改 2) = 1001 条，越界改动 0 处。
+
+### 验证
+
+- 重放：1005 → 1001，二次重放零动作（幂等）
+- 判据 8 条（tests/rss_source_coverage/test_dateless_source_guard.py）全绿；
+  变异体 6 个 survived=0（M1 源回加 / M2 换址回退 / M3 声明被删 / M4 批次隔离失效 /
+  M5 清单空跑 / M6 纯改址不落盘）。第一条用例就是防空跑的：清单读不到 500 条以上直接判无效，
+  这是同日对抗审查点名的同类缺陷（隔离树 git ls-files 返回空 ⇒ 全仓扫描静默 no-op）
+- 门禁 A2 本地：123 passed / 1 failed —— 唯一红的是 test_source_list_health.py
+  的重复 URL 检查，那个文件从没推过远端，CI 跑不到它；重复 URL 本身（xiaoyuzhou 那条）
+  属 09-20 批次，本批不夹带。**代价说清楚**：只要那三个未落地的覆盖率测试还没推，
+  远端清单里的这条重复 URL 就没人守。
+- 门禁 A2 CI 同构树（git archive origin/main + 本批 4 个文件）：115 passed / 1 failed，
+  红的这条是 test_removed_count_cap_leaves_no_dangling_symbols 的防空跑断言 ——
+  git archive 不带 .git ⇒ 被测用例扫不到入库文件，主动判自己无效。
+  已核对远端 test_history_bounds.py 与本地逐字节相同且生产 A2 连续绿，
+  所以这是同构树方法的产物，不是 CI 会红的东西。
+
+### 本批查出但没动的两件事
+
+1. **CNN 两个源冻在 2023 年**：cnn_intl_781 与 CNN_16 的 pubDate 最新只到 2023-04，
+   即上游 feed 早就停更。它们每场照常被抓、抓回来的全部被 72h 闸门判过期，
+   等于纯耗配额。归到"99 个停更源换源还是删源"那笔待决账里，等用户点头再动。
+2. **批次时间戳型源（指令 2）**：知乎日报 anyfeeder 30 条里只有 4 条带日期且全是 23:00:00，
+   财富中文网 13 条全是 16:00:00，product_hunt_797 / v2ex技术_44 / qdrant_417（0001-01-01 纪元占位）
+   同属一类 —— 上游给的是"这一批的发布时间"，不是"这篇文章的发布时间"。
+   这类不能删（内容是新的），要改的是龄期算法：按源声明批量型、展示标收录、龄期走 first_seen。
