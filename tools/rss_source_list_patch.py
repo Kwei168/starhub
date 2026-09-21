@@ -89,6 +89,21 @@ DATELESS_DELETE_KEYS = {
 QUALITY_DELETE_KEYS = {
     "超能网_31",               # 2026-09-21 用户判定"内容质量不行"
 }
+# 2026-09-21 现场重测（195 场生产日志 + 逐源双次探针，见
+# docs/superpowers/specs/2026-09-21-rss-source-failure-analysis.md）新增的死源。
+# 判据不是"日志里 empty"，而是当场拿到的状态码/字节：
+DEAD_DELETE_KEYS = {
+    "linuxdo_latest_59",      # latest.rss / c/:rss 双路径 + curl UA 全 HTTP 403（全站挑战，IP 级）
+    "linuxdo_top_60",         # 同上
+    "linuxdo_posts_61",       # 同上
+    "halfrost_25",            # SSL: CERTIFICATE_VERIFY_FAILED，双次一致 ⇒ 永远抓不到
+    "tianyu2fm_—_对谈未知领域_13",  # SSL UNEXPECTED_EOF_WHILE_READING，双次一致
+    "拾月的博客_693",            # 200 但响应 650 字节、raw 里 0 个 item ⇒ 上游空 feed
+}
+# 现场重测后**明确保留**的两个，理由写在这里防止下一个人当死源删掉：
+#   安全客_664        —— raw 有 20 个 item、我方解析 0 条：这是解析缺陷，不是上游死
+#   elevate_430 / ai_musings_by_mu_421 —— 本机抓得到 20 条（curl UA），CI 侧 403
+#                       ⇒ substack 按出口 IP 挑战，属基础设施限制，不是源坏
 
 DATED_URL_FIX = {
     # 这两个不是"上游不给日期"，是我们接的地址不给 —— 换址就保住内容，删掉是净损失。
@@ -106,13 +121,13 @@ def run(apply=False, scope="all"):
 
     # scope="dateless" 只重放 2026-09-21 这一批；其余改动留给各自的批次落地
     if scope == "all":
-        del_keys = DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
+        del_keys = DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS | DEAD_DELETE_KEYS
         del_names, drop_then_add = DELETE_BY_NAME, DROP_THEN_ADD
         url_fix = dict(URL_FIX)
         url_fix.update(DATED_URL_FIX)
         name_fix, ua_fix, route_fix, adds = NAME_FIX, UA_FIX, ROUTE_FIX, ADD_SOURCES
     elif scope == "dateless":
-        del_keys = DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
+        del_keys = DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS | DEAD_DELETE_KEYS
         del_names, drop_then_add = {}, {}
         url_fix, name_fix, ua_fix = dict(DATED_URL_FIX), {}, {}
         route_fix, adds = [], []
