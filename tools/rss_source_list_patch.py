@@ -99,6 +99,12 @@ DEAD_DELETE_KEYS = {
     "halfrost_25",            # SSL: CERTIFICATE_VERIFY_FAILED，双次一致 ⇒ 永远抓不到
     "tianyu2fm_—_对谈未知领域_13",  # SSL UNEXPECTED_EOF_WHILE_READING，双次一致
     "拾月的博客_693",            # 200 但响应 650 字节、raw 里 0 个 item ⇒ 上游空 feed
+    # 2026-09-21 二次实测：rss.cnn.com 两个 feed 的 pubDate 停在 2023-04，标题也还是
+    # 特朗普被起诉/Dominion 那批 —— 上游三年前就停更，26/28 条龄期约 3 万小时，永远过不了
+    # 72h 窗；唯一还能出现在页面上的反而是那 4/2 条没有 pubDate、靠 first_seen 续命的条目
+    # （等于死源在刷存在感）。按用户规则：过时源删。
+    "cnn_intl_781",
+    "CNN_16",
 }
 # 现场重测后**明确保留**的两个，理由写在这里防止下一个人当死源删掉：
 #   安全客_664        —— raw 有 20 个 item、我方解析 0 条：这是解析缺陷，不是上游死
