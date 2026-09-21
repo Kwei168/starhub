@@ -2262,6 +2262,10 @@ def _fetch_rss(source, timeout=None):
         raw = _fetch_url(url, timeout=timeout or FETCH_TIMEOUT, accept="application/rss+xml, application/xml, text/xml, application/atom+xml",
                          ua=source.get("ua"))
     except Exception as ex:
+        # 429 原样抛出：它不是"这个源坏了"，是"这个域被限速了"，
+        # 一律折成 None 会让它和断连/403 在状态层同形，进而被域熔断连坐（台账 §21）。
+        if getattr(ex, "code", None) == 429:
+            raise
         print("[RSS聚合] %s 拉取失败: %s" % (name, ex), file=sys.stderr)
         return None  # 上游侧失败：与「成功但 0 条」区分开，前者才可计入域名熔断
 
@@ -8066,21 +8070,44 @@ def main(mode="full"):
     _domain_lock = threading.Lock()
     _domain_failstreak = collections.defaultdict(int)  # 域名 → 连续失败数
     _domain_broken = set()  # 本轮已熔断域名
+    _domain_rl = set()      # 本轮命中 429 的域名（限流冷却，与熔断互不影响）
 
     def _worker(i, src):
         """只做网络 IO 与域名熔断判定；计数与翻译由主线程汇总"""
         dom = _src_domain(src.get("url", ""))
         with _domain_lock:
+        # 限流复查只做一次，且必须放在取到域名额之后（见下面那段）：
+        # 入口这次在变异体检里被证明是死分支（删掉后 17 条判据全绿）——
+        # 域内名额只有 2 个、排队发生在信号量内侧，入口拦不住任何已排队的 worker，
+        # 留着只会让人以为冷却有两道防线。
             if dom and dom in _domain_broken:
                 return i, src, None, "domain_broken"
         crashed = False
         try:
             if dom:
                 with _domain_sems[dom]:
+                    # 取到名额之后再查一次限流：入口那次检查挡不住已经在排队的 worker
+                    # （生产里 972 源排 12 线程、域内名额只有 2 个，
+                    #  第一次 429 落地时同域后面的 worker 大多还没发出请求，
+                    #  但"已过入口检查"的那几个会照发 —— 离线复现里六个源全被抓了）。
+                    with _domain_lock:
+                        if dom in _domain_rl:
+                            return i, src, None, "rate_limited"
                     items = _fetch_rss(src, timeout=src.get("timeout"))
             else:
                 items = _fetch_rss(src, timeout=src.get("timeout"))
-        except Exception as _ex:
+        except Exception as _ex429:
+            # 只认 429（鸭子类型取 code，避免依赖 urllib.error 是否被导入）。
+            # 命中即把该域拉入本场冷却：同域剩余源不再发请求，
+            # 既停止锤限流器，也不再被"连续 3 次硬失败"的熔断连坐成 domain_broken。
+            if getattr(_ex429, "code", None) == 429:
+                with _domain_lock:
+                    if dom:
+                        _domain_rl.add(dom)
+                print("[RSS聚合] %s 命中 429 限流，本域 %s 剩余源本场不再请求"
+                      % (src["name"], dom), file=sys.stderr)
+                return i, src, None, "rate_limited"
+            _ex = _ex429
             # 我方清洗/去重链路抛错：请求本身已发出并成功，不该牵连同域名兄弟源，
             # 但必须留痕 —— 静默吞成「0 条」让 2026-09-16 起的 84 个源无声消失了三天。
             print("[RSS聚合] %s 抓取异常: %s: %s"
