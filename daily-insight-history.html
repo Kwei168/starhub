@@ -149,23 +149,115 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-21">2026-09-21 (6 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-21" class="day-section" >
-  <div class="day-theme">从Google重构Agent运行时底座，到四大巨头因涉嫌反竞争陷入监管诉讼与口水战，再到陶哲轩与黄仁勋的路线分歧，判断AI产业进入从单点应用向系统编排与合规角力并行的深水区。</div>
+  <div class="day-theme">从阶跃星辰旗舰性能登顶、国产影像模型破局，到决策推理新范式涌现，再到 Agent 工程化痛点爆发与监管红线警示，判断 AI 进入「性能+成本+部署」三重极限竞争期</div>
   
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">TypeSafe发布决策专用模型Jev宣称快两百倍</h3>
+  <p class="di-summary">TypeSafe发布首个决策模型Jev及新训练方法RLCD，定位「为决策优化的可组合智能」。Jev不生成文字，只按Schema输出结构化决策与概率，实测延迟约70ms，宣称比现有模型快20-200倍、便宜40-400倍，尚无第三方验证。OpenRouter实测显示其速度超最快竞品5倍以上。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/multiply_matrix/status/2101440758419272148" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/OpenRouter/status/2101061688338575739" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/GabGarrett/status/2100763031810527370" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">hot</span> <span class="di-cat">ai-models</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月15日，TypeSafe发布首个决策专用模型Jev及新训练方法RLCD，由自称ChatGPT联合发明者的Kyle Jeong主导。该模型定位为「为决策优化的可组合智能」，不生成文字，仅按Schema输出结构化决策与概率，实测级延迟约70ms，宣称比现有模型快20-200倍、便宜40-400倍。9月21日，OpenRouter使用Ori Eval基准测试Jev在judging任务上的表现，对比平台上热门LLM。结果显示：Jev比第二快的模型快5倍以上，其最慢的请求响应时间甚至低于其他所有模型的中位数。该模型此前已引发一批项目和讨论。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：OpenRouter实测验证Jev速度优势，超最快竞品5倍以上，可能推动决策类任务采用成本降低；TypeSafe宣称快20-200倍尚无第三方验证，数据存在争议风险。中期：若RLCD训练方法被证明有效，可能催生更多决策专用模型，改变AI推理任务的处理范式；但需观察实际落地效果是否如宣称般显著。长期：决策模型可能重塑软件开发的自动化流程，特别是需要判断和推理的场景；然而其能否替代通用LLM仍取决于稳定性和泛化能力。目前尚无足够数据证明其大规模应用潜力。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>TypeSafe作为发布者，持正面宣传角度，宣称快20-200倍、便宜40-400倍，但未提供验证数据（素材3、5）。OpenRouter作为第三方测试方，仅实测验证了速度部分，确认其比竞品快5倍以上，但未提及价格或宣称的倍数优势（素材1、4）。两者角度差异明显：TypeSafe强调性能和成本双重优势，OpenRouter仅关注速度实测结果。素材2仅标题提及评测，无实质内容分歧可分析。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>Jev was &gt;5x faster than the next fastest model, and even its slowest requests beat every other model&#x27;s median.</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计后续将看到更多第三方对Jev的独立验证，尤其是对其宣称的20-200倍速度优势和成本优势的核实；同时可能有类似决策专用模型出现以竞争该细分赛道。</p></div>
+  <span class="di-conf">置信度: medium</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/multiply_matrix/status/2101440758419272148" target="_blank" rel="noopener">[1] x.com&#8599;</a> <a class="di-cite" href="https://x.com/OpenRouter/status/2101061688338575739" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://x.com/GabGarrett/status/2100763031810527370" target="_blank" rel="noopener">[5] x.com&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">阶跃星辰发布旗舰模型Step 5 Preview并于10月15日开源</h3>
+  <p class="di-summary">阶跃星辰发布旗舰模型 Step 5 Preview，采用 600B 总参数、27B 激活的 MoE 架构，支持 1M 上下文与视觉输入，主打长程 Agentic 任务（官方展示最长 24 小时连续运行）。据 APPSO 报道，该模型在 Artificial Analysis 智能指数取得 44 分。其价格仅为 Kimi K3 的三分之一。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/StepFun_ai/status/2101510462685003786" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/LocalLLaMA/comments/1wkc2n1/stepfun_new_model_step_5_preview_just_leaked/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://news.ycombinator.com/item?id=49763660" target="_blank" rel="noopener">news.ycombinator.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">hot</span> <span class="di-cat">ai-models</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月20日，阶跃星辰正式发布新一代旗舰模型Step 5 Preview。该模型采用600B总参数、27B激活的稀疏MoE架构，支持1M上下文长度与视觉输入能力，定位长程Agentic任务场景。官方展示其最长可持续运行24小时。据APPSO报道，该模型在Artificial Analysis智能指数取得44分，位居全球开源模型前三。其定价为Kimi K3的三分之一。模型已于发布后开放试用，并定于10月15日正式开源权重。此前，Reddit用户曾曝光Step 5 Preview出现在Artificial Analysis模型页面，彼时官方尚未正式宣布，属未证实爆料。Artificial Analysis将该模型标记为性价比/能力的帕累托前沿节点。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：国内开源模型竞争格局被打破，600B参数级别+1M上下文+视觉能力的组合此前仅闭源模型具备，Step 5 Preview开源后将降低企业长程Agentic应用门槛。中期：定价为Kimi K3的三分之一构成价格冲击，可能迫使其他国内厂商调整开源策略或产品定价。长期：24小时连续运行能力验证了长程任务的工程可行性，若开源权重获得社区贡献，可能加速Agentic工作流生态成熟。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>Reddit用户[3]最早以截图形式爆料Step 5 Preview现身Artificial Analysis页面，角度为&#x27;未证实爆料&#x27;；Artificial Analysis官方页面[4]将其定位为帕累托前沿节点，角度为第三方基准表现；APPSO[2]报道具体性能参数与定价对比，角度为商业化竞争维度；AIHOT[1]与AGI Hunt[2]以简讯形式确认发布与开源日期，角度一致。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>官方展示最长 24 小时连续运行</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>10月15日开源后预计将进入Hugging Face等社区平台，Agentic工作流案例可能快速涌现；若性能如Artificial Analysis所示，可能成为企业级长程任务的首选开源基座。</p></div>
+  <span class="di-conf">置信度: high</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/StepFun_ai/status/2101510462685003786" target="_blank" rel="noopener">[1] x.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/LocalLLaMA/comments/1wkc2n1/stepfun_new_model_step_5_preview_just_leaked/" target="_blank" rel="noopener">[3] reddit.com&#8599;</a> <a class="di-cite" href="https://news.ycombinator.com/item?id=49763660" target="_blank" rel="noopener">[4] news.ycombinator.com&#8599;</a> </p>
+</div>
+</article>
+
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">开发者流行将长时编码任务安排至周末自动化执行</h3>
-  <p class="di-summary">一位作者分享长时运行编码agent的使用体验：可以把任务设置成整个周末持续运行，自己出门享受周末，agent在后台替他干活。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/josh_bickett/status/2101727617342931240" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <h3 class="di-label">Manus 拟 40 亿美元估值融资 5 亿美元</h3>
+  <p class="di-summary">通用 Agent 产品 Manus 背后的公司蝴蝶效应正推进新一轮约 5 亿美元融资，目标估值约 40 亿美元，较此前 20 亿美元翻倍。这是其与 Meta 拆分、9 月 1 日恢复独立运营后仅 17 天内的首轮融资，若完成将使其成为中国估值最高的 Agent 创业公司，老股东腾讯、真格等有望参与。</p>
+  <div class="di-links"><a class="di-link" href="https://www.agihunt.io" target="_blank" rel="noopener">agihunt.io&#8599;</a><a class="di-link" href="https://www.aihot.com" target="_blank" rel="noopener">aihot.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-cat">funding</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">华北工控发布支持NPU的AI边缘工控机产品</h3>
+  <p class="di-summary">华北工控推出支持双千兆网口、Wi-Fi 6及4G/5G扩展的工业级边缘计算设备，搭载6 TOPS NPU，满足轻量级目标检测与视频分析需求。Intel Core Ultra和AMD Ryzen AI让x86平台获得低功耗NPU能力，实现通用控制与轻量推理的一体化。目前华北工控、研祥等在中国工控机市场维持稳定格局。</p>
+  <div class="di-links"><a class="di-link" href="https://www.tmtpost.com/8146457.html" target="_blank" rel="noopener">tmtpost.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年，华北工控发布支持NPU的AI边缘工控机产品，该设备搭载6 TOPS NPU，满足轻量级目标检测与视频分析需求。产品配置双千兆网口、Wi-Fi 6及4G/5G扩展能力。这一产品布局背景是工业自动化领域的成本压力与升级需求：施耐德Acti9系列微型断路器涨价约6%，ATS22软起动器及Momentum控制器等产品同步涨价；欧姆龙PLC、机器人等产品涨价最小5%，并联机器人部分产品涨幅高达50%。在市场格局方面，华北工控与研祥在中国工控机市场维持稳定格局。同期，工业巨头研华发布MIC-733（基于Jetson AGX Orin，64GB版本AI性能275 TOPS），凌华推出DLAP-411-Orin平台，宸曜发布Nuvo-10109GC（支持600W Blackwell GPU，LLM推理4000 TOPS）。Intel Core Ultra和AMD Ryzen AI的普及为x86平台提供了低功耗NPU能力，实现了通用控制与轻量推理的一体化。IDC预测2029年工业计算机出货量有望达到693万台。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：华北工控凭借x86+NPU方案切入轻量级边缘场景，填补Jetson路线在内存升级和扩展性上的不足，同时应对上游元器件涨价带来的产品重新定价压力。中期：Intel Core Ultra与AMD Ryzen AI的介入改变了边缘计算硬件架构，使工控机从单一视觉推理向通用控制与AI融合转型，行业竞争焦点将从算力参数转向多协议集成与工业环境适应性。长期：随着AMR、具身机器人等场景规模化，边缘算力需求将推动693万台的增量市场释放；但在600W高算力边缘服务器与低功耗NPU节点之间，行业标准与生态壁垒可能进一步分化。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材[1]聚焦于高端边缘AI算力（如Jetson Orin、Blackwell）的技术细节与应用场景，强调边缘计算取代云端处理的必要性；摘要部分则侧重华北工控的低功耗NPU产品定位及x86平台的普及趋势，两者分别代表了高算力专用路线与通用计算融合路线的不同视角。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>工业现场真正需要的不是“云端AI”</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>随着Intel Core Ultra和AMD Ryzen AI提供低功耗NPU能力，x86架构工控机将在轻量级视觉检测与通用控制融合场景中加速渗透。</p></div>
+  <span class="di-conf">置信度: high</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.tmtpost.com/8146457.html" target="_blank" rel="noopener">[1] tmtpost.com&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">大厂工程师吐槽全员使用Claude Code导致工程理解断层</h3>
+  <p class="di-summary">一位入职某大公司半个月的工程师发长文吐槽：团队几乎所有产出——规格文档、代码、测试、PRD、工单及结项报告——全部由Claude Code生成，从L1到L7的工程师都如此，没人再阅读或真正理解系统。帖子引发了关于AI辅助编程侵蚀工程理解与工程文化的讨论，也反映出生成式编码工具在大厂内部的普及程度。</p>
+  <div class="di-links"><a class="di-link" href="https://news.agihunt.io" target="_blank" rel="noopener">news.agihunt.io&#8599;</a><a class="di-link" href="https://x.com/anshulkundaje/status/2101578390222569807" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">developer</span></div>
   
 <div class="di-deep">
@@ -183,35 +275,12 @@ a{color:inherit;text-decoration:none;}
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
+    
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">Google开源Agent Substrate实现高密度沙箱执行</h3>
-  <p class="di-summary">Google工程师rakyll宣布Agent Substrate开源，GitHub已获2k stars。这是一个安全默认、可运行于Kubernetes的agent执行运行时，密度比容器高10倍，核心卖点是极快的挂起与恢复——快到可以按每次工具调用进行挂起恢复。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/rakyll/status/2101725956893450612" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">网传中国AI实验室借道新加坡IP抓取网络数据</h3>
-  <p class="di-summary">有开发者发现疑似中国AI实验室正在通过新加坡IP地址抓取网页数据，推文附带相关证据截图，引发对大模型训练数据采集方式的关注。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/gaganghotra_/status/2101727576586932449" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <h3 class="di-label">阿里开源7B统一生图模型Qwen-Image-2.1</h3>
+  <p class="di-summary">9月20日，阿里Qwen团队发布并开源Qwen-Image-2.1，这是7B参数级的统一生图与图像编辑模型。该模型原生支持2K分辨率与RGBA透明通道，可参考最多10张图完成多区域一次性像素级编辑。权重已上架Hugging Face，ComfyUI与Diffusers提供首日支持，官方称其性能超过多数闭源模型。</p>
+  <div class="di-links"><a class="di-link" href="https://qwenlm.github.io" target="_blank" rel="noopener">qwenlm.github.io&#8599;</a><a class="di-link" href="https://www.reddit.com/r/LocalLLaMA/comments/1wlgrft/qwenimage21_released/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
@@ -229,35 +298,12 @@ a{color:inherit;text-decoration:none;}
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    
+    <span class="di-resonance">垂直</span>
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">知情人士指OpenAI与Anthropic夸大安全事件以促监管</h3>
-  <p class="di-summary">据《纽约邮报》援引知情人士报道，OpenAI与Anthropic此前向联邦政府强调的AI安全事件被夸大，所谓「安全漏洞」和「AI叛乱」式攻击的严重性被放大，目的是向联邦政府施压、推动对前沿AI行业的监管，从而保护自身地盘与监管地位。这一指控在科技圈广泛传播。</p>
-  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wkpomx/openai_and_anthropic_oversold_ai_security/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">FT报告称AI金融问答多出错遭方法论质疑</h3>
-  <p class="di-summary">《金融时报》报道称AI聊天机器人在回答金融类问题时「大多数时候」给出错误答案。但Ethan Mollick查证后发现该报告出自一家销售竞品AI金融服务产品的公司，方法论存疑，且与近期显示AI财务建议表现良好的研究相矛盾。他呼吁政府直接开展AI评测并公开结果。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/SatelliteNetSec/status/2101397645793345871" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <h3 class="di-label">学术界辟谣LLM能感受疼痛并警告伦理风险</h3>
+  <p class="di-summary">Camhberg等人的「LLM疼痛表征」预印本被广泛解读为LLM能感受疼痛、支持AI福利，但作者已明确辟谣从未如此宣称，Gary Marcus转述澄清。意识科学家Anil Seth发系列长推指出，LLM疼痛表示缺少身体性语言，最简解释是无意识体验，并警告误读会带来伦理代价。</p>
+  <div class="di-links"><a class="di-link" href="https://arxiv.org" target="_blank" rel="noopener">arxiv.org&#8599;</a><a class="di-link" href="https://x.com/GaryMarcus/status/2101658951339413623" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">research</span></div>
   
 <div class="di-deep">
@@ -278,10 +324,102 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">AI检测器显示研究者帖子最不像AI写作</h3>
-  <p class="di-summary">用户dylfreed安装AI文本检测扩展Pangram后发现：X信息流中被标记为AI撰写的帖子大多来自非AI从业者，而他关注的大部分AI研究者几乎完全不用AI写作，帖子最不像AI生成。作为对照，LinkedIn上的内容几乎全部被Pangram标记为AI撰写。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/dylfreed/status/2101422025940124049" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">consumer</span></div>
+  <h3 class="di-label">陶哲轩公开呼吁放慢AI发展节奏</h3>
+  <p class="di-summary">菲尔兹奖得主陶哲轩于9月20日前后在视频与X上公开表态「必须放慢 AI」，称当前节奏疯狂、毫无必要，且发展动态高度非线性、后果未知。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/tterikson" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/OpenAI/comments/1wlns0q/mathematician_terence_tao_we_have_to_slow_down_ai/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">industry</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">Google开源Agent Substrate运行时获两千星标</h3>
+  <p class="di-summary">Google工程师rakyll宣布Agent Substrate开源，GitHub已获2k stars。这是一个安全默认、可运行于Kubernetes的agent执行运行时，密度比容器高10倍，核心卖点是极快的挂起与恢复——快到可以按每次工具调用进行挂起恢复。</p>
+  <div class="di-links"><a class="di-link" href="https://github.com/rakyll/agent-substrate" target="_blank" rel="noopener">github.com&#8599;</a><a class="di-link" href="https://x.com/rakyll/status/2101725956893450612" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">前Google工程师调侃AGI被YAML配置所拖累</h3>
+  <p class="di-summary">知名工程师rakyll（前Google）发推调侃当前AI工程现状：“等我们把YAML那套东西搞明白，AGI就不可避免了。”这讽刺了当下智能体开发中大量依赖YAML/配置文件进行编排的现状，业内普遍感觉Agent能力被繁琐的配置与工程胶水拖累，而非模型能力本身受限。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/rakyll" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/rakyll/status/2101740163202421019" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">developer</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">Google开源Agent编排器AX号称提升二十倍沙箱密度</h3>
+  <p class="di-summary">Google工程师rakyll宣布开源面向Agent工作负载的编排器与运行时AX（google/ax），上线即获2k star。其定位相当于为agent重造有状态的Kubernetes，支持状态保持、可复现性、分支与fork，宣称在现有部署条件下将沙箱密度提升10-20倍。</p>
+  <div class="di-links"><a class="di-link" href="https://github.com/google/ax" target="_blank" rel="noopener">github.com&#8599;</a><a class="di-link" href="https://x.com/rakyll/status/2101559196038909976" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.0</span>
+  </div>
+  <h3 class="di-label">开源项目OpenHarness实现多Agent统一编排</h3>
+  <p class="di-summary">开发者dee_hw分享开源项目OpenHarness的体验，称其是「AI agent界的tmux/vim/fzf/zsh」。该项目整合了Claude Code、Codex等编码Agent，支持会话跨设备持久同步，并能驱动Blender等非编码工具（如设计空气动力学自行车头盔）。项目约495 star、1200+ commits，愿景是让普通人通过Agent承担专精技能的学习成本。</p>
+  <div class="di-links"><a class="di-link" href="https://github.com/autonomous-ai/openharness" target="_blank" rel="noopener">github.com&#8599;</a><a class="di-link" href="https://x.com/dee_hw/status/2101651230724637123" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
