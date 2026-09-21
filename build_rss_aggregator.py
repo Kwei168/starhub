@@ -423,56 +423,9 @@ RETENTION_EPOCH_YEAR = 1971               # 0001-01-01 这类占位值不是发�
 #   2) 条数上限并不省体积：上线后 10 场斜率反而 **+65.7 条/场**（被腾空的名额又填满），
 #      同期却累计淘汰 2,231 条窗内条目 —— 代价是持续的，省下的是暂时的。
 #   3) 它切的几乎全是窗内内容：首落地那场淘汰 1,547 条，同场真过期的只有 21 条。
-# 换留下来的是更有用的一件事：把**深度**报出来，让"总有一天会撑爆"在发生前就看得见。
-HISTORY_WATCH_PER_SOURCE = 2000           # 警戒线：只报警，不淘汰
-_LAST_HISTORY_ACCOUNT = {}                # 本场历史账（过期数 + 深度），构建日志消费
-
-
-def _history_depth_watch(history, offsets=None, watch=None, now_bj=None, report=False):
-    """每源深度哨兵：最深源、越警戒线的源数、保留条目的最老龄期。**只看不删。**
-
-    oldest_age_h 现在是"窗口配置的镜像"，不是"清理到底没有"的证据：裁剪与这里用的是同一只表、
-    同一个 now（`38cd0d6` 并表之后），所以"最老 ≤ 72h"是恒真上界，报出来等于把 cutoff 念一遍
-    （审查实测 600 组对抗造数 max=71.0h，从未越线）。它仍有两个用处：贴线程度反映窗内堆积，
-    以及一旦超过 cutoff+0.5h 就说明裁剪循环被绕过 —— 那种情况现在会显式报警。
-    判不了龄的条目不计入龄期（出口闸门丢它们）。
-    """
-    watch = HISTORY_WATCH_PER_SOURCE if watch is None else watch
-    now_bj = now_bj or _now_bj()
-    counts = {}
-    oldest = None
-    for item in history.values():
-        sk = item.get("source_key") or "?"
-        counts[sk] = counts.get(sk, 0) + 1
-        d = _retention_ref_dt(item, offsets, sk)
-        if d is None:
-            continue
-        age = (now_bj - d).total_seconds() / 3600.0
-        if oldest is None or age > oldest:
-            oldest = age
-    over = sorted(k for k, n in counts.items() if n > watch)
-    # 龄期越线要单独报：它是"裁剪被绕过"的唯一可见信号（见上：低于 cutoff 本身不说明任何事）
-    over_aged = oldest is not None and oldest > RSS_HISTORY_HOURS + 0.5
-    def out_oldest_str():
-        return "-" if oldest is None else ("%.1f" % oldest)
-    out = {
-        "max_per_source": max(counts.values()) if counts else 0,
-        "over_watch": len(over),
-        "oldest_age_h": None if oldest is None else round(oldest, 1),
-    }
-    # 无条件播报（不许"没越线就一个字都不印"）：0 与"哨兵没跑到"必须是两个不同的样子。
-    if report:
-        deepest = max(counts.items(), key=lambda kv: kv[1])[0] if counts else "-"
-        if over_aged:
-            print("::warning title=RSS 历史超窗未清::保留条目最老 %s h，已超过 %dh 窗口 +0.5h 容差"                  " ⇒ 裁剪循环被绕过或有条目换了时钟" % (out_oldest_str(), RSS_HISTORY_HOURS))
-        print("[历史] 每源深度 最大 %d 条（源 %s，警戒线 %d 条）｜越警戒 %d 源｜保留最老 %s h｜共 %d 条" % (
-            out["max_per_source"], deepest, watch, out["over_watch"],
-            out["oldest_age_h"], len(history)))
-        if over:
-            print("::warning title=RSS 缓存深度超警戒::%d 个源窗内条目数超过 %d 条: %s"
-                  "（时间窗是唯一体积约束，此处只报警不淘汰）" % (
-                      len(over), watch, ", ".join(over[:6])))
-    return out
+# 换留下来的"每源深度哨兵"也已于 2026-09-21 退役：它扫全库只报三项，其中"最老龄期"与
+# 裁剪共用一只表后恒等于把 cutoff 念一遍。体积侧从此只剩一条账 —— 真过期裁掉多少。
+_LAST_HISTORY_ACCOUNT = {}                # 本场历史账：只剩 expired 一条，构建日志消费
 
 
 def _retention_ref_dt(item, offsets=None, source_key=None):
@@ -737,12 +690,11 @@ def _accumulate_history(sources_with_items):
     # （-264/-201/.../-235），因为每场新抓进来的比删掉的多 —— 那本账从来没存在过。
     pruned_expired = before - len(_rss_history)
     _LAST_HISTORY_ACCOUNT["expired"] = pruned_expired
-    # 体积不再按条数管，改成把深度报出来（只读，绝不碰审计样本）
-    _depth = _history_depth_watch(_rss_history, offsets=_pd_offsets,
-                                  report=True, now_bj=now_bj)
-    _LAST_HISTORY_ACCOUNT["max_per_source"] = _depth["max_per_source"]
-    _LAST_HISTORY_ACCOUNT["over_watch"] = _depth["over_watch"]
-    _LAST_HISTORY_ACCOUNT["oldest_age_h"] = _depth["oldest_age_h"]
+    # 体积侧到这里就没有第二条账了：条数上限（09-20）与深度哨兵（09-21）都已退役，
+    # 真过期多少由上面那句「裁剪 N 篇过期」播报，日志只带 history_expired 一个字段。
+    # 退役理由是量出来的（台账 §18）：真实 18,037 条快照上裁剪判龄中位 68ms，
+    # 而哨兵还要再扫一遍全库（68.5ms）报三项 —— 其中「保留最老龄期」与这里共用一只表，
+    # 存活条目按构造满足 ref >= cutoff，报出来等于把 cutoff 念一遍。
 
     # 按源重组，更新相对时间
     # 构建 source_key -> url 映射（用于识别 BestBlogs 源）
@@ -8336,11 +8288,8 @@ def main(mode="full"):
         # 两条账互斥，且都不是首尾差：首尾差被每场新增的条目抵成负数（生产实测全天恒负），
         # "过期删了多少"这本账必须由裁剪循环自己报数。
         "history_expired": _LAST_HISTORY_ACCOUNT.get("expired"),
-        # 三条深度账：涨到哪儿了（max/over_watch）+ 清理到底没有（oldest_age_h）。
-        # 一律不用 0 兜底：字段为 None = 这一步没跑到，与"跑到了但是 0"必须可区分。
-        "history_max_per_source": _LAST_HISTORY_ACCOUNT.get("max_per_source"),
-        "history_over_watch": _LAST_HISTORY_ACCOUNT.get("over_watch"),
-        "history_oldest_age_h": _LAST_HISTORY_ACCOUNT.get("oldest_age_h"),
+        # 「不许 0 兜底」这条规矩留着：字段为 None = 这一步没跑到，
+        # 与"跑到了但是 0"必须是两个不同的样子（§12 那笔全天恒负的账就是这么漏的）。
         "trans_cache_hit": _TRANS_STATS.get("cache_hit", 0),
         "trans_google": _TRANS_STATS.get("google", 0),
         "trans_mymemory": _TRANS_STATS.get("mymemory", 0),

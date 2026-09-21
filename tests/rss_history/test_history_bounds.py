@@ -12,7 +12,8 @@
 3. 上限切掉的几乎全是窗内条目。淘汰首落地那场切 1,547 条，而同一场真正的过期裁剪只有 21 条。
 
 所以本文件的判据转向两件事：**窗内的必须留下、过期的必须出去**，
-体积则改为"只报警不动手"（深度警戒线 + 最老保留条目的龄期），让"撑爆"在发生前可见。
+体积侧的报警面（深度警戒线 + 最老龄期）已于 2026-09-21 退役（理由见台账 §18），
+本文件因此只守三件事：窗内不删、过期必删、账目只有一列且不许兜底。
 """
 import ast
 import datetime
@@ -34,7 +35,11 @@ SRC = os.path.join(ROOT, "build_rss_aggregator.py")
 # 已被撤销的"按条数淘汰"机制的符号清单：删就要删干净（py_compile 查不出 NameError）
 REMOVED_SYMBOLS = ("HISTORY_MAX_PER_SOURCE", "_bound_history_per_source",
                    "_hist_recency_key", "_RECENCY_FLOOR", "_LAST_HISTORY_BOUND",
-                   "history_evicted_per_source")
+                   "history_evicted_per_source",
+                   # 2026-09-21 退役的深度哨兵：条数上限撤销后它只剩"报一个不会动的数"，
+                   # 而 oldest_age_h 在裁剪与闸门共用一只表之后恒等于把 cutoff 念一遍。
+                   "HISTORY_WATCH_PER_SOURCE", "_history_depth_watch",
+                   "history_max_per_source", "history_over_watch", "history_oldest_age_h")
 
 
 @pytest.fixture
@@ -110,84 +115,68 @@ def test_stale_entries_still_leave_even_when_a_source_is_huge(clean):
     assert len(left) == 600
 
 
-def test_watch_publishes_depth_and_oldest_age(clean):
-    """哨兵要报的是"往哪儿涨 + 窗口守没守住"两个事实，不是淘汰数。"""
-    hist = _source_hist("deep", 2600, step=0.02)
-    _accumulate(hist, key="deep")
-    acc = mod._LAST_HISTORY_ACCOUNT
-    assert acc.get("max_per_source") == 2600, "最深源没被报出来（%r）" % acc
-    assert acc.get("over_watch") == 1, "越过警戒线的源数不对（%r）" % acc
-    oldest = acc.get("oldest_age_h")
-    # 造数年龄 1.0h .. 52.98h（2600 条 × 0.02h 步长），所以"最老保留条目"必须≈53h：
-    # 只断言 0<=x<=72.5 会被"取最小龄/取平均"这类实现混过去（哨兵就白装了）。
-    assert 52.0 <= oldest <= 53.6, (
-        "保留最老龄期 %r 不在预期区间 52.0..53.6（造数最老 52.98h）：龄期哨兵算错了" % oldest)
-
-
-def test_watch_alarms_only_when_over_the_line(clean, capsys):
-    """过警戒线必须打 ::warning（"撑爆"要在发生前可见）；没过时不许瞎报。"""
-    capsys.readouterr()
-    _accumulate(_source_hist("ok", 50), key="ok")
-    out = capsys.readouterr().out
-    assert "每源深度" in out, "没到警戒线也要有深度这一行，否则 0 与没跑到不可区分：%r" % out[-200:]
-    assert "::warning" not in out, "50 条就报警，警戒线形同虚设"
-    capsys.readouterr()
-    _accumulate(_source_hist("big", mod.HISTORY_WATCH_PER_SOURCE + 10, step=0.02),
-              key="big")
-    out = capsys.readouterr().out
-    assert "::warning" in out and "超警戒" in out, "越线却没报警：%r" % out[-300:]
-
-
-def test_watch_never_deletes_anything(clean):
-    """哨兵只许看不许动手 —— 一旦它顺手删东西，就等于把上限换了个名字放回来。
-
-    造数同样要越过警戒线（低于线时"删超出部分"根本不会触发，等于没测）。
-    """
-    n = mod.HISTORY_WATCH_PER_SOURCE + 100
-    hist = _source_hist("ro", n, step=0.01)            # 龄期 1h..21h，全在窗内
-    before = set(hist)
-    got = dict(hist)
-    out = mod._history_depth_watch(got, report=False)
-    assert set(got) == before, "哨兵删了条目（%d → %d）" % (len(before), len(got))
-    assert out["over_watch"] == 1 and out["max_per_source"] == n, (
-        "越线了却没报（%r）" % out)
-
-
 def test_expired_account_counts_only_stale_entries(clean, capsys):
     """"过期账"只统计真过期的条目，且必须非负。
 
     生产实测旧口径 `history_before - history_after` 全天 12 场恒为负数（-264/-201/…），
     因为每场新抓进来的比删掉的多 —— 那本账从来没存在过。
+
+    造数必须**同时带当次抓取条目**（对抗审查 P1-2 指出原判据的漏洞）：
+    原来 5 个调用点全走 items 默认空，new_count 恒为 0，于是
+    `pruned_expired = before - len(history) + new_count` 这种"把新增混进过期账"的写法
+    照样能骗过断言 —— 而那正是 §12 那笔负数账的同一族错误。
     """
     hist = {}
     for i in range(120):
         l = "http://exp/old%03d" % i
         hist[l] = _hist_entry(l, "exp", 80.0 + i * 0.1)
     hist.update(_source_hist("exp", 500, base_age=1.0, step=0.05))
+    # 当次新抓 5 条：它们既不在"裁剪前"里，也不该算进过期账
+    fresh = [{"title": "new %d" % i, "link": "http://exp/new%d" % i, "summary": "s",
+              # 真实出厂形状：翻译阶段已把 pub_date 转成 ISO 串（datetime 进不了 json）
+              "pub_date": (mod._now_bj() - datetime.timedelta(hours=1 + i)).isoformat()}
+             for i in range(5)]
     mod._LAST_HISTORY_ACCOUNT.clear()
-    _accumulate(hist, key="exp")
+    _accumulate(hist, key="exp", items=fresh)
     out = capsys.readouterr().out
     line = [l for l in out.splitlines() if "篇过期" in l]
     assert line, "没打印过期裁剪数：%r" % out[-300:]
     n = int(line[0].split("裁剪 ")[1].split(" 篇过期")[0])
     assert n == 120, "「过期裁剪」数不对（%d ≠ 120）：%s" % (n, line[0])
-    assert mod._LAST_HISTORY_ACCOUNT.get("expired") == 120
+    assert mod._LAST_HISTORY_ACCOUNT.get("expired") == 120, "日志账不对或被新增条目污染"
 
 
-def test_gate_and_watch_are_both_wired(clean):
-    """清理/闸门/哨兵必须都在同一条路径上且写在 return 之前。"""
-    tree = ast.parse(io.open(SRC, encoding="utf-8").read())
-    fn = _fn(tree, "_accumulate_history")
-    assert fn is not None
-    called = {c.func.id for c in ast.walk(fn)
-              if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
-    for n in ("_history_depth_watch", "_apply_retention"):
-        assert n in called, "%s 没被调用（死函数）" % n
-    ret = min(r.lineno for r in ast.walk(fn) if isinstance(r, ast.Return) and r.value)
-    for c in ast.walk(fn):
-        if isinstance(c, ast.Call) and getattr(c.func, "id", "") in (
-                "_history_depth_watch", "_apply_retention"):
-            assert c.lineno < ret, "%s 写在 return 之后，永远不会执行" % c.func.id
+def test_accumulate_history_never_mutates_entry_fields(clean):
+    """合并/裁剪这条遍历必须只读：给条目加一个键都会跟着 _rss_history 存盘，
+    再经 `entry = dict(item)` 进出厂 payload。
+
+    这条判据原来挂在已退役的深度哨兵上（test_watch_does_not_mutate_entry_fields）。
+    哨兵删掉之后，风险并没有跟着消失 —— 审计遍历 `_accumulate_history` 里那句
+    `item["watch_seen"] = 1` 照样能污染数据，而当时全仓 128 条判据没有一条会红
+    （对抗审查 P1-1）。所以把判据搬到还在的那条路径上，而不是删了了事。
+    """
+    import copy
+    hist = {}
+    for i in range(30):
+        l = "http://ro/keep%02d" % i
+        hist[l] = _hist_entry(l, "ro", 1.0 + i * 0.1)
+    hist["http://ro/stale"] = _hist_entry("http://ro/stale", "ro", 90.0)
+    snapshot = copy.deepcopy(hist)
+    mod._rss_history = hist
+    items = [{"title": "t new", "link": "http://ro/fresh", "summary": "s",
+              "pub_date": mod._now_bj().isoformat()}]
+    mod._accumulate_history([{"key": "ro", "name": "ro", "cat": "ai", "color": "#fff",
+                              "tier": 1, "items": list(items)}])
+    for link, before in snapshot.items():
+        after = mod._rss_history.get(link)
+        if after is None:
+            continue        # 被裁掉的那条不在此列
+        assert set(after) == set(before), (
+            "条目字段被改了：多 %s 缺 %s" % (
+                sorted(set(after) - set(before)), sorted(set(before) - set(after))))
+        for k in before:
+            assert after[k] == before[k], "字段 %s 的值被就地改写：%r -> %r" % (
+                k, before[k], after[k])
 
 
 def test_removed_count_cap_leaves_no_dangling_symbols(clean):
@@ -218,8 +207,13 @@ def test_removed_count_cap_leaves_no_dangling_symbols(clean):
     assert not hits, "还有入库文件引用被撤销的条数上限机制：%s" % hits[:8]
 
 
-def test_build_log_reports_depth_not_eviction(clean):
-    """日志字段与哨兵同名同 key，且不许 0 兜底、不许再留淘汰字段。"""
+def test_build_log_keeps_only_the_expired_account(clean):
+    """日志里的历史账只剩"真过期多少"，三条深度账必须已经消失。
+
+    为什么反过来断言：撤销一个观测面时，只删机制不删字段会留下**永远为 None 的假账**，
+    下一个人读到 None 分不清是"没跑到"还是"这格本来就没东西"。所以字段本身也要清掉。
+    同时保留两条老约束：不许 .get(k, 默认) 与 `or 0` 兜底（审查 F5/F6 钻的就是这两个空子）。
+    """
     tree = ast.parse(io.open(SRC, encoding="utf-8").read())
     main = _fn(tree, "main")
     assert main is not None
@@ -231,9 +225,10 @@ def test_build_log_reports_depth_not_eviction(clean):
             if isinstance(k, ast.Constant) and isinstance(k.value, str) and \
                     k.value.startswith("history_"):
                 pairs[k.value] = v
-    assert "history_evicted_per_source" not in pairs, "条数淘汰字段还在，机制没撤干净"
-    for want in ("history_expired", "history_max_per_source", "history_over_watch"):
-        assert want in pairs, "日志缺 %s（现有 %s）" % (want, sorted(pairs))
+    for gone in ("history_evicted_per_source", "history_max_per_source",
+                 "history_over_watch", "history_oldest_age_h"):
+        assert gone not in pairs, "%s 还在日志里，机制没撤干净（现有 %s）" % (gone, sorted(pairs))
+    assert "history_expired" in pairs, "日志缺 history_expired（现有 %s）" % sorted(pairs)
     fn = _fn(tree, "_accumulate_history")
     written = set()
     for st in ast.walk(fn):
@@ -243,15 +238,17 @@ def test_build_log_reports_depth_not_eviction(clean):
                         getattr(t.value, "id", "") == "_LAST_HISTORY_ACCOUNT" and \
                         isinstance(t.slice, ast.Constant):
                     written.add(t.slice.value)
-    for want in ("history_expired", "history_max_per_source", "history_over_watch"):
-        keys = {c.value for c in ast.walk(pairs[want])
-                if isinstance(c, ast.Constant) and isinstance(c.value, str)}
-        assert keys & written, "%s 读的 key %s 与写入侧 %s 对不上" % (
-            want, sorted(keys), sorted(written))
-        defaults = [c.value for c in ast.walk(pairs[want])
-                    if isinstance(c, ast.Call) and getattr(c.func, "attr", "") == "get"
-                    for a in c.args[1:] if isinstance(a, ast.Constant)]
-        assert not defaults, "%s 用 %r 兜底：没跑到与跑出了 0 不可区分" % (want, defaults)
+    assert written == {"expired"}, "缓存侧还在写多条历史账：%s" % sorted(written)
+    val = pairs["history_expired"]
+    keys = {c.value for c in ast.walk(val) if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+    assert keys & written, "history_expired 读的 key %s 与写入侧 %s 对不上" % (
+        sorted(keys), sorted(written))
+    for call in ast.walk(val):
+        if isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "get":
+            assert len(call.args) == 1, "history_expired 用 .get(key, 默认值) 兜底"
+        if isinstance(call, ast.BoolOp) and isinstance(call.op, ast.Or):
+            assert not any(isinstance(v, ast.Constant) and v.value == 0
+                           for v in call.values), "history_expired 用 `or 0` 兜底"
 
 
 def test_falsified_future_dates_leave_the_cache_at_72h(clean):
@@ -295,135 +292,3 @@ def test_prune_and_gate_share_one_clock(clean):
         "缓存留下了闸门会丢的条目：%s" % sorted(mod._rss_history))
     shipped = {i["link"] for i in res[0]["items"]}
     assert shipped == {"http://two/fresh"}, "出厂与缓存不同一份数据：%s" % sorted(shipped)
-
-
-def test_oldest_age_follows_publish_clock(clean):
-    """龄期哨兵必须用判龄那一只表（发布时间），不是 first_seen（到达时刻）。
-
-    审查独立造的变异体 F4 证明：把 `_retention_ref_dt` 换成 `_parse_hist_dt(first_seen)`，
-    原有全部判据照绿 —— 因为造数里 first_seen 与 pub_date 同一个值，两只钟永远同数。
-    这里刻意把两者拉开（发布很久、刚被抓到），F4 那种换表实现当场露馅。
-    """
-    hist = {}
-    for i in range(3):
-        l = "http://clock/late%d" % i
-        # 真实发布龄 60h+，但 first_seen 只有 2h（刚被这个 feed 重新列出）
-        hist[l] = _hist_entry(l, "clk", 60.0 + i, first_seen_ago=2.0)
-    _accumulate(hist, key="clk")
-    oldest = mod._LAST_HISTORY_ACCOUNT.get("oldest_age_h")
-    assert oldest is not None and oldest >= 59.0, (
-        "最老龄期报的是 %r：贴着 first_seen（2h）而不是发布龄（60h），换表实现没被抓到" % oldest)
-
-
-def test_depth_report_names_the_deepest_source_among_many(clean):
-    """多源时"最深"必须真的指向最深那个源。
-
-    审查变异体 F2：把分组键 `source_key` 塌成一个桶 ⇒ max_per_source 变成全库条数，
-    生产量级下会每场无脑报警（实测 5,579 > 2,000），而全部造数只有 1 个源，抓不到。
-    """
-    watch = mod.HISTORY_WATCH_PER_SOURCE
-    deep = _source_hist("deep", watch + 50, step=0.01)          # 越线
-    shallow = _source_hist("shallow", watch + 400, step=0.01)   # 更多条但另一源
-    # 让 shallow 实际条数比 deep 少，deep 才是最深源
-    shallow = {k: v for k, v in list(shallow.items())[:watch - 5]}
-    hist = dict(deep)
-    hist.update(shallow)
-    mod._rss_history = dict(hist)
-    mod.RSS_SOURCES = []
-    srcs = [{"key": "deep", "name": "deep", "cat": "ai", "color": "#fff", "tier": 1, "items": []},
-            {"key": "shallow", "name": "shallow", "cat": "ai", "color": "#fff", "tier": 1,
-             "items": []}]
-    import contextlib
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        mod._accumulate_history(srcs)
-    printed = buf.getvalue()
-    acc = mod._LAST_HISTORY_ACCOUNT
-    assert acc.get("max_per_source") == len(deep), (
-        "最深源统计错（%r vs %d）：像是把所有源并成了一个桶" % (
-            acc.get("max_per_source"), len(deep)))
-    assert acc.get("over_watch") == 1, "越警戒线的源数不对：%r" % acc.get("over_watch")
-    # 播报里必须点出"是哪个源"越线 —— 审查变异体 F3 把源名恒写成 "-"，
-    # 数字全对但唯一可行动的信息没了（报警却不知道该看谁）。
-    deep_names = [ln for ln in printed.splitlines() if "每源深度" in ln]
-    assert deep_names, "没播报每源深度这一行"
-    assert "deep" in deep_names[0], (
-        "播报没点出最深的那个源：%s" % deep_names[0][:160])
-
-
-def test_watch_threshold_is_exact(clean):
-    """警戒线要按 `>` 判：正好等于线不报，多一条才报。
-
-    审查变异体 F1（`> watch` 改成 `>= watch`）此前无人守 —— 它不会造成错删，
-    但会让"刚好贴着线"的健康源每场都挨一次假报警，报久了就没人看报警了。
-
-    捕获用进程内 redirect_stdout，不用 capsys：本模块会重挂 sys.stdout，
-    capsys 会漏掉部分打印（这个坑在 F3 那一轮已经把判据骗过去一次）。
-    """
-    import contextlib
-    watch = mod.HISTORY_WATCH_PER_SOURCE
-
-    def run(n):
-        hist = _source_hist("thr", n, step=0.005)
-        assert len(hist) == n
-        mod._rss_history = dict(hist)
-        mod.RSS_SOURCES = []
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            mod._accumulate_history([{"key": "thr", "name": "thr", "cat": "ai",
-                                      "color": "#fff", "tier": 1, "items": []}])
-        out = buf.getvalue()
-        line = [l for l in out.splitlines() if "每源深度" in l]
-        assert line, "没播报深度行"
-        return mod._LAST_HISTORY_ACCOUNT.get("over_watch"), out.count("::warning"), line[0]
-
-    n_over, w_over, l_over = run(watch + 1)
-    assert (n_over, w_over) == (1, 1), "多一条就该报（over_watch=%r warning=%d）" % (n_over, w_over)
-    n_eq, w_eq, l_eq = run(watch)
-    assert (n_eq, w_eq) == (0, 0), \
-        "正好等于警戒线却报了（over_watch=%r warning=%d）：%s" % (n_eq, w_eq, l_eq[:150])
-
-
-def test_watch_does_not_mutate_entry_fields(clean):
-    """哨兵只读：连"给条目加个键"都不许（加键会随历史进缓存、再随 dict(item) 进出厂 payload）。
-
-    审查变异体 F8：`item["watch_seen"] = 1` 在只比 key 集合的判据下全绿。
-    这里比完整条目，覆盖撤销上限时被删掉的那条全 payload 判据。
-    """
-    import copy
-    hist = _source_hist("ro2", 300)
-    before = copy.deepcopy(hist)
-    got = dict(hist)
-    mod._history_depth_watch(got, report=False)
-    assert got == before, "哨兵改动了条目内容（新增/改写字段）：它只许看"
-
-
-def test_all_depth_log_fields_are_accounted(clean):
-    """四条账都要在日志里，且都不许 0 兜底 —— 审查 F5/F6 就是钻这两个空子。
-
-    F5：`history_oldest_age_h` 整行从日志删掉，原判据的 want 元组里没有它 ⇒ 无人红。
-    F6：`.get(k) or 0` 形式的兜底能躲过只看 `.get(k, 0)` 第二实参的检查。
-    """
-    tree = ast.parse(io.open(SRC, encoding="utf-8").read())
-    main = _fn(tree, "main")
-    pairs = {}
-    for node in ast.walk(main):
-        if not isinstance(node, ast.Dict):
-            continue
-        for k, v in zip(node.keys, node.values):
-            if isinstance(k, ast.Constant) and isinstance(k.value, str) and \
-                    k.value.startswith("history_"):
-                pairs[k.value] = v
-    want = ("history_expired", "history_max_per_source", "history_over_watch",
-            "history_oldest_age_h")
-    for key in want:
-        assert key in pairs, "日志缺 %s（现有 %s）" % (key, sorted(pairs))
-    names = {n.id for key in want for n in ast.walk(pairs[key]) if isinstance(n, ast.Name)}
-    assert "_LAST_HISTORY_ACCOUNT" in names, "深度账没读 _LAST_HISTORY_ACCOUNT：%s" % sorted(names)
-    for key in want:
-        for call in ast.walk(pairs[key]):
-            if isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "get":
-                assert len(call.args) == 1, "%s 用 .get(key, 默认值) 兜底" % key
-            if isinstance(call, ast.BoolOp) and isinstance(call.op, ast.Or):
-                bad = any(isinstance(v, ast.Constant) and v.value == 0 for v in call.values)
-                assert not bad, "%s 用 `or 0` 兜底：没跑到与跑出了 0 又不可区分" % key
