@@ -117,6 +117,61 @@ def test_js_undated_item_is_marked_not_blank():
     assert pd_b == "2026-09-19 10:57:40" and not fb_b, "有日期条目被改写了：%r" % (pd_b, fb_b)
 
 
+def _js_dedup_src():
+    """切出 JS 的 dedupSourceItems（Pass 1 URL 归一化）源码。"""
+    text = open(API_RSS, encoding="utf-8").read()
+    a = text.find("function dedupSourceItems(")
+    assert a > 0, "api/rss.js 里找不到 dedupSourceItems，函数名变了"
+    depth, i = 0, text.index("{", a)
+    for j in range(i, len(text)):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[a:j + 1]
+    raise AssertionError("dedupSourceItems 大括号没配平")
+
+
+# 两侧都必须把"同一篇文章的 URL 变体"归一到同一个键：
+# Python 的 Pass 1 有 `#(?!reply\d+$)[^#]*$` 这一刀（剥尾部 fragment），
+# JS 侧历史上漏了它 —— 线上实测 der_spiegel_783 的 30/30 条带 `#ref=rss`，
+# 与构建期产物的同一篇文章链接不相等 ⇒ 抽屉按 link 认不出旧条目，合并退化成整条替换。
+LINK_CASES = [
+    ("spiegel_ref", "https://www.spiegel.de/a/b-a-1234#ref=rss",
+     "https://www.spiegel.de/a/b-a-1234"),
+    ("v2ex_reply_kept", "https://www.v2ex.com/t/123#reply5",
+     "https://www.v2ex.com/t/123#reply5"),
+    ("utm_stripped", "https://x.example/p?utm_source=rss&at_campaign=rss",
+     "https://x.example/p"),
+    ("plain", "https://x.example/q", "https://x.example/q"),
+]
+
+
+@pytest.mark.parametrize("name,src,want", LINK_CASES)
+def test_url_normalization_matches_python(name, src, want):
+    node = _node()
+    if not node:
+        pytest.skip("本机没有 node（CI 的 ubuntu runner 一定有）")
+    # Python 侧：走真正的 Pass 1（两条同类条目才能触发归一化后的写回）
+    import copy
+    items = [{"link": src, "title": "T1", "summary": ""},
+             {"link": src + "-other", "title": "T2", "summary": ""}]
+    got_py = mod._dedup_source_items(copy.deepcopy(items), "s_x")[0]["link"]
+    script = (
+        "const s=%r;\n" % _js_dedup_src() + "eval(s);\n"
+        "const a=[{link:%r,title:'T1',summary:''},{link:%r,title:'T2',summary:''}];\n"
+        "process.stdout.write(JSON.stringify(dedupSourceItems(a,'s_x')[0].link));\n"
+        % (src, src + "-other"))
+    out = subprocess.run([node, "-e", script], capture_output=True)
+    assert out.returncode == 0, out.stderr.decode("utf-8", "replace")[:300]
+    got_js = json.loads(out.stdout.decode("utf-8"))
+    assert got_py == want, "Python 把 %r 归一成 %r（期望 %r）" % (src, got_py, want)
+    assert got_js == want, (
+        "%s：JS 归一成 %r，Python 归一成 %r ⇒ 两条通道对同一篇文章给出不同链接，"
+        "抽屉合并认不出旧条目" % (name, got_js, got_py))
+
+
 def test_both_rss_paths_use_the_helpers():
     """两条解析路径**各自**必须走 helper —— 用整句源码锁，不用"附近出现过"。
 

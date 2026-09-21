@@ -502,6 +502,10 @@ function dedupSourceItems(items, sourceKey) {
     }
     // 通用: 剥离 tracking 参数
     link = link.replace(/[?&](utm_source|utm_medium|utm_campaign|utm_content|at_medium|at_campaign)=[^&]*/g, '');
+    // 通用: 剥尾部 fragment（Python 侧同一条规则，负向前瞻保住 v2ex 的 #replyN 锚点）。
+    // 漏它的线上代价：der_spiegel_783 的 30/30 条带 `#ref=rss`，与构建期产物里同一篇
+    // 文章的链接不相等 ⇒ 抽屉按 link 认不出旧条目，"无损合并"退化成整条替换。
+    link = link.replace(/#(?!reply\d+$)[^#]*$/, '');
     link = link.replace(/[?&]$/, '');
     it.link = link;
   }

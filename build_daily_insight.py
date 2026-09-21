@@ -937,6 +937,11 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
       的现有边界一致，无日期条目本来也进不了洞察；留着就是"无日期回退成 now"那类永生条目复活。
     """
     cap = MAX_EMBED_CHUNKS if cap is None else cap
+    # 上限/预算必须是"越小越紧"。原写法在极端参数下反向生效：
+    # cap=0 → floor=1 → n_rss = min(..., cap-floor) = -1 → `rss[:-1]` 留下几乎全部内容；
+    # embed_budget=-5 → `uncached[:-5]` 只推迟 5 条。生产传的是 30000/3000 打不到，
+    # 但"上限"这种参数一旦误配就该收紧而不是放宽（判据见 TestAccountingConservation）。
+    cap = max(0, int(cap))
     rss_hours = INSIGHT_RSS_HOURS if rss_hours is None else rss_hours
     other_hours = VECTOR_CACHE_OTHER_HOURS if other_hours is None else other_hours
     # NOW_BJ 是模块级 None、由 main() 初始化（:46）；不兜底的话本函数在 main() 之外必炸。
@@ -989,7 +994,8 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
     # 同一个偏见翻到另一边 —— RSS 在 168h 窗口里的唯一 chunk 可以远超上限（本场新增就 19,125 条），
     # 那样热榜/AGI Hunt 会被挤成 0，而本期 12 个事件恰恰 12/12 来自 agihunt。
     # 两边各设一个保底份额，保证"有内容的一侧永不被清零"。
-    floor = max(1, int(cap * POOL_MIN_SHARE))
+    # floor 不许超过 cap 本身，否则 `cap - floor` 变负数、名额算成负数（见上面的 cap 说明）
+    floor = min(cap, max(1, int(cap * POOL_MIN_SHARE)))
     if rss and other:
         n_rss = int(round(cap * float(len(rss)) / (len(rss) + len(other))))
         n_rss = min(max(n_rss, floor), cap - floor)
@@ -1015,6 +1021,7 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
     old_hashes = {c.get("content_hash", "") for c in (old_chunks or [])}
     deferred_uncached = 0
     if embed_budget is not None:
+        embed_budget = max(0, int(embed_budget))
         uncached = [c for c in merged if c.get("content_hash", "") not in old_hashes]
         if len(uncached) > embed_budget:
             allow = set(c["content_hash"] for c in uncached[:embed_budget])
