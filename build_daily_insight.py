@@ -910,6 +910,110 @@ def _save_vector_cache(chunks, vectors, embed_model):
 
 # ──────────────────── RAG: 混合检索 ────────────────────
 
+VECTOR_CACHE_OTHER_HOURS = 48   # 非RSS（热榜/AIHOT/AGI Hunt）在向量缓存里的保留窗口
+POOL_MIN_SHARE = 0.10           # 有内容的一侧至少占上限的 10%，防止比例分配被极端输入压到 0
+
+
+def _merge_vector_cache(old_chunks, new_chunks, cap=None,
+                        rss_hours=None, other_hours=None, now_dt=None):
+    """合并旧向量缓存与本场 chunks：按 content_hash 去重 → 按龄期淘汰 → RSS 优先封顶。
+
+    返回 (merged, stats)。这里丢任何 chunk 都不会造成向量错位：调用点装配向量矩阵时
+    是按 `cached_map[content_hash]` 取行（:5246-5252），不是按位置切片。
+
+    为什么必须有这个函数（2026-09-21，run 35566639074 实测）：原实现只在超上限时剪 RSS 一支，
+    `budget = 30000 - 33697 = -3697` 触发 `<100 → 100` 兜底，于是 12,244 条 RSS 只剩 100 条，
+    而非RSS 从不淘汰 ⇒ 同日 7 场 non_rss 单调 31840→33697（约 +370/场），
+    且最终 33,797 > MAX_EMBED_CHUNKS —— 那个"上限"从来没生效过。
+
+    口径：
+    - RSS 优先按新鲜度占额度，剩余名额再给非RSS 按新鲜度填（不需要人为配比）；
+    - 判不了龄（pub_date 缺失/解析失败）一律丢弃 —— 与 :5130 `_hours_ago(None)==999 > 168`
+      的现有边界一致，无日期条目本来也进不了洞察；留着就是"无日期回退成 now"那类永生条目复活。
+    """
+    cap = MAX_EMBED_CHUNKS if cap is None else cap
+    rss_hours = INSIGHT_RSS_HOURS if rss_hours is None else rss_hours
+    other_hours = VECTOR_CACHE_OTHER_HOURS if other_hours is None else other_hours
+    # NOW_BJ 是模块级 None、由 main() 初始化（:46）；不兜底的话本函数在 main() 之外必炸。
+    now_ts = (now_dt or NOW_BJ or datetime.datetime.now(BJT)).timestamp()
+
+    by_hash = {}
+    for c in (old_chunks or []):
+        h = c.get("content_hash", "")
+        if h:
+            by_hash.setdefault(h, c)
+    for c in (new_chunks or []):
+        h = c.get("content_hash", "")
+        if h:
+            by_hash[h] = c           # 本场版本覆盖旧缓存副本
+
+    def _instant(c):
+        # 必须按时刻排，不能比 ISO 字符串：池子里同时存在无偏移/+08:00/-07:00 三种写法，
+        # 字符串序会把 -07:00（其实是最新）排到最前 —— 今天已在两处栽过这个坑。
+        dt = _parse_iso(c.get("pub_date", ""))
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=BJT)
+        return dt.timestamp()
+
+    survivors, evicted_stale, dropped_undated = [], 0, 0
+    for c in by_hash.values():
+        ts = _instant(c)
+        if ts is None:
+            dropped_undated += 1
+            continue
+        limit = rss_hours if c.get("source_type") == "rss" else other_hours
+        age_h = (now_ts - ts) / 3600.0
+        if age_h > limit:
+            evicted_stale += 1
+            continue
+        survivors.append(c)
+
+    rss = sorted((c for c in survivors if c.get("source_type") == "rss"),
+                 key=_instant, reverse=True)
+    other = sorted((c for c in survivors if c.get("source_type") != "rss"),
+                   key=_instant, reverse=True)
+    # 名额按"两边各自的可用量"比例分配，而不是谁优先谁通吃：
+    # 旧行为是非RSS 通吃（RSS 12,244 条输入 → 只剩 100 条）；单纯改成"RSS 优先"只是把
+    # 同一个偏见翻到另一边 —— RSS 在 168h 窗口里的唯一 chunk 可以远超上限（本场新增就 19,125 条），
+    # 那样热榜/AGI Hunt 会被挤成 0，而本期 12 个事件恰恰 12/12 来自 agihunt。
+    # 两边各设一个保底份额，保证"有内容的一侧永不被清零"。
+    floor = max(1, int(cap * POOL_MIN_SHARE))
+    if rss and other:
+        n_rss = int(round(cap * float(len(rss)) / (len(rss) + len(other))))
+        n_rss = min(max(n_rss, floor), cap - floor)
+    else:
+        n_rss = cap if rss else 0
+    n_other = cap - n_rss
+    keep_rss = rss[:n_rss]
+    keep_other = other[:n_other]
+    # 一侧根本装不满时，把省下的名额让回另一侧 —— 否则池子会常年空着一块（保底额越大越明显）
+    spare = cap - len(keep_rss) - len(keep_other)
+    if spare > 0:
+        extra_rss = rss[len(keep_rss):len(keep_rss) + spare]
+        keep_rss += extra_rss
+        spare -= len(extra_rss)
+        if spare > 0:
+            keep_other += other[len(keep_other):len(keep_other) + spare]
+    merged = keep_rss + keep_other
+
+    kept_hashes = {c["content_hash"] for c in merged}
+    stats = {
+        "input_old": len(old_chunks or []),
+        "input_new": len(new_chunks or []),
+        "kept": len(merged),
+        "kept_rss": len(keep_rss),
+        "kept_other": len(keep_other),
+        "evicted_stale": evicted_stale,
+        "dropped_undated": dropped_undated,
+        "dropped_over_cap": len(rss) - len(keep_rss) + len(other) - len(keep_other),
+        "cap": cap,
+        "dropped_hashes": sorted(set(by_hash) - kept_hashes),
+    }
+    return merged, stats
+
+
 def _hybrid_retrieve(index, chunks, queries, top_k=RETRIEVAL_TOP_K, stats=None):
     """混合检索：FAISS 向量搜索 + BM25 关键词 → RRF 融合。
 
@@ -5193,27 +5297,15 @@ def main():
 
     # 1.5) 增量追加：加载旧缓存 → 合并去重 → 截断 → 仅新增 embedding
     old_chunks, old_vecs, old_model = _load_vector_cache()
-    old_hash_set = {c.get("content_hash", "") for c in old_chunks}
-    today_hash_set = {c.get("content_hash", "") for c in chunks}
-    # 合并：旧 chunks + 今日新 chunks（去重 by content_hash）
-    # 旧缓存中仍出现在今日数据里的保留（未过期），不再出现的也保留（由截断控制淘汰）
-    new_only = [c for c in chunks if c.get("content_hash", "") not in old_hash_set]
-    merged_chunks = old_chunks + new_only
-    print("[每日洞察] 增量合并: 旧 %d + 新增 %d = %d (去重后)" % (
-        len(old_chunks), len(new_only), len(merged_chunks)))
-
-    # 1.6) 截断：超出 MAX_EMBED_CHUNKS 时按时间保留 RSS chunks
-    if len(merged_chunks) > MAX_EMBED_CHUNKS:
-        rss_mc = [c for c in merged_chunks if c.get("source_type") == "rss"]
-        other_mc = [c for c in merged_chunks if c.get("source_type") != "rss"]
-        rss_mc.sort(key=lambda c: c.get("pub_date", ""), reverse=True)
-        budget = MAX_EMBED_CHUNKS - len(other_mc)
-        if budget < 100:
-            budget = 100
-        rss_mc = rss_mc[:budget]
-        merged_chunks = rss_mc + other_mc
-        print("[每日洞察] 截断至 %d chunks (RSS %d + 其他 %d)" % (
-            len(merged_chunks), len(rss_mc), len(other_mc)))
+    # 1.5+1.6) 合并 + 淘汰 + 封顶统一交给 _merge_vector_cache（判据见
+    # tests/daily_insight/test_vector_cache_bounds.py）。旧写法只剪 RSS 一支、非RSS 永不淘汰，
+    # 结果既撑爆上限又把 RSS 饿死到 100 条。
+    merged_chunks, _vc = _merge_vector_cache(old_chunks, chunks)
+    print("[每日洞察] 向量缓存合并: 旧 %d + 本场 %d → 留存 %d"
+          "（超龄淘汰 %d / 判不了龄丢弃 %d / 超上限截断 %d ｜ RSS %d + 非RSS %d，上限 %d）" % (
+              _vc["input_old"], _vc["input_new"], _vc["kept"], _vc["evicted_stale"],
+              _vc["dropped_undated"], _vc["dropped_over_cap"],
+              _vc["kept_rss"], _vc["kept_other"], _vc["cap"]))
 
     # 1.7) 识别需要 embedding 的 chunks（hash 不在旧缓存中的）
     cached_map = {}  # content_hash → index in old_vecs
