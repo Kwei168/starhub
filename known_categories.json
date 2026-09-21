@@ -253,5 +253,6 @@
  "QwenLM/Qwen-MM-Plugins": "agent",
  "Tencent/WeKnora": "assistant",
  "Tencent/BrowserSkill": "agent",
- "zai-org/ZCode": "coding"
+ "zai-org/ZCode": "coding",
+ "jnMetaCode/openshorts": "video"
 }
