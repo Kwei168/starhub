@@ -676,3 +676,29 @@ survived=0。其中一条值得记：**第一版造数只有 900 条（低于警
    `>168h == 0` 且 `总数 == items_after_gate`，红则挡住提交（现在的判据全在内存列表上，
    恰好是这次事故检不出来的那一层）。
 3. 修完再谈配额/永生通道。
+
+### 14.1 根因与修复（已入库 46bebab 之后的构建批次，2026-09-21 07:50 北京时间触发）
+断链点在 CI 提交步骤：`.github/workflows/update.yml:215` 是
+`git add ... rss-data-*.js ...`（**磁盘 glob 展开**）。`write_data_chunks` 上一场多出来的旧块用
+`os.remove` 删掉后，glob 里就没有这个文件名了 ⇒ 删除动作从来没有被提交过 ⇒ 旧块永久留在仓库、
+被 Pages/Vercel 继续分发。修复不是改 workflow（那是另一会话的文件），而是**把"删除"换成"清空"**：
+`_empty_stale_chunk` 写一个 `{"sources": []}` 的空载荷，文件仍在磁盘上 ⇒ glob 看得见 ⇒ 变更能提交，
+而页面把它合并进来也不带任何旧条目。
+另外补了一处真正的漏：`write_data_chunks` 在 `if not chunk1:` 分支里**提前 return**，
+旧块清理根本没跑（第一版修复就栽在这里）；现在两条路径都调 `_retire_stale_chunks`。
+
+判据 `tests/rss_history/test_stale_chunk_guard.py` 三条：旧块必须还在磁盘且为空、
+本次条目一条不能丢、源码层禁止 `os.remove` 回潮（`inspect.getsource` 锁）。
+先红后绿：修复前 3 条全红，修复后全绿；tracked 集 107 passed。
+
+### 14.2 同型风险已核查排除（不是"顺手也改一遍"）
+`_save_history_chunked:345` 与 `_save_api_snapshot:977` 同样在用 `os.remove` 删旧块，但：
+`git ls-files` 显示 `rss_api_snapshot*` / `rss_history*` **入库数都是 0**，`.gitignore:29-33`
+把它们全量忽略（历史走 actions/cache，快照走部署打包）。既然不经 `git add`，删除就是真删除，
+不存在僵尸文件。⇒ 这两处**不改**，改反而会引入无谓风险。
+
+### 14.3 产物级验收判据（以后每次都要跑，别再拿单块说事）
+`py -3.11 _scratch/_audit_chunks_dedup.py origin/main`：读**全部** `rss-data-*.js` 分块、
+按 `link` 去重后算龄期，判据三条 —— 去重总数 == `items_after_gate`、`>168h == 0`、纪元日期 == 0。
+修复前（同一时刻测，代码已入库、构建尚未携带）：**17,235 条｜>168h 5,060（29.4%）｜纪元日期 12｜FAIL**。
+修复后的数字等这场构建落地再记，不提前写结论。
