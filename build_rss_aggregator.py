@@ -46,8 +46,18 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 
 # ── 缓存配置 ──
 TRANS_CACHE_FILE = "translations.json"
+# 翻译缓存条数上限。它是**已入库文件**（update.yml 的 add 清单里有 translations.json），
+# 生产实测 101,643 条 / 20,731,886 字节且从不裁剪；同函数里的 RSS 缓存早就按 TTL 裁剪了，
+# 两边机制必须一致，否则"防止文件无限膨胀"只对一半。
+# 取 30,000 的依据：单场命中约 8,400 条不同文本，30k ≈ 3.5 倍单场工作集；
+# 被逐出的都是"72h 窗口里再也不会遇到"的历史标题，代价是个别重遇时重译一次（1 次 API 调用）。
+TRANS_CACHE_MAX = 30000
 RSS_CACHE_FILE = "rss_cache.json"
 RSS_CACHE_TTL = 1800  # RSS 缓存有效期：30 分钟
+
+# 翻译缓存的账本：与历史侧 `_LAST_HISTORY_ACCOUNT` 同一形态。
+# 约定也一致：字段为 None 表示"这一步没跑到"，不许用 0 冒充"跑到了但没丢"。
+_LAST_TRANS_ACCOUNT = {}
 
 # ── newsnow 热榜快照 ──
 # API 格式: /api/s?id={platform}，每平台单独请求
@@ -245,13 +255,52 @@ def _strip_oss_signature(text):
     return text
 
 
-def _save_caches():
-    """保存翻译和 RSS 缓存（RSS 缓存写盘前裁剪过期条目，防止文件无限膨胀）"""
+def _trans_touch(text_hash):
+    """命中即移到 dict 末尾：Python 保序，末尾=最近使用，头部=最久未用。
+
+    不 touch 的话 LRU 会退化成"插入序"，一条被高频命中的老译文反而最先被裁掉。
+    """
+    if text_hash in _trans_cache:
+        _trans_cache[text_hash] = _trans_cache.pop(text_hash)
+
+
+def _trim_trans_cache():
+    """把翻译缓存裁到 TRANS_CACHE_MAX，返回丢弃条数（并记账）。"""
+    before = len(_trans_cache)
+    if before > TRANS_CACHE_MAX:
+        # 整体重建而不是逐 key pop：pop 版要在循环里反复构造 set，
+        # 3 万条规模下是 O(n·cap) 的自杀式写法。clear+update 保序且线性。
+        tail = list(_trans_cache.items())[-TRANS_CACHE_MAX:]
+        _trans_cache.clear()
+        _trans_cache.update(tail)
+    dropped = before - len(_trans_cache)
+    _LAST_TRANS_ACCOUNT["size"] = len(_trans_cache)
+    _LAST_TRANS_ACCOUNT["trimmed"] = dropped
+    return dropped
+
+
+def _save_trans_cache():
+    """翻译缓存：先按 LRU 裁剪再紧凑落盘。
+
+    indent=2 去掉 —— 这个文件只有本脚本自己读（全仓核过：前端与 api/ 都不消费），
+    20.7MB 里约三成是缩进空白，每场整文件重新入库，直接喂给已经 6.8GB 的 .git。
+    """
     try:
-        _atomic_write_json(TRANS_CACHE_FILE, _trans_cache, ensure_ascii=False, indent=2)
-        print("[缓存] 保存翻译缓存: %d 条" % len(_trans_cache))
+        trimmed = _trim_trans_cache()
+        _atomic_write_json(TRANS_CACHE_FILE, _trans_cache, ensure_ascii=False,
+                           separators=(",", ":"))
+        print("[缓存] 保存翻译缓存: %d 条%s" % (
+            len(_trans_cache),
+            "（LRU 裁剪 %d 条，上限 %d）" % (trimmed, TRANS_CACHE_MAX) if trimmed else ""))
     except Exception as e:
+        _LAST_TRANS_ACCOUNT["size"] = None
+        _LAST_TRANS_ACCOUNT["trimmed"] = None
         print("[缓存] 保存翻译缓存失败: %s" % e, file=sys.stderr)
+
+
+def _save_caches():
+    """保存翻译和 RSS 缓存（两者写盘前都裁剪，防止文件无限膨胀）。"""
+    _save_trans_cache()
     # RSS 缓存仅保留 TTL 内条目（跨 run 基本全过期，裁剪+紧凑序列化使文件从几十 MB 降至 MB 级）；
     # 该文件已移出 git 跟踪（见 .gitignore），仅服务单次运行内的抓取加速
     pruned = {k: v for k, v in _rss_cache.items()
@@ -1991,6 +2040,7 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     text_hash = hashlib.md5(text.encode("utf-8", errors="replace")).hexdigest()
     if text_hash in _trans_cache:
         _TRANS_STATS["cache_hit"] += 1
+        _trans_touch(text_hash)   # 命中要记账给 LRU，否则高频译文会先被裁掉
         return _trans_cache[text_hash]
 
     # 熔断：连续多次全端点失败后暂停请求，期间未命中缓存的文本直接返回原文
@@ -8358,6 +8408,10 @@ def main(mode="full"):
         # 「不许 0 兜底」这条规矩留着：字段为 None = 这一步没跑到，
         # 与"跑到了但是 0"必须是两个不同的样子（§12 那笔全天恒负的账就是这么漏的）。
         "trans_cache_hit": _TRANS_STATS.get("cache_hit", 0),
+        # 轮转的观测面：条数与本轮 LRU 丢弃数。为 None = `_save_trans_cache` 没跑到或抛异常，
+        # 与"跑到了但一条没丢（0）"必须是两个样子 —— 历史侧 §12 那本恒负账就是这么漏掉的。
+        "trans_cache_size": _LAST_TRANS_ACCOUNT.get("size"),
+        "trans_cache_trimmed": _LAST_TRANS_ACCOUNT.get("trimmed"),
         "trans_google": _TRANS_STATS.get("google", 0),
         "trans_mymemory": _TRANS_STATS.get("mymemory", 0),
         "trans_dict": _TRANS_STATS.get("dict", 0),
