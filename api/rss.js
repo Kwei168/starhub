@@ -576,6 +576,10 @@ async function fetchOne(source) {
           s: it.summary,
           d: it.pub_date,
         };
+        // 无 pubDate 时 d 是抓取时刻（datedOrCapture 给的），必须带出降级标记，
+        // 否则实时路径的卡片会把抓取时间当发布时间显示。键名沿用构建期快照的长名
+        // date_fallback（前端 buildArt/_mergeRemoteSources 读的就是它），且只在真值时写。
+        if (it.date_fallback) obj.date_fallback = 1;
         if (it.fullContent) obj.fc = it.fullContent;
         if (it.media_url) { obj.mu = it.media_url; obj.mt = it.media_type; }
         return obj;
@@ -737,6 +741,8 @@ export default async function handler(req, res) {
           u: it.u || '#',
           s: truncate(stripHtml(it.s || ''), 200),
           d: it.d || '',
+          // 与构建期快照同一键名、同一只在真值时写的形状；每源每条目都固定写 0 会白涨 payload。
+          ...(it.date_fallback ? { date_fallback: 1 } : {}),
           fc: it.fc || '',
           img: it.img || '',
           mu: it.mu || '',

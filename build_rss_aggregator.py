@@ -3618,6 +3618,13 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     else{if(_srcBtnEl){try{_srcBtnEl.focus();}catch(e){}_srcBtnEl=null;}}
   }
   window.toggleSrcPanel=toggleSrcPanel;
+  /* API 压缩条目(t/s/u/d) → src.items 形状(title_zh/link/pub_date/...) 的唯一映射。
+     必须与 buildArt 读同一批长键名：漏掉 date_fallback 时抽屉里的无日期文章会把
+     抓取时刻显示成发布时间，而卡片墙（走快照/分块）同一篇却带「收录」——同一篇
+     文章两个入口口径不一致。命名成函数是为了能被单测真跑，而不是只被文本扫到。 */
+  function _apiItToSrc(it){
+    return {title_zh:it.t_zh||it.t||'',summary_zh:it.s||'',link:it.u||'#',pub_date:it.d||'',fc:it.fc||'',image:it.img||'',mu:it.mu||'',mt:it.mt||'',date_fallback:!!it.date_fallback};
+  }
   function selectSrc(key){
     var uo=filter.unreadOnly,bm=filter.filterBm;
     if(!key){filter={type:'all',unreadOnly:uo,filterBm:bm};} else {filter={type:'src',src:key,unreadOnly:uo,filterBm:bm};}
@@ -3636,9 +3643,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         /* 映射 API 字段(t/s/u/d)到 buildArt 期望格式，按 link 去重 */
         var have={}; data.items.forEach(function(it){if(it.u&&it.u!=='#')have[it.u]=1;});
         var oldItems=src.items.filter(function(it){return !it.link||!have[it.link];});
-        var newItems=data.items.map(function(it){
-          return {title_zh:it.t_zh||it.t||'',summary_zh:it.s||'',link:it.u||'#',pub_date:it.d||'',fc:it.fc||'',image:it.img||'',mu:it.mu||'',mt:it.mt||''};
-        });
+        var newItems=data.items.map(_apiItToSrc);
         src.items=newItems.concat(oldItems);
         buildArt(); renderChips(); renderWall(); renderPanel();
         var n=data.items.length; toast('已更新 '+src.name+'（'+n+' 篇最新）');
