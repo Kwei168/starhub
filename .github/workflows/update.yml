@@ -221,39 +221,24 @@ jobs:
           else
             git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)"
             # 普通 push；cancel-in-progress:true 保证无并发
-            # 如果 remote 在 fetch 后被更新，reset --soft 吸收后重试，无需 force
             git push || {
-              echo "Push failed, remote changed. Trying fast retry..."
-              git fetch origin main
-              # git reset --soft 保留工作区（含构建产物），将 HEAD 对齐到最新 origin/main
-              git reset --soft origin/main
-              # 重新 stage 所有产物 + 日志（现在也包含 remote 带来的变更）
-              # 竞态守卫：本 run 检出早于并发推送时，直接 add 源码文件会用旧检出
-          # 回滚别人的新提交（09-19 03:37 第8轮洞察代码被 auto-commit 吞掉实证）。
+              # push 被拒 ⇒ 说明本 run 检出之后有人推过。重试必须在**新 base 上重新生成**内容，
+              # 不能靠 reset --soft：--soft 只挪 HEAD、保留旧 index，随后的 commit 会把 add 清单里
+              # 未被本 run 改写的源码文件（build_rss_aggregator.py / rss_sources.json 都在清单里且无守卫）
+              # 按旧检出回滚掉别人刚推的改动 —— 09-19 03:37 第 8 轮洞察代码就是这样被 auto-commit 吞掉的。
+              # 旧写法在这里还有一层「soft 失败再 hard+重建」的兜底；两层合并成一层，
+              # 因为 soft 那层本身就是要修掉的东西。代价：撞并发时要多跑一次构建（实测约 5 分钟）。
+              echo "Push failed, remote changed. Retrying on a fresh base..."
           git fetch origin main --quiet || true
+              git reset --hard origin/main
+              python fetch_and_build.py $MODE
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
           git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
-              if git push; then
-                echo "Rebase retry succeeded — no re-fetch needed."
-              else
-                echo "Rebase retry also failed. Falling back to full rebuild..."
-                git reset --hard origin/main
-                python fetch_and_build.py $MODE
-                # 竞态守卫：本 run 检出早于并发推送时，直接 add 源码文件会用旧检出
-          # 回滚别人的新提交（09-19 03:37 第8轮洞察代码被 auto-commit 吞掉实证）。
-          git fetch origin main --quiet || true
-          git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
-          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
-                if [ -f hot_history.json ]; then git add hot_history.json; fi
-                if [ -f daily-insight.json ]; then git add daily-insight.json; fi
-                if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
-                git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
-                git push
-              fi
+              git push
             }
           fi
 
