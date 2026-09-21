@@ -103,18 +103,21 @@ def test_js_undated_item_is_marked_not_blank():
 
 
 def test_both_rss_paths_use_the_helpers():
-    """两条解析路径**各自**必须走 helper，不是"全文出现次数够"。
+    """两条解析路径**各自**必须走 helper —— 用整句源码锁，不用"附近出现过"。
 
-    为什么写成这样：上一版用 `text.count("linkOrPermaId(") >= 2` —— 变异体只把 Atom 那处
-    改回 extractTag 也照样绿（定义自身就占一次计数），这条判据等于没写。
-    现在按循环体定位：RSS 的 for 与 Atom 的 for 各自内部必须出现对应调用。
+    这条判据改过两次，前两版都是假的：
+      v1 `text.count("linkOrPermaId(") >= 2` —— helper 定义自身占一次，
+         变异体把 Atom 路径改回 extractTag 照样绿；
+      v2 "从循环起点往后截 1200 字符，段内含 linkOrPermaId" —— 窗口会溢出到另一条
+         路径的代码，同一个变异体**仍然绿**（我实测过两次才承认它无效）。
+    现在锁具体语句：每条路径那一行必须原样存在，被改坏就立刻找不到；
+    日期兜底则要求两条路径各出现一次（count==2，多了少了都说明接线动过）。
     """
     text = open(API_RSS, encoding="utf-8").read()
-    for marker, what in (("for (const item of rssItems", "RSS2 路径"),
-                         ("for (const entry of atomEntries", "Atom 路径")):
-        i = text.find(marker)
-        assert i > 0, "找不到 %s 的循环起点，api/rss.js 结构变了" % what
-        seg = text[i:i + 1200]
-        assert "linkOrPermaId(" in seg, "%s 没走 guid/id 回退，guid 即链接的源在这条路上仍是空链接" % what
-        assert "datedOrCapture(" in seg, "%s 没走收录时刻兜底，缺日期条目仍出厂空时间" % what
+    assert "linkOrPermaId(item, 'link', 'guid')" in text, \
+        "RSS2 路径没走 guid 回退：guid 即链接的源（如安全客）在运行时侧仍是空链接"
+    assert "linkOrPermaId(entry, 'link', 'id')" in text, \
+        "Atom 路径没走 guid/id 回退：只修一条等于没修（台账 §20 的原始事故形态）"
+    assert text.count("const _dt = datedOrCapture(pubDate);") == 2, \
+        "收录时刻兜底必须两条路径各一次，实际 %d 次" % text.count("const _dt = datedOrCapture(pubDate);")
     assert "pub_date: pubDate || ''" not in text, "还有路径把缺日期直接出厂成空串"
