@@ -2999,7 +2999,7 @@ def _llm_phase1(llm, clusters, global_context=None):
 - 所有陈述必须基于素材，不要编造
 - 每个事件的 summary 必须覆盖该事件素材中的所有关键事实点（至少 3 个独立信息点）
 - 不要只挑最重要的 1-2 条素材，要综合所有素材
-- 如果全局上下文中有重要信息未被任何事件覆盖，请在 theme 中提及""" % (NOW_BJ.strftime("%Y年%m月%d日"), len(clusters), "\n\n".join(events_text), _gc_block, len(clusters))
+- theme 只能概括下面这些事件里真实出现的内容；未被任何事件覆盖的信息不要写进 theme（头版承诺报告没给证据的事，等于骗读者）""" % (NOW_BJ.strftime("%Y年%m月%d日"), len(clusters), "\n\n".join(events_text), _gc_block, len(clusters))
 
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT_P1},
@@ -4353,6 +4353,58 @@ def _update_history(clusters, theme):
 
 # ──────────────────── 终版复评（shipped report） ────────────────────
 
+def _theme_clause_carried(clause, clusters):
+    """从句能否落到某条正文事件上：按特征重合数 + 包含度，同 :3798-3811 的归因口径。"""
+    ct = _dedup_tokens(clause)
+    if not ct:
+        return False
+    for c in (clusters or []):
+        et = _dedup_tokens((c.get("label") or "") + " " + (c.get("summary") or ""))
+        if not et:
+            continue
+        ov = len(ct & et)
+        if ov >= 2 and ov / float(len(ct)) >= 0.2:
+            return True
+    return False
+
+
+def _align_theme_to_events(theme, clusters):
+    """把主题句裁到只说正文里真有的事，返回 (theme, 被裁掉的从句)。
+
+    为什么必须有：出厂过的 14:13 期主题写了"四大巨头被诉""加州紧急停止机制"两件事，
+    而正文 12 条里都没有 —— 头版在替报告承诺它没给证据的内容。成因有两条：
+    Phase 1 的 prompt 曾明确要求"把未被事件覆盖的重要信息写进 theme"（已删），
+    且 theme 在 `clusters[:MAX_EVENTS]` 收口之前生成、之后从不重生成。
+
+    不能在这里调 LLM：这一步同时要在终版复评之前跑，否则 cov/rel 仍是拿旧主题打的分。
+    """
+    t = (theme or "").strip()
+    if not t:
+        return t, []
+    parts = [p.strip() for p in re.split(r"[，,。；;]", t) if p.strip()]
+    if not parts:
+        return t, []
+    # 末段若是判断句（"判断…/说明…"），它是对整体的解读、不指认具体事件，原样保留
+    judged = parts[-1] if parts[-1].startswith(("判断", "说明", "意味着")) else None
+    body = parts[:-1] if judged else parts
+    kept, dropped = [], []
+    for cl in body:
+        (kept if _theme_clause_carried(cl, clusters) else dropped).append(cl)
+    if judged is None and not dropped:
+        return t, []          # 本来就全部有承载，原句一字不动
+    if not kept:
+        labels = [(c.get("label") or "").strip() for c in (clusters or [])
+                  if (c.get("label") or "").strip()]
+        if not labels:
+            return (judged or t), []      # 无事件可依据时退回判断句，绝不给页面留空格
+        rebuilt = "从" + labels[0]
+        for lb in labels[1:3]:
+            rebuilt += "，到" + lb
+        kept = [rebuilt]
+    out = "，".join(kept + ([judged] if judged else []))
+    return out, dropped
+
+
 def _confirm_shipped_report_eval(llm, clusters, theme, retrieved_chunks, ragas_eval,
                                  use_cv=True, retrieval_stats=None):
     """对最终 shipped 报告复评一次，让 quality 描述用户真正看到的那份日报。
@@ -5636,6 +5688,13 @@ def main():
     clusters = _drop_insufficient(clusters)
     clusters = _order_events_for_output(clusters)  # 闸与分数刷新后重排，保证导出 editor_score 单调
     clusters = clusters[:MAX_EVENTS]  # T1: 输出预算收口 12，被去重/占位闸砍掉的槽位由池内后位候选顶上
+
+    # 主题必须在收口之后、终版复评之前对齐到正文：
+    # 否则头版会承诺正文没给证据的事，而 cov/rel 又是拿这个旧主题打的分（度量被污染）。
+    theme, _theme_dropped = _align_theme_to_events(theme, clusters)
+    if _theme_dropped:
+        print("[每日洞察] 主题对齐: 裁掉 %d 个无事件承载的从句 -> %s" % (
+            len(_theme_dropped), " / ".join(d[:24] for d in _theme_dropped)))
 
     # 终版复评：quality 必须描述收口后的 shipped 报告，而非回收前的草稿（07:14 期实证）
     # use_cv 与草稿评估同源，保证两期分数在同一口径上可比；纯观测项，异常绝不挡写盘
