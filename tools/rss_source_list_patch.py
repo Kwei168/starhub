@@ -75,7 +75,18 @@ DATELESS_DELETE_KEYS = {
     "喷嚏网铂程斋_11",          # plink.anyfeeder 代理结构性丢日期：14 条仅 title/link/content
     "bbc英语教学_13",           # 同上：5 条
     "中国日报双语_2",            # 同上：5 条
+    # 与 google_developers_blog_406 是同一家：地址只差一个结尾斜杠，逐条零日期，
+    # 出口 20 条卡片连时间位都是空的。_406 已换到逐条带 pubDate 的官方地址，
+    # 这个重复钥匙留着只多一份空卡片和一次白抓。
+    "google_dev_76",
 }
+# 内容质量类删除：**日期没问题**，纯粹是判定这个源的内容不值得占配额。
+# 单独成块的原因：混进 DATELESS_DELETE_KEYS 等于在清单里留下一条假原因，
+# 下一个人会以为超能网的 feed 缺日期，而它今天实测 30/30 带 pubDate。
+QUALITY_DELETE_KEYS = {
+    "超能网_31",               # 2026-09-21 用户判定"内容质量不行"
+}
+
 DATED_URL_FIX = {
     # 这两个不是"上游不给日期"，是我们接的地址不给 —— 换址就保住内容，删掉是净损失。
     # 备选地址都过真实解析器复测：逐条 pub_date 命中 100%，且不是同一分钟的批次时间。
@@ -92,13 +103,14 @@ def run(apply=False, scope="all"):
 
     # scope="dateless" 只重放 2026-09-21 这一批；其余改动留给各自的批次落地
     if scope == "all":
-        del_keys = DELETE_KEYS | DATELESS_DELETE_KEYS
+        del_keys = DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
         del_names, drop_then_add = DELETE_BY_NAME, DROP_THEN_ADD
         url_fix = dict(URL_FIX)
         url_fix.update(DATED_URL_FIX)
         name_fix, ua_fix, route_fix, adds = NAME_FIX, UA_FIX, ROUTE_FIX, ADD_SOURCES
     elif scope == "dateless":
-        del_keys, del_names, drop_then_add = DATELESS_DELETE_KEYS, {}, {}
+        del_keys = DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
+        del_names, drop_then_add = {}, {}
         url_fix, name_fix, ua_fix = dict(DATED_URL_FIX), {}, {}
         route_fix, adds = [], []
     else:

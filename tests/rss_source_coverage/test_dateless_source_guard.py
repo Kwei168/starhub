@@ -34,8 +34,12 @@ from _loader import load_build  # noqa: E402
 LIST_PATH = os.path.join(ROOT, "rss_sources.json")
 TOOL_PATH = os.path.join(ROOT, "tools", "rss_source_list_patch.py")
 
-# 逐条零日期、且没有任何备选地址能补上日期的源（探测记录见 specs 2026-09-20-rss-72h-retention-design §16）
-DATELESS_GONE = ["nikkei_rsshub_802", "喷嚏网铂程斋_11", "bbc英语教学_13", "中国日报双语_2"]
+# 逐条零日期、且没有任何备选地址能补上日期的源（探测记录见 specs 2026-09-20-rss-72h-retention-design §16/§17）
+DATELESS_GONE = ["nikkei_rsshub_802", "喷嚏网铂程斋_11", "bbc英语教学_13", "中国日报双语_2",
+                 "google_dev_76"]
+# 内容质量类删除：日期是好的，理由不能混进"没日期"那一堆
+QUALITY_GONE = ["超能网_31"]
+GONE = DATELESS_GONE + QUALITY_GONE
 # 曾经"没日期"其实是我们接错地址：官方镜像逐条带 pubDate，删掉就是净损失
 DATED_MOVED = {
     "google_developers_blog_406": "https://blog.google/technology/developers/rss/",
@@ -55,6 +59,10 @@ PRE_BATCH_DELETED = [
      "url": "https://plink.anyfeeder.com/bbc/learningenglish", "tier": 3},
     {"key": "中国日报双语_2", "name": "中国日报双语", "cat": "news", "color": "#cc0000",
      "url": "https://plink.anyfeeder.com/chinadaily/dual", "tier": 3},
+    {"key": "google_dev_76", "name": "Google Developers", "cat": "tech", "color": "#4285f4",
+     "url": "https://developers.googleblog.com/feeds/posts/default/", "tier": 3},
+    {"key": "超能网_31", "name": "超能网", "cat": "cn_tech", "color": "#0091ea",
+     "url": "https://plink.anyfeeder.com/expreview", "tier": 2, "pub_date_offset_min": -480},
 ]
 
 
@@ -102,9 +110,22 @@ def test_source_list_is_loaded_and_nontrivial():
 def test_dateless_sources_stay_deleted():
     src = _list_sources()
     by_key = {s.get("key"): s for s in src}
-    for key in DATELESS_GONE:
+    for key in GONE:
         assert key not in by_key, (
-            "%s 又回到清单里了：它的 feed 逐条没有日期元素，留着只会让卡片显示收录时间冒充发布时间" % key)
+            "%s 又回到清单里了：它属于本批判定要剔除的源（无逐条日期或内容质量），"
+            "重新加回请先给出对应理由" % key)
+
+
+def test_no_source_keeps_the_old_dateless_blogger_url():
+    """同一家出版方不能留两把钥匙，其中一把还指着逐条零日期的旧 Blogger 地址。
+
+    google_dev_76 与 google_developers_blog_406 只差一个结尾斜杠。_406 换址之后，
+    旧地址若还被某个 key 用着，那 20 条卡片就永远没有时间位（产物实测 time_str 全空）。
+    """
+    for s in _list_sources():
+        url = (s.get("url") or "").rstrip("/")
+        assert not url.endswith("developers.googleblog.com/feeds/posts/default"), (
+            "%s 仍指向无日期的旧 Blogger 地址 %s" % (s.get("key"), s.get("url")))
 
 
 def test_dateless_sources_not_in_loaded_module():
@@ -112,7 +133,7 @@ def test_dateless_sources_not_in_loaded_module():
     mod = load_build()
     live = {s.get("key") for s in mod.RSS_SOURCES}
     assert len(live) > 500, "RSS_SOURCES 只加载到 %d 条" % len(live)
-    for key in DATELESS_GONE:
+    for key in GONE:
         assert key not in live, "%s 仍在构建期生效" % key
 
 
@@ -140,7 +161,7 @@ def test_declaration_actually_produces_the_shipped_list():
 
     got, _ = _replay(pre)
     keys = {s["key"] for s in got}
-    for key in DATELESS_GONE:
+    for key in GONE:
         assert key not in keys, "重放声明后 %s 仍在清单 ⇒ 工具里的删除没生效" % key
     for key, want in sorted(DATED_MOVED.items()):
         got_url = next((s["url"] for s in got if s["key"] == key), None)
@@ -185,7 +206,10 @@ def test_batch_keys_are_declared_in_the_tool():
     """判据与声明同源：测试里写死的 key 必须真的出现在工具声明里，
     否则工具被人删掉一批时测试会一直绿着（锁错了对象）。"""
     tool = _tool()
-    assert set(tool.DATELESS_DELETE_KEYS) == set(DATELESS_GONE)
+    # 两个理由桶分别锁死：把"内容质量"塞进"没日期"（或反之）虽然都删得掉，
+    # 却会在清单里留下一条假原因 —— 超能网今天实测 30/30 带 pubDate。
+    assert set(tool.DATELESS_DELETE_KEYS) == set(DATELESS_GONE), "无日期桶与判据不一致"
+    assert set(tool.QUALITY_DELETE_KEYS) == set(QUALITY_GONE), "内容质量桶与判据不一致"
     assert tool.DATED_URL_FIX == DATED_MOVED
 
 
