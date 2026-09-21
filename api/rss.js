@@ -237,6 +237,28 @@ function extractAttr(xml, tag, attr) {
   return m ? m[1] : '';
 }
 
+/** RSS <link> 缺失时认 <guid>；Atom 没有 guid，用 <id>。
+ *  与 Python 侧 _parse_rss_item 同口径（台账 §20）：只接受 http(s) 且未显式
+ *  isPermaLink="false" 的值。否则宁可为空 —— 一个看起来能点、点开 404 的链接
+ *  比空链接更坏。 */
+function linkOrPermaId(block, linkTag, idTag) {
+  const direct = extractTag(block, linkTag);
+  if (direct && /^https?:\/\//i.test(direct)) return direct;
+  const idTag2 = idTag || 'guid';
+  const open = block.match(new RegExp('<' + idTag2 + '([^>]*)>', 'i'));
+  if (!open) return direct || '';
+  if (/\bisPermaLink\s*=\s*"false"/i.test(open[1])) return direct || '';
+  const v = extractTag(block, idTag2);
+  return /^https?:\/\//i.test(v) ? v : (direct || '');
+}
+
+/** 上游没给发布日期时的降级值 = 本次抓取时刻，并打 date_fallback 标记。
+ *  前端据此显示「收录 …」，不冒充发布时间；缺了这个标记，卡片上的时间就是假的。 */
+function datedOrCapture(pubDate) {
+  if (pubDate && String(pubDate).trim()) return { pub_date: String(pubDate).trim(), date_fallback: false };
+  return { pub_date: new Date().toISOString(), date_fallback: true };
+}
+
 function stripHtml(text) {
   if (!text) return '';
   return text
@@ -389,16 +411,18 @@ function parseFeed(xml, sourceKey, maxItems) {
   if (atomEntries.length > 0) {
     for (const entry of atomEntries.slice(0, maxItems)) {
       const title = extractTag(entry, 'title');
-      const link = extractAttr(entry, 'link', 'href') || extractTag(entry, 'link');
+      const link = extractAttr(entry, 'link', 'href') || linkOrPermaId(entry, 'link', 'id');
       const summary = extractTag(entry, 'summary') || extractTag(entry, 'content');
       const pubDate = extractTag(entry, 'published') || extractTag(entry, 'updated');
       if (title) {
+        const _dt = datedOrCapture(pubDate);
         const item = {
           title: stripHtml(title),
           link: link || '#',
           summary: truncate(stripHtml(summary), 200),
-          pub_date: pubDate || '',
+          pub_date: _dt.pub_date,
         };
+        if (_dt.date_fallback) item.date_fallback = true;
         const media = extractMediaFromEntry(entry);
         if (media.media_url) { item.media_url = media.media_url; item.media_type = media.media_type; }
         items.push(item);
@@ -410,18 +434,20 @@ function parseFeed(xml, sourceKey, maxItems) {
   const rssItems = xml.match(/<item[^>]*>[\s\S]*?<\/item>/gi) || [];
   for (const item of rssItems.slice(0, maxItems)) {
     const title = extractTag(item, 'title');
-    const link = extractTag(item, 'link');
+    const link = linkOrPermaId(item, 'link', 'guid');
     const desc = extractTag(item, 'description') || '';
     const contentEncoded = extractTag(item, 'content:encoded') || '';
     const fullContent = contentEncoded.length > desc.length ? contentEncoded : '';
     const pubDate = extractTag(item, 'pubDate') || extractTag(item, 'dc:date');
     if (title) {
+      const _dt = datedOrCapture(pubDate);
       const result = {
         title: stripHtml(title),
         link: link || '#',
         summary: truncate(stripHtml(desc || contentEncoded), 200),
-        pub_date: pubDate || '',
+        pub_date: _dt.pub_date,
       };
+      if (_dt.date_fallback) result.date_fallback = true;
       if (fullContent) {
         result.fullContent = deepCleanHtml(sanitizeHtml(fullContent)).slice(0, 50000);
       }
