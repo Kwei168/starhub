@@ -684,7 +684,7 @@ def _accumulate_history(sources_with_items):
         del _rss_history[link]
 
     # 过期裁剪的净效果当场结清成一条独立的账。体积侧已不存在第二条删路
-    # （每源条数上限已撤销，见文件顶部哨兵说明），所以这个数就是"真过期被丢掉多少"，
+    # （每源条数上限 09-20 撤销、深度哨兵 09-21 退役，理由见台账 §18），所以这个数就是"真过期被丢掉多少"，
     # 不再需要跟淘汰数做减法。
     # 口径必须是"删掉的条数"而不是历史首尾差：后者在生产全天 12 场实测全是负数
     # （-264/-201/.../-235），因为每场新抓进来的比删掉的多 —— 那本账从来没存在过。
@@ -711,9 +711,12 @@ def _accumulate_history(sources_with_items):
         _items = src.get("items", [])
         if _items:
             _fetch_items_by_key[src["key"]] = {it.get("link", ""): it for it in _items if it.get("link")}
+    _n_capture_filled = 0
     for src in sources_with_items:
         _bb = 'bestblogs.dev' in (_src_url_map.get(src["key"]) or '')
         _fetched = src.get("items", [])
+        # 无日期的当次条目在这里补收录时刻：下面 list(_fetched) 就是出厂的那份
+        _n_capture_filled += sum(1 for _it in _fetched if _fill_undated_from_capture(_it))
         src_map[src["key"]] = {
             "key": src["key"], "name": src["name"],
             "cat": src.get("cat", "other"), "color": src.get("color", "#6366f1"),
@@ -842,6 +845,9 @@ def _accumulate_history(sources_with_items):
                   _n_tz_fixed, _n_falsified, _n_shifted))
 
     result = list(src_map.values())
+    if _n_capture_filled:
+        print("[出口] 无发布日期的当次条目 %d 条改用收录时刻（前端标「收录」，不冒充发布时间）"
+              % _n_capture_filled)
     print("[历史] 合并 %d 篇新文（其中 %d 篇为新增链接，%d 篇为覆盖更新），裁剪 %d 篇过期，保留 %d 篇（%d 小时窗口）" % (
         new_count, genuinely_new, new_count - genuinely_new,
         pruned_expired, len(_rss_history), RSS_HISTORY_HOURS))
@@ -1561,6 +1567,29 @@ def _first_seen_iso(entry):
     """first_seen（我方首次收录该链接的时刻）的 ISO 形式，解析失败返回空串。"""
     d = _parse_hist_dt(entry.get("first_seen"))
     return d.isoformat() if d else ""
+
+
+def _fill_undated_from_capture(item):
+    """出厂副本缺 pub_date 时改用我方收录时刻并打降级标记，返回是否改动。
+
+    为什么需要这一句：历史条目的降级在合并循环里做（entry["pub_date"] = _fb），
+    但同一个链接**当次又抓到**时走的是 `continue` —— 出厂的是抓取字典那份，
+    它从没被兜过底。生产实测这样有 9 条卡片 pub_date 与 time_str 双空，
+    连续两场是同一批链接（不是"本轮新增、下场自愈"）。
+
+    只改出厂副本、绝不写回历史的 pub_date：_retention_ref_dt 的推导前提是
+    「历史里没有 pub_date 就等于出口那份是降级键」，写回去等于让收录时刻去套
+    源级时区偏移（二次校正），那正是 P1-3 实测过 68h → 76h 的形态。
+    """
+    if item.get("pub_date"):
+        return False
+    iso = _first_seen_iso(_rss_history.get(item.get("link", "")) or {})
+    if not iso:
+        return False
+    item["pub_date"] = iso
+    item["date_fallback"] = True
+    item["time_str"] = _fmt_rel_time(iso)
+    return True
 
 
 def _load_pub_date_offsets(sources=None):

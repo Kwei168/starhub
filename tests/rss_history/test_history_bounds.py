@@ -292,3 +292,58 @@ def test_prune_and_gate_share_one_clock(clean):
         "缓存留下了闸门会丢的条目：%s" % sorted(mod._rss_history))
     shipped = {i["link"] for i in res[0]["items"]}
     assert shipped == {"http://two/fresh"}, "出厂与缓存不同一份数据：%s" % sorted(shipped)
+
+
+def test_undated_fresh_item_ships_capture_time(clean):
+    """当次抓到的无日期条目，出厂必须带收录时刻并打降级标记，且不许改写历史里的原始值。
+
+    生产实测（台账 §17 + 本场复测）：出口有 9 条卡片 pub_date 与 time_str 双空，
+    连续两场是**同一批链接**（100% 重叠），所以不是"本轮新增、下场自愈"。
+    根因在 _accumulate_history 里那句 continue：降级值写在历史条目上，
+    而同链接当次又抓到时走的是当次那份字典 —— 它从没被兜过底。
+
+    第二个断言守的是既有不变量：_retention_ref_dt 的推导前提是
+    "历史里没有 pub_date 就等于出口那份是降级键"，
+    所以修复只能改出厂副本，绝不能把收录时刻写回历史的 pub_date
+    （写了就等于把收录时间当发布时间去套源偏移，二次校正）。
+    """
+    now = mod._now_bj()
+    link = "http://nofb/undated-1"
+    fresh = [{"title": "无日期的一条", "link": link, "summary": "s",
+              "pub_date": "", "image": ""}]
+    mod._rss_history = {}
+    res, _total = mod._accumulate_history(
+        [{"key": "nofb", "name": "nofb", "cat": "ai", "color": "#fff",
+          "tier": 1, "items": list(fresh)}])
+    shipped = [i for i in res[0]["items"] if i.get("link") == link]
+    assert shipped, "当次条目没出厂（res=%r）" % (res[0]["items"],)
+    it = shipped[0]
+    assert (it.get("pub_date") or "").strip(), (
+        "出厂 pub_date 仍是空的：这张卡片在页面上没有任何时间可显示")
+    assert it.get("date_fallback"), "降级值必须打标记，前端据此显示「收录」而不是冒充发布时间"
+    fs = (mod._rss_history.get(link) or {}).get("first_seen") or ""
+    assert fs, "历史里没写 first_seen，降级值无从取值"
+    assert str(it["pub_date"])[:16] == str(fs)[:16], (
+        "出厂时间应当是收录时刻：出厂 %r vs first_seen %r" % (it["pub_date"], fs))
+    assert not (mod._rss_history[link].get("pub_date") or "").strip(), (
+        "历史的 pub_date 被改写成收录时刻了 —— _retention_ref_dt 的推导前提会被破坏")
+
+
+def test_dated_fresh_item_is_left_alone(clean):
+    """防修过头：有真实发布日期的条目不许被盖上收录时刻。
+
+    兜底一旦写成无条件赋值，所有条目都会变成"刚收录"，首屏时间排序整体失真 ——
+    形态与 2026-09-14 用户报的"同刻扎堆"同源。
+    """
+    now = mod._now_bj()
+    real = (now - datetime.timedelta(hours=20)).replace(microsecond=0)
+    link = "http://nofb/dated-1"
+    mod._rss_history = {}
+    res, _total = mod._accumulate_history(
+        [{"key": "nofb", "name": "nofb", "cat": "ai", "color": "#fff",
+          "tier": 1, "items": [{"title": "有日期", "link": link, "summary": "s",
+                                  "pub_date": real.isoformat(), "image": ""}]}])
+    it = [i for i in res[0]["items"] if i.get("link") == link][0]
+    assert str(it.get("pub_date"))[:19] == real.isoformat()[:19], (
+        "有真实日期的条目被兜底改写了：%r != %r" % (it.get("pub_date"), real.isoformat()))
+    assert not it.get("date_fallback"), "有日期的条目不该带降级标记"
