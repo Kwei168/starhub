@@ -431,9 +431,11 @@ _LAST_HISTORY_ACCOUNT = {}                # 本场历史账（过期数 + 深度
 def _history_depth_watch(history, offsets=None, watch=None, now_bj=None, report=False):
     """每源深度哨兵：最深源、越警戒线的源数、保留条目的最老龄期。**只看不删。**
 
-    oldest_age_h 是"清理到底没有"的哨兵：裁剪按 72h cutoff 走，保留集里最老那条理应贴着 72h；
-    显著超过 cutoff 就说明有条目绕过了清理（上一轮"首尾差"口径把 12 场的过期账全报成负数，
-    就是这类"看着有数、其实数是假的"的形态）。判不了龄的条目不计入龄期 —— 出口闸门丢它们。
+    oldest_age_h 现在是"窗口配置的镜像"，不是"清理到底没有"的证据：裁剪与这里用的是同一只表、
+    同一个 now（`38cd0d6` 并表之后），所以"最老 ≤ 72h"是恒真上界，报出来等于把 cutoff 念一遍
+    （审查实测 600 组对抗造数 max=71.0h，从未越线）。它仍有两个用处：贴线程度反映窗内堆积，
+    以及一旦超过 cutoff+0.5h 就说明裁剪循环被绕过 —— 那种情况现在会显式报警。
+    判不了龄的条目不计入龄期（出口闸门丢它们）。
     """
     watch = HISTORY_WATCH_PER_SOURCE if watch is None else watch
     now_bj = now_bj or _now_bj()
@@ -449,6 +451,10 @@ def _history_depth_watch(history, offsets=None, watch=None, now_bj=None, report=
         if oldest is None or age > oldest:
             oldest = age
     over = sorted(k for k, n in counts.items() if n > watch)
+    # 龄期越线要单独报：它是"裁剪被绕过"的唯一可见信号（见上：低于 cutoff 本身不说明任何事）
+    over_aged = oldest is not None and oldest > RSS_HISTORY_HOURS + 0.5
+    def out_oldest_str():
+        return "-" if oldest is None else ("%.1f" % oldest)
     out = {
         "max_per_source": max(counts.values()) if counts else 0,
         "over_watch": len(over),
@@ -457,6 +463,8 @@ def _history_depth_watch(history, offsets=None, watch=None, now_bj=None, report=
     # 无条件播报（不许"没越线就一个字都不印"）：0 与"哨兵没跑到"必须是两个不同的样子。
     if report:
         deepest = max(counts.items(), key=lambda kv: kv[1])[0] if counts else "-"
+        if over_aged:
+            print("::warning title=RSS 历史超窗未清::保留条目最老 %s h，已超过 %dh 窗口 +0.5h 容差"                  " ⇒ 裁剪循环被绕过或有条目换了时钟" % (out_oldest_str(), RSS_HISTORY_HOURS))
         print("[历史] 每源深度 最大 %d 条（源 %s，警戒线 %d 条）｜越警戒 %d 源｜保留最老 %s h｜共 %d 条" % (
             out["max_per_source"], deepest, watch, out["over_watch"],
             out["oldest_age_h"], len(history)))
@@ -722,8 +730,9 @@ def _accumulate_history(sources_with_items):
     for link in expired:
         del _rss_history[link]
 
-    # 过期裁剪的净效果当场结清。每源上限稍后还会再删一批，两件事若混成一个数，
-    # "缓存体积约束"就会被报成"过期清理"，而生产验证正是分别读这两个数（doc §待验）。
+    # 过期裁剪的净效果当场结清成一条独立的账。体积侧已不存在第二条删路
+    # （每源条数上限已撤销，见文件顶部哨兵说明），所以这个数就是"真过期被丢掉多少"，
+    # 不再需要跟淘汰数做减法。
     # 口径必须是"删掉的条数"而不是历史首尾差：后者在生产全天 12 场实测全是负数
     # （-264/-201/.../-235），因为每场新抓进来的比删掉的多 —— 那本账从来没存在过。
     pruned_expired = before - len(_rss_history)
@@ -1504,7 +1513,10 @@ _RSS_DATE_RE = re.compile(
     r")"
     r"\s+(?P<y>\d{4})"                                          # 年
     r"(?:\s+(?P<H>\d{1,2}):(?P<M>\d{2})(?::(?P<S>\d{2}))?)?"    # 可选时间（秒可省略）
-    r"(?:\s*(?:GMT|UTC|UT)?\s*(?P<tz>[+-]\d{2}:?\d{2}|[A-Za-z]{2,4}))?"   # 可选时区（数字或字母）
+    # 时区：四位偏移(+0800/+08:00)、**裸两位偏移(+08/-05，plink.anyfeeder 就这么写)**、
+    # 或字母时区(GMT/CST/UT)。少了两位那一支会让整串匹配失败 —— 日期明明是真实存在的，
+    # 却被判成"上游没给日期"，进而降级去靠 first_seen 撑龄期（2026-09-21 超能网 68/68 的真相）。
+    r"(?:\s*(?:GMT|UTC|UT)?\s*(?P<tz>[+-]\d{1,2}(?::?\d{2})?|[A-Za-z]{2,4}))?"
     r"(?:\s*\(.*\))?$"                                          # 忽略 "(China Standard Time)"
 )
 
