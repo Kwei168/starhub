@@ -36,7 +36,7 @@ TOOL_PATH = os.path.join(ROOT, "tools", "rss_source_list_patch.py")
 
 # 逐条零日期、且没有任何备选地址能补上日期的源（探测记录见 specs 2026-09-20-rss-72h-retention-design §16/§17）
 DATELESS_GONE = ["nikkei_rsshub_802", "喷嚏网铂程斋_11", "bbc英语教学_13", "中国日报双语_2",
-                 "google_dev_76"]
+                 "google_dev_76", "知乎日报anyfeeder_3"]
 # 内容质量类删除：日期是好的，理由不能混进"没日期"那一堆
 QUALITY_GONE = ["超能网_31"]
 GONE = DATELESS_GONE + QUALITY_GONE
@@ -61,6 +61,8 @@ PRE_BATCH_DELETED = [
      "url": "https://plink.anyfeeder.com/chinadaily/dual", "tier": 3},
     {"key": "google_dev_76", "name": "Google Developers", "cat": "tech", "color": "#4285f4",
      "url": "https://developers.googleblog.com/feeds/posts/default/", "tier": 3},
+    {"key": "知乎日报anyfeeder_3", "name": "知乎日报anyfeeder", "cat": "news", "color": "#d32f2f",
+     "url": "https://plink.anyfeeder.com/zhihu/daily", "tier": 2},
     {"key": "超能网_31", "name": "超能网", "cat": "cn_tech", "color": "#0091ea",
      "url": "https://plink.anyfeeder.com/expreview", "tier": 2, "pub_date_offset_min": -480},
 ]
