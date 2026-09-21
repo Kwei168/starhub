@@ -200,6 +200,9 @@ def test_removed_count_cap_leaves_no_dangling_symbols(clean):
     raw = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT,
                          capture_output=True).stdout
     hits = []
+    names = [n for n in raw.split(bytes([0])) if n]
+    assert names, "git ls-files 返回空 ⇒ 本用例是空跑（隔离树里没有 index 就会这样）"
+    assert len(names) > 50, "扫到的入库文件只有 %d 个，不像真仓库，判据视为无效" % len(names)
     for name in raw.split(bytes([0])):
         if not name:
             continue
@@ -292,3 +295,135 @@ def test_prune_and_gate_share_one_clock(clean):
         "缓存留下了闸门会丢的条目：%s" % sorted(mod._rss_history))
     shipped = {i["link"] for i in res[0]["items"]}
     assert shipped == {"http://two/fresh"}, "出厂与缓存不同一份数据：%s" % sorted(shipped)
+
+
+def test_oldest_age_follows_publish_clock(clean):
+    """龄期哨兵必须用判龄那一只表（发布时间），不是 first_seen（到达时刻）。
+
+    审查独立造的变异体 F4 证明：把 `_retention_ref_dt` 换成 `_parse_hist_dt(first_seen)`，
+    原有全部判据照绿 —— 因为造数里 first_seen 与 pub_date 同一个值，两只钟永远同数。
+    这里刻意把两者拉开（发布很久、刚被抓到），F4 那种换表实现当场露馅。
+    """
+    hist = {}
+    for i in range(3):
+        l = "http://clock/late%d" % i
+        # 真实发布龄 60h+，但 first_seen 只有 2h（刚被这个 feed 重新列出）
+        hist[l] = _hist_entry(l, "clk", 60.0 + i, first_seen_ago=2.0)
+    _accumulate(hist, key="clk")
+    oldest = mod._LAST_HISTORY_ACCOUNT.get("oldest_age_h")
+    assert oldest is not None and oldest >= 59.0, (
+        "最老龄期报的是 %r：贴着 first_seen（2h）而不是发布龄（60h），换表实现没被抓到" % oldest)
+
+
+def test_depth_report_names_the_deepest_source_among_many(clean):
+    """多源时"最深"必须真的指向最深那个源。
+
+    审查变异体 F2：把分组键 `source_key` 塌成一个桶 ⇒ max_per_source 变成全库条数，
+    生产量级下会每场无脑报警（实测 5,579 > 2,000），而全部造数只有 1 个源，抓不到。
+    """
+    watch = mod.HISTORY_WATCH_PER_SOURCE
+    deep = _source_hist("deep", watch + 50, step=0.01)          # 越线
+    shallow = _source_hist("shallow", watch + 400, step=0.01)   # 更多条但另一源
+    # 让 shallow 实际条数比 deep 少，deep 才是最深源
+    shallow = {k: v for k, v in list(shallow.items())[:watch - 5]}
+    hist = dict(deep)
+    hist.update(shallow)
+    mod._rss_history = dict(hist)
+    mod.RSS_SOURCES = []
+    srcs = [{"key": "deep", "name": "deep", "cat": "ai", "color": "#fff", "tier": 1, "items": []},
+            {"key": "shallow", "name": "shallow", "cat": "ai", "color": "#fff", "tier": 1,
+             "items": []}]
+    import contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        mod._accumulate_history(srcs)
+    printed = buf.getvalue()
+    acc = mod._LAST_HISTORY_ACCOUNT
+    assert acc.get("max_per_source") == len(deep), (
+        "最深源统计错（%r vs %d）：像是把所有源并成了一个桶" % (
+            acc.get("max_per_source"), len(deep)))
+    assert acc.get("over_watch") == 1, "越警戒线的源数不对：%r" % acc.get("over_watch")
+    # 播报里必须点出"是哪个源"越线 —— 审查变异体 F3 把源名恒写成 "-"，
+    # 数字全对但唯一可行动的信息没了（报警却不知道该看谁）。
+    deep_names = [ln for ln in printed.splitlines() if "每源深度" in ln]
+    assert deep_names, "没播报每源深度这一行"
+    assert "deep" in deep_names[0], (
+        "播报没点出最深的那个源：%s" % deep_names[0][:160])
+
+
+def test_watch_threshold_is_exact(clean):
+    """警戒线要按 `>` 判：正好等于线不报，多一条才报。
+
+    审查变异体 F1（`> watch` 改成 `>= watch`）此前无人守 —— 它不会造成错删，
+    但会让"刚好贴着线"的健康源每场都挨一次假报警，报久了就没人看报警了。
+
+    捕获用进程内 redirect_stdout，不用 capsys：本模块会重挂 sys.stdout，
+    capsys 会漏掉部分打印（这个坑在 F3 那一轮已经把判据骗过去一次）。
+    """
+    import contextlib
+    watch = mod.HISTORY_WATCH_PER_SOURCE
+
+    def run(n):
+        hist = _source_hist("thr", n, step=0.005)
+        assert len(hist) == n
+        mod._rss_history = dict(hist)
+        mod.RSS_SOURCES = []
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            mod._accumulate_history([{"key": "thr", "name": "thr", "cat": "ai",
+                                      "color": "#fff", "tier": 1, "items": []}])
+        out = buf.getvalue()
+        line = [l for l in out.splitlines() if "每源深度" in l]
+        assert line, "没播报深度行"
+        return mod._LAST_HISTORY_ACCOUNT.get("over_watch"), out.count("::warning"), line[0]
+
+    n_over, w_over, l_over = run(watch + 1)
+    assert (n_over, w_over) == (1, 1), "多一条就该报（over_watch=%r warning=%d）" % (n_over, w_over)
+    n_eq, w_eq, l_eq = run(watch)
+    assert (n_eq, w_eq) == (0, 0), \
+        "正好等于警戒线却报了（over_watch=%r warning=%d）：%s" % (n_eq, w_eq, l_eq[:150])
+
+
+def test_watch_does_not_mutate_entry_fields(clean):
+    """哨兵只读：连"给条目加个键"都不许（加键会随历史进缓存、再随 dict(item) 进出厂 payload）。
+
+    审查变异体 F8：`item["watch_seen"] = 1` 在只比 key 集合的判据下全绿。
+    这里比完整条目，覆盖撤销上限时被删掉的那条全 payload 判据。
+    """
+    import copy
+    hist = _source_hist("ro2", 300)
+    before = copy.deepcopy(hist)
+    got = dict(hist)
+    mod._history_depth_watch(got, report=False)
+    assert got == before, "哨兵改动了条目内容（新增/改写字段）：它只许看"
+
+
+def test_all_depth_log_fields_are_accounted(clean):
+    """四条账都要在日志里，且都不许 0 兜底 —— 审查 F5/F6 就是钻这两个空子。
+
+    F5：`history_oldest_age_h` 整行从日志删掉，原判据的 want 元组里没有它 ⇒ 无人红。
+    F6：`.get(k) or 0` 形式的兜底能躲过只看 `.get(k, 0)` 第二实参的检查。
+    """
+    tree = ast.parse(io.open(SRC, encoding="utf-8").read())
+    main = _fn(tree, "main")
+    pairs = {}
+    for node in ast.walk(main):
+        if not isinstance(node, ast.Dict):
+            continue
+        for k, v in zip(node.keys, node.values):
+            if isinstance(k, ast.Constant) and isinstance(k.value, str) and \
+                    k.value.startswith("history_"):
+                pairs[k.value] = v
+    want = ("history_expired", "history_max_per_source", "history_over_watch",
+            "history_oldest_age_h")
+    for key in want:
+        assert key in pairs, "日志缺 %s（现有 %s）" % (key, sorted(pairs))
+    names = {n.id for key in want for n in ast.walk(pairs[key]) if isinstance(n, ast.Name)}
+    assert "_LAST_HISTORY_ACCOUNT" in names, "深度账没读 _LAST_HISTORY_ACCOUNT：%s" % sorted(names)
+    for key in want:
+        for call in ast.walk(pairs[key]):
+            if isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "get":
+                assert len(call.args) == 1, "%s 用 .get(key, 默认值) 兜底" % key
+            if isinstance(call, ast.BoolOp) and isinstance(call.op, ast.Or):
+                bad = any(isinstance(v, ast.Constant) and v.value == 0 for v in call.values)
+                assert not bad, "%s 用 `or 0` 兜底：没跑到与跑出了 0 又不可区分" % key
