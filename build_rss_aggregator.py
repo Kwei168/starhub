@@ -2368,6 +2368,17 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
             link = (_le.get(_RDF_RESOURCE) or "").strip()
     if not link:
         link = (it.get(_RDF_ABOUT) or "").strip()
+    if not link:
+        # 有些 feed 把永久链接只写在 <guid> 里（安全客 api.anquanke.com/data/v1/rss 就是：
+        # raw 有 20 个 item、我方解析 0 条，日志记成 empty，看着像"上游没内容"）。
+        # 只接受 http(s) 且未被显式声明 isPermaLink="false" 的 guid —— 否则宁可为空：
+        # 一个看起来能点、点开 404 的链接比空链接更坏。
+        _ge = it.find("guid")
+        if _ge is not None:
+            _gv = (_ge.text or "").strip()
+            if _gv.lower().startswith(("http://", "https://")) and \
+                    (_ge.get("isPermaLink") or "").strip().lower() != "false":
+                link = _gv
     desc_raw = _rss_text(it, "description")
     pub = (_rss_text(it, "pubDate") or "").strip()
     # RSS 1.0 RDF: date is in dc:date
