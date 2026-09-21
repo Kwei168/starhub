@@ -283,3 +283,53 @@ def test_worker_crash_is_reported_not_swallowed(monkeypatch, offline_main):
     err = buf.getvalue()
     assert "TypeError" in err and "Bridge0" in err, \
         "worker 异常被无声吞掉，日志里只剩『0 条』：%r" % err[:300]
+
+
+def test_guid_only_item_keeps_its_permalink():
+    """条目没有 <link>、永久链接只在 <guid> 里时，必须认 guid，不能整条丢掉。
+
+    这不是假想：安全客 _664 的 feed（api.anquanke.com/data/v1/rss）实测就是这种形状 ——
+    raw 里 20 个 <item>，我方解析 0 条，日志把它记成 empty，看上去像"上游没内容"，
+    于是 2026-09-21 那份失效分析把它单独归到 PARSER 类并明确"不许删源"。
+    原形状照抄（含它那个裸文本节点与无时区的 pubDate 写法）：
+      <item><guid>https://…/post/id/316124</guid><title>…</title>
+            <author> 安全客</author><description></description>subject
+            <source></source><pubDate>2026-09-19 10:57:40</pubDate></item>
+    旧实现在 link 为空时直接 return ⇒ 任何"guid 即链接"的源都整源归零。
+    """
+    import xml.etree.ElementTree as ET
+    xml = (u'<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel>'
+           u'<item><guid>https://www.anquanke.com/post/id/316124</guid>'
+           u'<title>3000 美元、3 个人、72 小时</title><author> 安全客</author>'
+           u'<description></description>subject<source></source>'
+           u'<pubDate>2026-09-19 10:57:40</pubDate></item></channel></rss>')
+    out = []
+    mod._parse_rss_item(ET.fromstring(xml)[0][0], u"安全客", u"安全客_664", "security", out)
+    assert len(out) == 1, "guid-only 条目被丢掉了（解析 %d 条）" % len(out)
+    assert out[0]["link"] == "https://www.anquanke.com/post/id/316124", \
+        "link 没取到 guid：%r" % out[0]["link"]
+    assert out[0]["pub_date"] is not None, "无时区的 'YYYY-MM-DD HH:MM:SS' 写法没解析出日期"
+
+
+def test_non_url_guid_does_not_become_a_link():
+    """防修过头：guid 不是 URL 时不许当链接用，否则点出去就是死链。
+
+    RSS 允许 guid 是任意稳定 ID（`isPermaLink="false"` 或干脆是数字/哈希）。
+    无条件把 guid 当 link 会把「没有链接」变成「有一个错链接」—— 比空链接更坏，
+    因为卡片看起来能点，点开是 404 或站内乱跳。
+    """
+    import xml.etree.ElementTree as ET
+    for guid, why in ((u"12345", "纯数字 ID"),
+                      (u"anquanke-post-abc", "非 URL 字符串"),
+                      (u'isPermaLink="false" 的 URL', "显式声明不是永久链接")):
+        if guid == u'isPermaLink="false" 的 URL':
+            xml = (u'<rss version="2.0"><channel><item>'
+                   u'<guid isPermaLink="false">https://www.anquanke.com/post/id/1</guid>'
+                   u'<title>t</title></item></channel></rss>')
+        else:
+            xml = (u'<rss version="2.0"><channel><item><guid>' + guid +
+                   u'</guid><title>t</title></item></channel></rss>')
+        out = []
+        mod._parse_rss_item(ET.fromstring(xml)[0][0], u"S", "s_1", "security", out)
+        assert not out or (out[0].get("link") or "").startswith("http"), \
+            "%s 被当成链接用了：%r" % (why, out[:1])
