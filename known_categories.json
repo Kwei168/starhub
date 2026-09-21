@@ -252,5 +252,6 @@
  "RSSNext/Folo": "agent",
  "QwenLM/Qwen-MM-Plugins": "agent",
  "Tencent/WeKnora": "assistant",
- "Tencent/BrowserSkill": "agent"
+ "Tencent/BrowserSkill": "agent",
+ "zai-org/ZCode": "coding"
 }
