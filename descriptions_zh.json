@@ -463,5 +463,6 @@
  "mizchi/jev-lint": "jev Scorerer 代码中的 lint 文本",
  "kakaxi3019/5-DAY-AI-AGENTS": "本项目是 Google Kaggle 5-Day AI Agents Course 的本地化重构版本",
  "Jakubantalik/thinking-orbs": "用于 AI 和代理 UI 的点状思想球加载指示器，9 种调整类型，两种尺寸，自动变暗/亮",
- "BuilderIO/agent-native": "用于构建代理应用程序的框架"
+ "BuilderIO/agent-native": "用于构建代理应用程序的框架",
+ "bendlang/bend": "Bend 2：一种通过证明阻止人工智能错误的快速语言。安装：curl -fsSL https://bend-lang.com/install.sh |嘘"
 }
