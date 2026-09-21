@@ -106,6 +106,18 @@ DEAD_DELETE_KEYS = {
     "cnn_intl_781",
     "CNN_16",
 }
+# 上游活着、证书过期这一类：2026-09-21 CI 日志与本机复核一致 —— 默认信任库握手报
+# SSL: CERTIFICATE_VERIFY_FAILED: certificate has expired，而**跳过校验后两者都 HTTP 200 且含条目**
+# （轶哥博客 200000 字节、虹线 200000 字节，raw 里都有 item）。
+# 单独成桶的原因：它既不是"上游死了"也不是"我方解析缺口"。放进 DEAD_DELETE_KEYS 会让下一个
+# 人以为换地址也救不回来；而这里的实情是"源活着，是我们不放宽 TLS 校验"——
+# 将来若上游续了证书，这一桶是唯一允许原样回补的（DEAD 桶回补等于把 403 死源捡回来）。
+# 用户 2026-09-21 判定：删除（读者点进去同样撞浏览器不安全警告，留着等于留一个坏入口）。
+CERT_EXPIRED_DELETE_KEYS = {
+    "轶哥博客_20",              # https://www.wyr.me/rss.xml
+    "虹线_697",                 # https://1q43.blog/feed
+}
+
 # 现场重测后**明确保留**的两个，理由写在这里防止下一个人当死源删掉：
 #   安全客_664        —— raw 有 20 个 item、我方解析 0 条：这是解析缺陷，不是上游死
 #   elevate_430 / ai_musings_by_mu_421 —— 本机抓得到 20 条（curl UA），CI 侧 403
@@ -125,9 +137,13 @@ def run(apply=False, scope="all"):
     log = []
     by_key = {s["key"]: s for s in src}
 
-    # scope="dateless" 只重放 2026-09-21 这一批；其余改动留给各自的批次落地
+    # scope="dateless" 只重放 2026-09-21 那一批；其余改动留给各自的批次落地。
+    # 注意它**不含 CERT_EXPIRED_DELETE_KEYS**：证书桶是同日稍后的另一批，故意隔开，
+    # 这样"上游续证 → 从这一桶移出即可回补"不会顺手把 09-21 的无日期批次也重放了。
+    # ⇒ 恢复清单时用默认 `--apply`（scope=all）；用 scope="dateless" 会得到 970 而不是 968。
     if scope == "all":
-        del_keys = DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS | DEAD_DELETE_KEYS
+        del_keys = (DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
+                    | DEAD_DELETE_KEYS | CERT_EXPIRED_DELETE_KEYS)
         del_names, drop_then_add = DELETE_BY_NAME, DROP_THEN_ADD
         url_fix = dict(URL_FIX)
         url_fix.update(DATED_URL_FIX)

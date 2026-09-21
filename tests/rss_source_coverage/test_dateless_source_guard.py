@@ -40,6 +40,10 @@ DATELESS_GONE = ["nikkei_rsshub_802", "喷嚏网铂程斋_11", "bbc英语教学_
 # 内容质量类删除：日期是好的，理由不能混进"没日期"那一堆
 QUALITY_GONE = ["超能网_31"]
 GONE = DATELESS_GONE + QUALITY_GONE
+# 上游活着、证书过期这一类（用户 2026-09-21 判定删除）。
+# 单独列而不是并进 GONE：它有自己的回补条件（上游续证即可原样回补），
+# DEAD 类不行 —— 把理由混掉就会让人把 403 死源当"证书问题顺手修修"捡回来。
+CERT_EXPIRED_GONE = ["轶哥博客_20", "虹线_697"]
 # 曾经"没日期"其实是我们接错地址：官方镜像逐条带 pubDate，删掉就是净损失
 DATED_MOVED = {
     "google_developers_blog_406": "https://blog.google/technology/developers/rss/",
@@ -213,6 +217,49 @@ def test_batch_keys_are_declared_in_the_tool():
     assert set(tool.DATELESS_DELETE_KEYS) == set(DATELESS_GONE), "无日期桶与判据不一致"
     assert set(tool.QUALITY_DELETE_KEYS) == set(QUALITY_GONE), "内容质量桶与判据不一致"
     assert tool.DATED_URL_FIX == DATED_MOVED
+
+
+def test_every_declared_deletion_is_absent_from_the_list():
+    """**所有**理由桶都要被"已删除"断言覆盖，不只是无日期/质量两桶。
+
+    原先只有 GONE 进这条，DEAD 与证书桶没人管：把它们从工具里抹掉、或把源加回清单，
+    测试会一路绿着。理由桶的分工也在这里锁：同一条 key 不得同时出现在两个桶里。
+    """
+    tool = _tool()
+    buckets = {
+        "DATELESS": set(tool.DATELESS_DELETE_KEYS),
+        "QUALITY": set(tool.QUALITY_DELETE_KEYS),
+        "DEAD": set(tool.DEAD_DELETE_KEYS),
+        "CERT_EXPIRED": set(tool.CERT_EXPIRED_DELETE_KEYS),
+    }
+    by_key = {s.get("key"): s for s in _list_sources()}
+    for name, keys in buckets.items():
+        assert keys, "%s 桶空了：删除理由不能靠注释传，桶本身就是声明" % name
+        for key in keys:
+            assert key not in by_key, (
+                "%s 桶里的 %s 又回到清单里了 —— 重新加回要么给出该桶的理由复核，"
+                "要么从桶里移出并说明" % (name, key))
+    names = list(buckets)
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            overlap = buckets[names[i]] & buckets[names[j]]
+            assert not overlap, "%s 与 %s 两个理由桶重叠：%s —— 一条源只能有一个删除理由" % (
+                names[i], names[j], sorted(overlap))
+
+
+def test_cert_expired_sources_declared_in_their_own_bucket():
+    """证书过期必须是独立桶，不能被折进 DEAD。
+
+    这两种源的可救性完全不同：`www.wyr.me/rss.xml` 与 `1q43.blog/feed` 实测
+    跳过校验后 HTTP 200 且含条目（上游活着、只是证书过期，续证即可原样回补）；
+    DEAD 桶里那些是 403/404/空 feed，换地址或续证都救不回来。
+    混进 DEAD 就等于在清单历史里留下一条假原因。
+    """
+    tool = _tool()
+    assert set(tool.CERT_EXPIRED_DELETE_KEYS) == set(CERT_EXPIRED_GONE), \
+        "证书过期桶与判据不一致"
+    assert not (set(tool.CERT_EXPIRED_DELETE_KEYS) & set(tool.DEAD_DELETE_KEYS)), \
+        "证书过期源被并进了死源桶 —— 理由被洗掉了"
 
 
 if __name__ == "__main__":
