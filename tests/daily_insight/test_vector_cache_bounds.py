@@ -208,5 +208,71 @@ class TestTrimOrder:
             % (max(kept_age), min(dropped_age)))
 
 
+class TestEmbedBudget:
+    """每场新增 embedding 的预算闸。
+
+    起因：预算上线后第一场实测（run 35597071115）
+      12:19:14 需新增 embedding 21488 → 12:52:49 才嵌完（33.5 分钟），
+      整场超 60 分钟被下一场 cancel-in-progress 取消 ⇒ 缓存存不下来 ⇒ 每场重嵌 ⇒ 站点停止更新。
+    """
+
+    def test_budget_constant_is_sized_by_measured_throughput(self):
+        assert B.MAX_NEW_EMBED_PER_BUILD > 0
+        # 实测 ≈10.7 条/秒 ⇒ 6,000 条 ≈ 9.3 分钟。留够整场余量，不许拍一个天文数字回去。
+        assert B.MAX_NEW_EMBED_PER_BUILD <= 6000, (
+            "预算 %d 条按实测吞吐要 %.1f 分钟，仍可能撞取消" % (
+                B.MAX_NEW_EMBED_PER_BUILD, B.MAX_NEW_EMBED_PER_BUILD / 10.7))
+
+    def test_uncached_are_capped_and_cached_are_untouched(self):
+        cached = [_mk("rss", i, 1) for i in range(500)]
+        fresh = [_mk("hot", 500000 + i, 1) for i in range(4000)]
+        merged, st = B._merge_vector_cache(cached, fresh, embed_budget=1000)
+        assert st["uncached_now"] == 1000, "预算没生效：本轮仍要嵌 %d 条" % st["uncached_now"]
+        assert st["deferred_uncached"] == 3000
+        kept_hashes = {c["content_hash"] for c in merged}
+        assert all(c["content_hash"] in kept_hashes for c in cached), \
+            "预算把已有向量的条目也挤掉了 ⇒ 白白重嵌"
+
+    def test_budget_defers_the_oldest_uncached_first(self):
+        """被推迟的必须是较旧的。上一版这里写成 `ages[-1] < 100`，太松 —— 变异体"留最旧"
+        照样通过（最旧 50 条的龄期恰好也在那个界内），所以改成逐条比对身份。
+        """
+        fresh = [_mk("hot", 600000 + i, i * 0.5) for i in range(200)]   # i 越大越旧
+        merged, st = B._merge_vector_cache([], fresh, embed_budget=50)
+        assert st["uncached_now"] == 50
+        kept = {c["content_hash"] for c in merged}
+        # 最新 50 条 = i∈[0,49]，其 hash 由 idx 唯一决定
+        expect = {"h" + "h" + "_%06d" % (600000 + i) for i in range(50)}
+        assert kept == expect, (
+            "留下的不是最新 50 条；实际龄期 %s ⇒ 预算在推迟最新内容"
+            % sorted(int(h.split('_')[-1]) - 600000 for h in kept)[:5])
+        assert max(_age_h(c) for c in merged) < 25.0
+
+    def test_production_call_site_passes_the_budget(self):
+        """光有常量和默认值不算接通：调用点不传 embed_budget，闸门就是装饰品。"""
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "embed_budget=MAX_NEW_EMBED_PER_BUILD" in src, \
+            "_merge_vector_cache 的调用点没传预算 ⇒ 预算只在测试里生效，生产仍会重嵌两万条"
+
+
+    def test_warmup_converges_so_it_is_not_permanent_starvation(self):
+        """预算只能是"推迟"，不能变成"永远进不来"：下一场它们已在缓存里，必须全部命中。"""
+        fresh = [_mk("rss", i, 1) for i in range(300)]
+        m1, s1 = B._merge_vector_cache([], fresh, embed_budget=100)
+        assert s1["uncached_now"] == 100 and s1["deferred_uncached"] == 200
+        # 第二场：上一场留下的 merged 就是新的 old_chunks，且 300 条仍然在场
+        m2, s2 = B._merge_vector_cache(m1, fresh, embed_budget=100)
+        assert s2["uncached_now"] <= 100
+        assert s2["deferred_uncached"] == 0 or s2["kept"] >= s1["kept"], \
+            "收敛失败：已在缓存里的条目又被推迟了 %s" % s2["deferred_uncached"]
+
+    def test_no_zero_vector_placeholder_left(self):
+        """零向量占位必须消失：它与 merged 数量一致，形状检查发现不了，只会静默污染检索。"""
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        assert "_np.zeros(EMBED_DIM" not in src, "组装向量时仍在塞零向量占位"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q", "-s"]))

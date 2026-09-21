@@ -911,11 +911,16 @@ def _save_vector_cache(chunks, vectors, embed_model):
 # ──────────────────── RAG: 混合检索 ────────────────────
 
 VECTOR_CACHE_OTHER_HOURS = 48   # 非RSS（热榜/AIHOT/AGI Hunt）在向量缓存里的保留窗口
+# 每场最多新增多少条 embedding。依据是 09-21 实测吞吐：21,488 条花了 33.5 分钟 ⇒ ≈10.7 条/秒；
+# 3,000 条 ≈ 5 分钟，留给整场构建足够的余量（无上限时整场 >60 分钟会被下一场
+# cancel-in-progress 取消，缓存永远存不下来，于是每场重嵌 —— 站点就此停止更新）。
+MAX_NEW_EMBED_PER_BUILD = 3000
 POOL_MIN_SHARE = 0.10           # 有内容的一侧至少占上限的 10%，防止比例分配被极端输入压到 0
 
 
 def _merge_vector_cache(old_chunks, new_chunks, cap=None,
-                        rss_hours=None, other_hours=None, now_dt=None):
+                        rss_hours=None, other_hours=None, now_dt=None,
+                        embed_budget=None):
     """合并旧向量缓存与本场 chunks：按 content_hash 去重 → 按龄期淘汰 → RSS 优先封顶。
 
     返回 (merged, stats)。这里丢任何 chunk 都不会造成向量错位：调用点装配向量矩阵时
@@ -998,6 +1003,25 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
             keep_other += other[len(keep_other):len(keep_other) + spare]
     merged = keep_rss + keep_other
 
+    # 每场新增 embedding 的预算闸。没有这道闸会把整条流水线打死：
+    # 2026-09-21 实测 21,488 条新 embedding 花掉 33.5 分钟（12:19:14→12:52:49），
+    # 整场超 60 分钟被下一场 cancel-in-progress 取消 ⇒ 缓存永远存不下来 ⇒ 每场重嵌 ⇒ 站点停止更新。
+    # 超预算的部分**本轮不入池**（不是塞零向量占位），下一场它已在缓存里、直接命中。
+    old_hashes = {c.get("content_hash", "") for c in (old_chunks or [])}
+    deferred_uncached = 0
+    if embed_budget is not None:
+        uncached = [c for c in merged if c.get("content_hash", "") not in old_hashes]
+        if len(uncached) > embed_budget:
+            allow = set(c["content_hash"] for c in uncached[:embed_budget])
+            deferred = [c for c in merged
+                        if c.get("content_hash", "") not in old_hashes and
+                           c["content_hash"] not in allow]
+            deferred_hashes = {c["content_hash"] for c in deferred}
+            merged = [c for c in merged if c["content_hash"] not in deferred_hashes]
+            deferred_uncached = len(deferred)
+        else:
+            deferred_uncached = 0
+
     kept_hashes = {c["content_hash"] for c in merged}
     stats = {
         "input_old": len(old_chunks or []),
@@ -1008,7 +1032,11 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
         "evicted_stale": evicted_stale,
         "dropped_undated": dropped_undated,
         "dropped_over_cap": len(rss) - len(keep_rss) + len(other) - len(keep_other),
+        "deferred_uncached": deferred_uncached,
+        "uncached_now": sum(1 for c in merged
+                            if c.get("content_hash", "") not in old_hashes),
         "cap": cap,
+        "embed_budget": embed_budget,
         "dropped_hashes": sorted(set(by_hash) - kept_hashes),
     }
     return merged, stats
@@ -5300,11 +5328,13 @@ def main():
     # 1.5+1.6) 合并 + 淘汰 + 封顶统一交给 _merge_vector_cache（判据见
     # tests/daily_insight/test_vector_cache_bounds.py）。旧写法只剪 RSS 一支、非RSS 永不淘汰，
     # 结果既撑爆上限又把 RSS 饿死到 100 条。
-    merged_chunks, _vc = _merge_vector_cache(old_chunks, chunks)
+    merged_chunks, _vc = _merge_vector_cache(old_chunks, chunks,
+                                             embed_budget=MAX_NEW_EMBED_PER_BUILD)
     print("[每日洞察] 向量缓存合并: 旧 %d + 本场 %d → 留存 %d"
-          "（超龄淘汰 %d / 判不了龄丢弃 %d / 超上限截断 %d ｜ RSS %d + 非RSS %d，上限 %d）" % (
+          "（超龄淘汰 %d / 判不了龄丢弃 %d / 超上限截断 %d / 本轮 embedding 预算外推迟 %d"
+          "｜ RSS %d + 非RSS %d，上限 %d）" % (
               _vc["input_old"], _vc["input_new"], _vc["kept"], _vc["evicted_stale"],
-              _vc["dropped_undated"], _vc["dropped_over_cap"],
+              _vc["dropped_undated"], _vc["dropped_over_cap"], _vc["deferred_uncached"],
               _vc["kept_rss"], _vc["kept_other"], _vc["cap"]))
 
     # 1.7) 识别需要 embedding 的 chunks（hash 不在旧缓存中的）
@@ -5332,20 +5362,28 @@ def main():
     # 1.9) 组装全量向量矩阵
     all_vecs = None
     if old_vecs is not None and len(old_chunks) > 0:
-        # 按 merged_chunks 顺序组装：命中缓存的用旧向量，新增的用新计算
+        # 按 merged_chunks 顺序组装：命中缓存的用旧向量，新增的用新计算。
+        # 拿不到向量的条目**直接出局**，不再塞零向量占位 —— 零向量与 merged_chunks
+        # 数量一致，形状检查发现不了，后果是检索静默失准（比少几条更坏）。
         vec_rows = []
+        kept_chunks = []
         new_vec_idx = 0
         for c in merged_chunks:
             h = c.get("content_hash", "")
             if h in cached_map and old_vecs is not None:
                 vec_rows.append(old_vecs[cached_map[h]])
+                kept_chunks.append(c)
             elif new_vec_idx < len(new_vecs_list):
                 vec_rows.append(_np.array(new_vecs_list[new_vec_idx], dtype=_np.float32))
                 new_vec_idx += 1
-            else:
-                # 异常：既无缓存也无新向量，用零向量占位
-                vec_rows.append(_np.zeros(EMBED_DIM, dtype=_np.float32))
-        all_vecs = _np.vstack(vec_rows)
+                kept_chunks.append(c)
+        if len(kept_chunks) != len(merged_chunks):
+            print("[每日洞察] 无向量条目出局 %d 条（merged %d → %d）" % (
+                len(merged_chunks) - len(kept_chunks), len(merged_chunks), len(kept_chunks)),
+                  file=sys.stderr)
+            merged_chunks = kept_chunks
+        if vec_rows:
+            all_vecs = _np.vstack(vec_rows)
     elif new_vecs_list:
         # 无旧缓存，全量新计算
         all_vecs = _np.array(new_vecs_list, dtype=_np.float32)
