@@ -3163,6 +3163,21 @@ def _build_header():
 """
 
 
+def _inline_json(text):
+    """内联进 <script> 的 JSON 必须走这一道：与数据分块的 `_dump` 同一口径。
+
+    为什么必须有：`ANALYSIS_DATA` 里混着**上游文章标题**（关键词、topic_clusters.items），
+    原样拼接时任一格子里出现 `</script><img src=x onerror=...>` 就会被浏览器当成真标签，
+    下一场构建起对每个访问者执行。现网产物实测该段已含裸 `<` 28 个（还没凑出 `</script>`，
+    但门是开的）。
+    只转 `<` 与 `_dump` 一致：`</script>` 的触发字符是 `<`，裸 `>` 开不了标签边界。
+    本函数不动 JSON 语义 —— `\u003c` 在 JS 字符串字面量里解回 `<`，读回的对象逐字节相同。
+    其余注入点逐个核过：BUILD_TS/DIVERSE_WINDOW 是 int、CAT_LABELS/CAT_ORDER 来自静态常量、
+    qr_lib 是第三方库原文，均不含上游可控文本。
+    """
+    return str(text).replace("<", "\\u003c")
+
+
 def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_window_minutes=120):
     """Generate core JS for card wall + drawer reader."""
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
@@ -3183,7 +3198,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   var DIVERSE_WINDOW = """ + str(int(diverse_window_minutes)) + """;
   var SOURCES = [];
   var CAT_LABELS = """ + cat_labels_json + """;
-  var ANALYSIS_DATA = """ + (analysis_json if analysis_json else 'null') + """;
+  var ANALYSIS_DATA = """ + (_inline_json(analysis_json) if analysis_json else 'null') + """;
 
   /* ── Data ── */
   var CAT_ORDER = """ + json.dumps(CATEGORY_ORDER, ensure_ascii=False) + """;

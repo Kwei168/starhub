@@ -356,6 +356,43 @@ class TestAccountingConservation:
             "去重后池子算成 %s 条 ⇒ 守恒等式的分母就是错的" % st["pool_size"])
         assert st["dedup_removed"] == 1
 
+    def test_cap_zero_keeps_nothing_and_still_balances(self):
+        """cap=0 时 `rss[:-1]` 这种负数切片会**留下**几乎全部内容（第二轮审查 M1）。
+
+        生产不可达（上限是 30000），但它说明"上限"这个参数在极端输入下会反向生效：
+        越小留越多。这类形状一旦被误配置就是静默的无限增长。
+        """
+        new = [_mk("rss", i, 1) for i in range(10)] + [_mk("hot", i, 1) for i in range(10)]
+        merged, st = B._merge_vector_cache([], new, cap=0, embed_budget=None)
+        assert st["kept"] == 0, "cap=0 却留下 %d 条（负数切片的典型症状）" % st["kept"]
+        assert len(merged) == 0
+        self._assert_balances(st)
+
+    def test_cap_smaller_than_floor_does_not_wipe_one_side(self):
+        """cap=1 且两侧都有内容时：不许出现负数名额把一侧整个清掉、也不许多留。"""
+        new = [_mk("rss", i, 1) for i in range(20)] + [_mk("hot", i, 1) for i in range(20)]
+        merged, st = B._merge_vector_cache([], new, cap=1, embed_budget=None)
+        assert st["kept"] == 1, "cap=1 却留了 %d 条" % st["kept"]
+        assert st["kept_rss"] + st["kept_other"] == 1
+        self._assert_balances(st)
+
+    def test_negative_budget_defers_everything(self):
+        """embed_budget 传成负数时不许"比 0 更宽松"（`uncached[:-5]` 会留下几乎全部）。"""
+        new = [_mk("rss", i, 1) for i in range(10)]
+        merged, st = B._merge_vector_cache([], new, cap=100, embed_budget=-5)
+        assert st["kept"] == 0, "负预算却嵌了 %d 条" % st["uncached_now"]
+        assert st["deferred_uncached"] == 10, st
+        self._assert_balances(st)
+
+    def _assert_balances(self, st):
+        total = (st["kept"] + st["deferred_uncached"] + st["dropped_over_cap"]
+                 + st["evicted_stale"] + st["dropped_undated"] + st["dropped_no_hash"])
+        assert total == st["pool_size"], (
+            "极端参数下条数不守恒：池 %s vs 各桶相加 %s（%s）" % (
+                st["pool_size"], total, {k: st[k] for k in (
+                    "kept", "deferred_uncached", "dropped_over_cap", "evicted_stale",
+                    "dropped_undated", "dropped_no_hash")}))
+
     def test_merge_log_prints_the_reconciling_denominator(self):
         """日志必须印 `pool_size` 这个分母，否则守恒只活在测试里。
 
