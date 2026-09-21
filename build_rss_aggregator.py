@@ -3618,12 +3618,34 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     else{if(_srcBtnEl){try{_srcBtnEl.focus();}catch(e){}_srcBtnEl=null;}}
   }
   window.toggleSrcPanel=toggleSrcPanel;
-  /* API 压缩条目(t/s/u/d) → src.items 形状(title_zh/link/pub_date/...) 的唯一映射。
-     必须与 buildArt 读同一批长键名：漏掉 date_fallback 时抽屉里的无日期文章会把
-     抓取时刻显示成发布时间，而卡片墙（走快照/分块）同一篇却带「收录」——同一篇
-     文章两个入口口径不一致。命名成函数是为了能被单测真跑，而不是只被文本扫到。 */
-  function _apiItToSrc(it){
-    return {title_zh:it.t_zh||it.t||'',summary_zh:it.s||'',link:it.u||'#',pub_date:it.d||'',fc:it.fc||'',image:it.img||'',mu:it.mu||'',mt:it.mt||'',date_fallback:!!it.date_fallback};
+  /* API 压缩条目(t/s/u/d) → src.items 形状，且**必须与构建期那一条合并**而不是整条替换。
+     ?source= 这一路（api/rss.js 的 fetchOne）不发封面、不发话题标签、不发坏日期标记、
+     不发全文、也不做标题翻译；直接替换会让刷新过的卡片掉封面/掉标签/退回英文标题
+     （2026-09-21 对抗审查 C1/C2）。另外上游这次没给 pubDate 时 API 的 d 是**抓取时刻**，
+     盖到构建期已知的真实发布时间上，等于一边冒充发布时间一边让运行时永不淘汰它。
+     翻译类字段（title_zh/summary_zh）只在"原文没变"时才沿用旧的，否则上游改了标题
+     会永远显示旧译文。date_fallback 与快照同用长名。
+     判据：tests/rss_history/test_dfb_drawer_map_wire.py（真跑函数，含脏 link 那一类）。 */
+  function _apiMergeTo(oldItems){
+    var by={}; (oldItems||[]).forEach(function(o){ if(o&&o.link) by[o.link]=o; });
+    return function(it){
+      var o=by[it.u]||null;
+      var t=it.t||'';
+      var a={title:t,title_zh:t,summary_zh:it.s||'',link:it.u||'#',pub_date:it.d||'',
+             fc:it.fc||'',image:it.img||'',mu:it.mu||'',mt:it.mt||'',
+             date_fallback:!!it.date_fallback};
+      if(!o) return a;
+      if(o.title===t&&o.title_zh) a.title_zh=o.title_zh;
+      if(o.summary===it.s&&o.summary_zh) a.summary_zh=o.summary_zh;
+      if(!a.image&&o.image) a.image=o.image;
+      if(!a.fc&&o.full_content) a.fc=o.full_content;
+      if(!a.mu&&(o.media_url||o.mu)){a.mu=o.media_url||o.mu;a.mt=o.media_type||o.mt||'';}
+      if(o.tags) a.tags=o.tags;
+      if(o.bad_date) a.bad_date=o.bad_date;
+      if(o.time_str) a.time_str=o.time_str;
+      if(a.date_fallback&&o.pub_date&&!o.date_fallback){a.pub_date=o.pub_date;a.date_fallback=false;}
+      return a;
+    };
   }
   function selectSrc(key){
     var uo=filter.unreadOnly,bm=filter.filterBm;
@@ -3643,7 +3665,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         /* 映射 API 字段(t/s/u/d)到 buildArt 期望格式，按 link 去重 */
         var have={}; data.items.forEach(function(it){if(it.u&&it.u!=='#')have[it.u]=1;});
         var oldItems=src.items.filter(function(it){return !it.link||!have[it.link];});
-        var newItems=data.items.map(_apiItToSrc);
+        var newItems=data.items.map(_apiMergeTo(src.items));
         src.items=newItems.concat(oldItems);
         buildArt(); renderChips(); renderWall(); renderPanel();
         var n=data.items.length; toast('已更新 '+src.name+'（'+n+' 篇最新）');
