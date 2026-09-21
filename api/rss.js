@@ -241,14 +241,33 @@ function extractAttr(xml, tag, attr) {
  *  与 Python 侧 _parse_rss_item 同口径（台账 §20）：只接受 http(s) 且未显式
  *  isPermaLink="false" 的值。否则宁可为空 —— 一个看起来能点、点开 404 的链接
  *  比空链接更坏。 */
+/** link 值归一：剥 CDATA 包装 + 解 HTML 实体 + 去首尾空白。
+ *  Python 侧 `_parse_rss_item` 一直做这三步（html.unescape），JS 侧不做的后果是
+ *  同一条链接在两条通道长得不一样 —— 线上实测 bbc_top_stories_592 / times_of_india_world_769 /
+ *  der_spiegel_783 三个源 82 条 link 100% 畸形，而构建期产物 9,067 条零畸形。
+ *  链接既决定卡片跳哪儿，也决定抽屉能不能认出"同一篇文章"。
+ *  判据：tests/rss_history/test_parse_parity_js.py 的双跑对照。 */
+function cleanLink(raw) {
+  let s = String(raw == null ? '' : raw).trim();
+  const cdata = s.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/);
+  if (cdata) s = cdata[1].trim();
+  // &amp; 放最后解，否则 `&amp;lt;` 会被二次解成 `<`（与 html.unescape 的单趟语义一致）
+  s = s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+       .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+       .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'")
+       .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+       .replace(/&amp;/g, '&');
+  return s.trim();
+}
+
 function linkOrPermaId(block, linkTag, idTag) {
-  const direct = extractTag(block, linkTag);
+  const direct = cleanLink(extractTag(block, linkTag));
   if (direct && /^https?:\/\//i.test(direct)) return direct;
   const idTag2 = idTag || 'guid';
   const open = block.match(new RegExp('<' + idTag2 + '([^>]*)>', 'i'));
   if (!open) return direct || '';
   if (/\bisPermaLink\s*=\s*"false"/i.test(open[1])) return direct || '';
-  const v = extractTag(block, idTag2);
+  const v = cleanLink(extractTag(block, idTag2));
   return /^https?:\/\//i.test(v) ? v : (direct || '');
 }
 
@@ -411,7 +430,7 @@ function parseFeed(xml, sourceKey, maxItems) {
   if (atomEntries.length > 0) {
     for (const entry of atomEntries.slice(0, maxItems)) {
       const title = extractTag(entry, 'title');
-      const link = extractAttr(entry, 'link', 'href') || linkOrPermaId(entry, 'link', 'id');
+      const link = cleanLink(extractAttr(entry, 'link', 'href')) || linkOrPermaId(entry, 'link', 'id');
       const summary = extractTag(entry, 'summary') || extractTag(entry, 'content');
       const pubDate = extractTag(entry, 'published') || extractTag(entry, 'updated');
       if (title) {
@@ -786,7 +805,10 @@ export default async function handler(req, res) {
       const result = await fetchOne(src);
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-RSS-Single', src.key);
+      // 源键必须转义后再进响应头：Node 的 ServerResponse 只收 latin1，中文源键会抛
+      // ERR_INVALID_CHAR，被外层 catch 变成 500 —— 生产实测 542/968 个源（键含中文）
+      // 的抽屉实时刷新全部失效，而页面 fetch 的 .catch 把它静默吞成"刷新没反应"。
+      res.setHeader('X-RSS-Single', encodeURIComponent(src.key));
       // 单源抽屉也是实时抓取出口：不过闸的话，点开一个停更源就能看到几年前的旧文。
       // knownDates 传 null：这里没有已加载的快照，为一次点击去解析几十 MB 不值得，
       // 代价是"上游没给日期且快照没见过"的条目在单源视图里会被判不了龄丢掉（墙侧仍按快照续命）。

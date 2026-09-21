@@ -943,14 +943,19 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
     now_ts = (now_dt or NOW_BJ or datetime.datetime.now(BJT)).timestamp()
 
     by_hash = {}
+    dropped_no_hash = 0            # 没有 content_hash 的记录进不了缓存，也不能算"去重"
     for c in (old_chunks or []):
         h = c.get("content_hash", "")
         if h:
             by_hash.setdefault(h, c)
+        else:
+            dropped_no_hash += 1
     for c in (new_chunks or []):
         h = c.get("content_hash", "")
         if h:
             by_hash[h] = c           # 本场版本覆盖旧缓存副本
+        else:
+            dropped_no_hash += 1
 
     def _instant(c):
         # 必须按时刻排，不能比 ISO 字符串：池子里同时存在无偏移/+08:00/-07:00 三种写法，
@@ -1023,12 +1028,19 @@ def _merge_vector_cache(old_chunks, new_chunks, cap=None,
             deferred_uncached = 0
 
     kept_hashes = {c["content_hash"] for c in merged}
+    # kept_rss/kept_other 必须是**预算闸之后**的分项：上面那对 keep_* 是"封顶时分到多少额度"，
+    # 直接拿来做 kept_* 会让日志里 kept 与两个分项加不回去
+    # （run 35609254121 实测：留存 10040，分项却印 RSS 21802 + 非RSS 7271）。
+    kept_rss = sum(1 for c in merged if c.get("source_type") == "rss")
     stats = {
         "input_old": len(old_chunks or []),
         "input_new": len(new_chunks or []),
+        "pool_size": len(by_hash),
+        "dedup_removed": len(old_chunks or []) + len(new_chunks or []) - len(by_hash) - dropped_no_hash,
+        "dropped_no_hash": dropped_no_hash,
         "kept": len(merged),
-        "kept_rss": len(keep_rss),
-        "kept_other": len(keep_other),
+        "kept_rss": kept_rss,
+        "kept_other": len(merged) - kept_rss,
         "evicted_stale": evicted_stale,
         "dropped_undated": dropped_undated,
         "dropped_over_cap": len(rss) - len(keep_rss) + len(other) - len(keep_other),
@@ -5382,12 +5394,16 @@ def main():
     # 结果既撑爆上限又把 RSS 饿死到 100 条。
     merged_chunks, _vc = _merge_vector_cache(old_chunks, chunks,
                                              embed_budget=MAX_NEW_EMBED_PER_BUILD)
-    print("[每日洞察] 向量缓存合并: 旧 %d + 本场 %d → 留存 %d"
-          "（超龄淘汰 %d / 判不了龄丢弃 %d / 超上限截断 %d / 本轮 embedding 预算外推迟 %d"
-          "｜ RSS %d + 非RSS %d，上限 %d）" % (
-              _vc["input_old"], _vc["input_new"], _vc["kept"], _vc["evicted_stale"],
-              _vc["dropped_undated"], _vc["dropped_over_cap"], _vc["deferred_uncached"],
-              _vc["kept_rss"], _vc["kept_other"], _vc["cap"]))
+    # 每一项都要能加回同一个分母：池 = 留存 + 四个丢弃桶。上一版把"封顶时的额度分配"
+    # 当成留存分项印出来，导致 留存 10040 与 RSS 21802+非RSS 7271 同框（run 35609254121），
+    # 读日志的人（包括我自己）会把它当成新的截断缺陷去查。
+    print("[每日洞察] 向量缓存合并: 去重后池 %d 条（旧 %d + 本场 %d，去重 %d）"
+          "→ 留存 %d（RSS %d + 非RSS %d）"
+          "｜丢弃：超龄 %d / 判不了龄 %d / 超上限 %d / 预算外推迟 %d（上限 %d）" % (
+              _vc["pool_size"], _vc["input_old"], _vc["input_new"], _vc["dedup_removed"],
+              _vc["kept"], _vc["kept_rss"], _vc["kept_other"],
+              _vc["evicted_stale"], _vc["dropped_undated"], _vc["dropped_over_cap"],
+              _vc["deferred_uncached"], _vc["cap"]))
 
     # 1.7) 识别需要 embedding 的 chunks（hash 不在旧缓存中的）
     cached_map = {}  # content_hash → index in old_vecs

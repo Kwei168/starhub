@@ -274,5 +274,105 @@ class TestEmbedBudget:
         assert "_np.zeros(EMBED_DIM" not in src, "组装向量时仍在塞零向量占位"
 
 
+class TestAccountingConservation:
+    """条数守恒：读日志的人必须能把手上的数加回同一个分母（任务 #32 的核心一条）。
+
+    现场（run 35609254121，14:21 场）日志印成
+    `→ 留存 10040（…｜ RSS 21802 + 非RSS 7271，上限 30000）`
+    —— 21802+7271=29,073 是**预算闸之前**的额度分配，10,040 是之后的 kept，
+    两个分母混在同一行。我自己第一读就把"RSS 只剩 1 万"当成新缺陷去查，白花时间；
+    而 `kept_rss/kept_other` 这名字叫"留下了多少"，值却是"截断前分到多少额度"，
+    任何下游消费者拿它做判断都会错。
+    """
+
+    def _fixtures(self):
+        # 一个 fixture 要让五个桶全部非零，否则守恒等式在"什么都没发生"上恒真
+        old = ([_mk("rss", i, 10) for i in range(30)]
+               + [_mk("rss", 900 + i, None) for i in range(5)]      # 判不了龄
+               + [_mk("rss", 950 + i, 500) for i in range(5)])     # 超龄
+        new = ([_mk("rss", 100 + i, 1) for i in range(60)]
+               + [_mk("hot", i, 1) for i in range(40)]
+               # 跨构建重复：hash 只由 type+idx 决定，这 10 条与 old 里的撞键。
+               # 没有这一组的话，pool_size 写错（例如退回两侧相加）也能让下面的
+               # 守恒等式成立 —— 我在 CM2 变异体上实测到它只被去重那条用例杀掉。
+               + [_mk("rss", i, 1) for i in range(10, 20)]
+               + [_mk("hot", 800 + i, None) for i in range(5)])
+        return old, new
+
+    def _scenario(self):
+        old, new = self._fixtures()
+        merged, st = B._merge_vector_cache(old, new, cap=80, embed_budget=20)
+        return merged, st
+
+    def test_split_sums_to_kept(self):
+        merged, st = self._scenario()
+        assert st["kept"] == len(merged)
+        assert st["kept_rss"] + st["kept_other"] == st["kept"], (
+            "kept_rss/kept_other 必须是**预算闸之后**的实际留存分项，"
+            "否则日志里 kept 与两边分项加不回去（本轮 kept=%s rss=%s other=%s）"
+            % (st["kept"], st["kept_rss"], st["kept_other"]))
+
+    def test_every_chunk_is_accounted_once(self):
+        merged, st = self._scenario()
+        for k in ("dropped_undated", "evicted_stale", "dropped_over_cap",
+                  "deferred_uncached", "kept", "dedup_removed"):
+            assert st[k] > 0, "fixture 没让 %s 动起来，守恒等式会在空集上恒真" % k
+        total = (st["kept"] + st["deferred_uncached"] + st["dropped_over_cap"]
+                 + st["evicted_stale"] + st["dropped_undated"])
+        assert total == st["pool_size"], (
+            "条数不守恒：去重后池子 %s 条，各桶相加 %s 条（各桶 %s）" % (
+                st["pool_size"], total,
+                {k: st[k] for k in ("kept", "deferred_uncached", "dropped_over_cap",
+                                    "evicted_stale", "dropped_undated")}))
+        # 分母必须拿**独立算出来的**期望去比：`pool == 旧+新-去重` 是实现的定义式，
+        # 断它等于自摸（2026-09-21 对抗审查 I4 命中）。
+        expected_pool = len({c["content_hash"] for c in sum(self._fixtures(), [])})
+        assert st["pool_size"] == expected_pool, (
+            "去重后池子 %s，按 fixture 独立算应是 %s" % (st["pool_size"], expected_pool))
+        assert st["dedup_removed"] == st["input_old"] + st["input_new"] - expected_pool
+
+    def test_hashless_records_are_not_counted_as_dedup(self):
+        """没有 content_hash 的记录是"进不了缓存"，不许混进"去重"里。
+
+        混计的代价是守恒等式看着成立、实际把一类数据丢失藏进去重数里 ——
+        而"去重多少"是会被当正常数看的桶。
+        """
+        bad = _mk("rss", 0, 1)
+        bad = dict(bad)
+        bad["content_hash"] = ""
+        merged, st = B._merge_vector_cache([bad], [_mk("rss", 1, 1)])
+        assert st["dropped_no_hash"] == 1, st
+        assert st["dedup_removed"] == 0, (
+            "无 hash 的记录被算成去重了：%s" % st["dedup_removed"])
+        assert (st["kept"] + st["dropped_no_hash"] + st["dedup_removed"]
+                + st["dropped_undated"] + st["evicted_stale"] + st["dropped_over_cap"]
+                + st["deferred_uncached"] == st["input_old"] + st["input_new"]), st
+
+    def test_dedup_is_reported_separately(self):
+        """同一 content_hash 在两侧都出现时必须算作一条，且差额可核对。"""
+        shared = _mk("rss", 0, 10)
+        merged, st = B._merge_vector_cache([shared], [dict(shared)], embed_budget=None)
+        assert st["pool_size"] == 1, (
+            "去重后池子算成 %s 条 ⇒ 守恒等式的分母就是错的" % st["pool_size"])
+        assert st["dedup_removed"] == 1
+
+    def test_merge_log_prints_the_reconciling_denominator(self):
+        """日志必须印 `pool_size` 这个分母，否则守恒只活在测试里。
+
+        锁整句而不是锁字面量：上一版印的是 input_old + input_new（未去重），
+        数字看着齐全却永远加不回去 —— 这正是 14:21 场让我误判一场的原因。
+        """
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..",
+                                "build_daily_insight.py"), encoding="utf-8").read()
+        i = src.index("向量缓存合并")
+        stmt = src[i:src.index("% (", i)]
+        assert '去重后池 %d 条' in stmt, (
+            "合并日志的分母没写成去重后池子，四个丢弃桶加不回去；当前句子：%s"
+            % stmt.replace("\n", " ")[:160])
+        args = src[src.index("% (", i): i + 1500]
+        assert '_vc["pool_size"]' in args and '_vc["kept"]' in args, (
+            "合并日志没引用 pool_size/kept ⇒ stats 修对了但印出来的还是旧口径")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q", "-s"]))

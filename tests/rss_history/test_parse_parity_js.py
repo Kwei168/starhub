@@ -38,6 +38,21 @@ FIXTURES = [
     ("plain_link", u'<item><link>https://ok.example/a</link><guid>https://other.example/b</guid>'
                    u'<title>t</title></item>', None),
     ("no_date", u'<item><link>https://ok.example/a</link><title>t</title></item>', None),
+    # ── 线上实测的三种 link 形状（2026-09-21，JS 出口 3 个源 100% 畸形、Python 出口 9,067 条零畸形）
+    # 这三条不是"顺手加固"：链接决定卡片点哪儿、决定抽屉合并能不能认出"同一篇"，
+    # 两侧不一致就是同一篇文章两个身份。
+    ("cdata_link", u'<item><link><![CDATA[https://toi.example/b/a?photostory=7507755]]></link>'
+                   u'<title>t</title></item>', None),
+    ("amp_entities", u'<item><link>https://bbc.example/n/cw4gm7l742dmo&amp;at_campaign=rss'
+                     u'&amp;at_medium=rss</link><title>t</title></item>', None),
+    # 实体解码只许走一趟：`&amp;amp;` 的正确结果是 `&amp;`，先把 &amp; 解掉就会得到 `&`。
+    # 两侧实测一致（Python 与 JS 都吐 `...u=1&amp;keep=1`），所以这条能当判据；
+    # 它专门用来挡"把 &amp; 放到最前面解"那种等价改写。
+    ("double_encoded_amp", u'<item><link>https://x.example/a?u=1&amp;amp;keep=1</link>'
+                           u'<title>t</title></item>', None),
+    ("hash_fragment_kept", u'<item><link>https://spiegel.example/x/y.html#ref=rss</link>'
+                           u'<title>t</title></item>', None),
+    ("padded_link", u'<item><link>  https://ok.example/a  </link><title>t</title></item>', None),
 ]
 
 

@@ -65,6 +65,12 @@ global.fetch = async () => ({
 fs.writeFileSync(path.join(WORK, 'rss_sources.json'), JSON.stringify([
   { key: 'dfa', name: 'A', cat: 'c', color: '#f00', url: 'http://up/a', tier: 3 },
   { key: 'dfb', name: 'B', cat: 'c', color: '#f00', url: 'http://up/b', tier: 3 },
+  // refresh 走的是"T1 实时 + T2/T3 快照"合并支，那条支用 `...item` 展开而不是手写键，
+  // 所以它必须单独测：不能因为"展开会带上字段"就推断它没问题。
+  { key: 'dft1', name: 'T', cat: 'c', color: '#f00', url: 'http://up/t1', tier: 1 },
+  // 生产里 542/968 个源键含中文；Node 的真实 ServerResponse 会拒收非 latin1 的
+  // header 值，所以"源键被写进响应头"这条路径必须被测到（见 MODE=cjk）。
+  { key: '安全客_测试', name: 'C', cat: '安全', color: '#f00', url: 'http://up/c', tier: 3 },
 ]));
 
 const handler = require(path.join(ROOT, '__GEN__'));
@@ -72,18 +78,31 @@ const res = {
   statusCode: 0, body: null, headers: {},
   status(c) { this.statusCode = c; return this; },
   json(b) { this.body = b; return this; },
-  setHeader(k, v) { this.headers[k] = v; return this; },
+  // 故意照抄 Node 的校验：假 res 比生产宽松，是这类缺陷能活到线上的唯一原因
+  // （本地真跑 handler 全绿、线上 ?source=<中文键> 直接 500）。
+  setHeader(k, v) {
+    if (typeof v === 'string' && /[^\t\x20-\x7e\x80-\xff]/.test(v)) {
+      const e = new Error('Cannot convert argument to a ByteString: ' + k);
+      e.code = 'ERR_INVALID_CHAR';
+      throw e;
+    }
+    this.headers[k] = v; return this;
+  },
 };
 
 (async () => {
   try {
-    const query = MODE === 'batch' ? { batch: '0' } : { source: 'dfa' };
+    const key = MODE === 'cjk' ? '安全客_测试' : 'dfa';
+    let query;
+    if (MODE === 'batch') query = { batch: '0' };
+    else if (MODE === 'refresh') query = { refresh: '1' };
+    else query = { source: key };
     await handler({ query: query, headers: {} }, res);
     out.status = res.statusCode;
     out.retentionHeader = res.headers['X-RSS-Retention'];
     let items = [];
-    if (MODE === 'batch') {
-      for (const s of (res.body && res.body.sources) || []) {
+    if (res.body && res.body.sources) {
+      for (const s of res.body.sources) {
         items = items.concat((s.items || []).map(it => Object.assign({ _key: s.key }, it)));
       }
     } else {
@@ -98,6 +117,7 @@ const res = {
     }
     out.keys = items.length ? Object.keys(items[0]) : [];
     out.count = items.length;
+    out.headersSet = Object.keys(res.headers);
     out.ok = true;
   } catch (e) {
     out.reason = String(e && e.message);
@@ -134,7 +154,9 @@ def _run(mode, tmp_path):
             r.stdout[:400], r.stderr[:400])
         got = json.loads(line[-1][len("RESULT:"):])
         assert got.get("ok"), "handler 抛异常: %s" % got.get("reason")
-        assert got["status"] == 200, got
+        assert got["status"] == 200, (
+            "请求没走到 200（%s）；handler 内部被 catch 成 500 时这里能看到 body 形状：%s"
+            % (got["status"], json.dumps(got, ensure_ascii=False)[:300]))
         # 闸门必须真的在跑：装载失败时它会打印 unavailable，测试就会测到一条没过滤的路径
         assert got.get("retentionHeader") == "on", got
         return got
@@ -168,6 +190,34 @@ def test_batch_wire_ships_the_capture_marker(tmp_path):
     这条是独立的一处丢字段点：两处映射各自重写条目对象，只修一处必然另一处仍错。
     """
     _assert_marker(_run("batch", tmp_path))
+
+
+@pytest.mark.skipif(not _node(), reason="本机没有 node（CI 上有）")
+def test_refresh_merged_wire_ships_the_capture_marker(tmp_path):
+    """?refresh=1 —— "T1 实时 + T2/T3 快照"合并支。
+
+    这一支用 `...item` 展开，形状上"标记应该会自己带过来"，但**应该会过**正是
+    要单独造判据的理由：谁把手写键的另两处抄过来（或反过来把展开改成手写键列表），
+    这条就会红。三支出口各自重写条目对象，缺一条就是缺一条。
+    """
+    _assert_marker(_run("refresh", tmp_path))
+
+
+@pytest.mark.skipif(not _node(), reason="本机没有 node（CI 上有）")
+def test_cjk_source_key_does_not_500(tmp_path):
+    """?source=<中文键> 必须走通：源键被写进 X-RSS-Single，而 Node 拒收非 latin1 头值。
+
+    生产实测（2026-09-21 23:50 本地时间）：
+        GET https://starhub-refresh.vercel.app/api/rss?source=安全客_664
+        → 500 {"error":"Internal server error"}
+    本地 handler 却返回 200 —— 差别在测试假 res.setHeader 不做校验。
+    rss_sources.json 里 **542/968 个源键含中文**，抽屉对这一多半源"刷新没反应"
+    （页面那段 fetch 带 .catch(function(){})，错误被静默吞掉）。
+    """
+    got = _run("cjk", tmp_path)
+    assert got["count"] >= 2, "中文键源没拿到条目：%s" % json.dumps(got, ensure_ascii=False)[:200]
+    assert "X-RSS-Single" in got["headersSet"], (
+        "源键响应头没写成功 ⇒ 头值校验会把它打成 500：%s" % got["headersSet"])
 
 
 if __name__ == "__main__":

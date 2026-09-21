@@ -69,7 +69,16 @@ const res = {
   statusCode: 0, body: null, headers: {},
   status(c) { this.statusCode = c; return this; },
   json(b) { this.body = b; return this; },
-  setHeader(k, v) { this.headers[k] = v; return this; },
+  // 与 api/rss.js 那份驱动同一口径：假 res 一旦比生产宽松，"源键写进响应头"这类
+  // 缺陷就只在生产炸（中文源键 -> ERR_INVALID_CHAR -> 500，2026-09-21 实测 542/968 源）。
+  setHeader(k, v) {
+    if (typeof v === 'string' && /[^\t\x20-\x7e\x80-\xff]/.test(v)) {
+      const e = new Error('Cannot convert argument to a ByteString: ' + k);
+      e.code = 'ERR_INVALID_CHAR';
+      throw e;
+    }
+    this.headers[k] = v; return this;
+  },
 };
 
 (async () => {
