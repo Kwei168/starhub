@@ -764,3 +764,35 @@ def test_every_declared_cli_flag_is_consumed():
     for name in declared:
         attr = "a." + name.replace("-", "_")
         assert attr in body, "声明了 --%s 却在 main 里没人读（死配置）" % name
+
+
+def test_anchor_audit_covers_anchors_that_were_never_scheduled(tmp_path):
+    """`--events-limit` 切掉的锚点必须出现在审计里，而且理由不能是"跑挂了"。
+
+    审计只覆盖切片时，`can_publish` 那道"半套不上线"闸门读到的是一份永远齐全的账：
+    12 条里只排 1 条也算全对。这是发布安全洞，不是排版问题（对抗审查 I6）。
+    """
+    arts, links = _pool(12)
+    anchor = _anchor(links, 3)
+    n_ev = len(json.loads(anchor)["events"])
+    assert n_ev >= 2, "夹具给不出多锚点，判据无从判起"
+    out = _run(tmp_path, pool=arts, anchor_raw=anchor, events_limit=1)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    diff = doc["anchor_diff"]
+    assert len(diff) == n_ev, "审计漏掉了没排上场的锚点：%s" % [d["id"] for d in diff]
+    skips = [d for d in diff if d["op"] == "skip"]
+    assert len(skips) == n_ev - 1, diff
+    assert all("events_limit" in d["reason"] for d in skips), skips
+    assert not any(str(d["reason"]).startswith("not_run") for d in skips), \
+        "没排上场被记成跑挂了，读产物的人会去查一个不存在的故障"
+
+
+def test_invented_citation_id_is_a_hard_failure_not_a_silent_drop():
+    """§2 明写"假链接＝硬失败"。旧实现里归一先删、校验后看，那一支永远拿不到输入。"""
+    got = D.normalize_candidate({"citations": [{"id": "c1"}, {"id": "c99"}]},
+                                {"c1": "https://s1.test/a"})
+    assert got.get("invented_citations") == ["c99"], got
+    ok, fails = D.validate_event(got, valid_ids={"c1"})
+    assert not ok and any("假链接" in f for f in fails), fails
+    clean = D.normalize_candidate({"citations": [{"id": "c1"}]}, {"c1": "https://s1.test/a"})
+    assert not clean.get("invented_citations"), clean
