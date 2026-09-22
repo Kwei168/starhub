@@ -1412,6 +1412,29 @@ def rubric_of(raw):
 
 
 JUDGE_PASS = 0.75
+JUDGE_DIMS = ("narrative", "causal", "forecast", "quality")
+# 每一维"该怎么修"必须写进重写消息：只说"均分 0.71 低于 0.75"，模型收到的是
+# "再写一遍"，两轮重写就停在同一水平（现网 evt_003 rubric=0.7125 就是这么废的）。
+JUDGE_FIX_HINT = {
+    "narrative": "成文论述偏弱（%s）：补机制、数据与反证，不要堆形容词",
+    "causal": "因果分析偏弱（%s）：trigger/mechanism/outcome 每段都要有材料支撑",
+    "forecast": "趋势预测偏弱（%s）：给到期的可核验指标，窗口只能是 3/7/14 天",
+    "quality": "内容优质判断偏弱（%s）：why 说清报道形态，basis 逐条引外证编号",
+}
+
+
+def judge_weak_spots(score, bar=JUDGE_PASS):
+    """judge 分项分数 → "哪一维薄弱 + 该改什么"（spec §2"按薄弱维度重生成"）。
+
+    分项以前被 `rubric_of` 平均掉就没人看了：均值不合格时，重写消息里连
+    "是哪一维拉低的"都没有，等于让 judge 主判却只消费它的一个标量。
+    """
+    out = ["judge 均分 %.2f 低于 %.2f" % ((score or {}).get("mean", 0.0), bar)]
+    for k in JUDGE_DIMS:
+        v = (score or {}).get(k)
+        if isinstance(v, (int, float)) and v < bar:
+            out.append(JUDGE_FIX_HINT[k] % ("%.2f" % v))
+    return out
 
 
 def build_judge_prompt(cand, ctx):
@@ -1493,8 +1516,11 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         else:
             score = {"mean": 0.0}
         if attempt < max_regen:
+            # 结构不合格时点名契约条目；结构过了但 judge 不合格时点名**分项维度**。
+            # 两条路都走同一个"必须逐条修掉"的口子，否则 §2 的"按薄弱维度重生成"
+            # 只剩均值一句话，重写两轮等于什么都没改。
             prompt = (build_prompt(event, ctx) + signals_note(ctx)) + "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(
-                fails or ["judge 均分 %.2f 低于 %.2f" % (score["mean"], JUDGE_PASS)])
+                fails or judge_weak_spots(score))
     cand["degraded_reason"] = "重写 %d 次仍不合格" % max_regen
     if parse_echo:
         cand["parse_echo"] = parse_echo
