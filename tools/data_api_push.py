@@ -31,6 +31,8 @@ REPO = "repos/Kwei168/starhub"
 WF = ".github/workflows/update.yml"
 # 所有路径都相对仓库根解析（本文件在 <root>/tools/ 下），不依赖调用时的 CWD
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 就地变异 harness 的持锁标记：见 gate() 里的说明
+MUTATION_LOCK = os.path.join(ROOT, "_scratch", ".mutation-lock")
 
 
 def req(method, path, body=None, tries=6):
@@ -60,6 +62,17 @@ def runs(per_page=10):
 
 def gate():
     """返回 (ok, 说明)。判据只有一条：当前没有任何未完成的 run（未跑完的那场随时会按文件名回滚 docs）。"""
+    if os.path.exists(MUTATION_LOCK):
+        # 就地变异 harness 正在往真实文件里写变异体。这个循环会等构建窗口等上半小时，
+        # 而 09-22 两次就是它在持锁窗口里读了盘：main 上先后出现过
+        # `over_time -> return False` 和 `_article_from 的 "source_key": ""`。
+        # 判在 runs() 之前：守门本身要联网，判锁不该联网。
+        try:
+            with io.open(MUTATION_LOCK, encoding="utf-8") as f:
+                who = f.read().strip()[:120]
+        except Exception:
+            who = "?"
+        return False, "有就地变异 harness 在持锁（%s），此刻读盘会把变异体推上线" % who
     rs = runs()
     busy = [r for r in rs if r["status"] != "completed"]
     if busy:

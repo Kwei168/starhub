@@ -287,3 +287,31 @@ def test_partial_success_emits_no_warning(capsys):
 def _c2(key, sid):
     return {"id": sid, "key": key, "size_in_bytes": 10, "created_at": "2026-09-20T00:00:00Z",
             "last_accessed_at": "2026-09-20T00:00:00Z"}
+
+
+# ── 就地变异锁：main 上两次推上去过变异体文本，这不是假想风险 ──────────────
+
+def test_mutation_lock_blocks_push(tmp_path, monkeypatch):
+    """有 harness 正在就地改真实文件时读盘推送，推上去的就是变异体文本。
+
+    2026-09-22 连着两次：一次把 `over_time` 推成 `return False`（墙钟闸恒假），
+    一次把 `_article_from` 推成 `"source_key": ""`（外证命中恒 0）。两次的成因都一样 ——
+    等构建窗口的后台推送循环在一次就地变异的持锁窗口里读了盘。
+    锁必须在 runs() 之前判：守门本身要联网，判锁不该联网。
+    """
+    monkeypatch.setattr(D, "runs", lambda *a, **k: [])
+    lock = tmp_path / ".mutation-lock"
+    monkeypatch.setattr(D, "MUTATION_LOCK", str(lock))
+    lock.write_text("_mut_quality.py 持锁中", encoding="utf-8")
+    ok, why = D.gate()
+    assert not ok, "锁在的时候守门必须不过：%s" % why
+    assert "变异" in why, '拒绝理由要点名变异体，不能混成"有构建在跑"：%s' % why
+
+
+def test_no_lock_does_not_block_push(tmp_path, monkeypatch):
+    """没锁时不得误伤：否则每次正常推送都多等一轮，人就学会绕过守门了。"""
+    monkeypatch.setattr(D, "runs", lambda *a, **k: [
+        {"id": "1", "status": "completed", "created_at": "2026-09-22T10:00:00Z"}])
+    monkeypatch.setattr(D, "MUTATION_LOCK", str(tmp_path / "absent-lock"))
+    ok, why = D.gate()
+    assert ok, why
