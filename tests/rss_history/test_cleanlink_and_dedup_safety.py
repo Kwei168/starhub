@@ -21,6 +21,7 @@ import html
 import json
 import os
 import subprocess
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -98,24 +99,37 @@ def test_out_of_range_charref_does_not_erase_the_source():
 
 
 @pytest.mark.skipif(not _node(), reason="本机没有 node（CI 的 ubuntu runner 一定有）")
-def test_placeholder_link_items_match_python_survival(tmp_path):
-    """无链接条目在两通道的存活数必须相等。
+def test_no_link_item_never_becomes_a_card_on_both_channels():
+    """没有落点的条目两通道都不许出厂成卡片 —— 判据必须打在**决定产物的那一层**。
 
-    Python Pass 1 也会把 `#` 剥成 `''`，但 Pass 2 是 `if link and link in seen_urls`
-    —— 空链接既不去重也不删，所以 3 条活 3 条。JS 的 `if (!link || seen...) return false`
-    把空链接整条删掉 ⇒ 上游没给链接的源在抽屉里直接少一批（点一次源，卡片掉一截）。
+    这条判据写错过一次，错法值得留着：我先拿 `_dedup_source_items` 的
+    `if link and link in seen_urls`（空链接不去重也不删）当"Python 的口径"，
+    据此把 JS 的 Pass 2 改成保留空链接，测试也照这个中层函数断言 ⇒ 两边"一致"，
+    但产物里根本不存在无链接卡片 —— 因为上游 `_parse_rss_item` 就有
+    `if not title or not link: return`，批量出口再筛一道 `!it.u || it.u === '#'`。
+    线上实测出厂分块 360/360 条 link 非空非 '#'。照错层改的后果是把死链卡片放进来
+    （点不开的文章），正是本任务禁止的那一类。
+
+    所以这里两端都跑**完整链路**：Python 用真 `_parse_rss_item`，
+    JS 用真 `parseFeed → dedupSourceItems`，断言存活数同为 0。
     """
     node = _node()
-    src = [{"link": "#", "title": "A one", "summary": "s1", "pub_date": "2026-09-20T10:00:00Z"},
-           {"link": "#", "title": "B two", "summary": "s2", "pub_date": "2026-09-20T11:00:00Z"},
-           {"link": "#", "title": "C three", "summary": "s3", "pub_date": "2026-09-20T12:00:00Z"}]
-    import copy
-    py_n = len(mod._dedup_source_items(copy.deepcopy(src), "s_demo"))
-    body = ("const items = %s;\n"
-            "process.stdout.write(JSON.stringify(dedupSourceItems(items, 's_demo').map(x=>x.title)));\n"
-            % json.dumps(src, ensure_ascii=False))
-    js_titles = _run_js(node, body)
-    assert len(js_titles) == py_n, (
-        "无链接条目：JS 活 %d 条、Python 活 %d 条 —— 抽屉按 link 认不出这些条目，"
-        "实时刷新会把它们整批丢掉（剥 fragment 只是把这条差异从 1 放大到 0）" % (
-            len(js_titles), py_n))
+    frags = ['<item><title>%s</title><pubDate>Tue, 01 Sep 2026 1%d:00:00 GMT</pubDate></item>' % (t, i)
+             for i, t in enumerate(("A one", "B two", "C three"))]
+    py_alive = []
+    for frag in frags:
+        out = []
+        mod._parse_rss_item(ET.fromstring(frag), "S", "s_demo", "security", out)
+        py_alive.append(out)
+    assert sum(len(o) for o in py_alive) == 0, (
+        "Python 出厂侧居然留住了无链接条目：%s —— 判据的参照层变了，先重读生产代码" % py_alive)
+
+    xml = ('<?xml version="1.0"?><rss><channel>%s</channel></rss>') % "".join(frags)
+    body = ("const items = parseFeed(%s, 's_demo', 50);\n"
+            "process.stdout.write(JSON.stringify([items.length, dedupSourceItems(items.slice(), 's_demo').length]));\n"
+            % json.dumps(xml))
+    parsed, alive = _run_js(node, body)
+    assert parsed == 3, "parseFeed 应当先解析出 3 条（含无链接的），实际 %d" % parsed
+    assert alive == 0, (
+        "JS 出厂侧留了 %d 条无链接卡片 —— 抽屉里点不开的死链，且与出厂口径不一致" % alive)
+

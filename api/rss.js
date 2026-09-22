@@ -522,11 +522,13 @@ function dedupSourceItems(items, sourceKey) {
   const seenUrls = new Set();
   items = items.filter(it => {
     const link = it.link || '';
-    /* 空链接既不去重也不删 —— Python 侧是 `if link and link in seen_urls`，两侧必须同判。
-       写成 `if (!link) return false` 的代价：上游不给链接的源（Pass 1 剥 fragment 后
-       连占位 '#' 都会变空串）在抽屉实时刷新时整批消失，点一次源就少一截卡片。 */
-    if (!link) return true;
-    if (seenUrls.has(link)) return false;
+    /* 没有落点的条目整条删 —— 这是出厂口径，不是中游去重口径：
+       `_parse_rss_item` 的 `if not title or not link: return` 与批量出口的
+       `!it.u || it.u === '#'` 都不让无链接卡片出厂（无链接 = 死链）。
+       这里一度改成"空链接保留，以对齐 Python `if link and link in seen_urls`"——
+       那次对齐选错了层：`_dedup_source_items` 确不删空链接，但产物里 360/360 条
+       都带真链接，因为上游更早就把它们丢了。按错层的判据改，反而把死链卡片放了进来。 */
+    if (!link || seenUrls.has(link)) return false;
     seenUrls.add(link);
     return true;
   });
