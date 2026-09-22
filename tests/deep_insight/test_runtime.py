@@ -77,11 +77,19 @@ def test_release_makes_key_reusable():
 
 
 def test_judge_waits_for_spare_capacity():
-    """并发>1 时优先级 生成 > 判定：只剩 1 个空 key 时 judge 不许把它抢走，否则生成饿死。"""
-    p = _pool(2, workers=2)
+    """并发>1 时优先级 生成 > 判定：只剩 1 个空 key 时 judge 不许把它抢走，否则生成饿死。
+
+    夹具从"2 key + workers=2"改成"3 key + workers=3"：`clamp_workers` 现在会把
+    并发档钉在 key 数 - 1（给 judge 留一把），2 key 的配置已经构造不出" lanes>1 且
+    只剩 1 空"的状态了。
+    """
+    p = _pool(3, workers=3)
+    assert p.workers == 2
     a = p.acquire("generate")
+    b = p.acquire("generate")
     assert p.acquire("judge") is None, "只剩一个空 key 就让 judge 抢占"
     p.release(a)
+    p.release(b)
     assert p.acquire("judge"), "两个 key 都空时 judge 应能拿到"
 
 

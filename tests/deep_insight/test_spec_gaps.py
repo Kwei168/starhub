@@ -711,3 +711,56 @@ def test_unparseable_reply_leaves_the_original_text_in_the_artifact(tmp_path):
     assert echo.get("chars", 0) > 200, "解析失败却没留原文长度：%s" % echo
     assert echo.get("head") and echo.get("tail"), "只留长度等于什么都没留：%s" % sorted(echo)
     assert ev.get("degraded_reason"), echo
+
+
+def test_workers_actually_run_events_concurrently_on_distinct_keys(tmp_path):
+    """`KeyPool.workers` 以前只是个数字：全模块一处线程都没有，于是"每 key 一槽 /
+    429 进冷却 / judge 让位生成"三条设计永远不可能被触发 —— 用户点名的多账号池优势
+    只剩注释。这条判据断的是**真的重叠**，顺带抓"同一时刻两个线程拿同一个 key"
+    （免费池按 key 限流，那样等于自己给自己造 429）。
+    """
+    import threading as _th
+    import time as _t
+    inner = D.FakeClient()
+    st = {"live": {}, "peak": 0, "same_key": 0}
+    lk = _th.Lock()
+
+    class Concurrent:
+        def complete(self, prompt, key=None, kind="generate"):
+            with lk:
+                st["live"][key] = st["live"].get(key, 0) + 1
+                if st["live"][key] > 1:
+                    st["same_key"] += 1
+                st["peak"] = max(st["peak"], sum(st["live"].values()))
+            _t.sleep(0.05)
+            r = inner.complete(prompt, key=key, kind=kind)
+            with lk:
+                st["live"][key] -= 1
+            return r
+
+    arts, links = _pool(12)
+    anchor = _anchor(links, 3)
+    n_ev = len(json.loads(anchor)["events"])
+    assert n_ev >= 2, "夹具只给出一条事件，重叠无从判起"
+    out = _run(tmp_path, client=Concurrent(), pool=arts,
+               anchor_raw=anchor, workers=3)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    assert len(doc["events"]) == n_ev, "并发路径把条目跑丢了：%s" % [e["id"] for e in doc["events"]]
+    assert st["peak"] >= 2, "声明 workers=3 却从未重叠（peak=%d）—— 并发是假的" % st["peak"]
+    assert st["same_key"] == 0, "同一时刻有两条任务共用一个 key"
+    assert not doc.get("not_run"), "并发把 judge 饿死了（所有 key 都被生成占满）：%s" % doc["not_run"]
+
+
+def test_every_declared_cli_flag_is_consumed():
+    """死 flag 是这轮审查抓到的真实缺陷形态：`--workers` 声明了却没传进 `night_run`，
+    于是 yml 里改档位完全无效，而 `--help` 看着一切正常。
+
+    判据按"声明过就必须被读到"来写，不逐个点名 —— 新加 flag 忘了接线会直接红。
+    """
+    src = open(os.path.join(ROOT, "build_deep_insight.py"), encoding="utf-8").read()
+    body = src[src.index("def main("):]
+    declared = re.findall(r'ap\.add_argument\("--([a-z0-9-]+)"', body)
+    assert declared, "解析不到 flag 清单，判据本身失效了"
+    for name in declared:
+        attr = "a." + name.replace("-", "_")
+        assert attr in body, "声明了 --%s 却在 main 里没人读（死配置）" % name

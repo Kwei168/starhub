@@ -607,10 +607,12 @@ def test_judge_not_starved_when_only_one_key(tmp_path):
 
 def test_workers_cap_never_exceeds_key_pool():
     """并发档超了 key 数只会排队，超了 spec 的 6 就是把免费池推到限流墙下。"""
-    assert D.clamp_workers(99, 3) == 3
+    assert D.clamp_workers(99, 3) == 2, "并发档必须给 judge 留一把 key"
     assert D.clamp_workers(99, 20) == 6
     assert D.clamp_workers(2, 20) == 2
     assert D.clamp_workers(0, 20) == 1
+    assert D.clamp_workers(5, 2) == 1, "两把 key 时并发只能是 1，否则 judge 永远等不到空余"
+    assert D.clamp_workers(5, 1) == 1, "单 key 也不能被减成 0 条泳道"
     # --workers 是 dispatch 输入，负数手滑不能变成"0 个 worker ⇒ 永远拿不到 key"
     assert D.clamp_workers(-1, 20) == 1
     assert D.clamp_workers(3, 0) == 1
