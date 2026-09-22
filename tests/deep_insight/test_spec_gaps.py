@@ -796,3 +796,38 @@ def test_invented_citation_id_is_a_hard_failure_not_a_silent_drop():
     assert not ok and any("假链接" in f for f in fails), fails
     clean = D.normalize_candidate({"citations": [{"id": "c1"}]}, {"c1": "https://s1.test/a"})
     assert not clean.get("invented_citations"), clean
+
+
+def test_judge_weak_spots_names_every_sub_bar_dimension():
+    """分项分数不能只用来算一个标量均值。"""
+    spots = D.judge_weak_spots({"mean": 0.6, "narrative": 0.9, "causal": 0.5,
+                               "forecast": 0.7, "quality": 0.2})
+    assert len(spots) == 4, spots          # 均值一行 + 三个不合格维度
+    assert any("因果分析偏弱（0.50" in s for s in spots), spots
+    assert not any("成文论述偏弱" in s for s in spots), "0.9 那一维不该被点名"
+    assert D.judge_weak_spots({"mean": 1.0, "narrative": 1.0, "causal": 1.0,
+                              "forecast": 1.0, "quality": 1.0}), "不许返回空清单"
+    assert "均分" in D.judge_weak_spots({})[0]
+
+
+def test_judge_rewrite_prompt_carries_the_weak_dimension(tmp_path):
+    """§2"按薄弱维度重生成"的落地判据：不合格那一轮之后，重写 prompt 里必须出现
+    具体维度与它的分数。旧实现只说"judge 均分 0.70 低于 0.75"，模型收到的是
+    "再写一遍"，于是现网出现 rubric=0.7125 / 0.6625 这种在阈值下沿反复两轮的条目。
+    """
+    prompts = []
+    inner = D.FakeClient()
+
+    class LowQuality:
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9,
+                                   "forecast": 0.9, "quality": 0.1})
+            prompts.append(prompt)
+            return inner.complete(prompt, key=key, kind=kind)
+
+    arts, links = _pool()
+    _run(tmp_path, client=LowQuality(), pool=arts, anchor_raw=_anchor(links))
+    assert len(prompts) >= 2, "judge 不合格却没触发重写：%d" % len(prompts)
+    assert "内容优质判断偏弱" in prompts[1] and "0.10" in prompts[1], prompts[1][-320:]
+    assert "成文论述偏弱" not in prompts[1], "把没薄弱的维度一起骂，等于什么都没说"
