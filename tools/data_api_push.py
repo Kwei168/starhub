@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 # 只在作为脚本跑时改挂载 stdout：pytest 捕获态下重挂载会吞掉测试输出
@@ -320,9 +321,25 @@ def main():
         expect[p] = blob["sha"]
         print("blob  %-56s %7d -> %s" % (p, len(raw), blob["sha"][:10]))
         items.append({"path": p, "mode": "100644", "type": "blob", "sha": blob["sha"]})
-    tree = req("POST", REPO + "/git/trees", {"base_tree": head, "tree": items})
-    commit = req("POST", REPO + "/git/commits", {"message": a.msg, "tree": tree["sha"], "parents": [head]})
-    ref = req("PATCH", REPO + "/git/refs/heads/main", {"sha": commit["sha"], "force": False})
+    tree_sha = None
+    for attempt in range(1, 5):
+        # 422 的意思是"父提交已落后"：白天那场随时可能把 main 往前推。
+        # req() 里那 6 次重试是同一份请求重发，对 422 完全无效 —— 必须重读 head、
+        # 用新 base_tree 重建 tree+commit 再 PATCH，否则一定 6 次同样失败（今天实撞过）。
+        if attempt > 1:
+            head = req("GET", REPO + "/git/ref/heads/main")["object"]["sha"]
+        try:
+            tree = req("POST", REPO + "/git/trees", {"base_tree": head, "tree": items})
+            commit = req("POST", REPO + "/git/commits",
+                         {"message": a.msg, "tree": tree["sha"], "parents": [head]})
+            ref = req("PATCH", REPO + "/git/refs/heads/main",
+                      {"sha": commit["sha"], "force": False})
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 422 or attempt == 4:
+                raise
+            print("  ref 被推进过（422），重读 head 重建提交：%d/4" % attempt)
+            time.sleep(2 * attempt)
     print("parent %s -> commit %s -> ref %s" % (head[:10], commit["sha"][:10], ref["object"]["sha"][:10]))
 
     bad = verify(expect, "即时复查")

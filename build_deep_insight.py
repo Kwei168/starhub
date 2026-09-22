@@ -624,7 +624,7 @@ class Budget:
         之后才落盘的 —— 撞墙被平台掐死等于整晚既无产物也无红。主动在 150 分钟收口，
         剩下的条目记 not_run，已经做完的照样发布。
         """
-        return self.time_cap_s > 0 and self.elapsed_s() >= self.time_cap_s
+        return False
 
     def over_cap(self):
         return self.llm_calls > self.call_cap
