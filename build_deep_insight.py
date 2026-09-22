@@ -1231,7 +1231,9 @@ def _escape_raw_control(s):
     out = []
     in_str = False
     esc = False
-    for ch in s:
+    n = len(s)
+    for i in range(n):
+        ch = s[i]
         if not in_str:
             if ch == '"':
                 in_str = True
@@ -1246,8 +1248,18 @@ def _escape_raw_control(s):
             esc = True
             continue
         if ch == '"':
-            in_str = False
-            out.append(ch)
+            # 引号到底是"字符串结束"还是"正文里的裸引号"，看它后面第一个非空白字符：
+            # 结构符（, : } ]）才算结束，否则是模型在中文正文里直接打了引号。
+            # 现网 run 35756700221 三条回复各 5,095–6,031 字、JSON 结构完整，
+            # 全部因为这种裸引号被 json.loads 判成非法 —— 深度不是没写出来，是我们读不出来。
+            j = i + 1
+            while j < n and s[j] in " \t\r\n":
+                j += 1
+            if j < n and s[j] in ",:}]":
+                in_str = False
+                out.append(ch)
+            else:
+                out.append('\\"')
             continue
         if ch == "\n":
             out.append("\\n")
