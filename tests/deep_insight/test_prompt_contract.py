@@ -225,3 +225,20 @@ def test_horizon_days_states_the_enum_and_the_consequence():
     # 光列合法值没拦住现网的 90：这一句的机制就是"把写错的样子点名回去"。
     assert any(x in seg for x in ("30", "90", "一年内")), \
         "没给反例，模型仍会把 horizon 写成 90（现网实测）：%s" % seg
+
+
+def test_parser_recovers_embedded_straight_quotes():
+    """现网 run 35756700221：三条回复各 5,095–6,031 字、JSON 结构完整，
+    全部死在正文里的裸引号上 —— 深度不是没写出来，是我们读不出来。
+
+    模型给中文术语加引号是默认写法，而 `"` 在 JSON 字符串里非法。
+    只救"引号后面不是结构符"这一种；截断的仍然算失败，不许伪装成"模型写得太短"。
+    """
+    body = ('```json\n{"narrative": "第一段。所谓"AI 原生"就是这个意思。'
+            '\n\n第二段：结论。", "citations": [{"id": "c1", "url": "https://a"}]}\n```')
+    got = D.parse_model_json(body)
+    assert got and "AI 原生" in got["narrative"], got
+    assert got["citations"] == [{"id": "c1", "url": "https://a"}], got
+    assert D.parse_model_json('{"a": "x", "b": 1}') == {"a": "x", "b": 1}, \
+        "真结束的引号被误判成正文，普通 JSON 也会跟着坏"
+    assert D.parse_model_json('{"narrative": "' + "字" * 3000) is None, "截断不该被蒙混"
