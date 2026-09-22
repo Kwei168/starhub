@@ -685,3 +685,29 @@ def test_wallclock_cutoff_in_publish_mode_actually_ships_what_it_finished(tmp_pa
     assert calls["commit"] == 1, "撞墙钟收口却没提交：%s / published=%s" % (
         calls, out.get("published"))
     assert (out.get("published") or {}).get("status") != "blocked", out.get("published")
+
+
+class _Garbage:
+    """返回一段永远解析不出来的文本（不是空串 —— 空串是另一种故障）。"""
+
+    def complete(self, prompt, key=None, kind="generate"):
+        if kind == "judge":
+            return json.dumps({"narrative": 0.9, "causal": 0.9,
+                               "forecast": 0.9, "quality": 0.9})
+        return "{" + "模型返回的不是合法 JSON：" * 60
+
+
+def test_unparseable_reply_leaves_the_original_text_in_the_artifact(tmp_path):
+    """现网 evt_20260923_008：十个字段全空、`truncated=0`，日志只说"narrative 0 字"。
+
+    那等于把"我们读不出来"记成了"模型没写"。修解析之前先得能诊断，
+    所以失败原文的头尾必须进产物（也解释了为什么这条判据断的是"有没有留证据"
+    而不是"能不能解析"）。
+    """
+    arts, links = _pool()
+    out = _run(tmp_path, client=_Garbage(), pool=arts, anchor_raw=_anchor(links))
+    ev = json.load(open(out["json"], encoding="utf-8"))["events"][0]
+    echo = ev.get("parse_echo") or {}
+    assert echo.get("chars", 0) > 200, "解析失败却没留原文长度：%s" % echo
+    assert echo.get("head") and echo.get("tail"), "只留长度等于什么都没留：%s" % sorted(echo)
+    assert ev.get("degraded_reason"), echo
