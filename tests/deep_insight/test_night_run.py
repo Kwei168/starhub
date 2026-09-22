@@ -740,7 +740,13 @@ def test_model_may_return_string_shaped_rows_without_crashing(tmp_path):
     assert all(isinstance(c, dict) and (c.get("id") or "").startswith("c") for c in cites), cites
     assert all((c.get("url") or "").startswith("https://s") for c in cites), \
         "模型自带的 URL 被原样采信：假链接就这么上屏"
-    assert "fabricated" not in json.dumps(doc, ensure_ascii=False), "编造域名进了产物"
+    # 编造的链接不许成为引用、更不许上屏；但它要作为"违了什么约"的证据留在产物里
+    # （否则 §2 的"假链接＝硬失败"又变回静默丢弃，读产物的人根本不知道发生过）。
+    assert "fabricated" not in json.dumps(cites, ensure_ascii=False), cites
+    assert "fabricated" not in open(out["html"], encoding="utf-8").read(), \
+        "编造域名上屏了"
+    assert ev.get("invented_citations") or any(
+        "假链接" in f for f in (ev.get("contract_fails") or [])), ev
     # 字符串形态的 claims/chains/forecasts/quality 不算合格内容，必须降级而不是当合格
     assert (ev.get("degraded_reason") or "").strip() or doc["budget"]["qualified"] == 0, ev
 

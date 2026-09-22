@@ -138,6 +138,9 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
         fake = [i for i in ids if i not in valid_ids]
         if fake:
             fails.append("citation id 不在检索池里（假链接）：%s" % fake[:4])
+    inv = ev.get("invented_citations") or []
+    if inv:
+        fails.append("引用了我们没发过的编号 %d 条（假链接硬失败）：%s" % (len(inv), inv[:4]))
     for c in cites:
         u = c.get("url") or ""
         if not u.startswith("http://") and not u.startswith("https://"):
@@ -1359,12 +1362,18 @@ def normalize_candidate(cand, ids_map):
                 out.append(row)
         cand[key] = out
 
-    cites = []
+    cites, invented = [], []
     for c in (cand.get("citations") or []):
         cid = c.get("id") if isinstance(c, dict) else (c.strip() if isinstance(c, str) else None)
         if cid in ids_map:
             cites.append({"id": cid, "url": _clean_url(ids_map[cid])})
+        else:
+            invented.append(str(cid if cid else c)[:40])
     cand["citations"] = cites
+    if invented:
+        # 丢掉的引用必须留痕：归一先删、校验后看的话，`validate_event` 里
+        # "假链接即硬失败"那一支永远拿不到输入，编造引用就成了静默通过（对抗审查 C3）。
+        cand["invented_citations"] = invented
     for key in ("claims", "causal_chains"):
         for r in (cand.get(key) or []):
             if not isinstance(r, dict):
@@ -1498,11 +1507,15 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
     return cand
 
 
-def build_anchor_diff(anchor_events, records):
+def build_anchor_diff(anchor_events, records, scheduled=None):
     """夜场对每个锚点事件做了什么，必须逐条留痕（spec §5）。
 
     恒空的 anchor_diff 与"名字里带深度却什么都不保证"是同一个病：
     读产物的人需要一个能核对的地方，看"白天的 12 个事件"到夜里变成了什么。
+
+    `scheduled` 是本场真正排进队列的 id 集合。不传它的话，被 `--events-limit`
+    切掉的锚点会**同时不在 keep/drop/not_run 里** —— 审计只覆盖切片，
+    而发布闸门读的就是这份审计，"半套不上线"于是恒真（对抗审查 I6）。
     """
     by_id = {r.get("id"): r for r in records or [] if isinstance(r, dict)}
     diff = []
@@ -1511,8 +1524,12 @@ def build_anchor_diff(anchor_events, records):
         r = by_id.get(eid)
         before = len(ev.get("key_links") or ev.get("links") or [])
         if r is None:
-            diff.append({"op": "drop", "id": eid, "reason": "not_run:incomplete",
-                         "evidence_before": before, "evidence_after": 0})
+            if scheduled is not None and eid not in scheduled:
+                diff.append({"op": "skip", "id": eid, "reason": "not_scheduled:events_limit",
+                             "evidence_before": before, "evidence_after": 0})
+            else:
+                diff.append({"op": "drop", "id": eid, "reason": "not_run:incomplete",
+                             "evidence_before": before, "evidence_after": 0})
             continue
         why = (r.get("degraded_reason") or "").strip()
         after = len(r.get("citations") or [])
@@ -1871,7 +1888,8 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     ledger = prune_predictions(ledger + pred_rows(ship, date_str), date_str)
     payload = build_payload(ship, anchor, budget, date_str, key_count=kp.total(),
                             workers=kp.workers,
-                            anchor_diff=build_anchor_diff(events, ship),
+                            anchor_diff=build_anchor_diff(anchor["events"], ship,
+                                                          scheduled={e.get("id") for e in events}),
                             predictions_reconciled=stats)
     # 账本里已结算的行随产物发布：页面上的"已结算预测"区靠它，只写 predictions.jsonl
     # 的话读者在页面上永远只看到"待验证"（§5 要预测卡含到期与命中状态）。
