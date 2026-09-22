@@ -1431,9 +1431,16 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         return rec
     prompt = (build_prompt(event, ctx) + signals_note(ctx))
     cand, last_fails, score = {}, [], {"mean": 0.0}
+    parse_echo = None
     for attempt in range(max_regen + 1):
-        cand = dict(parse_model_json(call_llm(client, prompt, key_pool, budget, "generate",
-                                               wait_cap_s=wait_cap_s, sleep=sleep)) or {})
+        raw = call_llm(client, prompt, key_pool, budget, "generate",
+                       wait_cap_s=wait_cap_s, sleep=sleep)
+        cand = dict(parse_model_json(raw) or {})
+        if not cand and raw:
+            # 解析不出来时，日志里只剩"narrative 0 字"，与"模型真的没写"长得一模一样。
+            # 现网 evt_20260923_008 就是这样：十个字段全空、truncated=0，谁也不知道它返回了什么。
+            # 留头尾各 200 字进产物，下一跑才谈得上修解析。
+            parse_echo = {"chars": len(raw), "head": raw[:200], "tail": raw[-200:]}
         cand.setdefault("id", event["id"])
         cand.setdefault("title", event.get("title", ""))
         cand.setdefault("topic", event.get("topic", ""))
@@ -1455,6 +1462,8 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
             prompt = (build_prompt(event, ctx) + signals_note(ctx)) + "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(
                 fails or ["judge 均分 %.2f 低于 %.2f" % (score["mean"], JUDGE_PASS)])
     cand["degraded_reason"] = "重写 %d 次仍不合格" % max_regen
+    if parse_echo:
+        cand["parse_echo"] = parse_echo
     cand["narrative"] = (cand.get("narrative") or "")[:DEGRADED_NARR_MAX]
     cand["forecasts"] = []
     cand["rubric"] = score
