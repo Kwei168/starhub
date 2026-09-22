@@ -713,3 +713,25 @@ def test_model_may_return_string_shaped_rows_without_crashing(tmp_path):
     assert "fabricated" not in json.dumps(doc, ensure_ascii=False), "编造域名进了产物"
     # 字符串形态的 claims/chains/forecasts/quality 不算合格内容，必须降级而不是当合格
     assert (ev.get("degraded_reason") or "").strip() or doc["budget"]["qualified"] == 0, ev
+
+
+def test_truncated_replies_are_counted_separately(tmp_path):
+    """`finish_reason=length` 必须单独记一笔。
+
+    截断在产物里长得和"模型写得太短"一模一样：不分开，spec §3 那条 `max_tokens`
+    待验假设就永远验不了，还会把输出上限的问题误判成模型能力问题。
+    """
+    class Truncating:
+        last_finish_reason = ""
+
+        def complete(self, prompt, key=None, kind="generate"):
+            self.last_finish_reason = "length" if kind == "generate" else "stop"
+            return "{}"
+
+    b = D.Budget(call_cap=80)
+    b.start()
+    c = Truncating()
+    D.call_llm(c, "p", D.KeyPool(["k1"]), b, "generate", sleep=lambda s: None)
+    assert b.snapshot()["truncated"] == 1, b.snapshot()
+    D.call_llm(c, "p", D.KeyPool(["k1"]), b, "judge", sleep=lambda s: None)
+    assert b.snapshot()["truncated"] == 1, "judge 正常收尾也被记成截断"
