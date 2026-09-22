@@ -152,7 +152,11 @@ def test_nightly_retries_in_place_once():
     retries = [s for i, s in enumerate(steps)
                if i > run_idx and "build_deep_insight.py" in (s.get("run") or "")]
     assert len(retries) == 1, "当夜原地重试应为 1 次，实为 %d" % len(retries)
-    assert retries[0].get("if") == "failure()", "重试步必须只在上一次失败后跑"
+    cond = retries[0].get("if") or ""
+    assert cond.startswith("failure()"), "重试步必须只在上一次失败后跑，实为 %r" % cond
+    # 但光 failure() 是错的：preflight 红时 Resolve 步被跳过、purpose 是空串，
+    # 裸 failure() 会把 --purpose "" 喂给 argparse 再炸一次，把真因埋掉。
+    assert "purpose" in cond, "%r 没挡住 purpose 为空的重试" % cond
 
 
 def test_nightly_does_not_borrow_daytime_modules():

@@ -459,10 +459,15 @@ def load_prev_predictions(get, url, log=None):
 def load_source_quality(get, url=None, log=None):
     """读白天的信源质量表（spec §2 第 4 行点名的外证之一）。
 
+    取的是 `analysis_snapshot.json` 的 `quality` 字段，不是 `source_quality.json`：
+    后者由 `build_rss_aggregator._save_source_quality` 写出来却从不发布 ——
+    `update.yml` 的 `git add` 清单里没有它，提交前那步还 `rm -f` 掉它，现网实测恒 404。
+    挂一个恒 404 的地址等于给"优质判定"接了一条永久断链：外证永远为空，
+    而"无外证"在判据里和"低质"是两个结论。同一份评分的前半就在已发布的快照里。
+
     404 得起（第一夜、或白天从没写过它）；坏 JSON 必须抛 —— 把它当空表会让所有源
-    都退化成"无外证"，而"无外证"与"低质"在优质判定里是两个完全不同的结论。
-    默认值写 None 而不是 `url=SOURCE_QUALITY_URL`：那个常量在文件后半段才定义，
-    当默认值用会让整个模块 import 不进来（默认参数在 def 时求值）。
+    都退化成"无外证"。默认值写 None 而不是 `url=SOURCE_QUALITY_URL`：那个常量在
+    文件后半段才定义，当默认值用会让整个模块 import 不进来（默认参数在 def 时求值）。
     """
     log = log or (lambda s: None)
     url = url or SOURCE_QUALITY_URL
@@ -470,7 +475,7 @@ def load_source_quality(get, url=None, log=None):
         raw = get(_bust(url))
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            log("[夜场] source_quality.json 不存在（404），优质判定只剩跨源同稿一路外证")
+            log("[夜场] 质量快照不存在（404），优质判定只剩跨源同稿一路外证")
             return {}
         raise
     if isinstance(raw, (bytes, bytearray)):
@@ -480,12 +485,24 @@ def load_source_quality(get, url=None, log=None):
     try:
         doc = json.loads(raw)
     except ValueError as e:
-        raise ValueError("source_quality.json 解析失败：%s" % e)
-    return doc if isinstance(doc, dict) else {}
+        raise ValueError("质量快照解析失败：%s" % e)
+    quality = doc.get("quality") if isinstance(doc, dict) else None
+    if not isinstance(quality, dict):
+        # 读得动但没有 quality 字段 = 白天产物换了形状。当空表返回会让外证静默恒缺，
+        # 这正是上一版的故障形态，所以这里宁可不跑。
+        raise ValueError("质量快照里没有 quality 表（白天的产物形状变了），拒绝当'无外证'续跑")
+    return quality
 
 
 def _source_key_of(article):
-    """信源标识：优先用 `公众号：X` 的 X，没有 source 就退到 url 域名。"""
+    """信源标识：先取分块自带的源键（质量表就是按它索引的），再退到显示名/域名。
+
+    质量表的键形如 `agihunt_0`，条目自己的 `source` 是显示名 "AGI Hunt" ——
+    拿显示名去查表命中恒为 0，外证就永久为空。
+    """
+    key = (article.get("source_key") or "").strip()
+    if key:
+        return key
     src = (article.get("source") or "").strip()
     if src:
         tail = src.split("：")[-1].strip() or src
@@ -515,7 +532,7 @@ def quality_signals(articles, source_quality):
     两路外证，都是模型自己猜不出来的东西：
     1. `dup_sources`：同一篇稿子被几个独立源搬运（标题词/二元组重叠即算同题）。
        被 N 家同搬就是通稿/转载的信号，比任何形容词都可核对。
-    2. `tier`：白天 `source_quality.json` 已经给过这个源的档位，直接引用。
+    2. `tier`：白天质量快照（`analysis_snapshot.json` 的 `quality`）已经给过这个源的分数，直接引用。
     返回 {"sig:cN": {...}}；这些 id 既进 prompt，也是 `quality.basis` 唯一允许引用的集合。
     """
     sig = {}
@@ -624,7 +641,7 @@ class Budget:
         之后才落盘的 —— 撞墙被平台掐死等于整晚既无产物也无红。主动在 150 分钟收口，
         剩下的条目记 not_run，已经做完的照样发布。
         """
-        return False
+        return self.time_cap_s > 0 and self.elapsed_s() >= self.time_cap_s
 
     def over_cap(self):
         return self.llm_calls > self.call_cap
@@ -921,7 +938,7 @@ CHUNK_URLS = [CHUNK_URL_BASE % i for i in range(3)]
 # 只在当夜存在的账本 = 永远对不上账（到期核对发生在下一夜之后的运行里）。
 PREDICTIONS_URL = PAGES_BASE + PREDICTIONS_NAME
 # 优质判定的外证之一：白天已经算过一次的信源质量表（spec §2 第 4 行点名）。
-SOURCE_QUALITY_URL = PAGES_BASE + "source_quality.json"
+SOURCE_QUALITY_URL = PAGES_BASE + "analysis_snapshot.json"
 
 
 class RateLimited(Exception):
@@ -991,6 +1008,7 @@ def _article_from(it):
     url = (it.get("link") or it.get("u") or "").strip()
     body = (it.get("full_content") or it.get("fc") or "") or (it.get("summary") or it.get("s") or "")
     return {"url": url, "source": it.get("source") or it.get("source_key") or "",
+            "source_key": it.get("source_key") or "",
             "title": it.get("title") or it.get("t") or it.get("title_zh") or "",
             "text": body, "has_full": bool(it.get("full_content") or it.get("fc"))}
 
@@ -1180,6 +1198,50 @@ def call_llm(client, prompt, pool, budget, kind="generate", wait_cap_s=900,
         return out
 
 
+def _escape_raw_control(s):
+    r"""把 JSON 字符串字面量里的裸换行/制表转义掉，其余一律不猜。
+
+    §2 要求"至少 6 段"，而模型写长中文正文时最常见的就是把 `\n\n` 直接放进字符串里 ——
+    这在 JSON 里非法，于是整条回复被读成"什么都没写"（现网第三跑 3 条里 2 条
+    `narrative=0 字`、`citations=0 条` 就是这个）。等于我们自己的契约把深度要求
+    变成了解析失败。
+
+    刻意只做这一件事：内嵌裸引号不去猜（猜错会篡改正文），截断的也照样解析失败 ——
+    截断必须走 `finish_reason` 记成 truncated，不许被"修好了"蒙混成"模型写得太短"。
+    """
+    out = []
+    in_str = False
+    esc = False
+    for ch in s:
+        if not in_str:
+            if ch == '"':
+                in_str = True
+            out.append(ch)
+            continue
+        if esc:
+            out.append(ch)
+            esc = False
+            continue
+        if ch == "\\":
+            out.append(ch)
+            esc = True
+            continue
+        if ch == '"':
+            in_str = False
+            out.append(ch)
+            continue
+        if ch == "\n":
+            out.append("\\n")
+            continue
+        if ch == "\r":
+            continue
+        if ch == "\t":
+            out.append("\\t")
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
 def parse_model_json(text):
     if not text:
         return None
@@ -1190,8 +1252,13 @@ def parse_model_json(text):
     s, e = t.find("{"), t.rfind("}")
     if s < 0 or e <= s:
         return None
+    body = t[s:e + 1]
     try:
-        return json.loads(t[s:e + 1])
+        return json.loads(body)
+    except ValueError:
+        pass
+    try:
+        return json.loads(_escape_raw_control(body))
     except ValueError:
         return None
 
@@ -1689,7 +1756,6 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
                             predictions_reconciled=stats)
     # 账本里已结算的行随产物发布：页面上的"已结算预测"区靠它，只写 predictions.jsonl
     # 的话读者在页面上永远只看到"待验证"（§5 要预测卡含到期与命中状态）。
-    payload["settled_predictions"] = settled_rows
     payload["settled_predictions"] = settled_rows
     payload["not_run"] = missing(events, [x.get("id") for x in ship],
                                   budget_hit=stopped_by_cap)

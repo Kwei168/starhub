@@ -78,8 +78,15 @@ def test_nightly_reads_of_its_own_artifacts_bypass_the_cdn_cache():
             fn(get, arg) if arg is None else fn(get, arg)
         except Exception:
             pass
-    own = [u for u in seen if "predictions.jsonl" in u or "source_quality.json" in u]
+    # 文件名从常量里取，不写死：外证来源这个常量已经换过一次（source_quality.json 恒 404
+    # → analysis_snapshot.json 的 quality 字段），写死的话换完来源这条判据就会悄悄只剩一条，
+    # 剩下的那条照样绿 —— 这就是"恒真守卫比没有守卫更糟"。
+    bases = [u.rstrip("/").split("/")[-1].split("?")[0]
+             for u in (D.PREDICTIONS_URL, D.SOURCE_QUALITY_URL)]
+    own = [u for u in seen if any(b in u for b in bases)]
     assert own, "两条自写产物的读路径一次都没走到，判据空跑"
+    for b in bases:
+        assert any(b in u for u in own), "%s 的读路径没被走到，这条腿没判到" % b
     for u in own:
         assert "cb=" in u, "读自己上一夜提交的东西却可能被 CDN 命中缓存：%s" % u
 
@@ -96,6 +103,8 @@ def test_citation_urls_reaching_the_artifact_are_browser_safe():
     cand = {"citations": ["c1", "c2", "c3"]}
     out = D.normalize_candidate(dict(cand), ids)
     urls = [c["url"] for c in out["citations"]]
+    assert "%E4%B8%AD" in " ".join(urls), \
+        "已编码的链接被二次编码成 %%25E4... —— 上游 404 就是这么造出来的：%s" % urls
     assert all(not any(ch.isspace() for ch in u) for u in urls), \
         "含空白的 URL 进了产物：浏览器会在空格处截断，等于死链" % urls
     for u in urls:
@@ -133,3 +142,29 @@ def test_normalize_candidate_preserves_string_rows_as_objects():
     assert [c["id"] for c in out["citations"]] == ["c1", "c2"], out["citations"]
     assert all(c["url"].startswith("https://real.test") for c in out["citations"]), \
         "模型自带 URL 被采信"
+
+
+# ── 解析容错：我们一边要求"至少 6 段"，一边期望它给出合法 JSON ──────────────
+
+def test_parser_survives_the_shapes_models_actually_return():
+    """现网第三跑 3 条里 2 条 `narrative=0 字`，不是模型没写，是它写了但我们读不出来。
+
+    实测四种真实形态：裸换行、内嵌裸引号、截断、围栏+尾注 —— 只有最后一种过得去。
+    而 §2 要求"至少 6 段"，长中文正文分段最常见的写法就是在 JSON 里塞裸 `\\n`：
+    等于我们的契约自己把深度要求变成了解析失败。
+    """
+    body = "第一段论述。\n\n第二段论述，但该判断受限于样本口径。"
+    raw_nl = '{"narrative": "%s", "citations": [{"id": "c1"}]}' % body
+    got = D.parse_model_json(raw_nl)
+    assert got and got.get("narrative"), "JSON 字符串里的裸换行把整条回复判成没写"
+    assert "第二段" in got["narrative"], got
+
+    quoted = '{"narrative": "他说\\"不行\\"，但口径受限。", "citations": []}'
+    assert D.parse_model_json(quoted), "转义引号形态必须能读"
+
+    fence = "```json\n{\"narrative\": \"正文\", \"citations\": []}\n```\n以上即你要的 JSON。"
+    got2 = D.parse_model_json(fence)
+    assert got2 and got2.get("narrative") == "正文", "围栏加尾注是模型的常见写法"
+
+    # 截断不许伪装成"写得太短"：读出来必须是 None，让上层记 truncated
+    assert D.parse_model_json('{"narrative": "' + "字" * 3000) is None, "半截 JSON 不该被当合格"

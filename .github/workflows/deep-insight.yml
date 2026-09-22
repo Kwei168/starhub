@@ -91,7 +91,9 @@ jobs:
       # spec §4 失败策略：只在当夜窗口内原地重试 1 次，不做白天自动补跑。
       # checkpoint 就是为这一步存在的 —— 已完成的条目不再调模型，重试只补没做完的那部分。
       - name: Night retry (in-place, once)
-        if: failure()
+        # 只补"跑过但没成"的场。preflight 红时 Resolve 步被跳过、purpose 是空串，
+        # 裸 failure() 会把 --purpose "" 喂给 argparse 再炸一次，把真因埋掉。
+        if: failure() && steps.p.outputs.purpose != ''
         shell: bash
         env:
           RUN_PURPOSE: ${{ steps.p.outputs.purpose }}
