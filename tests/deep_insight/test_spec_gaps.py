@@ -831,3 +831,37 @@ def test_judge_rewrite_prompt_carries_the_weak_dimension(tmp_path):
     assert len(prompts) >= 2, "judge 不合格却没触发重写：%d" % len(prompts)
     assert "内容优质判断偏弱" in prompts[1] and "0.10" in prompts[1], prompts[1][-320:]
     assert "成文论述偏弱" not in prompts[1], "把没薄弱的维度一起骂，等于什么都没说"
+
+
+def test_citation_row_carries_our_pool_metadata_not_the_models_claim(tmp_path):
+    """§5 的引用行要能核对"来源 + 字数"。
+
+    两个现网缺陷：渲染层读 `title`/`chars_used`，而 `normalize_candidate` 以前只发
+    `{id,url}` ⇒ 页面上是 "? 字"；同时 `test_publish` 的夹具手工补了这些字段，
+    于是渲染判据一直对着一个生产发不出的形状绿。现在引用行的元数据一律取自
+    我们自己的证据池，模型自称的 source/title 一个字都不采信。
+    """
+    inner = D.FakeClient()
+
+    class Liar:
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9,
+                                   "forecast": 0.9, "quality": 0.9})
+            body = json.loads(inner.complete(prompt, key=key, kind=kind))
+            body["citations"] = [{"id": c.get("id"), "source": "自称权威媒体",
+                                  "title": "假标题", "url": "https://fabricated.example/x"}
+                                 for c in (body.get("citations") or [])]
+            return json.dumps(body, ensure_ascii=False)
+
+    arts, links = _pool()
+    out = _run(tmp_path, client=Liar(), pool=arts, anchor_raw=_anchor(links))
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    cites = doc["events"][0].get("citations") or []
+    assert cites, doc["events"][0].get("contract_fails")
+    assert all(c.get("chars_used", 0) > 0 for c in cites), cites
+    assert all("自称" not in (c.get("source") or "") for c in cites), cites
+    assert all((c.get("url") or "").startswith("https://s") for c in cites), cites
+    html = open(out["html"], encoding="utf-8").read()
+    assert "? 字" not in html, "引用行还在显示占位符"
+    assert "自称权威媒体" not in html and "fabricated" not in html, "模型的自述上了屏"

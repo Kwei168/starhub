@@ -1340,7 +1340,7 @@ def _clean_url(u):
         return ""
 
 
-def normalize_candidate(cand, ids_map):
+def normalize_candidate(cand, ids_map, arts_by_id=None):
     """把模型返回的形状归一成契约认识的对象形态。
 
     动机是现网第一跑的真实崩溃（run 35735624747）：模型把 citations 返回成
@@ -1366,7 +1366,13 @@ def normalize_candidate(cand, ids_map):
     for c in (cand.get("citations") or []):
         cid = c.get("id") if isinstance(c, dict) else (c.strip() if isinstance(c, str) else None)
         if cid in ids_map:
-            cites.append({"id": cid, "url": _clean_url(ids_map[cid])})
+            a = (arts_by_id or {}).get(cid) or {}
+            # 引用行的来源/标题/字数一律取**我们自己的池**：模型给的这些字段既不可核对，
+            # 又会被渲染层原样上屏（现网页面因此显示 "? 字"，而 test_publish 手工补了
+            # 这些字段，所以渲染判据一直对着一个生产发不出的形状绿着）。
+            cites.append({"id": cid, "url": _clean_url(ids_map[cid]),
+                          "source": a.get("source") or "", "title": a.get("title") or "",
+                          "chars_used": count_chars(a.get("text") or "")})
         else:
             invented.append(str(cid if cid else c)[:40])
     cand["citations"] = cites
@@ -1501,7 +1507,8 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         cand.setdefault("id", event["id"])
         cand.setdefault("title", event.get("title", ""))
         cand.setdefault("topic", event.get("topic", ""))
-        cand = normalize_candidate(cand, ctx["ids"])
+        cand = normalize_candidate(cand, ctx["ids"],
+                                   {"c%d" % (i + 1): art for i, art in enumerate(ctx["articles"])})
         ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids)
         last_fails = fails
         if ok:
