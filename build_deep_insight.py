@@ -1164,6 +1164,49 @@ def parse_model_json(text):
         return None
 
 
+def normalize_candidate(cand, ids_map):
+    """把模型返回的形状归一成契约认识的对象形态。
+
+    动机是现网第一跑的真实崩溃（run 35735624747）：模型把 citations 返回成
+    `["c1", "https://…"]` 这种字符串数组，实现按 dict 取 `.get()` 直接 AttributeError，
+    整场无产物。归一只管形状、不管内容 —— 形状不对的行会被填成"必然过不了契约"的对象，
+    于是降级而不是崩，也不会把空壳当合格。
+    引用只认我们自己发的 chunk id：模型自带 URL 一律不采信（否则"假链接即硬失败"
+    只剩校验标签，实测会漏出编造域名上屏）。
+    """
+    def rows(key, extra=()):
+        primary = {"claims": "text", "causal_chains": "mechanism", "forecasts": "claim"}[key]
+        out = []
+        for r in (cand.get(key) or []):
+            if isinstance(r, dict):
+                out.append(r)
+            elif isinstance(r, str) and r.strip():
+                row = {k: "" for k in extra}
+                row[primary] = r.strip()
+                out.append(row)
+        cand[key] = out
+
+    cites = []
+    for c in (cand.get("citations") or []):
+        cid = c.get("id") if isinstance(c, dict) else (c.strip() if isinstance(c, str) else None)
+        if cid in ids_map:
+            cites.append({"id": cid, "url": ids_map[cid]})
+    cand["citations"] = cites
+    rows("claims", ("kind", "evidence"))
+    rows("causal_chains", ("trigger", "mechanism", "outcome", "evidence"))
+    rows("forecasts", ("claim", "horizon_days", "check_metric"))
+    for f in cand["forecasts"]:
+        f.setdefault("claim", "")
+        f.setdefault("check_metric", "")
+    q = cand.get("quality")
+    if isinstance(q, str) and q.strip():
+        # 整段字符串当 quality：把原文塞进 why，其余留空，让契约去判它不合格
+        cand["quality"] = {"verdict": "", "score": 0, "why": q.strip(), "basis": []}
+    elif not isinstance(q, dict):
+        cand["quality"] = {}
+    return cand
+
+
 def rubric_of(raw):
     out = {}
     for k in ("narrative", "causal", "forecast", "quality"):
@@ -1235,8 +1278,7 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         cand.setdefault("id", event["id"])
         cand.setdefault("title", event.get("title", ""))
         cand.setdefault("topic", event.get("topic", ""))
-        cand["citations"] = [dict(c, url=ctx["ids"].get(c.get("id"), c.get("url", "")))
-                             for c in (cand.get("citations") or [])]
+        cand = normalize_candidate(cand, ctx["ids"])
         ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids)
         last_fails = fails
         if ok:
@@ -1531,7 +1573,7 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
             break
         try:
             r = deepen_one(ev, pool, client, budget, kp, wait_cap_s=wait_cap_s, sleep=sleep,
-                           max_regen=max_regen)
+                           max_regen=max_regen, source_quality=source_quality)
         except RateLimited as e:
             log("[夜场] %s 等待超上限(%s)：记 not_run，不阻断全场" % (ev["id"], e))
             continue
