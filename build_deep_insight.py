@@ -437,7 +437,10 @@ def load_prev_predictions(get, url, log=None):
     """
     log = log or (lambda s: None)
     try:
-        raw = get(url)
+        # cache-bust 放在函数内部而不是调用方：这条读出来是要**整库写回**的，
+        # 读到 CDN 里的旧副本就等于把上一夜之后的所有结算覆盖掉。放在调用方
+        # 迟早会有新的调用点漏掉。
+        raw = get(_bust(url))
     except urllib.error.HTTPError as e:
         if e.code == 404:
             log("[夜场] 预测账本不存在（%s 404），本场从空账本起" % url)
@@ -583,6 +586,7 @@ class Budget:
         self.tokens_out = 0
         self.wait_s = 0.0
         self.c429 = 0
+        self.truncated = 0
         self.t0 = None
 
     def start(self):
@@ -595,6 +599,14 @@ class Budget:
 
     def note_wait(self, seconds):
         self.wait_s += float(seconds or 0)
+
+    def note_truncated(self):
+        """回复撞到输出上限（finish_reason=length）的独立一笔账。
+
+        截断在产物里长得和"模型写得太短"一模一样：不记这一步，spec §3 那条
+        `max_tokens` 待验假设就永远验不了，重写两轮也是在要求模型做不到的事。
+        """
+        self.truncated += 1
 
     def note_429(self, retry_after=0):
         self.c429 += 1
@@ -620,7 +632,8 @@ class Budget:
     def snapshot(self):
         return {"llm_calls": self.llm_calls, "input_tokens": self.tokens_in,
                 "output_tokens": self.tokens_out, "wait_s": round(self.wait_s, 1),
-                "c429": self.c429, "elapsed_s": self.elapsed_s(), "call_cap": self.call_cap}
+                "c429": self.c429, "truncated": self.truncated,
+                "elapsed_s": self.elapsed_s(), "call_cap": self.call_cap}
 
 
 def _now():
@@ -744,16 +757,19 @@ def build_prompt(event, ctx):
         "硬性要求（不满足会被判不合格并重写）：\n"
         "- narrative：成文论述，2500-4000 字，至少 6 段，段落式行文，禁止分点罗列的条目体；"
         "必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。\n"
-        "- causal_chains：2-6 条，每条含 trigger/mechanism/outcome/confidence/evidence，"
-        "写清为什么发生而不是只说发生了什么。\n"
+        "- claims：3-10 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
+        "写别的编号等于引用不存在的内容，整条判不合格。\n"
+        "- causal_chains：2-6 条，每条含 trigger/mechanism/outcome/confidence/evidence"
+        "（evidence 同样只能取上面那批编号），写清为什么发生而不是只说发生了什么。\n"
         "- forecasts：1-4 条，每条含 claim(≤80字)/horizon_days(只能是 3、7 或 14)/"
         "check_metric（到期用什么可核验指标判命中，不许写“未来如何”这类空话）。\n"
         "- quality：对证据本身下判断，verdict 只能取 一手/深度/数据支撑/转载/通稿/营销，"
-        "score 0-100，why 20-120 字，basis 必须写明依据（不得自评，须引用下方材料标识）。\n"
+        "score 0-100，why 20-120 字，basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
+        "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
         "- citations：5-12 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), ", ".join(PROMPT_FIELDS),
-         id_list or "（无）", "\n\n".join(blocks))
+         id_list or "（无）", id_list or "（无）", "\n\n".join(blocks))
 
 
 # ─────────────────────────── 并发提交协议 ─────────────────────────────────
@@ -931,13 +947,19 @@ def http_get(url, timeout=90):
 _ASSIGN = re.compile(r"=\s*([\{\[])")
 
 
+_BUST_SEQ = [0]
+
+
 def _bust(url):
     """Pages 现测 `Cache-Control: max-age=600`，404 同样被缓存（见过 Age 481）。
 
     夜场是"读自己上一夜提交的东西再整库写回"的循环：锚点、账本、信源质量表都必须
     绕开缓存，否则人工补跑会读到旧内容并把旧账本原样覆盖回去 —— 静默丢一整夜。
+    只用时间戳会在同一毫秒内撞出同一个值（现网两次连读就复现过），所以再叠一个自增序号。
     """
-    return url + ("&" if "?" in url else "?") + "cb=%d" % (int(time.time() * 1000) % 1000000)
+    _BUST_SEQ[0] += 1
+    return url + ("&" if "?" in url else "?") + "cb=%d%d" % (
+        int(time.time() * 1000) % 1000000, _BUST_SEQ[0] % 1000)
 
 
 def parse_chunk(text):
@@ -973,8 +995,13 @@ def _article_from(it):
             "text": body, "has_full": bool(it.get("full_content") or it.get("fc"))}
 
 
-def _fetch_chunk(get, url, log, retries):
-    """返回 (raw, None) 或 (None, "gone") 或 (None, 错误摘要)。"""
+def _fetch_chunk(get, url, log, retries, sleep=None, backoff_s=3.0):
+    """返回 (raw, None) 或 (None, "gone") 或 (None, 错误摘要)。
+
+    重试之间必须退避：现网 run 35735624747 第一趟就是死在 `ssl.SSLEOFError` 这种
+    瞬时抖动上，而一块 56MB 的抓取紧挨着再试一次，等于在同一个坏窗口里撞两次。
+    """
+    sleep = sleep or time.sleep
     last = ""
     for attempt in range(max(1, int(retries))):
         try:
@@ -984,14 +1011,17 @@ def _fetch_chunk(get, url, log, retries):
             if e.code in (404, 410):
                 return None, "gone"
             last = "HTTP %s" % e.code
-            log("[全文池] 第 %d 次读取失败 %s: HTTP %s" % (attempt + 1, url, e.code))
         except Exception as e:
-            last = str(e)[:100]
-            log("[全文池] 第 %d 次读取失败 %s: %s" % (attempt + 1, url, last))
+            last = "%s: %s" % (type(e).__name__, str(e)[:80])
+        log("[全文池] 第 %d 次读取失败 %s: %s" % (attempt + 1, url, last))
+        if attempt + 1 < max(1, int(retries)):
+            nap = min(backoff_s * (2 ** attempt), 30.0)
+            log("[全文池] %0.fs 后重试 %s" % (nap, url))
+            sleep(nap)
     return None, last or "unknown"
 
 
-def load_rss_pool(urls=None, get=http_get, log=None, retries=2, base=None):
+def load_rss_pool(urls=None, get=http_get, log=None, retries=2, base=None, sleep=None):
     """全文池只读 GitHub Pages 上的分块：不碰白天的 Actions cache，也不写任何共享键。
 
     块数默认**探测**（`rss-data-0..N.js` 直到 404）：白天按体积切块，写死数字会在
@@ -1002,13 +1032,13 @@ def load_rss_pool(urls=None, get=http_get, log=None, retries=2, base=None):
     pool, bad = {}, 0
     fetched = 0
     if urls is not None:
-        seq = [(u, _fetch_chunk(get, u, log, retries)) for u in urls]
+        seq = [(u, _fetch_chunk(get, u, log, retries, sleep=sleep)) for u in urls]
     else:
         base = base or CHUNK_URL_BASE
         seq = []
         for i in range(CHUNK_MAX):
             u = base % i
-            got = _fetch_chunk(get, u, log, retries)
+            got = _fetch_chunk(get, u, log, retries, sleep=sleep)
             if got[1] == "gone":
                 break
             seq.append((u, got))
@@ -1144,6 +1174,8 @@ def call_llm(client, prompt, pool, budget, kind="generate", wait_cap_s=900,
             pool.release(key)
             raise
         pool.release(key)
+        if getattr(client, "last_finish_reason", "") == "length":
+            budget.note_truncated()
         budget.note_call(estimate_tokens(prompt), estimate_tokens(out or ""))
         return out
 
@@ -1162,6 +1194,36 @@ def parse_model_json(text):
         return json.loads(t[s:e + 1])
     except ValueError:
         return None
+
+
+_UNSAFE_SCHEME = re.compile(r"^\s*(?:javascript|data|vbscript|file):", re.I)
+
+
+def _clean_url(u):
+    """引用链接的出口清洗：非绝对链接一律不要，路径里的裸中文要编码，
+    但**已经编码过的 `%20` 不许再编一次**（双重编码会把现网好链接变成死链 ——
+    这条在白天侧 cleanLink 上踩过两轮）。"""
+    u = (u or "").strip()
+    if not u or u == "#" or _UNSAFE_SCHEME.match(u):
+        return ""
+    if not u.startswith(("http://", "https://")):
+        return ""
+    if re.search(r"%[0-9a-fA-F]{2}", u):
+        # 已经编码过的就原样放过：再编一次 `%20` 会变成 `%2520`，
+        # 好链接当场变死链 —— 白天侧 cleanLink 就在这上面翻过两轮。
+        return u
+    try:
+        parts = urllib.parse.urlsplit(u)
+        safe = "%:/?#[]@!$&'()*+,;=~-._"
+        path = urllib.parse.quote(parts.path, safe=safe)
+        query = urllib.parse.quote(parts.query, safe=safe)
+        frag = urllib.parse.quote(parts.fragment, safe=safe)
+        net = parts.netloc
+        if any(ord(c) > 127 for c in net):
+            net = urllib.parse.quote(net, safe="@:[]~._-")
+        return urllib.parse.urlunsplit((parts.scheme, net, path, query, frag))
+    except (ValueError, UnicodeError):
+        return ""
 
 
 def normalize_candidate(cand, ids_map):
@@ -1190,8 +1252,19 @@ def normalize_candidate(cand, ids_map):
     for c in (cand.get("citations") or []):
         cid = c.get("id") if isinstance(c, dict) else (c.strip() if isinstance(c, str) else None)
         if cid in ids_map:
-            cites.append({"id": cid, "url": ids_map[cid]})
+            cites.append({"id": cid, "url": _clean_url(ids_map[cid])})
     cand["citations"] = cites
+    for key in ("claims", "causal_chains"):
+        for r in (cand.get(key) or []):
+            if not isinstance(r, dict):
+                continue   # 整条是字符串的行交给下面的 rows() 统一成形
+            ev = r.get("evidence")
+            if isinstance(ev, str):
+                # 模型常把 evidence 写成 "c1" 或 "c2, c3"：直接迭代字符串会把
+                # "c1" 炸成 'c' 和 '1'，于是好引用被判成假链接（现网实测）。
+                r["evidence"] = [x for x in re.split(r"[,，;；\s]+", ev.strip()) if x]
+            elif ev is None:
+                r["evidence"] = []
     rows("claims", ("kind", "evidence"))
     rows("causal_chains", ("trigger", "mechanism", "outcome", "evidence"))
     rows("forecasts", ("claim", "horizon_days", "check_metric"))
@@ -1377,6 +1450,7 @@ class AgnesClient:
     def __init__(self, model=DEFAULT_MODEL, max_tokens=12000, temperature=0.3, post=None):
         self.model = model
         self.max_tokens = int(max_tokens)
+        self.last_finish_reason = ""
         self.temperature = temperature
         self._send = post or self._http_post
 
@@ -1398,6 +1472,12 @@ class AgnesClient:
         body = {"model": self.model, "temperature": self.temperature, "max_tokens": self.max_tokens,
                 "messages": [{"role": "user", "content": prompt}]}
         doc = self._send(body, key)
+        # 记下 finish_reason：被 max_tokens 截断的回复看起来就是"JSON 解析不出来 / 正文太短"，
+        # 不记就会把截断当成模型能力问题重写两轮再降级（现网第一跑正是这样分不清的）。
+        try:
+            self.last_finish_reason = (doc.get("choices") or [{}])[0].get("finish_reason") or ""
+        except (AttributeError, IndexError, TypeError):
+            self.last_finish_reason = ""
         try:
             return doc["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
@@ -1526,7 +1606,7 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     anchor = load_anchor_events(anchor_raw, source_sha=hashlib.sha256(blob).hexdigest()[:12])
     events = anchor["events"][:max(1, int(events_limit))]
     if pool is None:
-        pool, _bad = load_rss_pool(urls=urls, get=get, log=log)
+        pool, _bad = load_rss_pool(urls=urls, get=get, log=log, sleep=sleep)
     keys = list(keys if keys is not None else env_keys())
     # 优质判定的外证之一：白天的信源质量表。读不到只少一路外证（404 得起），
     # 但坏文件必须炸 —— 当空表用会让所有源都变成"无外证"，与"低质"是两回事。
@@ -1579,9 +1659,15 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
             continue
         recs.append(r)
         append_jsonl(ck, [r])
-        log("[夜场] %s 完成 narrative=%d 字 rubric=%s" % (
-            ev["id"], count_chars(r.get("narrative") or ""),
-            (r.get("rubric") or {}).get("mean")))
+        # 只报"完成"与字数不够看：现网那场就是 3 条全降级，必须当场看到为什么。
+        why = (r.get("degraded_reason") or "").strip()
+        fails = "; ".join((r.get("contract_fails") or [])[:3])
+        log("[夜场] %s %s narrative=%d 字 rubric=%s%s%s" % (
+            ev["id"], "降级" if why else "合格",
+            count_chars(r.get("narrative") or ""),
+            (r.get("rubric") or {}).get("mean"),
+            " 原因=%s" % why if why else "",
+            " 判据=%s" % fails if fails else ""))
     # 产物 = 本场新做的 + checkpoint 里已做完的，按锚点顺序排；
     # 少了后半截就是"重试夜上线半套产物"那个坑。
     by_id = {r.get("id"): r for r in (prev_recs + recs)}
@@ -1680,12 +1766,22 @@ def main(argv=None):
                     help="只验装配与判定链，不产真洞察；purpose=publish 时会被拒绝")
     a = ap.parse_args(argv)
     lines = []
+
+    def log_live(s):
+        # 以前是 `log=lines.append` 再只打最后 6 行：现网那场三条全降级（narrative 0/196/199 字），
+        # 而逐条降级理由与 contract_fails 全部被截在 tail 之外 —— 失败原因根本读不出来。
+        lines.append(s)
+        try:
+            print(s, flush=True)
+        except UnicodeEncodeError:
+            print(str(s).encode("ascii", "replace").decode(), flush=True)
+
     out = night_run(purpose=a.purpose, events_limit=a.events_limit, out_dir=a.out,
                     budget_tokens=a.budget_tokens, call_cap=a.cap_calls,
                     wait_cap_s=a.wait_cap, date_str=a.date,
                     client=FakeClient() if a.fake_client else None,
-                    keys=env_keys(), log=lines.append,
-                    get=http_get if not a.fake_client else http_get)
+                    keys=env_keys(), log=log_live,
+                    get=http_get)
     b = out["budget"]
     pb = out["payload"]["budget"]
     print("[夜场] 条目 %d（合格 %d / 快讯 %d / 未做 %d）LLM 调用 %d 次、等待 %.0fs、429 %d 次、耗时 %.0fs" % (
@@ -1693,6 +1789,9 @@ def main(argv=None):
         len(out["payload"].get("not_run") or []), b["llm_calls"], b["wait_s"], b["c429"],
         b["elapsed_s"]))
     pr = out["payload"].get("predictions_reconciled") or {}
+    if b.get("truncated"):
+        print("::warning title=输出被截断|本场 %d 次回复撞到 max_tokens："
+              "长论述产不出来时先查输出上限，别判模型能力" % b["truncated"])
     print("[夜场] 账号池 %d 把 / 并发档 %s｜到期预测 %d（命中 %d 未中 %d 判不了 %d）｜锚点审计 %d 条" % (
         pb.get("key_count", 0), pb.get("workers"), pr.get("due", 0), pr.get("hit", 0),
         pr.get("miss", 0), pr.get("unknown", 0), len(out["payload"].get("anchor_diff") or [])))
