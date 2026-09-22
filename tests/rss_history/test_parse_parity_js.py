@@ -191,3 +191,90 @@ def test_both_rss_paths_use_the_helpers():
     assert text.count("const _dt = datedOrCapture(pubDate);") == 2, \
         "收录时刻兜底必须两条路径各一次，实际 %d 次" % text.count("const _dt = datedOrCapture(pubDate);")
     assert "pub_date: pubDate || ''" not in text, "还有路径把缺日期直接出厂成空串"
+
+
+# ── 媒体地址（mu/mt）的两通道一致性 ──
+# Python 侧 `_pick_item_media` 读的是 **ET 解析后的属性**，`&amp;` 早在 XML 层就解成 `&`；
+# JS 侧用正则从原文里抠 `url="..."`，抠出来的是**原始实体**。同一集音频因此两条通道
+# 长得不一样（`...mp3&amp;sig=1` vs `...mp3&sig=1`），后者直接喂给 <audio src> 是打不开的地址。
+# 这条判据是第四轮对抗审查 grep 出来的（任务 #38），与 link 走的是同一个漏网点：
+# `linkOrPermaId` 修过之后，媒体 url 仍然没接 cleanLink。
+MEDIA_CASES = [
+    ("enclosure_amp",
+     '<item><title>t</title><enclosure url="https://m.test/a.mp3&amp;sig=1" type="audio/mpeg"/></item>'),
+    ("media_content_amp",
+     '<item xmlns:media="http://search.yahoo.com/mrss/"><title>t</title>'
+     '<media:content url="https://m.test/b.mp4?a=1&amp;b=2" medium="video"/></item>'),
+]
+
+
+def _js_media_src():
+    """必须从 extractTag 起切：cleanLink 定义在那之前，只切 extractMediaFromEntry
+    会让 eval 里的 cleanLink 未定义 ⇒ 变异体因 ReferenceError 而"红"，是假阳性。"""
+    text = open(API_RSS, encoding="utf-8").read()
+    a = text.find("function extractTag(")
+    b = text.find("function parseFeed(")
+    assert 0 < a < b, "api/rss.js 里找不到 extractTag..parseFeed 区段"
+    seg = text[a:b]
+    assert "function cleanLink(" in seg, "切出的区段里没有 cleanLink，判据会退化成假红"
+    return seg
+
+
+def _js_pipeline_src_for_media():
+    """完整链路要含 parseFeed 本体：切到 `async function fetchOne(` 为止。"""
+    text = open(API_RSS, encoding="utf-8").read()
+    a = text.find("function extractTag(")
+    b = text.find("async function fetchOne(")
+    assert 0 < a < b, "api/rss.js 里找不到 extractTag..fetchOne 区段"
+    seg = text[a:b]
+    assert "function parseFeed(" in seg and "function cleanLink(" in seg, "区段缺 parseFeed 或 cleanLink"
+    return seg
+
+
+@pytest.mark.parametrize("name,frag", MEDIA_CASES)
+def test_media_url_matches_python(name, frag):
+    node = _node()
+    if not node:
+        pytest.skip("本机没有 node（CI 的 ubuntu runner 一定有）")
+    py_url, py_type = mod._pick_item_media(ET.fromstring(frag))
+    assert py_url, "%s：Python 侧没取到媒体地址，fixture 与生产不同形，先修 fixture" % name
+    script = ("const s=%r;\neval(s);\nconst m=extractMediaFromEntry(%s);\n"
+              "process.stdout.write(JSON.stringify([m&&m.media_url||'',m&&m.media_type||'']));\n"
+              % (_js_media_src(), json.dumps(frag)))
+    out = subprocess.run([node, "-e", script], capture_output=True)
+    assert out.returncode == 0, out.stderr.decode("utf-8", "replace")[:300]
+    js_url, js_type = json.loads(out.stdout.decode("utf-8"))
+    assert js_url == py_url, (
+        "%s：媒体地址 JS 侧 %r / Python 侧 %r —— 实体没解，抽屉里的音频/视频是打不开的链接，"
+        "且与构建产物不是同一篇的同一个媒体" % (name, js_url, py_url))
+    assert js_type == py_type, "%s：媒体类型 JS %r / Python %r" % (name, js_type, py_type)
+
+
+# RSS2 分支不走 extractMediaFromEntry，它在 parseFeed 里自己抠 enclosure（api/rss.js:489），
+# 所以只判 helper 会漏掉这一处 —— 上面那条对这条变异体是绿的（"红不起来"），
+# 这条按完整链路补上：真 parseFeed vs 真 _parse_rss_item。
+def test_rss_enclosure_media_url_matches_python_end_to_end():
+    node = _node()
+    if not node:
+        pytest.skip("本机没有 node（CI 的 ubuntu runner 一定有）")
+    item = ('<item><title>ep 1</title><link>https://pod.test/e1</link>'
+            '<enclosure url="https://cdn.test/e1.mp3?a=1&amp;sig=2" type="audio/mpeg"/>'
+            '<pubDate>Tue, 01 Sep 2026 10:00:00 GMT</pubDate></item>')
+    py_out = []
+    mod._parse_rss_item(ET.fromstring(item), "S", "s_1", "security", py_out)
+    assert py_out, "Python 侧没解析出条目，fixture 与生产不同形"
+    py_url = py_out[0].get("media_url", "")
+    assert py_url, "Python 侧没取到 enclosure：%s" % py_out[0].keys()
+
+    xml = '<?xml version="1.0"?><rss><channel>%s</channel></rss>' % item
+    script = ("const s=%r;\neval(s);\nconst its=parseFeed(%s,'s_1',50);\n"
+              "process.stdout.write(JSON.stringify(its[0]&&its[0].media_url||''));\n"
+              % (_js_pipeline_src_for_media(), json.dumps(xml)))
+    out = subprocess.run([node, "-e", script], capture_output=True)
+    assert out.returncode == 0, out.stderr.decode("utf-8", "replace")[:300]
+    js_url = json.loads(out.stdout.decode("utf-8"))
+    assert js_url == py_url, (
+        "RSS enclosure：JS %r / Python %r —— parseFeed 内联那一处没解实体，"
+        "音频地址带 &amp; 时两条通道给出不同的可播地址" % (js_url, py_url))
+
+
