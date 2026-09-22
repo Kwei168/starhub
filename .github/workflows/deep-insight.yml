@@ -1,0 +1,135 @@
+name: Deep Insight (nightly)
+# 独立深度洞察管线。刻意与 update.yml 不同并发组，两边互不取消：
+# 之前深度洞察串在每小时构建里（fetch_and_build.py 无条件调用），单场 351.8s，
+# 一跑就撞上下一场定时刷新被 cancel-in-progress 砍掉，等于白跑。
+# 阶段 1 边界：本工作流只新增文件，不改 update.yml / build_daily_insight.py 的任何行为。
+on:
+  # 首夜先不自动发布：spec §4 明写"并发档位由首夜压测读数定"，而 §6.4 要求先拿到
+  # 真模型的字数/耗时/429/上下文利用率读数。手动 purpose=test 跑完、读数确认后再放 cron 回来。
+  # schedule:
+  #   - cron: '0 20 * * *'          # UTC 20:00 = 北京 04:00，避开北京 05:00 全量场与整点刷新
+  workflow_dispatch:
+    inputs:
+      purpose:
+        description: 'test = 只出 artifact 不提交；publish = 走并发提交协议入库'
+        type: choice
+        required: true
+        default: 'test'
+        options: ['test', 'publish']
+      events_limit:
+        description: '本场最多深挖几个事件'
+        required: false
+        default: '12'
+
+concurrency:
+  group: deep-insight
+  cancel-in-progress: false       # 后来的排队，绝不砍在跑的（含白天的 starhub-update 场）
+
+permissions:
+  contents: write                 # 夜场只写自己的两个路径，走 CAS；read 令牌会让 publish 必定 403
+
+jobs:
+  deep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+      AGNES_API_KEYS: ${{ secrets.AGNES_API_KEYS }}
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # 只装测试依赖。刻意不装 llama-index / faiss / fastembed：夜场读现网产物 + 标准库
+      # HTTP 就够，那套依赖在 update.yml 里装失败过且是 continue-on-error 静默降级。
+      - name: Install test-only deps
+        run: pip install --quiet pytest pyyaml
+
+      - name: Preflight judgements
+        run: python -m pytest tests/deep_insight/ -q -s
+
+      - name: Resolve purpose
+        id: p
+        env:
+          # dispatch 输入一律经 env 传值，不许裸插值进 run：本工作流带 contents:write，
+          # events_limit 填 `12"; curl … | sh; #` 就等于把远程命令执行开放给任何有写权限的人。
+          GH_EVENT: ${{ github.event_name }}
+          IN_PURPOSE: ${{ github.event.inputs.purpose }}
+        run: |
+          set -euo pipefail
+          if [ "$GH_EVENT" = "schedule" ]; then
+            echo "purpose=publish" >> "$GITHUB_OUTPUT"
+          else
+            case "${IN_PURPOSE:-test}" in
+              test|publish) echo "purpose=${IN_PURPOSE:-test}" >> "$GITHUB_OUTPUT" ;;
+              *) echo "::error title=purpose 取值非法|只允许 test/publish"; exit 2 ;;
+            esac
+          fi
+
+      # pipefail 不能省：Actions 默认 shell 是 `bash -e {0}`（无 pipefail），
+      # `python ... | tee` 的退出码来自 tee，脚本半夜崩掉这场照样绿。
+      - name: Night deep insight run
+        shell: bash
+        env:
+          RUN_PURPOSE: ${{ steps.p.outputs.purpose }}
+          RUN_EVENTS_LIMIT: ${{ github.event.inputs.events_limit || '12' }}
+        run: |
+          set -euo pipefail
+          case "$RUN_EVENTS_LIMIT" in
+            ''|*[!0-9]*) echo "::error title=events_limit 非数字|必须是整数，实为 $RUN_EVENTS_LIMIT"; exit 2 ;;
+          esac
+          python build_deep_insight.py \
+            --purpose "$RUN_PURPOSE" \
+            --events-limit "$RUN_EVENTS_LIMIT" \
+            --workers 1 \
+            --out _night_state | tee deep_run.log
+
+      # spec §4 失败策略：只在当夜窗口内原地重试 1 次，不做白天自动补跑。
+      # checkpoint 就是为这一步存在的 —— 已完成的条目不再调模型，重试只补没做完的那部分。
+      - name: Night retry (in-place, once)
+        if: failure()
+        shell: bash
+        env:
+          RUN_PURPOSE: ${{ steps.p.outputs.purpose }}
+          RUN_EVENTS_LIMIT: ${{ github.event.inputs.events_limit || '12' }}
+        run: |
+          set -euo pipefail
+          case "$RUN_EVENTS_LIMIT" in
+            ''|*[!0-9]*) echo "::error title=events_limit 非数字|必须是整数"; exit 2 ;;
+          esac
+          echo "[夜场] 上一趟失败，原地重试 1 次（checkpoint 会跳过已完成的条目）" | tee -a deep_run.log
+          python build_deep_insight.py \
+            --purpose "$RUN_PURPOSE" \
+            --events-limit "$RUN_EVENTS_LIMIT" \
+            --workers 1 \
+            --out _night_state | tee -a deep_run.log
+
+      - name: 上一夜是否漏跑（GitHub cron 准点性不可信，只告警不自动白天补跑）
+        if: always()
+        run: |
+          # 产物名是北京时间日期，必须按北京日取昨天；按 UTC 减 20h 会检到前天，
+          # 那个哨兵就变成恒绿的摆设。
+          y=$(TZ=Asia/Shanghai date -d 'yesterday' +%F)
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://kwei168.github.io/starhub/daily-deep-$y.json?cb=$RANDOM")
+          if [ "$code" != "200" ]; then
+            echo "::warning title=昨夜深度产物缺失|daily-deep-$y.json HTTP $code，需人工 purpose=publish 补跑"
+          fi
+
+      - name: Upload artifacts (test 模式唯一的产物出口)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-insight-${{ github.run_number }}
+          path: |
+            _night_state/
+            deep_run.log
+          if-no-files-found: error
+
+      - name: 质量读数（合格/快讯/未做/等待/429）
+        if: always()
+        run: grep -E "^\[夜场\]" deep_run.log || true
