@@ -30,6 +30,10 @@ SCHEMA_VERSION = "deep-insight/v1"
 
 NARR_MIN, NARR_MAX = 2500, 4000
 PARAS_MIN = 6
+# 单说"2500-4000 字"模型交回来的是 1748/2307/1902（run 35749459676 三条实测），
+# 重写两轮也停在同一水平：总量它不接，段数它接。所以把配额下沉到段，
+# 并按 PARAS_MIN*PARA_MIN >= NARR_MIN 留出余量（字数口径含标点，实测略偏小）。
+PARA_MIN = NARR_MIN // PARAS_MIN + 50
 CLAIM_MIN, CLAIM_MAX = 3, 10
 CHAINS_MIN, CHAINS_MAX = 2, 6
 FORECAST_MIN, FORECAST_MAX = 1, 4
@@ -265,23 +269,33 @@ def append_jsonl(path, rows):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def can_publish(events, done, budget_used_calls=0, call_cap=80):
-    """半套产物不上线；只有"撞预算主动收口"允许带 not_run 上线。"""
+def can_publish(events, done, budget_used_calls=0, call_cap=80, stopped_by_cap=False):
+    """半套产物不上线；只有"撞预算/撞墙钟主动收口"允许带 not_run 上线。
+
+    `stopped_by_cap` 必须单独进来：墙钟到点时 `llm_calls` 往往远低于 `call_cap`，
+    只看调用数的话，§4"已经做完的照样发布"就成了假话 —— 实测那种夜里
+    `published={'status':'blocked'}`、提交 0、退出码 0，钱花完而线上一片空白。
+    """
     total = len(events or [])
     got = len(done or [])
     if total == 0 or got == 0:
         return False
     if got >= total:
         return True
-    return budget_used_calls >= call_cap
+    return bool(stopped_by_cap) or budget_used_calls >= call_cap
 
 
-def missing(events, done, budget_hit=False):
-    """done 可传条目列表或 id 列表 —— 两处调用方本来就拿的是不同形态。"""
+def missing(events, done, stop=""):
+    """done 可传条目列表或 id 列表 —— 两处调用方本来就拿的是不同形态。
+
+    收口原因要分账：`budget` 是调用预算用完（下一步是加条目预算），
+    `wallclock` 是窗口不够（下一步是提并发/加 key）。写成同一个名字，
+    读日志的人就会拿错下一步。
+    """
     got = set()
     for d in (done or []):
         got.add(d.get("id") if isinstance(d, dict) else d)
-    reason = "not_run:budget" if budget_hit else "not_run:incomplete"
+    reason = "not_run:%s" % stop if stop else "not_run:incomplete"
     return [{"id": e.get("id"), "reason": reason} for e in (events or []) if e.get("id") not in got]
 
 
@@ -772,20 +786,25 @@ def build_prompt(event, ctx):
         "事件：%s（主题 %s）\n\n"
         "输出一个 JSON 对象，字段必须是：%s。\n"
         "硬性要求（不满足会被判不合格并重写）：\n"
-        "- narrative：成文论述，2500-4000 字，至少 6 段，段落式行文，禁止分点罗列的条目体；"
-        "必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。\n"
+        "- narrative：成文论述，%d-%d 字（**按 %d 字写，别贴下限**），"
+        "至少 %d 段且**每段不少于 %d 字**，段落式行文，"
+        "禁止分点罗列的条目体；必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。"
+        "段数够、每段短，仍判不合格。\n"
         "- claims：3-10 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
         "写别的编号等于引用不存在的内容，整条判不合格。\n"
         "- causal_chains：2-6 条，每条含 trigger/mechanism/outcome/confidence/evidence"
         "（evidence 同样只能取上面那批编号），写清为什么发生而不是只说发生了什么。\n"
-        "- forecasts：1-4 条，每条含 claim(≤80字)/horizon_days(只能是 3、7 或 14)/"
+        "- forecasts：1-4 条，每条含 claim(≤80字)/horizon_days(只能是 3、7 或 14，"
+        "写成 30、90 一律判不合格 —— 永不到期的预测不算预测)/"
         "check_metric（到期用什么可核验指标判命中，不许写“未来如何”这类空话）。\n"
         "- quality：对证据本身下判断，verdict 只能取 一手/深度/数据支撑/转载/通稿/营销，"
-        "score 0-100，why 20-120 字，basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
+        "score 0-100，why 20-120 字（**按 60-90 字写**，超 120 判不合格），"
+        "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
         "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
         "- citations：5-12 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), ", ".join(PROMPT_FIELDS),
+         NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN,
          id_list or "（无）", id_list or "（无）", "\n\n".join(blocks))
 
 
@@ -1490,8 +1509,16 @@ def build_payload(events, anchor_meta, budget, date_str, key_count=0, workers=1,
             "events": events}
 
 
+_BJ_TZ = timezone(timedelta(hours=8))
+
+
 def now_bj_iso():
-    return (datetime.now(timezone.utc) + timedelta(hours=8)).replace(microsecond=0).isoformat() + "+08:00"
+    """北京时间的 ISO 串。偏移量只能有一个：`datetime.now(timezone.utc) + 8h` 的 tzinfo
+    仍是 UTC，`isoformat()` 会自己写 `+00:00`，再手拼 `+08:00` 就得到
+    `2026-09-22T23:52:05+00:00+08:00` —— `fromisoformat` 直接解析不了，
+    而 spec §5 把这个字段交给页面"更新于"与历史归档读。
+    """
+    return datetime.now(_BJ_TZ).replace(microsecond=0).isoformat()
 
 
 # ───────────────────────────── 模型客户端与真 API ──────────────────────────
@@ -1666,6 +1693,13 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
               quality_url=SOURCE_QUALITY_URL):
     """跑一整夜。purpose=test 只落盘不提交；publish 才走 CAS 提交。"""
     log = log or (lambda s: None)
+    keys = list(keys if keys is not None else env_keys())
+    if client is None and not keys:
+        # 这道拒绝必须在任何出网之前：下面锚点、分块池、质量快照三连读是几十 MB，
+        # 而"没有 key"的场这些字节一条也用不上 —— 先读再抛等于把钱花光才报告没钱。
+        raise RuntimeError(
+            "没有 AGNES_API_KEY/AGNES_API_KEYS，夜场拒绝空跑：无 key 时每条都会等满 "
+            "wait_cap（12 条 × 900s = 3h）才收场，整场只留下 checkpoint 和一个绿勾。")
     os.makedirs(out_dir, exist_ok=True)
     date_str = date_str or (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d")
     anchor_raw = anchor_raw if anchor_raw is not None else get(_bust(ANCHOR_URL))
@@ -1674,7 +1708,6 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     events = anchor["events"][:max(1, int(events_limit))]
     if pool is None:
         pool, _bad = load_rss_pool(urls=urls, get=get, log=log, sleep=sleep)
-    keys = list(keys if keys is not None else env_keys())
     # 优质判定的外证之一：白天的信源质量表。读不到只少一路外证（404 得起），
     # 但坏文件必须炸 —— 当空表用会让所有源都变成"无外证"，与"低质"是两回事。
     if quality_raw is None:
@@ -1686,6 +1719,12 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
         source_quality = json.loads(raw_q) if isinstance(raw_q, str) and raw_q.strip() else raw_q
         if not isinstance(source_quality, dict):
             raise ValueError("quality_raw 必须是 dict 或 JSON 对象文本")
+        # 注入路径也要收成同一种形状：调用方十有八九传的是"那份现网产物"整份
+        # （`{"generated_at":…, "quality":{…}}`），而 HTTP 路径取的是 quality 子表。
+        # 两边形状不一致时，注入方拿到的是外层文档，查表命中恒 0 且不报错 ——
+        # 和这次在线上踩到的"外证恒缺"是同一个形态。
+        if isinstance(source_quality.get("quality"), dict):
+            source_quality = source_quality["quality"]
     budget = Budget(call_cap=call_cap, budget_tokens=budget_tokens)
     budget.start()
     kp = KeyPool(keys, workers=workers)
@@ -1695,34 +1734,48 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
         # 这里原来是 `client or FakeClient()`：主入口一旦忘传 client，夜场就悄悄拿假正文
         # 跑完整场，产出的东西与真洞察长得一样，还能走完判定与渲染。发布路径另有硬闸，
         # 但"test 模式下没人看得出产物是假的"同样不可接受，所以默认必须是真客户端。
-        if not keys:
-            raise RuntimeError(
-                "没有 AGNES_API_KEY/AGNES_API_KEYS，夜场拒绝空跑：无 key 时每条都会等满 "
-                "wait_cap（12 条 × 900s = 3h）才收场，整场只留下 checkpoint 和一个绿勾。")
+        # （无 key 的拒绝已经提到函数开头，在出网之前就抛了。）
         client = AgnesClient()
     ck = os.path.join(out_dir, "deep-%s.jsonl" % date_str)
     prev_recs = load_records(ck)
     done = {r.get("id") for r in prev_recs if r.get("id")}
     recs = []
     stopped_by_cap = False
+    stop_reason = ""
+    failed = []
     for ev in events:
         if ev["id"] in done:
             log("[夜场] %s 已在 checkpoint 里，跳过" % ev["id"])
             continue
         if budget.over_time():
             stopped_by_cap = True
+            stop_reason = "wallclock"
             log("::warning title=夜场窗口将尽|已用 %.0fs ≥ 墙钟预算 %ds，剩余条目记 not_run"
                 "（产物照写，不等平台掐）" % (budget.elapsed_s(), budget.time_cap_s))
             break
         if budget.llm_calls >= call_cap:
             stopped_by_cap = True
+            stop_reason = "budget"
             log("[夜场] 调用预算 %d 已用完，剩余条目记 not_run" % call_cap)
             break
+        # 单条的等待预算要按"离墙钟还剩多少"缩水再传进去。`wait_cap_s` 原来是每次调用
+        # 各领 900s：一条事件最多 generate×3 + judge×1 = 4 次，最坏 6×900s 全花在等上，
+        # 于是"每条 ≤900s"的约定形同虚设，而循环顶那道墙钟闸根本来不及问。
+        item_wait = wait_cap_s
+        if budget.time_cap_s > 0:
+            item_wait = max(1.0, min(wait_cap_s, budget.time_cap_s - budget.elapsed_s()))
         try:
-            r = deepen_one(ev, pool, client, budget, kp, wait_cap_s=wait_cap_s, sleep=sleep,
+            r = deepen_one(ev, pool, client, budget, kp, wait_cap_s=item_wait, sleep=sleep,
                            max_regen=max_regen, source_quality=source_quality)
         except RateLimited as e:
             log("[夜场] %s 等待超上限(%s)：记 not_run，不阻断全场" % (ev["id"], e))
+            continue
+        except Exception as e:
+            # 一次瞬时错误（Agnes 5xx、上游分块抖动）不能把整晚换掉：产物在循环之后才落盘，
+            # 异常穿出去就是"钱花完了、JSON/HTML 一个都没有、还看不出为什么"。
+            failed.append("%s:%s" % (ev.get("id"), type(e).__name__))
+            log("::warning title=条目失败但继续|%s 抛 %s（%s），本场其余条目照做" % (
+                ev.get("id"), type(e).__name__, str(e)[:120]))
             continue
         recs.append(r)
         append_jsonl(ck, [r])
@@ -1758,7 +1811,10 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     # 的话读者在页面上永远只看到"待验证"（§5 要预测卡含到期与命中状态）。
     payload["settled_predictions"] = settled_rows
     payload["not_run"] = missing(events, [x.get("id") for x in ship],
-                                  budget_hit=stopped_by_cap)
+                                  stop=stop_reason)
+    # 逐条异常不再穿毁全场，但也不能 invisible：跑了几条挂了几条要进产物，
+    # 否则"三条全挂 + 页面空白"和"三条都没做"读起来一模一样。
+    payload["failed_items"] = failed
     jpath = os.path.join(out_dir, "daily-deep-%s.json" % date_str)
     hpath = os.path.join(out_dir, "deep-insight.html")
     ppath = os.path.join(out_dir, PREDICTIONS_NAME)
@@ -1777,7 +1833,8 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     want = [e["id"] for e in events]
     if all_degraded or not can_publish([{"id": i} for i in want],
                         [x.get("id") for x in ship],
-                        budget_used_calls=budget.llm_calls, call_cap=call_cap):
+                        budget_used_calls=budget.llm_calls, call_cap=call_cap,
+                        stopped_by_cap=stopped_by_cap):
         log("::warning title=本场不发布|完成 %d/%d（全降级或未撞预算的半成品），本场不提交" % (
             len(ship), len(want)))
         out["published"] = {"status": "blocked", "attempts": 0}

@@ -168,3 +168,60 @@ def test_parser_survives_the_shapes_models_actually_return():
 
     # 截断不许伪装成"写得太短"：读出来必须是 None，让上层记 truncated
     assert D.parse_model_json('{"narrative": "' + "字" * 3000) is None, "半截 JSON 不该被当合格"
+
+
+def test_narrative_quota_is_pushed_down_to_the_paragraph_and_matches_the_contract():
+    """现网 run 35749459676 三条读数 1748 / 2307 / 1902 字：段数它照做，总量它不接，
+    重写两轮停在同一水平。所以字数配额必须下沉到"每段"，而且下沉后的数字要和契约同源 ——
+    否则改了常量忘改文案，prompt 承诺的长度与 `validate_event` 判的长度就分叉了。
+    """
+    p = D.build_prompt({"title": "t", "topic": "ai", "summary": "s", "links": []}, _ctx())
+    assert D.PARA_MIN > 0
+    assert ("每段不少于 %d 字" % D.PARA_MIN) in p, "段配额没进 prompt：%s" % p[:300]
+    assert ("%d-%d 字" % (D.NARR_MIN, D.NARR_MAX)) in p, "总区间不是从常量渲染的"
+    assert D.PARAS_MIN * D.PARA_MIN >= D.NARR_MIN, \
+        "段配额乘不出来 %d 字，模型照做也过不了契约" % D.NARR_MIN
+
+
+def test_prompt_aims_inside_the_range_instead_of_at_its_edges():
+    """只报硬区间，模型就贴着边界交付 —— 这是现网六个读数判出来的，不是猜的。
+
+    run 35749459676（15:45Z）三条：narrative 1,748 / 1,902 / 2,307 全低于 2,500 下限，
+    quality.why 149 / 154 / 162 全超 120 上限。区间端点被复述了两次（首版 + 重写反馈），
+    模型仍然把"不超过 120"理解成"约 150"、把"2500 起"理解成"约 2000"。
+    所以 prompt 必须给出**严格落在区间内**的目标数字；光把边界念一遍不算约束。
+    """
+    p = D.build_prompt({"title": "t", "topic": "ai", "summary": "s", "links": []}, _ctx())
+    asked = [int(x.replace(",", "")) for x in re.findall(r"按\s*([\d,]+)(?:-\d+)?\s*字写", p)]
+    narr_targets = [n for n in asked if D.NARR_MIN < n < D.NARR_MAX]
+    assert narr_targets, "narrative 只复述了边界，没有区间内目标（模型会贴下限写）：%s / %s" % (
+        asked, p[p.find("narrative"):p.find("narrative") + 200])
+    i = p.find("quality：")
+    assert i >= 0, "prompt 里没有 quality 那条要求"
+    why_seg = p[i:i + 300]
+    why_pairs = re.findall(r"(\d+)\s*-\s*(\d+)\s*字写", why_seg)
+    assert why_pairs, "why 没给区间内目标：%s" % why_seg
+    nums = [int(x) for pair in why_pairs for x in pair]
+    assert D.WHY_MIN <= min(nums) and max(nums) <= D.WHY_MAX, \
+        "why 的目标 %s 越出了硬区间 [%d,%d]，照做也不合格" % (
+            nums, D.WHY_MIN, D.WHY_MAX)
+    assert max(nums) < D.WHY_MAX, \
+        "why 的目标贴着上限（实测模型写到 149–162 字）：%s" % nums
+
+
+def test_horizon_days_states_the_enum_and_the_consequence():
+    """`horizon_days 只能是 3、7 或 14` 这一句在现网没拦住 90。
+
+    判据钉的是不变量而不是我的措辞：三个合法值都要出现，且必须写清越界的后果；
+    只说"只能是"而不说后果，模型把它当建议。
+    """
+    p = D.build_prompt({"title": "t", "topic": "ai", "summary": "s", "links": []}, _ctx())
+    i = p.find("horizon_days")
+    assert i >= 0, "prompt 里没有 horizon_days"
+    seg = p[i:i + 200]
+    for v in ("3", "7", "14"):
+        assert v in seg, "合法取值缺 %s：%s" % (v, seg)
+    assert ("不合格" in seg or "判" in seg), "没写越界的后果，模型会当建议：%s" % seg
+    # 光列合法值没拦住现网的 90：这一句的机制就是"把写错的样子点名回去"。
+    assert any(x in seg for x in ("30", "90", "一年内")), \
+        "没给反例，模型仍会把 horizon 写成 90（现网实测）：%s" % seg

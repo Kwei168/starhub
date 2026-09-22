@@ -521,6 +521,7 @@ def test_transient_ledger_failure_is_fatal_not_empty(tmp_path):
         D.night_run(purpose="test", client=D.FakeClient(), out_dir=str(tmp_path / "ns"),
                     keys=["k1"], anchor_raw=_anchor(["https://a.test/1"]),
                     pool=_pool_articles(6)[0], get=get, date_str="2026-09-23",
+                    quality_raw={},
                     log=lambda s: None, sleep=lambda s: None)
 
 
@@ -671,7 +672,7 @@ def test_wall_clock_cap_stops_the_loop_before_the_platform_kills_it(tmp_path, mo
     done = [e["id"] for e in doc["events"]]
     assert done == ["e1"], "墙钟预算没生效或生效太早：%s" % done
     assert answers == [True] * 20, "每条只该问一次墙钟（实际消费 %d 次）" % (22 - len(answers))
-    assert doc["not_run"] and doc["not_run"][0]["reason"] == "not_run:budget", doc["not_run"]
+    assert doc["not_run"] and doc["not_run"][0]["reason"] == "not_run:wallclock", doc["not_run"]
     assert os.path.exists(out["html"]), "收口时必须仍然落盘，否则页面是空的"
 
 
