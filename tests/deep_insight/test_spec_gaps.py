@@ -359,6 +359,59 @@ def test_changed_artifact_is_committed_again(tmp_path):
     assert calls["commit"] == 2, "内容变了却没再提交（幂等判断退化成有无记录）: %s" % calls
 
 
+def test_chunk_retry_waits_between_attempts():
+    """现网 run 35735624747 的第一趟死在 `ssl.SSLEOFError` 这种瞬时抖动上。
+    重试若紧挨着再试一次，等于在同一个坏窗口里撞两次 —— 4m51s 就这么红掉的。"""
+    n = {"i": 0}
+    body = ('(window.__CHUNKS=window.__CHUNKS||[])[0]={"sources":[{"items":[{'
+            '"title":"甲","link":"https://s.test/a","content":"正文。"'
+            ',"pub_date":"2026-09-22T10:00:00Z"}]}]}').encode("utf-8")
+
+    def get(url, timeout=90):
+        base = url.split("?")[0]
+        if base.endswith("rss-data-0.js"):
+            if n["i"] == 0:
+                n["i"] += 1
+                raise urllib.error.URLError("EOF occurred in violation of protocol")
+            return body
+        raise urllib.error.HTTPError(url, 404, "no", {}, None)
+
+    slept = []
+    pool, bad = D.load_rss_pool(get=get, log=lambda s: None, retries=2, sleep=slept.append)
+    assert slept, "两次重试之间没有退避：瞬时超时会被连撞两次后直接判整场失败"
+    assert min(slept) >= 1.0, "退避小到等于没有：%s" % slept
+    assert "https://s.test/a" in pool and bad == 0, (sorted(pool), bad)
+
+
+def test_string_shaped_evidence_is_not_iterated_character_wise():
+    """现网 evt_20260922_014 的产物里写着 `claim 引用了不存在的 chunk：c`。
+    合法编号只有 c1..c12 —— 冒出单字母 `c` 只有一种解释：模型把 evidence 给成字符串
+    "c1"，实现里 `for e in evidence` 就逐字符炸成 c、1。上一轮只修了 citations 的形状，
+    漏了 evidence，于是把好引用判成假引用，白烧两轮重写。"""
+    ids = {"c%d" % (i + 1): "https://x.test/%d" % i for i in range(6)}
+    cand = {
+        "id": "e1", "topic": "ai", "title": "标题",
+        "narrative": "\n\n".join(_para(500) for _ in range(7)),
+        "claims": [{"text": "甲", "kind": "causal", "evidence": "c1"},
+                   {"text": "乙", "kind": "causal", "evidence": "c2, c3"},
+                   {"text": "丙", "kind": "trend", "evidence": ["c3"]}],
+        "causal_chains": [{"trigger": "t", "mechanism": "m", "outcome": "o",
+                           "evidence": "c4 c5"},
+                          {"trigger": "t2", "mechanism": "m2", "outcome": "o2",
+                           "evidence": ["c5", "c6"]}],
+        "forecasts": [{"claim": "三个月内出现跟随者", "horizon_days": 3,
+                       "check_metric": "同类发布数≥3"}],
+        "quality": {"verdict": "一手", "score": 80, "why": "依" * 40, "basis": ["sig:c1"]},
+        "citations": [{"id": "c%d" % (i + 1), "url": "https://x.test/%d" % i} for i in range(6)],
+    }
+    fixed = D.normalize_candidate(cand, ids)
+    assert fixed["claims"][0]["evidence"] == ["c1"], fixed["claims"][0]
+    assert set(fixed["claims"][1]["evidence"]) == {"c2", "c3"}, fixed["claims"][1]
+    assert fixed["causal_chains"][0]["evidence"] == ["c4", "c5"], fixed["causal_chains"][0]
+    ok, fails = D.validate_event(fixed, valid_ids=set(ids), valid_basis={"sig:c1"})
+    assert ok, fails
+
+
 def test_pool_discovers_more_than_three_chunks():
     """分块数是白天按体积算的（`n_chunks = ceil(total/max_size)`），夜场写死 3 块
     等于"第 4 块一出现就静默少读三分之一全文池"。现网实测第 3 块只剩 2.4% 余量，
