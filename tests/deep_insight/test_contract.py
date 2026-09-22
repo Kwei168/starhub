@@ -268,7 +268,7 @@ def test_budget_exhaustion_records_not_run_and_still_publishes(tmp_path):
     events = [{"id": "evt%d" % i} for i in range(12)]
     done = [{"id": "evt%d" % i} for i in range(8)]
     assert D.can_publish(events, done, budget_used_calls=81, call_cap=80) is True
-    assert D.missing(events, done, budget_hit=True) == [{"id": "evt8", "reason": "not_run:budget"},
+    assert D.missing(events, done, stop="budget") == [{"id": "evt8", "reason": "not_run:budget"},
                                                         {"id": "evt9", "reason": "not_run:budget"},
                                                         {"id": "evt10", "reason": "not_run:budget"},
                                                         {"id": "evt11", "reason": "not_run:budget"}]
