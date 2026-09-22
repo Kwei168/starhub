@@ -652,14 +652,15 @@ def test_live_shaped_anchor_is_not_degraded_for_missing_title(tmp_path):
 
 def test_wall_clock_cap_stops_the_loop_before_the_platform_kills_it(tmp_path, monkeypatch):
     """`Budget.time_cap_s` 不能只是个摆设：job 有 timeout-minutes 180，而产物在循环
-    之后才落盘。撞墙时被掐死 = 整晚既无产物也无红。"""
-    calls = {"n": 0}
+    之后才落盘。撞墙时被掐死 = 整晚既无产物也无红。
 
-    def clock():
-        calls["n"] += 1
-        return 0.0 if calls["n"] <= 2 else 9 * 3600.0   # start() 之后直接越过 150 分钟
-
-    monkeypatch.setattr(D, "_now", clock)
+    时间从 `over_time` 的脚本里来，不从假 `_now` 的调用次数里来。时钟的读取点是实现的
+    自由度（KeyPool 探空闲、snapshot 报 elapsed_s 都在这条链上），按"第几次调用翻面"
+    写出来的判据会随无关改动漂移：CI 上两条全跑完就是这个原因，本地却因为读取点少而绿。
+    真正的时钟算术单独由 test_budget_wall_clock_arithmetic 钉住。
+    """
+    answers = [False, True] + [True] * 20
+    monkeypatch.setattr(D.Budget, "over_time", lambda self: answers.pop(0))
     pool, links = _pool_articles(6)
     anchor = json.dumps({"date": "2026-09-22", "events": [
         {"id": "e1", "title": "一", "topic": "ai", "summary": "s", "key_links": links[:3]},
@@ -668,9 +669,35 @@ def test_wall_clock_cap_stops_the_loop_before_the_platform_kills_it(tmp_path, mo
     out = _run(tmp_path, pool=pool, anchor=anchor)
     doc = json.load(open(out["json"], encoding="utf-8"))
     done = [e["id"] for e in doc["events"]]
-    assert len(done) < 2, "墙钟预算没生效：两条都跑完了"
+    assert done == ["e1"], "墙钟预算没生效或生效太早：%s" % done
+    assert answers == [True] * 20, "每条只该问一次墙钟（实际消费 %d 次）" % (22 - len(answers))
     assert doc["not_run"] and doc["not_run"][0]["reason"] == "not_run:budget", doc["not_run"]
     assert os.path.exists(out["html"]), "收口时必须仍然落盘，否则页面是空的"
+
+
+def test_budget_wall_clock_arithmetic(monkeypatch):
+    """上一条把"闸门被问到就答应"钉住了，这条钉住闸门本身：真的 monotonic 算术。
+
+    三个分支都得有判据，因为每一个都曾在实现里以"永远不成立"的形态出现过：
+    start() 之前 t0 是 None（`if self.t0` 会把起点正好为 0 当成没开始）、恰好等于
+    预算的边界、以及 time_cap_s<=0 表示不设墙钟。
+    """
+    box = {"v": 0.0}
+    monkeypatch.setattr(D, "_now", lambda: box["v"])
+    cap = 150 * 60
+    b = D.Budget(call_cap=10, time_cap_s=cap)
+    assert not b.over_time(), "还没 start() 就报超时 = 一开场就收工"
+    assert b.elapsed_s() == 0.0
+    b.start()
+    box["v"] += cap - 1
+    assert not b.over_time(), "预算内就该继续跑"
+    box["v"] += 1
+    assert b.over_time(), "到点必须收口（边界含等于）"
+    assert b.elapsed_s() == float(cap)
+    off = D.Budget(call_cap=10, time_cap_s=0)
+    off.start()
+    box["v"] += 10 ** 6
+    assert not off.over_time(), "time_cap_s=0 表示不设墙钟，不是永远超时"
 
 
 # ── 现网第一跑真撞出来的形状问题：模型可以给字符串，不是只给 dict ──────────
