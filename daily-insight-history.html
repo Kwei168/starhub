@@ -149,34 +149,34 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-23">2026-09-23 (12 事件)</option><option value="day-2026-09-22">2026-09-22 (12 事件)</option><option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-23">2026-09-23 (9 事件)</option><option value="day-2026-09-22">2026-09-22 (12 事件)</option><option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-23" class="day-section" >
-  <div class="day-theme">从旗舰模型价格战与跑分肉搏，到端侧芯片算力军备竞赛，再到游戏工作室重组，判断AI算力与硬件生态进入双轨白热化阶段</div>
+  <div class="day-theme">从 Opus 5.5 与 GPT-6 双发对冲，判断 AI 从性能冲刺转向成本与生态重构</div>
   
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
-    <span class="di-score">0.3</span>
+    <span class="di-score">0.5</span>
   </div>
-  <h3 class="di-label">Anthropic发布Claude Opus 5.5旗舰模型</h3>
-  <p class="di-summary">9月23日Anthropic正式发布Claude 5.5家族首款模型Claude Opus 5.5，已在全平台上线。官方称其多数任务达到Claude Fable 5.1水平，典型负载成本比Opus 5低40%，输出速度快30%以上，缓存读取再降60%。在Claude Code中，五小时限额上调20%。新模型引入responsive模式，针对用户反馈优化句式清晰度，减少“Claude腔”。</p>
-  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wne89f/introducing_claude_opus_55_40_cheaper_and_smarter/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/ClaudeAI/comments/1wnecg9/introducing_claude_opus_55_the_first_model_in_our/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://aihot.news/items/cmucwdp630r65roedegalvwsl" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">Opus 5.5 跑分全面领先 GPT-6 Sol 但成本争议分化</h3>
+  <p class="di-summary">Anthropic 的 Claude Opus 5.5 与 OpenAI 的 GPT-6 Sol 同日发布并引发实测对比。Reddit 用户汇总基准显示 Opus 5.5 在所有列出的基准上全面胜出 GPT-6 的 Astra/Sol 型号；AA Intelligence Index 榜单称其高出 GPT-6 Sol 11 分。但在成本层面存在分歧：GPT-6 Sol 在 GDPval 每任务成本约 1.06 美元，而第三方 3D 场景测试显示 Opus 5.5 成本是 GPT-6 Sol 的 13 倍（$4.37 对 $0.34），且 AA 测得 Opus 5.5 每任务输出约 119K token，Sol 约 31K token。</p>
+  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/ClaudeAI/comments/1wnk240/holy_shit_it_refuses_to_eat_usage/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://aihot.news/items/cmud8h1hd02wiroc2ik7tuk5y" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.reddit.com/r/OpenAI/comments/1wnk30g/opus_55_and_gpt6_sol_dropped_on_the_same_day_so_i/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，Anthropic正式发布Claude 5.5家族首款旗舰模型Claude Opus 5.5，当日即在全平台（网页端、Claude Code）上线[1]。官方数据表明，Opus 5.5在多数任务上的表现达到上一代旗舰Claude Fable 5.1的水平，但运行成本较Opus 5降低约40%，输出速度提升30%以上，缓存读取成本再降60%[1]。针对长期存在的用户反馈，该版本重点优化了句式清晰度与信息密度，力求减少“Claude腔”[31]。此外，Anthropic引入了“responsive模式”，允许模型先用一句话快速回应再展开细节[2]。在Claude Code中，五小时会话限额同步上调20%，因定价降低，同等额度内可用量增加25%[1]。作为安全升级的一部分，针对网络安全和生物学的特定风险请求将被分流至更低版本的Opus 4.8或Opus 5处理，相关模型已通过Frontier Design和METR等外部伙伴的测试[23]。Sonnet 5.5与Haiku 5.5预计将在数周内跟进发布[1]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Opus 5.5以“更强更便宜”的组合拳直接冲击前沿模型定价体系，部分开发者实测显示编程任务成本较竞品Fable 5.1低51%，这可能促使Codex用户回流至Claude阵营[20][33]。中期：Anthropic大幅加快迭代节奏（从4.6到5.5），打破了外界对其“呼吁放缓”的刻板印象，可能迫使OpenAI等竞争对手加快GPT-6系列的发布进度以应对竞争压力[32]。长期：若成本结构持续优化，Anthropic有望在保持安全对齐优势的同时，进一步巩固其在高价值企业级工作负载（如编程代理、复杂推理）中的市场份额，确立技术代差[6]。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>TechCrunch (素材29)着重强调这是Anthropic“迄今测试过的性能最强模型”，侧重于绝对性能的突破；而AGI Hunt (素材17)则指出存在质疑声音，有评论认为其每任务Token消耗较高，登顶智能指数榜单可能存在“水分”。此外，社区舆论 (素材32)呈现出讽刺角度，指出Anthropic一边呼吁放缓前沿发展，一边加速迭代，形成了叙事上的矛盾。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>我们让Opus 5.5和Fable 5.1各自将HAProxy从C移植到Rust...Opus 5.5在9.5小时内完成，而Fable 5.1用了12小时，且成本低了51%。</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>鉴于Opus 5.5已确立对Fable 5.1的性价比优势，随着Sonnet 5.5和Haiku 5.5在数周内的跟进，Anthropic有望在Q4前完成5.5家族的全线覆盖，并进一步挤压Mid-tier模型的利润空间。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，Anthropic发布Claude Opus 5.5，OpenAI同日发布GPT-6 Sol与Luna。Anthropic在发布当天将Opus 5.5定价降至$4/$20（每百万token），较前代Opus 5的$5/$25降低约20%。OpenAI称Sol/Luna基于GPT-6 Astra技术，API价格较GPT-5.6促销价降低50%，其中Sol为$2/$10，Luna为$0.10/$0.50，并向Plus/Pro/Business/Enterprise及Edu用户开放。第三方对比显示，Opus 5.5在AA Intelligence Index上以58分领先GPT-6 Sol的47分，高出11分；Reddit用户汇总基准测试称Opus 5.5在所有列出的基准上全面胜出GPT-6的Astra/Sol型号。然而，成本数据存在分歧：AA测试显示Opus 5.5每任务输出约119K token，GPT-6 Sol约31K token；GDPval基准下Sol每任务成本仅约1.06美元。第三方3D场景生成测试中，Opus 5.5总成本达$4.37，GPT-6 Sol仅$0.34，相差约13倍。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Opus 5.5以性能优势抢占旗舰认知，但GPT-6 Sol以低成本侵蚀中低端市场，两家厂商在同日发布形成直接碰撞。中期：Anthropic通过降价20%+性能跃升巩固高端地位；OpenAI则利用规模效应将价格腰斩，挤压Fable 5.1、GPT-6 Astra及大量开源/闭源模型的生存空间。长期：模型迭代周期加速，版本号「内卷」成为常态；若Anthropic重演此前「降智」争议，Opus 5.5口碑可能回潮。行业将更多关注「每任务成本」而非单一token单价，性价比竞争从单点跑分转向真实工作负载。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt/models hot=10、hot=12、hot=8：强调Opus 5.5跑分全胜、降价提速、综合表现胜过GPT-6 Sol。AGI Hunt/models hot=5、hot=9：指出Opus 5.5单任务token消耗极高、成本是GPT-6 Sol的数倍，Sol靠省钱取胜。AGI Hunt/multimodal hot=1：3D场景测试显示Opus 5.5成本是GPT-6 Sol的13倍，质疑实际性价比。RSS/AI Hot 7天公开池（Every团队）：给出「明确取舍」的结论，未披露具体分数。AIHOT（Cognition/Devin）：称GPT-6 Sol在FrontierCode 1.1上以低61%成本达到GPT-5.6 Sol同等分数。Reddit用户Angaisb_：实测GPT-6 Sol在DeepSWE上略低于GPT-5.6 Sol，仅价格更便宜。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>Opus 5.5 在四个场景中产出更精细的渲染效果,但总成本达 $4.37;GPT-6 Sol 仅花 $0.34,成本相差约 13 倍。</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计未来几周将涌现更多真实工作负载（如编码agent、Computer Use）下的端到端成本对比，市场将从「基准跑分」转向「每任务产出效率」的定价竞争。若Anthropic未能持续维持5.5版本的稳定性，OpenAI可能借GPT-6 Sol/Luna的价格优势快速蚕食高端用户。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.reddit.com/r/singularity/comments/1wne89f/introducing_claude_opus_55_40_cheaper_and_smarter/" target="_blank" rel="noopener">[1] reddit.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/ClaudeAI/comments/1wnecg9/introducing_claude_opus_55_the_first_model_in_our/" target="_blank" rel="noopener">[2] reddit.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmucwdp630r65roedegalvwsl" target="_blank" rel="noopener">[3] aihot.news&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/ClaudeAI/comments/1wnf7sb/opus_55_is_40_cheaper_while_being_30_faster_than/" target="_blank" rel="noopener">[17] reddit.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmucxgajz0sfiroedxx6y9qyw" target="_blank" rel="noopener">[20] aihot.news&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.reddit.com/r/ClaudeAI/comments/1wnk240/holy_shit_it_refuses_to_eat_usage/" target="_blank" rel="noopener">[1] reddit.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmud8h1hd02wiroc2ik7tuk5y" target="_blank" rel="noopener">[2] aihot.news&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/OpenAI/comments/1wnk30g/opus_55_and_gpt6_sol_dropped_on_the_same_day_so_i/" target="_blank" rel="noopener">[3] reddit.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/singularity/comments/1wnjmwl/every_benchmark_comparison_for_opus_55_and_gpt6/" target="_blank" rel="noopener">[5] reddit.com&#8599;</a> <a class="di-cite" href="https://x.com/testingcatalog/status/2102523754186256535" target="_blank" rel="noopener">[7] x.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -184,22 +184,22 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
-    <span class="di-score">0.2</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">OpenAI发布GPT-6 Sol和Luna双模型</h3>
-  <p class="di-summary">9月23日OpenAI发布GPT-6系列新成员GPT-6 Sol和GPT-6 Luna，已在ChatGPT Work、Codex及API上线。两款模型沿用GPT-6 Astra训练方法，API价格较GPT-5.6促销价降低50%（Sol输入$2/输出$10，Luna输入$0.10/输出$0.50）。官方称内部事实性评测显示GPT-6 Sol错误数约为前代一半，但社区实测指出其在DeepSWE等基准跑分略低于GPT-5.6 Sol，性能表现存在争议。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud2dm9s03w3ro5yar53tpf3" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wngzou/introducing_gpt6_sol_and_luna/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/001.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">Anthropic 发布 Opus 5.5 并称其为迄今最强模型</h3>
+  <p class="di-summary">Anthropic 发布 Claude Opus 5.5，官方称其在大多数任务上与 Fable 5.1 持平，运行成本比 Opus 5 低约 40%，速度提升约 30%，并在多项基准上击败 Fable 5.1 与 Astra。新模型引入 responsive 模式（先用一句话回应再展开），同时承诺减少「Claude 腔」。Sonnet 5.5 与 Haiku 5.5 预计数周内跟进，定价为 $4/$20。</p>
+  <div class="di-links"><a class="di-link" href="https://the-decoder.com/claude-opus-5-5-matches-fable-5-1-at-40-percent-lower-cost-as-anthropic-promises-to-fix-claudish-writing/" target="_blank" rel="noopener">the-decoder.com&#8599;</a><a class="di-link" href="https://techcrunch.com/2026/09/22/anthropic-releases-opus-5-5-with-lower-prices-and-fable-level-performance/" target="_blank" rel="noopener">techcrunch.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/ClaudeAI/comments/1wnecg9/introducing_claude_opus_55_the_first_model_in_our/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，OpenAI 正式发布 GPT-6 系列新模型 GPT-6 Sol 与 GPT-6 Luna [1]。两款模型基于 GPT-6 Astra 的训练方法，旨在将专业工作、编码及对齐等方面的性能带入更经济的产品线 [3]。定价方面，相比 GPT-5.6 促销价直接下调 50%：Sol 模型输入单价从 $4 降至 $2，输出从 $20 降至 $10；Luna 模型输入从 $0.20 降至 $0.10，输出从 $1.20 降至 $0.50（每百万 token）[5]。其中 Luna 价格在两个月内从 $6 暴跌至 $0.50 [12]。产品层面，Sol 和 Luna 已在 API、ChatGPT Work、Codex 上线 [6]。在性能基准测试中，GPT-6 Sol 在 AutomationBench xhigh 强度下优于 Claude Opus 5，成本仅为后者的 9%；GPT-6 Luna 在 high 强度下较前代提升 5.4%，成本降低 58% [3]。值得注意的是，OpenAI 官方强调 GPT-6 Astra 仍是整体最优秀的模型 [3]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：OpenAI 将 AI 推理成本压低至市场无对手的层级，Altman 宣称按任务计算成本无对手 [6]。此举直接挤压开源模型及竞品（如 Claude Opus 5.5）的生存空间，后者在横评中虽全基准胜出但价格缺乏优势 [25]。中期：Luna 极低的输入价格（$0.10）将刺激对成本敏感的大规模长文本应用场景落地，推动 RAG 和业务自动化部署加速。长期：OpenAI 通过‘高配低价’策略进一步固化 GPT 系列的生态垄断地位，迫使行业竞争从‘算力军备’转向‘极致成本控制’。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>IT之家等信源强调 GPT-6 Sol/Luna 在 Benchmark 上全面优于竞品 Opus 5 且具备显著成本优势 [3]；而社区及部分网友实测指出 GPT-6 Sol 在 DeepSWE 跑分上略低于 GPT-5.6 Sol，且 Opus 5.5 在多数基准上表现更强、性价比更高 [2]。此外，社区同时对大厂口称‘放缓’却密集发新模型的行为表示调侃与质疑 [23]。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>GPT-6 Sol 在 xhigh 强度下表现优于 Claude Opus 5，成本仅为 Opus 5 每任务成本的 9%</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>随着 Luna 成本大幅下降，预计 Q4 会出现大量基于长文本上下文的高频 API 调用场景。竞品为应对 OpenAI 的价格战，可能在 10 月前跟进新一轮降价或推出更具性价比的中间层模型。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，Anthropic正式发布Claude Opus 5.5，定位为其模型家族首款旗舰更新，标志着Claude 5.5系列的上线。官方宣称该模型在大多数任务上与Fable 5.1持平，并在多项关键基准上击败Fable 5.1及OpenAI的GPT-6 Astra。与上一代Opus 5相比，Opus 5.5的运行成本降低约40%，推理速度提升约30%，token效率显著提高。在交互体验方面，新模型引入“responsive”模式，即每条消息先以一句话快速回应，随后再展开详细论述，旨在减少此前用户反馈的“Claude腔”文风。公司同时公布定价为输入$4/百万token、输出$20/百万token。目前Opus 5.5已在全平台上线，Sonnet 5.5与Haiku 5.5预计将在数周内跟进发布。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Opus 5.5在成本下降40%的同时实现性能对标甚至超越Fable 5.1和Astra，将直接挤压同级旗舰模型的市场空间，促使竞争对手在API定价上做出反应。中期：Anthropic加快发布节奏可能引发行业对模型迭代周期的重新评估，推动其他厂商加速下一代模型的研发与上线。长期：若“更强且更便宜”成为行业常态，前沿大模型的定价基准将被重塑，使用门槛降低有望加速企业级AI应用的普及。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>TechCrunch（素材2）侧重报道Anthropic将其定义为“迄今测试过性能最强的模型”，突出官方定性；36氪等媒体（素材3/4/5）则更多聚焦于竞品对标数据，强调其击败Fable 5.1与Astra的具体基准表现；社区反馈（素材3/4/5）则对发布节奏过快表示惊讶，并关注自建基准实测结果。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>公司称其为「我们迄今测试过的性能最强的模型」</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Sonnet 5.5与Haiku 5.5发布后，Anthropic将形成完整的5.5代际产品矩阵，进一步巩固其中端市场性价比优势。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/cmud2dm9s03w3ro5yar53tpf3" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/singularity/comments/1wngzou/introducing_gpt6_sol_and_luna/" target="_blank" rel="noopener">[2] reddit.com&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/001.htm" target="_blank" rel="noopener">[3] ithome.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmud1y2ku039iro5ysl7pq6d3" target="_blank" rel="noopener">[5] aihot.news&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmud0g5vf049mro7n5qnij9op" target="_blank" rel="noopener">[12] aihot.news&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://the-decoder.com/claude-opus-5-5-matches-fable-5-1-at-40-percent-lower-cost-as-anthropic-promises-to-fix-claudish-writing/" target="_blank" rel="noopener">[1] the-decoder.com&#8599;</a> <a class="di-cite" href="https://techcrunch.com/2026/09/22/anthropic-releases-opus-5-5-with-lower-prices-and-fable-level-performance/" target="_blank" rel="noopener">[2] techcrunch.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/ClaudeAI/comments/1wnecg9/introducing_claude_opus_55_the_first_model_in_our/" target="_blank" rel="noopener">[3] reddit.com&#8599;</a> <a class="di-cite" href="https://www.youtube.com/watch?v=rFCaGc7owT8" target="_blank" rel="noopener">[5] youtube.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -207,34 +207,80 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
-    <span class="di-score">0.2</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">高通发布第六代骁龙8超级至尊版芯片</h3>
-  <p class="di-summary">高通在2026骁龙峰会发布第六代骁龙 8 超级至尊版，官方宣传为“全球最快移动 CPU”，最高主频超5.0GHz，是行业首发。CPU性能提升13%、能效提升37%，Adreno GPU性能提升44%、能效提升40%，采用2纳米制程及全新Offset PoP封装方案以改善散热。小米、vivo、OPPO、荣耀等品牌将率先采用。</p>
-  <div class="di-links"><a class="di-link" href="https://www.ithome.com/1/006/014.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/004.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/009.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
+  <h3 class="di-label">高通宣布小米 vivo 等多品牌适配第六代骁龙 8 平台</h3>
+  <p class="di-summary">高通在 2026 骁龙峰会宣布小米、vivo、红魔、REDMI、OPPO 等厂商将率先采用第六代骁龙 8 超级至尊版和第六代骁龙 8 至尊版移动平台。其中第六代骁龙 8 超级至尊版被宣传为「全球最快移动 CPU」。高通称此次双旗舰策略旨在将智能体 AI 体验引入更广泛的旗舰终端，CEO 安蒙表示智能体时代推理成为关键，边缘侧将发挥重要作用。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud8t59i03h1rojujvjxnktk" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/014.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/004.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-src">aihot</span> <span class="di-cat">consumer</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月22日9点（夏威夷时间），高通召开2026骁龙峰会，正式发布第六代骁龙8超级至尊版和第六代骁龙8至尊版两款移动平台。第六代骁龙8超级至尊版采用2纳米制程工艺，搭载两个5GHz超级内核与六个4GHz性能内核，主频成为CPU行业首超5GHz的移动端芯片，官方宣称其为“全球最快移动CPU”。性能方面，该芯片相比前代CPU性能提升13%，能效提升37%，响应速度提升15%；GPU性能提升44%。技术层面，芯片引入Adreno Neural Fusion技术，利用AI辅助图形渲染，并结合高级专业视频编解码器与智能像素控制技术强化影像处理能力。散热方面，高通首次采用Offset Package-on-Package（偏移式堆叠封装）方案，物理偏移CPU/GPU高发核心与上方内存组件，使SoC核心更直接接触均热板或石墨烯散热材料，以提升峰值性能输出的持久性。高通技术公司高级副总裁Chris Patrick表示，多旗舰策略旨在扩展移动体验边界，将智能体AI创新引入更广泛终端。首批适配品牌包括小米、vivo、红魔、REDMI、OPPO、一加、Motorola、iQOO、荣耀等。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：高通通过双旗舰策略覆盖不同价位段旗舰市场，直接刺激2026年底至2027年初安卓阵营旗舰机性能竞赛。5GHz主频突破打破移动端频率天花板，可能迫使联发科等竞争对手加速制程迭代。中期：Offset PoP封装方案的量产应用将推动手机散热结构设计革新，影响厂商内部空间布局与散热材料供应链。终端侧AI推理与Adreno Neural Fusion技术的结合，使端云协同成为移动AI标准架构，降低对云端算力的依赖。长期：2纳米制程在移动端的成熟应用进一步巩固台积电代工优势，同时“智能体AI”概念从营销术语转化为硬件级基础设施，重塑移动端AI应用场景，如实时场景理解与个性化自适应体验成为旗舰机标配。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。IT之家[1][2][4]侧重技术参数发布与OEM合作阵容，AIHOT[3][6]仅作为标题简讯源。素材中未发现数据分歧或观点冲突，所有信源均确认5GHz主频、2纳米工艺、性能/能效提升幅度及Offset PoP封装技术。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>今天我们迎来了重要里程碑，发布两款而非一款全新旗舰移动平台，带来即时、个性化且具备自适应能力的智能体 AI 体验。</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计2026年第四季度起，搭载第六代骁龙8超级至尊版的旗舰机型将陆续发布，市场竞争焦点将从单纯算力参数转向AI智能体体验的实际落地效果。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月22日9点（北京时间9月23日3点），高通在夏威夷召开2026骁龙峰会。会上，高通正式推出第六代骁龙8超级至尊版和第六代骁龙8至尊版两款旗舰移动平台，其中第六代骁龙8超级至尊版被官方定义为“全球最快移动CPU”。高通宣布小米、vivo、红魔、REDMI、OPPO、一加、Motorola、iQOO、荣耀等全球领先OEM厂商将率先在其旗舰产品中采用这两款芯片。其中，小米已官宣小米18 Pro系列将全球首发这两款处理器，并定档北京时间9月23日19:00在国内发布，随后于年内登陆全球市场。中兴通讯终端事业部总裁倪飞确认，红魔12 Pro+将搭载第六代骁龙8超级至尊版，该机型主打更轻、更薄、更窄、更圆润的设计，屏幕黑边从前代的1.25mm缩减至0.96mm，计划于2026年10月发布。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：小米18 Pro系列将于9月23日晚国内首发，红魔12 Pro+紧随其后在10月发布，迅速占据旗舰性能市场高点，对竞品形成代差压力。中期：高通双旗舰策略结合智能体AI体验的引入，将推动旗舰机型的AI功能差异化竞争，各品牌需加速适配边缘侧AI能力以维持竞争力。长期：第六代骁龙8系列在CPU主频超5GHz、GPU性能提升44%及2纳米制程上的技术突破，将进一步巩固高通在高端移动SoC市场的领导地位，并加速行业向“智能体AI时代”演进，边缘推理能力将成为旗舰机核心卖点。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>今天我们迎来了重要里程碑，发布两款而非一款全新旗舰移动平台，带来即时、个性化且具备自适应能力的智能体 AI 体验</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计Q4旗舰机市场将围绕第六代骁龙8系列的AI性能与影像处理能力展开激烈竞争，小米18 Pro系列的红发表现将直接影响后续安卓阵营旗舰定价策略。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.ithome.com/1/006/014.htm" target="_blank" rel="noopener">[1] ithome.com&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/004.htm" target="_blank" rel="noopener">[2] ithome.com&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/009.htm" target="_blank" rel="noopener">[4] ithome.com&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/011.htm" target="_blank" rel="noopener">[5] ithome.com&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/cmud8t59i03h1rojujvjxnktk" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/014.htm" target="_blank" rel="noopener">[2] ithome.com&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/004.htm" target="_blank" rel="noopener">[3] ithome.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmud6nz4m04dwroraq637m6yc" target="_blank" rel="noopener">[4] aihot.news&#8599;</a> <a class="di-cite" href="https://www.ithome.com/1/006/013.htm" target="_blank" rel="noopener">[5] ithome.com&#8599;</a> </p>
 </div>
 </article>
 
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    
-    <span class="di-score">0.0</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Claude Opus 5.5登顶AA智能指数并降价20%</h3>
-  <p class="di-summary">Anthropic发布Claude Opus 5.5，在Artificial Analysis智能指数以58分登顶，创该榜单历史最高分，较此前SOTA（Fable 5.1与GPT-6 Astra）领先5分。Anthropic同步将价格下调20%并加大缓存命中折扣。多位开发者实测称每任务比Opus 5快约30%、便宜约40%。也有研究者提醒其token消耗居各模型之首，且Opus 5曾有跑分高但体验不佳的前车之鉴。</p>
-  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/ClaudeAI/comments/1wnf7sb/opus_55_is_40_cheaper_while_being_30_faster_than/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wnezma/opus_55_jumps_to_1st_place_on_aa_intelligence/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <h3 class="di-label">Lovable 接入 Opus 5.5 与 GPT-6 Sol 并自动调度流量</h3>
+  <p class="di-summary">AI开发平台Lovable宣布重大升级，同时接入Claude Opus 5.5和GPT-6 Sol两个前沿模型。用户无需手动选择，平台会自动组合调度流量以获得最佳结果。官方和尝鲜作者均表示能力出现了令人难以置信的跃升，侧面反映出两个新模型在真实产品负载下的表现获得认可。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud8h1hd02wiroc2ik7tuk5y" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://aihot.news/items/cmud8xuq803ojroju3wzt5vmr" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">消费级</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">开发者称 Opus 5.5 与 GPT-6 Sol 令编码效率激增</h3>
+  <p class="di-summary">开发者 doodlestein 发帖称 9 月预计能再完成 2 万次 commit，并感叹使用 Opus 5.5 和 GPT-6 Sol 后效率「飞起来了」。其建议每次新模型发布后都应对自己的工作预期进行上调，半调侃半认真地反映出新一代编码模型对个人产出节奏的实际拉动。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud8h1hd02wiroc2ik7tuk5y" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/doodlestein/status/2102523691213148515" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/msg/status/2102460238087774246" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">developer</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">社区调侃双厂同日发布新模型言行不一</h3>
+  <p class="di-summary">Opus 5.5 与 GPT-6 Sol/Luna 在同一晚发布，引发社交媒体热议。大量梗图调侃大厂嘴上呼吁「给 AI 踩刹车」、实际却密集推新，呈现言行不一的状态。博主 ChrSzegedy 等感叹若不再刻意放缓，演进速度会更快，旗舰模型的命名节奏与版本号「内卷」也成为社区玩梗对象。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud8h1hd02wiroc2ik7tuk5y" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/ThePeterMick/status/2102478847308366050" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
@@ -253,12 +299,12 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
-    <span class="di-score">0.2</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">摩托罗拉Signature 27旗舰真机首秀</h3>
-  <p class="di-summary">摩托罗拉在2026高通骁龙峰会现场展示旗舰新机Signature 27真机，确认搭载第六代骁龙 8 超级至尊版芯片。该机配备2亿像素影像传感器，支持7年系统升级并内置谷歌Gemini。设计采用斜坡过渡机身后盖，背部镜头模组包含4个摄像头和1个闪光灯。</p>
-  <div class="di-links"><a class="di-link" href="https://www.ithome.com/0/886/xxx" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://aihot.news/items/cmud6nz4l04drrora3zbv09ov" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
+  <h3 class="di-label">Opus 5.5 登顶性价比帕累托前沿引发分析</h3>
+  <p class="di-summary">Reddit 用户分析称 Opus 5.5 进入了此前由 GPT-6 Astra、GPT-6 Sol 和 Fable 5.1 构成的最优象限，并独占整条帕累托前沿的高端区间（相对这几款模型）。作者认为只要智能水平不回退、且「话痨治愈」的改进能保持，这将是一次非常有意义的发布。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud8h1hd02wiroc2ik7tuk5y" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://aihot.news/items/cmud8xuq803ojroju3wzt5vmr" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -278,125 +324,10 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">高通适配阶跃300亿参数端侧模型</h3>
-  <p class="di-summary">2026骁龙峰会上，高通宣布携手阶跃、无量火及江波龙，基于第六代骁龙 8 超级至尊版端侧适配阶跃StepEdge-Omni 30B-MoE模型，并现场演示智能体助手。高通此前介绍该芯片Hexagon NPU移动端推理能力提升，可支持30B+参数MoE模型在手机端本地运行。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud6nz4l04dtroranqp7u7kf" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">专家呼吁建立AI代码智能体治理基础设施</h3>
-  <p class="di-summary">分析指出Anthropic的Opus 5.5强化了Agent编码能力，但专家警告在个人笔记本电脑等易受损环境中运行此类智能体存在安全风险，因设备可能被盗或算力耗尽。建议企业为智能体建立专用的治理基础设施，而非依赖不安全的通用环境。Anthropic表示安全干预时请求会透明地fallback到其他模型，并已邀请Frontier Design和METR进行外部测试。</p>
-  <div class="di-links"><a class="di-link" href="https://www.thestack.technology/2024/09/23/anthropic-claude-opus-5-5-coding-agents-infra/" target="_blank" rel="noopener">thestack.technology&#8599;</a><a class="di-link" href="https://thenewstack.io/claude-opus-5-5-lifecycle/" target="_blank" rel="noopener">thenewstack.io&#8599;</a></div>
+  <h3 class="di-label">高通 CEO 安蒙强调智能体时代应让技术更实用</h3>
+  <p class="di-summary">高通 CEO 安蒙在 2026 骁龙峰会表示智能体时代已经到来，推理是关键，边缘侧将发挥重要作用。他指出智能体时代承诺的不是让 AI 包办一切，而是让技术更实用、更直观、更契合需求。出色的智能体体验应具备个性化、主动、响应迅速、值得信赖的特点，骁龙旨在实现手机、PC、汽车、眼镜等终端间无缝协同。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud8t59i03h1rojujvjxnktk" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/015.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">高通CEO定义智能体时代实用主义导向</h3>
-  <p class="di-summary">高通CEO安蒙在2026骁龙峰会表示，智能体时代并非让AI包办一切，而是让技术更实用、直观。他强调骁龙处理器需满足两端需求：一是用户终端始终安全、响应迅速且易用；二是智能体能理解情境、协调任务并在获同意下行动，实现手机、PC、汽车、眼镜间的无缝协同。</p>
-  <div class="di-links"><a class="di-link" href="https://www.ithome.com/0/886/xxx" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/006/015.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">AI科学家John Platt探讨算法与科学共生</h3>
-  <p class="di-summary">Latent Space播客专访John Platt，探讨Google的Empirical Research Assistance (ERA)项目、AI如何助力应对气候变化，以及科学与AI的共同演进历史。Platt被调侃其职业生涯总是“超前二十年”，涉及卷积神经网络、核聚变研究和量子计算等领域。</p>
-  <div class="di-links"><a class="di-link" href="https://latentspace.fm/episodes/platt/" target="_blank" rel="noopener">latentspace.fm&#8599;</a><a class="di-link" href="https://www.latent.space/p/john-platt" target="_blank" rel="noopener">latent.space&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Xbox重组工作室并将光环并入动视</h3>
-  <p class="di-summary">Xbox宣布内部工作室重大重组，旨在解决团队独立运作、目标分散的问题。最大变动是将《光环》（Halo）系列及其工作室Halo Studios（原343 Industries）的管理权移交给《使命召唤》开发商动视（Activision）。Halo Studios将保留为支持玩家社区的小团队，微软正在缩减其独立开发规模。</p>
-  <div class="di-links"><a class="di-link" href="https://arstechnica.com/gadgets/2024/09/xbox-restructuring-halo/" target="_blank" rel="noopener">arstechnica.com&#8599;</a><a class="di-link" href="https://arstechnica.com/gaming/2026/09/shuffling-the-deck-chairs-xbox-continues-its-reset-with-dramatic-restructuring/" target="_blank" rel="noopener">arstechnica.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Lovable平台自动调度Opus 5.5与GPT-6</h3>
-  <p class="di-summary">AI开发平台Lovable宣布重大升级，同时接入Claude Opus 5.5和GPT-6 Sol两个前沿模型。用户无需手动选择，平台会自动组合调度流量以获得最佳结果。官方和尝鲜作者均表示能力出现了令人难以置信的跃升，这也侧面反映出两个新模型在真实产品负载下的表现获得认可。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmud6nz4l04dtroranqp7u7kf" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/AlexandrePesant/status/2102475284612038661" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -416,9 +347,9 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">网友绘制Opus 5.5智能成本曲线显著跃升</h3>
-  <p class="di-summary">Reddit用户分享前沿模型「智能/成本」对比图，指出Claude Opus 5.5相对此前模型在该曲线上实现了一次明显跳升。另有用户发布图表，展示Opus 5.5在Terminal-Bench 4.0基准上的成本与性能关系，与同类模型对比其性价比表现。</p>
-  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wneq53/opus_55_cost_vs_performance_on_terminalbench_40/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <h3 class="di-label">Opus 5.5评测表脚注曝光部分任务由旧款Claude代跑</h3>
+  <p class="di-summary">airesearch12 指出 Anthropic Opus 5.5 发布评测表存在易被忽略的脚注：评测在开启生产级安全护栏情况下进行。当安全护栏介入接管时，cyber 类任务实际由 Opus 4.8 完成，bio 与前沿 LLM 任务由 Opus 5 完成。Anthropic 承认这一点，但表示护栏介入「很可能拉低了分数」。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/airesearch12" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://www.agihunt.com/model/opus-5.5" target="_blank" rel="noopener">agihunt.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
