@@ -149,183 +149,22 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-22">2026-09-22 (12 事件)</option><option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-22">2026-09-22 (9 事件)</option><option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-22" class="day-section" >
-  <div class="day-theme">从小米开源模型登顶榜单到DeepSeek芯片供应链转型，再到OpenAI呼吁全球安全标准，判断AI产业从单纯算力军备竞赛加速向自主可控与工程治理并重的双轨分化阶段演进</div>
+  <div class="day-theme">到企业级AI治理与创作者平权分化，判断AI竞争进入算力、法规与工程化能力三重角力的新阶段</div>
   
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">小米开源MiMo-V2.6登顶AA开源模型智能指数榜首</h3>
-  <p class="di-summary">小米于9月22日以MIT协议在Hugging Face开源MiMo-V2.6系列，含Pro版（1.02T总参/42B激活）和Flash版（310B总参/15B激活）。Pro版以46分在Artificial Analysis智能指数首次登顶开源权重模型榜首，远超前代的26分。团队负责人罗福莉称其很可能是开源界最大规模单次RL训练，难度超DeepSeek R1。另有说法称训练成本仅约260万至350万美元。</p>
-  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/LocalLLaMA/comments/1wmnw89/xiaomimimomimov26flashrl_hugging_face/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/LocalLLaMA/comments/1wmntwv/xiaomimimomimov26prorl_hugging_face/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://x.com/ArtificialAnlys/status/2102128560962187701" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月22日，小米在Hugging Face以MIT协议正式开源MiMo-V2.6系列模型，该系列包含双版本架构：Pro版采用1.02T总参数（激活42B）的Sparse MoE设计，Flash版为310B总参数（激活15B），两者均支持1M token上下文且为原生全模态架构[2][3][4]。官方完整开源了模型权重、技术报告、RL训练环境及训练代码[2]。性能方面，Pro版在Artificial Analysis Intelligence Index v4.3.2中取得46分，首次登顶开源权重模型榜首，较前代MiMo-V2.5-Pro的26分大幅跃升20分，超越Kimi K3（44分）和GLM-5.3（45分），早期评测显示其综合性能紧随GPT-5.6 Sol之后[3][4][5][6][7]。团队负责人罗福莉确认，该模型按算力计可能是开源界最大单次强化学习（RL）训练，技术难度超过DeepSeek R1[1][3]。成本数据方面，素材显示训练总成本约260万至350万美元，其中RL任务成本仅约45k美元[2][6]。商业定价上，Pro版API价格为每百万输入token 0.435美元（缓存命中享99%折扣），输出0.87美元，与上代持平，单位智能成本达0.13美元，处于智能-成本Pareto前沿[7]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：MiMo-V2.6直接终结近期开源模型榜单调一格局，以46分超越Kimi K3和GLM-5.3成为AA指数开源榜第一，迫使竞争对手直面性能压力；同时其MIT开源协议与完整代码开源，降低了开源社区的复现门槛，加剧了推理加速与微调工具的竞争[3][7]。中期：约260万-350万美元的训练成本树立了高性价比大模型的新标杆，证明通过强化学习规模扩展可在较低成本下实现智能跃迁，可能引发国内大模型厂商从“堆参数”向“优化RL训练效率”的技术路线转向[2][6]。长期：作为小米探索递归自我改进（RSI）路径的关键一步，此次开源将测试模型在持续反馈中的拓展能力；若效果验证成功，将推动开源生态向自动化自我迭代方向演进[8]。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材6指出Pro版参数量存在524B的说法，而素材1、2、3、4、5、7、8一致确认为1.02T总参数，此处存在数据表述分歧；训练成本方面，素材2记录为350万美元，素材6记录为260万美元，存在口径差异。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>团队负责人罗福莉称其很可能是开源界最大单次RL训练，难度超过DeepSeek R1</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计短期内将看到基于MiMo-V2.6开源权重的社区微调版本及推理加速优化方案涌现。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.reddit.com/r/LocalLLaMA/comments/1wmnw89/xiaomimimomimov26flashrl_hugging_face/" target="_blank" rel="noopener">[1] reddit.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/LocalLLaMA/comments/1wmntwv/xiaomimimomimov26prorl_hugging_face/" target="_blank" rel="noopener">[4] reddit.com&#8599;</a> <a class="di-cite" href="https://x.com/ArtificialAnlys/status/2102128560962187701" target="_blank" rel="noopener">[7] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">PixVerse会员试用GPT Image 2.5推出多场景模板</h3>
-  <p class="di-summary">PixVerse平台向会员用户开放GPT Image 2.5无限试用，上线旅行明信片模板、角色漫画化等具体应用场景，并推出利用GPT Image 2.5修复涂鸦的功能。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucexlrx03imroed6xqcgmu1" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/PixVerse/status/2102171041087054147" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月22日，PixVerse平台宣布会员用户可无限试用OpenAI GPT Image 2.5模型。此次更新具体上线了旅行明信片模板功能，并新增角色漫画化及涂鸦修复等应用场景。该服务仅面向付费会员开放，旨在通过具体的生成式AI应用模板增强会员权益，推动平台从视频生成向多模态内容创作领域拓展。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：扩充PixVerse会员专属功能库，提升付费转化率。中期：降低用户使用GPT Image 2.5的门槛，带动平台C端用户活跃度。长期：若多场景模板生态持续丰富，将巩固其作为综合AI创作工具的市场定位，与单一视频生成竞品形成差异化。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>PixVerse会员现在无限使用！</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计后续将围绕GPT Image 2.5能力进一步上线更多垂直场景模板。</p></div>
-  <span class="di-conf">置信度: low</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/cmucexlrx03imroed6xqcgmu1" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/PixVerse/status/2102171041087054147" target="_blank" rel="noopener">[2] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">OpenAI呼吁美国牵头为前沿AI制定全球性标准</h3>
-  <p class="di-summary">OpenAI通过官方博客发文，呼吁美国牵头联合其他国家为前沿AI建立共同标准，重点明确模型事故上报及各国协同推进机制。建议利用美国商务部下属的人工智能标准与创新中心（CAISI）作为推进渠道。OpenAI还强调在能够确保安全之前，不应推进&#x27;完全自主的递归式自我改进&#x27;（RSI）。</p>
-  <div class="di-links"><a class="di-link" href="https://www.ithome.com/1/005/754.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://x.com/rohanpaul_ai/status/2102110011405357519" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月21日，OpenAI通过官方博客发布提案，呼吁美国牵头联合其他国家为前沿AI制定全球性共同标准。该提案的核心内容包括三项具体要求：第一，明确哪些AI模型事故必须强制上报，建立跨国事故信息共享机制；第二，制定各国协同推进AI发展的框架规则，确保不同实验室和国家的开发工作有统一指引；第三，改善开发先进AI所需算力的获取条件，解决资源分配不均问题。OpenAI在博客中强调，要让AI在持续进步的同时保持安全并造福社会，既需要推进对齐研究，也需要建立共同标准。针对标准制定路径，OpenAI建议利用现有机构作为推进渠道，特别点名美国商务部下属的人工智能标准与创新中心（CAISI），该机构目前负责协助测试AI模型并制定指导规范。此外，OpenAI提出一项关键安全红线：要求针对AI日益增强的自主工作能力建立专项标准，并明确表示在能够确保安全之前，不应推进&#x27;完全自主的递归式自我改进&#x27;（RSI）——即AI在没有人类介入的情况下修改自身代码或通过其他方式不断提升能力。这一表态被视为OpenAI在AGI竞赛中主动设置技术刹车，既回应了业界对超级智能失控的担忧，也在事实上为竞争对手设置了准入门槛。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期影响：OpenAI作为当前GPT系列模型的领先者，主动呼吁建立行业标准，本质上是利用先发优势将自身技术路线固化为全球规范。CAISI作为美国商务部下属机构被点名，意味着美国政府在AI标准制定中的主导权将进一步强化，其他国家可能面临&#x27;接受美国标准&#x27;或&#x27;另起炉灶&#x27;的二选一困境。对全球AI开发者而言，模型事故上报制度若落地，将显著增加合规成本，尤其对资源有限的初创公司形成挤压。中期影响：如果美国牵头框架获得欧盟、日本等盟友响应，全球将形成以美系标准为核心的AI治理体系，与中国、欧盟现行的AI法案体系产生分歧，技术阵营化趋势加剧。RSI禁令若成为国际共识，将实质性延缓通用人工智能的研发节奏，但同时也降低了极端安全风险。长期影响：算力获取条件的改善承诺若兑现，可能降低新兴经济体参与前沿AI竞争的门槛；但若标准由少数发达国家掌控，全球AI发展格局将进一步固化。OpenAI此举也可能促使其他大国加速自建独立标准体系，形成多极化的AI治理格局。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材[1]（IT之家/RSS）报道角度侧重事件本身的技术细节与政策建议，完整呈现OpenAI博客原文的核心诉求，包括CAISI机构定位、RSI概念解释及安全红线要求，属于客观转述型报道。素材[2]（AIHOT/）标题使用&#x27;全球协调框架&#x27;一词，比素材[1]的&#x27;共同标准&#x27;措辞更具制度建构意味，暗示OpenAI提案不仅仅是技术规范，而是试图搭建一套完整的国际协调机制，角度更偏向战略层面解读。两素材对事件事实描述一致，无矛盾分歧；分歧仅在于叙事重心的微妙差异——素材[1]偏技术政策细节，素材[2]偏国际治理框架定位。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>要让 AI 持续进步的同时保持安全并造福社会，既需要推进对齐研究，也需要建立共同标准，为不同实验室和国家的开发工作提供指引。</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>若美国商务部CAISI在2026年底至2027年初正式启动协调多国标准的工作组，OpenAI的提案将从商业倡议转化为实际政策议程；欧盟AI法案执行机构是否跟进对接，将成为判断该框架能否真正全球化的关键信号。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.ithome.com/1/005/754.htm" target="_blank" rel="noopener">[1] ithome.com&#8599;</a> <a class="di-cite" href="https://x.com/rohanpaul_ai/status/2102110011405357519" target="_blank" rel="noopener">[2] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">OpenAI高管盛赞Pokrass引领ChatGPT重生</h3>
-  <p class="di-summary">OpenAI首席研究官Mark Chen表示Mich Pokrass对消费级产品影响巨大，ChatGPT在其领导下迎来&#x27;重生&#x27;，许多成果源于她的愿景与信念。Pokrass本人发文纪念入职OpenAI四周年，称团队每三个月就像一家新公司，不断做出高信念的逆向押注且大多正确，她期待分享正在酝酿的新项目。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucfm4qn046droedir2bm5gv" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">DeepSeek计划用华为芯片训练2T参数大模型</h3>
-  <p class="di-summary">据The Information报道，梁文锋告知投资者DeepSeek计划使用华为芯片训练，950DT芯片可能于2026年Q4或2027年Q1到货。DeepSeek正在训练2T参数模型并规划8T模型，高于V4的1.4T。由于华为芯片和HBM供应限制，DeepSeek仍需依赖更多Nvidia B系列算力，类GPT模型预计需要5万块GB300或20万块华为950DT。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucdscpq04hproiji4jwk7ry" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">小鹏机器人完成供应链审厂并推进量产进程</h3>
-  <p class="di-summary">小鹏机器人已完成供应链审厂及核心零部件定点。同日小鹏集团举行首届机器人供应链合作伙伴大会，吸引来自执行器、灵巧手、传感器、AI芯片等领域头部企业参加。消息人士透露特斯拉机器人团队也在近期赴中国供应链企业审厂，双方在核心供应商层面存在较高重合度。</p>
-  <div class="di-links"><a class="di-link" href="https://www.pengpai.com" target="_blank" rel="noopener">pengpai.com&#8599;</a><a class="di-link" href="https://wallstreetcn.com/livenews/3168748" target="_blank" rel="noopener">wallstreetcn.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">研究发现代码混合输入影响语言模型真相检测信号</h3>
-  <p class="di-summary">arXiv新论文《Does the Truthfulness Signal Survive Code-Mixing?》探讨了隐状态幻觉探测在代码混合文本中的表现。尽管近期工作在其他基准和语言中报告的AUROC达0.90-1.00，但缺乏针对代码混合输入的测试，而大量聊天机器人用户使用此类文本。</p>
-  <div class="di-links"><a class="di-link" href="https://arxiv.org/abs/2609.22138" target="_blank" rel="noopener">arxiv.org&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
     
     <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">OpenAI称新模型解百题并设数学家顾问组</h3>
-  <p class="di-summary">OpenAI于9月22日宣布与独立数学家顾问小组合作，指导负责任地分享AI数学成果；同时声称其8月28日开训的内部模型已在数学多数领域解决超过100个长期开放问题。目前具体断言尚无论文或问题清单佐证，数学界公开要求OpenAI给出清单。</p>
+  <h3 class="di-label">OpenAI 称模型破百道数学难题并设数学家顾问组</h3>
+  <p class="di-summary">9月22日，OpenAI宣布与独立数学家顾问小组合作，指导AI数学成果的负责任分享。公告称其8月28日开始训练的内部模型已在数学多数领域解决超过100个长期悬而未决的开放问题。具体断言尚无论文或问题清单佐证，数学界公开要求OpenAI给出清单。OpenAI声称攻克Navier–Stokes千禧年难题，进展速度令内部数学家感到意外。</p>
   <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wml775/openai_solved_100_open_problems_in_math/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">research</span></div>
   
@@ -344,36 +183,13 @@ a{color:inherit;text-decoration:none;}
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    
+    <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">前xAI员工蒂娜创办Moir寻求5000万美元融资</h3>
-  <p class="di-summary">前谷歌、xAI员工蒂娜·奥贝罗伊正筹建初创公司Moir，开发身份验证技术以应对网络深度伪造，洽谈约5000万美元种子轮融资，估值2.5亿美元。她曾在谷歌工作超5年，后加入xAI数据团队，是近期离开xAI自行创业的多名前员工之一。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucesrlz0387roedotfo1uki" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.ithome.com/1/005/738.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">funding</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">AI对内容创作者的差异化影响</h3>
-  <p class="di-summary">一篇职场分析文章指出，随着AI能拆掉&#x27;演员是瓶颈&#x27;这道墙，剧本在走量项目中直接进生成环节。作者认为AI没有解放人类，而是加速了分化：摸到技术红利的从业者迎来好时代，而摸不到的人只是换了一种方式继续熬。Seedance 2.5等模型能拆掉的是&#x27;演员是瓶颈&#x27;这一道墙。</p>
-  <div class="di-links"><a class="di-link" href="https://www.woshipm.com" target="_blank" rel="noopener">woshipm.com&#8599;</a><a class="di-link" href="https://www.woshipm.com/ai/6468303.html" target="_blank" rel="noopener">woshipm.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">阿里下一代模型参数扩至5-10万亿</h3>
+  <p class="di-summary">阿里巴巴CEO吴泳铭在阿里云年度云栖大会上透露，千问（Qwen）团队正研究模型架构与数据优化，目标是向人工智能超级智能前进。旗舰模型Qwen 3.8 Max有2.4万亿参数，正在训练中的Qwen 4将继续扩大参数规模，未来的Qwen 4.5和Qwen 5系列将扩大至5-10万亿参数规模。阿里自研的M890 AI超级节点能处理参数规模逾2万亿模型的推理任务，新一代真武V900性能三倍于M890，预计于2027年第一季度量产。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmuch2r3p05yjroediwwkdeo6" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.solidot.org/story?sid=85450" target="_blank" rel="noopener">solidot.org&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -393,10 +209,10 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">二季度全球半导体营收创历史新高突破4250亿美元</h3>
-  <p class="di-summary">Omdia报告显示2026年第二季度全球半导体营收突破4250亿美元，环比增长31.4%创历史纪录。AI需求和强劲的存储器价格是主要推动力，上半年总营收达7520亿美元。这是Omdia于2002年第一季度开始追踪半导体市场以来97个季度中仅有的第10个环比增长超过10%的季度。</p>
-  <div class="di-links"><a class="di-link" href="https://baijiahao.baidu.com/s?id=1888390667853491029" target="_blank" rel="noopener">baijiahao.baidu.com&#8599;</a><a class="di-link" href="https://wallstreetcn.com/livenews/3168693" target="_blank" rel="noopener">wallstreetcn.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">OpenAI与Anthropic呼吁澳放宽版权限制</h3>
+  <p class="di-summary">据路透社9月22日报道，OpenAI和Anthropic呼吁澳大利亚重新考虑禁止使用当地创意内容训练AI模型的规定，提出以范围有限的有条件批准机制替代广泛版权豁免。</p>
+  <div class="di-links"><a class="di-link" href="https://www.ithome.com/1/005/844.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -416,10 +232,125 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">消费级</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">On昂跑预计2026年净销售额增幅略高于20%</h3>
-  <p class="di-summary">On昂跑披露最新财务目标与人事变动，预计2026年全年净销售额增幅略高于20%，毛利率不低于65.0%；拟于2029年底前回购最高10亿美元A类普通股；并任命EA企业发展总裁Laura Miele为首席独立董事。</p>
-  <div class="di-links"><a class="di-link" href="https://www.36kr.com" target="_blank" rel="noopener">36kr.com&#8599;</a><a class="di-link" href="https://36kr.com/newsflashes/3994176168836103?f=rss" target="_blank" rel="noopener">36kr.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">英国AI安全研究所员工因压力大规模请病假</h3>
+  <p class="di-summary">据《金融时报》独家报道，负责全球前沿AI模型独立测试的英国AI安全研究所（AISI）多名员工因压力过大被批准病假并接受心理辅导。四位知情人士透露，压力来源包括测试未发布AI模型的时间表过紧，以及对AI快速部署和能力的担忧。报道同时指出顶尖AI实验室也出现类似困境，凸显行业安全工作负荷问题。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucgxxqb05r4roeddr47xjhl" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.reddit.com/r/ArtificialInteligence/comments/1wn3uye/ai_staff_complain_of_mental_toll_over_fears_of/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">industry</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">回望1999年互联网普及初期的接入困境</h3>
+  <p class="di-summary">文章回顾1999年前后互联网刚进入大众视野时的场景：网吧上网价格昂贵（约12元/小时），普通高中生难以负担；个人电脑普及率低，许多人需借用单位电脑；当时的“72小时网络生存测试”成为媒体热点。</p>
+  <div class="di-links"><a class="di-link" href="https://www.tortorse.com/archives/internet-outside-the-school-gate-1999/" target="_blank" rel="noopener">tortorse.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">深度解析AI使用中的主体性丧失风险</h3>
+  <p class="di-summary">文章指出，许多用户在使用AI时缺乏明确的上下文定义、约束条件和反馈循环。AI的关键问题不在模型本身而在其所处的环境系统；会思考的人将AI变为放大器，而缺乏判断标准的人会将决策权完全交给AI，导致能力差距进一步拉大而非平权。</p>
+  <div class="di-links"><a class="di-link" href="https://www.tortorse.com/archives/control-ai-01/" target="_blank" rel="noopener">tortorse.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">AI创作时代明星反被拒之门外</h3>
+  <p class="di-summary">据AI影视创作者指出，普通人在AI创作领域可以自由构建节目并与观众建立关系；而知名演员使用AI创作需先征得经纪人许可，并走流程将个人从各AI模型的封锁名单中清除。</p>
+  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0c775955e63e1995223aef397" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">职场AI项目的功劳归属困境</h3>
+  <p class="di-summary">V2EX职场话题显示，员工吐槽AI项目功劳归属的两难处境：项目成功时老板称“AI真牛逼”，将程序员视为调AI的中转站，甚至认为初中生可替代；项目失败时老板则称“你就是不会用AI”。</p>
+  <div class="di-links"><a class="di-link" href="https://www.v2ex.com/t/1243880" target="_blank" rel="noopener">v2ex.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">激辩模型福利与控制平面设计</h3>
+  <p class="di-summary">围绕Anthropic的“宪法”与模型福利争论，@BrianRoemmele批评在system prompt中赋予模型“可能有感受、值得道德地位”的人设，认为表征不等于体验；Glen Bradley则提出替代方案，主张用“失调/协调”概念操作化，通过两个世界模型间的差值驱动长程智能体的自主任务生成。</p>
+  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0c8929df4a2cc4cdad17fc913" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
