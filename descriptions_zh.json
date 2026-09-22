@@ -464,5 +464,6 @@
  "kakaxi3019/5-DAY-AI-AGENTS": "本项目是 Google Kaggle 5-Day AI Agents Course 的本地化重构版本",
  "Jakubantalik/thinking-orbs": "用于 AI 和代理 UI 的点状思想球加载指示器，9 种调整类型，两种尺寸，自动变暗/亮",
  "BuilderIO/agent-native": "用于构建代理应用程序的框架",
- "bendlang/bend": "Bend 2：一种通过证明阻止人工智能错误的快速语言。安装：curl -fsSL https://bend-lang.com/install.sh |嘘"
+ "bendlang/bend": "Bend 2：一种通过证明阻止人工智能错误的快速语言。安装：curl -fsSL https://bend-lang.com/install.sh |嘘",
+ "KongFangXun/sofagent": "FDE Harness — 在进入时，将您的业务判断写入文件（工作流程、本体、AI 节点）；离开后，针对他们审核每一项变更。 24 条 git-diff 规则、防篡改链、快照（105 个工具、11 个插件）。"
 }
