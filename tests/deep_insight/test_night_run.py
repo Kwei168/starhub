@@ -671,3 +671,45 @@ def test_wall_clock_cap_stops_the_loop_before_the_platform_kills_it(tmp_path, mo
     assert len(done) < 2, "墙钟预算没生效：两条都跑完了"
     assert doc["not_run"] and doc["not_run"][0]["reason"] == "not_run:budget", doc["not_run"]
     assert os.path.exists(out["html"]), "收口时必须仍然落盘，否则页面是空的"
+
+
+# ── 现网第一跑真撞出来的形状问题：模型可以给字符串，不是只给 dict ──────────
+
+def test_model_may_return_string_shaped_rows_without_crashing(tmp_path):
+    """run 35735624747 就是死在这里：真模型把 citations 返回成 ["c1","https://…"]，
+    实现按 dict 处理 → `AttributeError: 'str' object has no attribute 'get'` 崩在主循环，
+    整场无产物。FakeClient 永远返回 dict，所以本地一百多条测试对这个形状全盲。
+
+    要求的不是"容忍"，是"按形状归一 + 编造链接不进产物"。
+    """
+    class Shaped:
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            self.calls.append(kind)
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9,
+                                   "forecast": 0.9, "quality": 0.9})
+            body = "论证与数据推演" + "依" * 380 + "，但该判断仍受样本量与统计口径限制。"
+            return json.dumps({
+                "narrative": "\n\n".join(body for _ in range(7)),
+                "claims": ["论断一", "论断二", "论断三"],
+                "causal_chains": ["因为 A 所以 B"],
+                "forecasts": ["预计三个月内出现跟随者"],
+                "quality": "这是一手报道",
+                "citations": ["c1", "c2", "c3", "c4", "c5",
+                              "https://fabricated.example/neighbour-never-existed"],
+            }, ensure_ascii=False)
+
+    pool, links = _pool_articles(6)
+    out = _run(tmp_path, client=Shaped(), pool=pool, anchor=_anchor(links[:6]))
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    ev = doc["events"][0]
+    cites = ev.get("citations") or []
+    assert all(isinstance(c, dict) and (c.get("id") or "").startswith("c") for c in cites), cites
+    assert all((c.get("url") or "").startswith("https://s") for c in cites), \
+        "模型自带的 URL 被原样采信：假链接就这么上屏"
+    assert "fabricated" not in json.dumps(doc, ensure_ascii=False), "编造域名进了产物"
+    # 字符串形态的 claims/chains/forecasts/quality 不算合格内容，必须降级而不是当合格
+    assert (ev.get("degraded_reason") or "").strip() or doc["budget"]["qualified"] == 0, ev

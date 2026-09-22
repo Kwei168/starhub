@@ -271,6 +271,94 @@ def test_forecast_status_is_visible_on_the_page(tmp_path):
     assert "已命中" in html2, "账本里有已结算项，页面却仍只显示待验证"
 
 
+def test_source_quality_tier_reaches_the_prompt(tmp_path):
+    """白天的信源档位是 spec §2 点名的外证之一。night_run 把它读回来了，
+    但若没传到 deepen_one，`tier` 这一路就永远是空的 —— 代码看着做了，实际空转，
+    而且跨源同稿那一路还绿着，绿勾完全抓不到。"""
+    seen = []
+
+    class Spy(D.FakeClient):
+        def complete(self, prompt, key=None, kind="generate"):
+            seen.append(prompt)
+            return D.FakeClient.complete(self, prompt, key, kind)
+
+    arts, links = _pool()
+    _run(tmp_path, pool=arts, anchor_raw=_anchor(links), client=Spy(),
+         quality_raw=json.dumps({"s0": {"tier": "T1"}, "s1": "T2"}, ensure_ascii=False))
+    assert seen, "一条 prompt 都没发出去"
+    assert any("白天档位" in p for p in seen), \
+        "source_quality 的档位没进 prompt —— 外证被读回来了却死在参数表里"
+
+
+def test_ancestor_check_rejects_diverged_and_behind():
+    """spec §4 的"提交后终检"是防白天 auto-commit 吞提交的最后一道。
+    compare 的 diverged/behind 恰恰就是"我们已被甩出主线"，收进来等于这道防线恒真。
+    （变异体 R5 把四个状态全收回去，测试却全绿 —— 说明这条以前根本没测。）"""
+    import urllib.error
+
+    class Api(D.GithubDataApi):
+        def __init__(self, status):
+            self.status = status
+            self.token = "t"
+            self.repo = "o/r"
+        def _req(self, method, path, payload=None):
+            return {"status": self.status}
+
+    for st, want in (("ahead", True), ("identical", True), ("diverged", False), ("behind", False)):
+        assert Api(st).is_ancestor("sha1") is want, "status=%s 判成 %s" % (st, not want)
+
+    class Gone(D.GithubDataApi):
+        def __init__(self):
+            self.token = "t"; self.repo = "o/r"
+        def _req(self, method, path, payload=None):
+            raise urllib.error.HTTPError("u", 409, "gone", {}, None)
+
+    assert Gone().is_ancestor("sha1") is False, "compare 取不到就当作还在链上"
+
+
+def test_no_key_run_is_refused_before_any_spending(tmp_path):
+    """没有 key 时以前会 12 条 × 900s 空等到撞 job 上限，还留一个绿勾。
+    必须一起床就抛 —— 变异体 R6 撤掉这个拒绝时，测试原来全绿。"""
+    arts, links = _pool()
+    with pytest.raises(RuntimeError):
+        D.night_run(purpose="test", out_dir=str(tmp_path / "ns"), keys=[],
+                    anchor_raw=_anchor(links), pool=arts, date_str="2026-09-23",
+                    pred_raw="", log=lambda s: None, sleep=lambda s: None)
+
+
+def test_changed_artifact_is_committed_again(tmp_path):
+    """幂等跳过只许在"字节完全没变"时生效。
+    只判断"有没有上次记录"就把内容不同的产物也跳过 = 新产物永远上不去。"""
+    calls = {"commit": 0}
+
+    class Api:
+        def __init__(self): self.head = "h"
+        def head_info(self): return self.head, "t_base"
+        def create_blob(self, c): return hashlib.sha256(c).hexdigest()[:8]
+        def create_tree(self, base, entries): return "t1"
+        def create_commit(self, parent, tree, msg):
+            calls["commit"] += 1
+            return "sha%d" % calls["commit"]
+        def update_ref(self, sha, force=False): self.head = sha; return True
+        def is_ancestor(self, sha): return True
+
+    class Realish:
+        def complete(self, prompt, key=None, kind="generate"):
+            return D.FakeClient().complete(prompt, key, kind)
+
+    arts, links = _pool()
+    holder = {}
+    factory = lambda: holder.setdefault("a", Api())
+    _run(tmp_path, purpose="publish", client=Realish(), api_factory=factory,
+         pool=arts, anchor_raw=_anchor(links))
+    assert calls["commit"] == 1, calls
+    # 第二夜：锚点多出一个事件 ⇒ 产物内容必然不同 ⇒ 必须再提交一次
+    arts2, links2 = _pool()
+    _run(tmp_path, purpose="publish", client=Realish(), api_factory=factory,
+         pool=arts2, anchor_raw=_anchor(links2, n=2))
+    assert calls["commit"] == 2, "内容变了却没再提交（幂等判断退化成有无记录）: %s" % calls
+
+
 def test_pool_discovers_more_than_three_chunks():
     """分块数是白天按体积算的（`n_chunks = ceil(total/max_size)`），夜场写死 3 块
     等于"第 4 块一出现就静默少读三分之一全文池"。现网实测第 3 块只剩 2.4% 余量，
