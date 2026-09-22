@@ -1008,7 +1008,7 @@ def _article_from(it):
     url = (it.get("link") or it.get("u") or "").strip()
     body = (it.get("full_content") or it.get("fc") or "") or (it.get("summary") or it.get("s") or "")
     return {"url": url, "source": it.get("source") or it.get("source_key") or "",
-            "source_key": it.get("source_key") or "",
+            "source_key": "",
             "title": it.get("title") or it.get("t") or it.get("title_zh") or "",
             "text": body, "has_full": bool(it.get("full_content") or it.get("fc"))}
 

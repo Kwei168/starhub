@@ -16,6 +16,7 @@
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.error
 
@@ -126,13 +127,72 @@ def test_source_quality_signal_loader_distinguishes_404_from_corruption():
     def not_found(url, timeout=90):
         raise urllib.error.HTTPError(url, 404, "no", {}, None)
 
-    assert D.load_source_quality(not_found) == {}, "第一夜没有 source_quality.json 必须能起"
+    assert D.load_source_quality(not_found) == {}, "读不到外证表（第一夜/白天没写）必须能起"
 
     def corrupt(url, timeout=90):
         return b'{"tiers": [1,2'
 
     with pytest.raises(ValueError):
         D.load_source_quality(corrupt)
+
+
+# ── 优质判定的"机械外证"在现网是恒缺的：来源是断链，键形还不对 ──────────────
+
+def test_quality_loader_reads_a_published_snapshot_shape():
+    """白天的质量表必须落在**真的会发布**的产物上。
+
+    `source_quality.json` 由 `build_rss_aggregator._save_source_quality` 写出来，
+    但从不在 `update.yml` 的 `git add` 清单里（Pages 实测恒 404），夜场引用它等于
+    挂一条永久断链。同一份评分的另一半在 `analysis_snapshot.json` 的 `quality` 字段
+    （现网实测 968 个源、0–100 分）， loader 要把它取出来而不是整份返回。
+    """
+    body = json.dumps({"generated_at": "2026-09-22T00:00:00+08:00",
+                       "quality": {"agihunt_0": 84.9, "openai_blog_1": 72.5}})
+    got = D.load_source_quality(lambda url, timeout=90: body.encode("utf-8"))
+    assert got == {"agihunt_0": 84.9, "openai_blog_1": 72.5}, got
+
+    # 解析得动但没有 quality 字段 = 白天的产物形状变了，必须炸：
+    # 当成空表会让所有源静默退化成"无外证"，而"无外证"与"低质"是两个结论。
+    with pytest.raises(ValueError):
+        D.load_source_quality(lambda url, timeout=90: b'{"keywords": {}}')
+
+
+def test_nightly_quality_input_is_something_the_daytime_publishes():
+    """把"外证来源必须是已发布产物"写成跨文件判据，而不是钉一个字符串。
+
+    只断 URL 常量的话，哪天白天把 `analysis_snapshot.json` 从提交清单里摘掉，夜场又会
+    悄悄变回恒 404（这次的故障形态）。所以直接读 `update.yml` 的 `git add` 行来判。
+    """
+    yml = open(os.path.join(ROOT, ".github", "workflows", "update.yml"),
+               encoding="utf-8").read()
+    published = " ".join(re.findall(r"git add ([^\n]+)", yml))
+    for url in (D.ANCHOR_URL, D.SOURCE_QUALITY_URL):
+        base = url.rstrip("/").split("/")[-1].split("?")[0]
+        assert base in published, \
+            "夜场要读 %s，但白天的提交清单里没有它 —— 现网只会 404" % base
+
+
+def test_source_key_survives_normalization_into_the_quality_join():
+    """键形也要对得上：质量表按 `agihunt_0` 这种源键索引，而条目自己的 `source` 是显示名。
+
+    `parse_chunk` 把分块组的 `key` 塞进 `source_key`，但 `_article_from` 只保留
+    url/source/title/text/has_full 五个字段，归一这一步就把它丢了；于是
+    `_source_key_of` 退回显示名去查表，命中恒为 0。
+    """
+    chunk = ('// chunk 0\n(window.__CHUNKS=window.__CHUNKS||[])[0]=' + json.dumps(
+        {"sources": [{"key": "agihunt_0", "name": "AGI Hunt", "items": [
+            {"title": "某模型开放权重引发许可争议", "link": "https://a.test/1",
+             "source": "AGI Hunt", "full_content": "正文" * 3000}]}]},
+        ensure_ascii=False))
+    arts = D.parse_chunk(chunk)
+    assert arts[0].get("source_key") == "agihunt_0", \
+        "归一后源键被丢弃，只剩显示名：%s" % sorted(arts[0])
+    assert D._source_key_of(arts[0]) == "agihunt_0"
+    q = {"agihunt_0": 84.9}
+    assert D._quality_tier(q, D._source_key_of(arts[0])) == 84.9, "拿显示名查表：外证恒缺"
+    sig = D.quality_signals(arts, q)
+    tiers = [v.get("tier") for v in sig.values()]
+    assert 84.9 in tiers, "信源质量分没进信号，优质判定又回到模型自评：%s" % sig
 
 
 def test_quality_signals_are_computed_from_the_pool(tmp_path):
