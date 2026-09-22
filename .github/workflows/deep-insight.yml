@@ -85,7 +85,7 @@ jobs:
           python build_deep_insight.py \
             --purpose "$RUN_PURPOSE" \
             --events-limit "$RUN_EVENTS_LIMIT" \
-            --workers 1 \
+            --workers 3 \
             --out _night_state | tee deep_run.log
 
       # spec §4 失败策略：只在当夜窗口内原地重试 1 次，不做白天自动补跑。
@@ -107,7 +107,7 @@ jobs:
           python build_deep_insight.py \
             --purpose "$RUN_PURPOSE" \
             --events-limit "$RUN_EVENTS_LIMIT" \
-            --workers 1 \
+            --workers 3 \
             --out _night_state | tee -a deep_run.log
 
       - name: 上一夜是否漏跑（GitHub cron 准点性不可信，只告警不自动白天补跑）

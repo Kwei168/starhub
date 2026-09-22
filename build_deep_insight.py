@@ -24,6 +24,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 SCHEMA_VERSION = "deep-insight/v1"
@@ -672,12 +674,17 @@ def _now():
 
 
 def clamp_workers(n, key_count):
-    """并发档 = min(请求值, key 数, WORKERS_MAX)，且至少 1。
+    """并发档 = min(请求值, key 数 - 1, WORKERS_MAX)，且至少 1。
 
     超过 key 数的并发只会排队；超过 6 是把免费池往 429 墙上推。
-    最终档位按首夜读数定（spec §4），但天花板钉死在这儿。
+
+    **为什么是 key 数减一**：judge 的保留条件是"空余 ≥2"（上面 `KeyPool.acquire`）。
+    并发档一旦等于 key 数，所有 key 同时被生成任务占住，judge 永远凑不到空余，
+    每条都要等满等待预算再抛 RateLimited —— 条目看起来"跑了"，实际全记 not_run。
+    真起线程之后这个坑才会显形（并发 1 时 judge 用得上被占的 key，因为没人在抢）。
     """
-    return max(1, min(int(n or 1), max(1, int(key_count or 1)), WORKERS_MAX))
+    lanes = max(1, int(key_count or 1) - 1) if int(key_count or 1) > 1 else 1
+    return max(1, min(int(n or 1), lanes, WORKERS_MAX))
 
 
 class KeyPool:
@@ -694,6 +701,9 @@ class KeyPool:
         self._clock = clock or _now
         self._busy = set()
         self._cooling = {}
+        # 并发档一旦真起线程，"两个任务拿同一个 key"就是必然事故（免费池的
+        # 429 是按 key 算的）。acquire 的整个扫描必须在同一把锁里完成。
+        self._lock = threading.RLock()
         self.workers = clamp_workers(workers, len(self._keys))
 
     def _is_free(self, k):
@@ -706,24 +716,27 @@ class KeyPool:
         return len(self._keys)
 
     def acquire(self, kind="generate"):
-        if not self._keys:
+        with self._lock:
+            if not self._keys:
+                return None
+            if kind == "judge" and self.workers > 1 and self.idle() < 2:
+                return None
+            for k in self._keys:
+                if self._is_free(k):
+                    self._busy.add(k)
+                    return k
             return None
-        if kind == "judge" and self.workers > 1 and self.idle() < 2:
-            return None
-        for k in self._keys:
-            if self._is_free(k):
-                self._busy.add(k)
-                return k
-        return None
 
     def release(self, key):
-        self._busy.discard(key)
+        with self._lock:
+            self._busy.discard(key)
 
     def mark_429(self, key, retry_after=0):
-        self._busy.discard(key)
-        ra = min(float(retry_after or 0) or 30.0, BACKOFF_CAP_S)
-        self._cooling[key] = self._clock() + ra
-        return ra
+        with self._lock:
+            self._busy.discard(key)
+            ra = min(float(retry_after or 0) or 30.0, BACKOFF_CAP_S)
+            self._cooling[key] = self._clock() + ra
+            return ra
 
     def snapshot(self):
         t = self._clock()
@@ -1764,24 +1777,38 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     stopped_by_cap = False
     stop_reason = ""
     failed = []
-    for ev in events:
-        if ev["id"] in done:
-            log("[夜场] %s 已在 checkpoint 里，跳过" % ev["id"])
-            continue
+    recs_lock = threading.Lock()
+
+    def _emit(r, ev_id):
+        """做完一条立刻落 checkpoint 并播报。
+
+        checkpoint 与产物列表是共享状态，并发下必须有唯一的写入点；
+        播报放在锁外，免得一条 log 卡住整条池。
+        """
+        with recs_lock:
+            recs.append(r)
+            append_jsonl(ck, [r])
+        why = (r.get("degraded_reason") or "").strip()
+        fails = "; ".join((r.get("contract_fails") or [])[:3])
+        log("[夜场] %s %s narrative=%d 字 rubric=%s%s%s" % (
+            ev_id, "降级" if why else "合格",
+            count_chars(r.get("narrative") or ""),
+            (r.get("rubric") or {}).get("mean"),
+            " 原因=%s" % why if why else "",
+            " 判据=%s" % fails if fails else ""))
+
+    def _cutoff():
+        """主动收口两道闸：返回 "" 继续，否则返回原因（wallclock / budget）。"""
         if budget.over_time():
-            stopped_by_cap = True
-            stop_reason = "wallclock"
             log("::warning title=夜场窗口将尽|已用 %.0fs ≥ 墙钟预算 %ds，剩余条目记 not_run"
                 "（产物照写，不等平台掐）" % (budget.elapsed_s(), budget.time_cap_s))
-            break
+            return "wallclock"
         if budget.llm_calls >= call_cap:
-            stopped_by_cap = True
-            stop_reason = "budget"
             log("[夜场] 调用预算 %d 已用完，剩余条目记 not_run" % call_cap)
-            break
-        # 单条的等待预算要按"离墙钟还剩多少"缩水再传进去。`wait_cap_s` 原来是每次调用
-        # 各领 900s：一条事件最多 generate×3 + judge×1 = 4 次，最坏 6×900s 全花在等上，
-        # 于是"每条 ≤900s"的约定形同虚设，而循环顶那道墙钟闸根本来不及问。
+            return "budget"
+        return ""
+
+    def _do(ev):
         item_wait = wait_cap_s
         if budget.time_cap_s > 0:
             item_wait = max(1.0, min(wait_cap_s, budget.time_cap_s - budget.elapsed_s()))
@@ -1790,25 +1817,43 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
                            max_regen=max_regen, source_quality=source_quality)
         except RateLimited as e:
             log("[夜场] %s 等待超上限(%s)：记 not_run，不阻断全场" % (ev["id"], e))
-            continue
+            return
         except Exception as e:
             # 一次瞬时错误（Agnes 5xx、上游分块抖动）不能把整晚换掉：产物在循环之后才落盘，
             # 异常穿出去就是"钱花完了、JSON/HTML 一个都没有、还看不出为什么"。
-            failed.append("%s:%s" % (ev.get("id"), type(e).__name__))
+            with recs_lock:
+                failed.append("%s:%s" % (ev.get("id"), type(e).__name__))
             log("::warning title=条目失败但继续|%s 抛 %s（%s），本场其余条目照做" % (
                 ev.get("id"), type(e).__name__, str(e)[:120]))
-            continue
-        recs.append(r)
-        append_jsonl(ck, [r])
-        # 只报"完成"与字数不够看：现网那场就是 3 条全降级，必须当场看到为什么。
-        why = (r.get("degraded_reason") or "").strip()
-        fails = "; ".join((r.get("contract_fails") or [])[:3])
-        log("[夜场] %s %s narrative=%d 字 rubric=%s%s%s" % (
-            ev["id"], "降级" if why else "合格",
-            count_chars(r.get("narrative") or ""),
-            (r.get("rubric") or {}).get("mean"),
-            " 原因=%s" % why if why else "",
-            " 判据=%s" % fails if fails else ""))
+            return
+        _emit(r, ev["id"])
+
+    todo = []
+    for ev in events:
+        if ev["id"] in done:
+            log("[夜场] %s 已在 checkpoint 里，跳过" % ev["id"])
+        else:
+            todo.append(ev)
+    # 并发档 >1 时才起线程：`KeyPool.workers` 以前只是个数字，全模块没有一处线程，
+    # 于是"多账号池"的所有设计（每 key 一槽、429 冷却、judge 让位生成）永远不可能被触发。
+    if kp.workers > 1:
+        with ThreadPoolExecutor(max_workers=kp.workers) as ex:
+            pending = []
+            for ev in todo:
+                reason = _cutoff()
+                if reason:
+                    stopped_by_cap, stop_reason = True, reason
+                    break
+                pending.append(ex.submit(_do, ev))
+            for f in pending:
+                f.result()
+    else:
+        for ev in todo:
+            reason = _cutoff()
+            if reason:
+                stopped_by_cap, stop_reason = True, reason
+                break
+            _do(ev)
     # 产物 = 本场新做的 + checkpoint 里已做完的，按锚点顺序排；
     # 少了后半截就是"重试夜上线半套产物"那个坑。
     by_id = {r.get("id"): r for r in (prev_recs + recs)}
@@ -1905,6 +1950,10 @@ def main(argv=None):
     ap.add_argument("--wait-cap", type=int, default=900)
     ap.add_argument("--workers", type=int, default=1,
                     help="并发档；实际取 min(此值, key 数, %d)，首夜读数定档后不要凭感觉调大" % WORKERS_MAX)
+    ap.add_argument("--verdicts", default=None,
+                    help="到期判定表 JSON（{\"<forecast claim>\": \"hit|miss|unknown\"}）。"
+                         "不传则 predictions_reconciled 全记 unknown —— 宁可读到 unknown，"
+                         "也不要把\"没判过\"当成\"都没命中\"")
     ap.add_argument("--date", default=None)
     ap.add_argument("--fake-client", action="store_true",
                     help="只验装配与判定链，不产真洞察；purpose=publish 时会被拒绝")
@@ -1920,9 +1969,16 @@ def main(argv=None):
         except UnicodeEncodeError:
             print(str(s).encode("ascii", "replace").decode(), flush=True)
 
+    verdicts = None
+    if a.verdicts:
+        with open(a.verdicts, encoding="utf-8") as f:
+            verdicts = json.load(f)
+        if not isinstance(verdicts, dict):
+            raise ValueError("--verdicts 必须是 {claim: hit|miss|unknown} 的 JSON 对象")
     out = night_run(purpose=a.purpose, events_limit=a.events_limit, out_dir=a.out,
                     budget_tokens=a.budget_tokens, call_cap=a.cap_calls,
                     wait_cap_s=a.wait_cap, date_str=a.date,
+                    workers=a.workers, verdicts=verdicts,
                     client=FakeClient() if a.fake_client else None,
                     keys=env_keys(), log=log_live,
                     get=http_get)
