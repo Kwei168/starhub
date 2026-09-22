@@ -415,7 +415,7 @@ function extractMediaFromEntry(entry) {
     if (urlM && typeM) {
       const type = typeM[1].toLowerCase();
       if (type.startsWith('audio') || type.startsWith('video')) {
-        return { media_url: urlM[1], media_type: type };
+        return { media_url: cleanLink(urlM[1]), media_type: type };
       }
     }
   }
@@ -425,7 +425,7 @@ function extractMediaFromEntry(entry) {
     const urlM = mcMatch[0].match(/url\s*=\s*"([^"]*)"/i);
     const medM = mcMatch[0].match(/medium\s*=\s*"([^"]*)"/i);
     if (urlM && medM && (medM[1] === 'audio' || medM[1] === 'video')) {
-      return { media_url: urlM[1], media_type: medM[1] };
+      return { media_url: cleanLink(urlM[1]), media_type: medM[1] };
     }
   }
   return {};
@@ -486,7 +486,7 @@ function parseFeed(xml, sourceKey, maxItems) {
         if (urlM && typeM) {
           const t = typeM[1].toLowerCase();
           if (t.startsWith('audio') || t.startsWith('video')) {
-            result.media_url = urlM[1]; result.media_type = t;
+            result.media_url = cleanLink(urlM[1]); result.media_type = t;
           }
         }
       }
