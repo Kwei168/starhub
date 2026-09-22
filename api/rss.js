@@ -252,8 +252,16 @@ function cleanLink(raw) {
   const cdata = s.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/);
   if (cdata) s = cdata[1].trim();
   // &amp; 放最后解，否则 `&amp;lt;` 会被二次解成 `<`（与 html.unescape 的单趟语义一致）
-  s = s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-       .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+  // 超范围码点必须原样留着：String.fromCodePoint(0x110000) 抛 RangeError，而 cleanLink
+  // 跑在 parseFeed 里、外面套的是 fetchOne 的 try ⇒ 一条脏链接就让整源变成
+  // "HTTP 200 + items=[]"，抽屉表现为刷新没反应。Python html.unescape 对解不开的
+  // 码点也是原样返回（chr() 抛 ValueError 即跳过），所以钳上界同时保住了两侧一致。
+  const _dec = (radix) => (whole, digits) => {
+    const c = parseInt(digits, radix);
+    return Number.isFinite(c) && c >= 0 && c <= 0x10FFFF ? String.fromCodePoint(c) : whole;
+  };
+  s = s.replace(/&#x([0-9a-f]+);/gi, _dec(16))
+       .replace(/&#(\d+);/g, _dec(10))
        .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'")
        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
        .replace(/&amp;/g, '&');
@@ -514,7 +522,11 @@ function dedupSourceItems(items, sourceKey) {
   const seenUrls = new Set();
   items = items.filter(it => {
     const link = it.link || '';
-    if (!link || seenUrls.has(link)) return false;
+    /* 空链接既不去重也不删 —— Python 侧是 `if link and link in seen_urls`，两侧必须同判。
+       写成 `if (!link) return false` 的代价：上游不给链接的源（Pass 1 剥 fragment 后
+       连占位 '#' 都会变空串）在抽屉实时刷新时整批消失，点一次源就少一截卡片。 */
+    if (!link) return true;
+    if (seenUrls.has(link)) return false;
     seenUrls.add(link);
     return true;
   });
