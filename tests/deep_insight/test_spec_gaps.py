@@ -13,6 +13,7 @@
    degraded 超 200 字）没有任何测试钉着，删掉不红；
 7. 页面上的"命中状态"不可达 —— 结算只改账本行，产物里 forecasts 的 status 永不回填。
 """
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -350,6 +351,28 @@ def test_source_quality_tier_reaches_the_prompt(tmp_path):
         "source_quality 的档位没进 prompt —— 外证被读回来了却死在参数表里"
 
 
+def test_injected_quality_document_shape_matches_the_http_loader(tmp_path):
+    """注入路径与 HTTP 路径必须收成同一种形状，否则"传了产物"仍等于"没有外证"。
+
+    现网那份是 `{"generated_at": …, "quality": {…}}`：loader 取的是 `quality` 子表，
+    而 `quality_raw` 这条路原本直接用整份文档 —— 于是键全对不上、查表命中恒 0，
+    而且一声不响。线上"外证恒缺"踩过的形态，注入这条路会原样复现。
+    """
+    seen = []
+
+    class Spy(D.FakeClient):
+        def complete(self, prompt, key=None, kind="generate"):
+            seen.append(prompt)
+            return D.FakeClient.complete(self, prompt, key, kind)
+
+    arts, links = _pool()
+    doc = json.dumps({"generated_at": "2026-09-22T00:00:00+08:00",
+                      "quality": {"s0": {"tier": "T1"}, "s1": "T2"}}, ensure_ascii=False)
+    _run(tmp_path, pool=arts, anchor_raw=_anchor(links), client=Spy(), quality_raw=doc)
+    assert any("白天档位" in p for p in seen), \
+        "传整份快照时分数没进 prompt：注入形状与 HTTP 形状分叉了"
+
+
 def test_ancestor_check_rejects_diverged_and_behind():
     """spec §4 的"提交后终检"是防白天 auto-commit 吞提交的最后一道。
     compare 的 diverged/behind 恰恰就是"我们已被甩出主线"，收进来等于这道防线恒真。
@@ -378,12 +401,23 @@ def test_ancestor_check_rejects_diverged_and_behind():
 
 def test_no_key_run_is_refused_before_any_spending(tmp_path):
     """没有 key 时以前会 12 条 × 900s 空等到撞 job 上限，还留一个绿勾。
-    必须一起床就抛 —— 变异体 R6 撤掉这个拒绝时，测试原来全绿。"""
+    必须一起床就抛 —— 变异体 R6 撤掉这个拒绝时，测试原来全绿。
+
+    "一起床"要用出网次数来判，不是用异常类型：锚点/分块池/质量快照三连读是几十 MB，
+    先读满再抛等于把钱花完才报告没钱，而那种顺序同样会抛 RuntimeError。
+    """
     arts, links = _pool()
+    reads = []
+
+    def tripwire(url, timeout=90):
+        reads.append(url)
+        raise AssertionError("无 key 的场不许出网：%s" % url)
+
     with pytest.raises(RuntimeError):
         D.night_run(purpose="test", out_dir=str(tmp_path / "ns"), keys=[],
                     anchor_raw=_anchor(links), pool=arts, date_str="2026-09-23",
-                    pred_raw="", log=lambda s: None, sleep=lambda s: None)
+                    pred_raw="", get=tripwire, log=lambda s: None, sleep=lambda s: None)
+    assert not reads, "抛之前已经读了 %d 个远端产物：%s" % (len(reads), reads[:3])
 
 
 def test_changed_artifact_is_committed_again(tmp_path):
@@ -505,3 +539,149 @@ def test_pool_stops_on_404_but_fails_on_500():
 
     with pytest.raises(IOError):
         D.load_rss_pool(get=get, log=lambda s: None, retries=1)
+
+
+def test_generated_at_carries_exactly_one_valid_offset():
+    """现网产物 run 35749459676 的 `generated_at` 实测是
+    `2026-09-22T23:52:05+00:00+08:00` —— 两个偏移量被拼在一起。
+
+    根因是 `now_bj_iso()` 拿的是**带 tzinfo 的** UTC 时刻，加 8 小时后 tzinfo 仍是 UTC，
+    `isoformat()` 于是自己写了 `+00:00`，代码再手拼一个 `+08:00`。
+    这不是排版小事：spec §5 把这个字段交给下游读（页面"更新于"、历史归档、
+    以及任何 `fromisoformat` 的消费方），双偏移既解析不了、也容易被按 UTC 误读成 8 小时。
+    """
+    s = D.now_bj_iso()
+    assert s.count("+") == 1 and s.endswith("+08:00"), "偏移量被拼了两次：%s" % s
+    dt = datetime.fromisoformat(s)          # 解析不了就是红：字段必须可被标准库读
+    assert dt.utcoffset() == timedelta(hours=8), dt.utcoffset()
+    # 数值本身也得是"北京墙上时间"，不能只挂个 +08:00 标签却填 UTC 的数字
+    skew = (dt - datetime.now(timezone.utc)).total_seconds()
+    assert abs(skew) < 120, "挂 +08:00 却写着别的时刻：%s 与真实时刻差 %.0fs" % (s, skew)
+    assert dt.strftime("%Y-%m-%d") == (
+        datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d")
+
+
+# ── 对抗审查 P0：一次瞬时错误毁整晚 / 撞墙钟时"做完的照样发布" ──────────────
+
+class _Flaky:
+    """第二条事件的 generate 抛 5xx。真跑一夜里这属于最常见的瞬时错误。"""
+
+    def __init__(self):
+        self.inner = D.FakeClient()
+        self.n = 0
+
+    def complete(self, prompt, key=None, kind="generate"):
+        if kind == "generate":
+            self.n += 1
+            if self.n == 2:
+                raise RuntimeError("Agnes HTTP 502")
+        return self.inner.complete(prompt, key=key, kind=kind)
+
+
+def test_one_transient_error_does_not_destroy_the_whole_night(tmp_path):
+    """产物在循环之后才落盘，所以异常穿出循环 = 钱花完、JSON/HTML 一个都没有。
+
+    要求的不是"容忍"，是"记账着容忍"：挂了几条必须能在产物里读到，
+    否则"三条全挂"与"三条都没排上"长得一模一样。
+    """
+    arts, links = _pool()
+    out = _run(tmp_path, client=_Flaky(), pool=arts, anchor_raw=_anchor(links, 2))
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    done = [e["id"] for e in doc["events"]]
+    assert len(done) >= 1, "一条 5xx 把已经做完的条目也带走了：%s" % done
+    assert doc.get("failed_items"), "吞了异常却不记账：%s" % sorted(doc)
+    assert os.path.exists(out["html"]) and os.path.exists(out["json"])
+
+
+def test_wallclock_stop_publishes_what_it_finished_and_says_why():
+    """§4 明写"撞墙钟主动收口时，已做完的照样发布"。
+
+    旧实现只把 `llm_calls >= call_cap` 当作主动收口，于是墙钟到点那一夜
+    `published={'status':'blocked'}`、提交 0、退出码 0 —— 一份成果都上不了线还全绿。
+    另外两个原因也不能共用一个名字：调用预算不够要加条目预算，窗口不够要提并发，
+    下一步动作相反。
+    """
+    r = D.missing([{"id": "e1"}, {"id": "e2"}], [{"id": "e1"}], stop="wallclock")
+    assert [x["reason"] for x in r] == ["not_run:wallclock"], r
+    assert D.missing([{"id": "e1"}], [])[0]["reason"] == "not_run:incomplete"
+    assert D.can_publish([{"id": "e1"}, {"id": "e2"}], [{"id": "e1"}],
+                         budget_used_calls=3, call_cap=80, stopped_by_cap=True) is True
+    assert D.can_publish([{"id": "e1"}, {"id": "e2"}], [{"id": "e1"}],
+                         budget_used_calls=3, call_cap=80, stopped_by_cap=False) is False, \
+        "没撞任何预算的半成品也能上线"
+
+
+def test_remaining_window_shrinks_the_per_item_wait_budget(tmp_path, monkeypatch):
+    """§4 的"单条目等待 ≤900s"必须是**条目级**预算，不是每次调用各领 900s。
+
+    一条事件最多 generate×3 + judge×1，四次 900s 就是 60 分钟，而墙钟闸只在循环顶问 ——
+    单条就能把整晚余量吃穿（对抗审查 P0-1）。所以传进 `deepen_one` 的 `wait_cap_s`
+    必须随剩余窗口缩水。
+    """
+    seen = []
+    real = D.deepen_one
+
+    def spy(ev, pool, client, budget, kp, **kw):
+        seen.append(kw.get("wait_cap_s"))
+        kw["wait_cap_s"] = 1
+        return real(ev, pool, client, budget, kp, **kw)
+
+    monkeypatch.setattr(D, "deepen_one", spy)
+    arts, links = _pool()
+    _run(tmp_path, pool=arts, anchor_raw=_anchor(links), wait_cap_s=900)
+    assert seen and seen[0] == 900, "窗口充裕时不该缩：%s" % seen
+    seen.clear()
+    monkeypatch.setattr(D.Budget, "elapsed_s", lambda self: self.time_cap_s - 30)
+    _run(tmp_path / "b", pool=arts, anchor_raw=_anchor(links), wait_cap_s=900)
+    assert seen and 29.0 <= seen[0] <= 31.0, "只剩 30s 却仍按 900s 派发：%s" % seen
+
+
+def test_wallclock_cutoff_in_publish_mode_actually_ships_what_it_finished(tmp_path, monkeypatch):
+    """上一条只证明 `can_publish` 认这次收口；这条证明 night_run 真的把信号传给它。
+
+    接线断掉的形态很隐蔽：夜场跑完 1/2 条、`not_run` 记满、产物写好、
+    然后 `published={'status':'blocked'}`、提交 0、退出码 0 —— 一整晚的成果一个字节都上不了线，
+    而 Actions 全绿。变异体 `stopped_by_cap=False` 就是这条要抓的。
+    """
+    answers = [False] + [True] * 20
+    monkeypatch.setattr(D.Budget, "over_time", lambda self: answers.pop(0))
+    calls = {"commit": 0}
+
+    class Api:
+        head = "h0"
+
+        def head_info(self):
+            return self.head, "b0"
+
+        def create_blob(self, content):
+            return "bl%d" % len(content)
+
+        def create_tree(self, base, entries):
+            return "t1"
+
+        def create_commit(self, parent, tree, msg):
+            calls["commit"] += 1
+            return "sha%d" % calls["commit"]
+
+        def update_ref(self, sha, force=False):
+            self.head = sha
+            return True
+
+        def is_ancestor(self, sha):
+            return True
+
+    class Realish:
+        def complete(self, prompt, key=None, kind="generate"):
+            return D.FakeClient().complete(prompt, key, kind)
+
+    arts, links = _pool()
+    holder = {}
+    out = _run(tmp_path, purpose="publish", client=Realish(),
+               api_factory=lambda: holder.setdefault("a", Api()),
+               pool=arts, anchor_raw=_anchor(links, 2))
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    assert len(doc["events"]) == 1 and len(doc["not_run"]) == 1, (
+        len(doc["events"]), doc["not_run"])
+    assert calls["commit"] == 1, "撞墙钟收口却没提交：%s / published=%s" % (
+        calls, out.get("published"))
+    assert (out.get("published") or {}).get("status") != "blocked", out.get("published")
