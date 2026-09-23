@@ -400,7 +400,12 @@ def test_structure_call_happens_after_the_text_is_assembled(tmp_path, monkeypatc
 
 
 def test_missing_structure_fields_are_accounted_for(tmp_path):
-    """结构那趟跑空时不许静默：`staged.struct_missing` 要指名缺哪几项。"""
+    """结构那趟跑空时不许静默：`struct_missing` 要指名缺哪几项。
+
+    记账点必须在归一之后：现网 evt_20260923_010 的 `staged.struct_missing` 是 []，
+    而产物里 `quality` 是空的 —— 因为字段是被 `normalize_candidate` 掏空的，
+    归一之前数当然"什么都不缺"。
+    """
     class NoStruct(D.FakeClient):
         def complete(self, prompt, key=None, kind="generate"):
             if kind == "structure":
@@ -409,9 +414,81 @@ def test_missing_structure_fields_are_accounted_for(tmp_path):
             return D.FakeClient.complete(self, prompt, key=key, kind=kind)
 
     doc = _run(tmp_path, NoStruct())
-    st = doc["events"][0].get("staged") or {}
-    assert set(st.get("struct_missing") or []) >= {"claims", "causal_chains", "quality"}, \
-        "结构跑空却没记账，事后只能看到一句 0 条：%s" % st
+    ev = doc["events"][0]
+    assert set(ev.get("struct_missing") or []) >= {"claims", "causal_chains", "quality"}, \
+        "结构跑空却没记账，事后只能看到一句 0 条：%s" % ev.get("struct_missing")
+
+
+def _lumpy_quality_client():
+    """结构那趟把 quality 写成数组 —— 现网 evt_20260923_010 的真实形状。"""
+    class Lumpy(D.FakeClient):
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                doc = json.loads(D.FakeClient.complete(self, prompt, key=key, kind=kind))
+                doc["quality"] = ["一手报道", "深度稿"]
+                return json.dumps(doc, ensure_ascii=False)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    return Lumpy()
+
+
+def test_quality_squeezed_out_by_normalizer_counts_as_missing(tmp_path):
+    """"给了但形状不对"比"没给"更骗人：归一之前它明明在，归一之后是空的。
+
+    现网 evt_20260923_010 的 `staged.struct_missing` 是 []，同一份产物里 `quality` 却是 {}，
+    两处读数互相打脸 —— 记账点只有挪到归一之后才说得出真话。
+    """
+    ev = _run(tmp_path, _lumpy_quality_client())["events"][0]
+    assert ev["quality"] == {}, "形状不对的 quality 不该原样上线：%r" % (ev["quality"],)
+    assert "quality" in (ev.get("struct_missing") or []), \
+        "被归一掏空的字段没记账，事后读起来像'模型给了是我们没用'：%s" % ev.get("struct_missing")
+    assert ev.get("degraded_reason"), "quality 是空壳却过了契约：%s" % ev.get("contract_fails")
+
+
+def test_dropped_quality_shape_is_echoed_into_the_artifact(tmp_path):
+    """掏空之前留一份原样，否则"我们丢了"会被下一跑读成"模型没写"。"""
+    ev = _run(tmp_path, _lumpy_quality_client())["events"][0]
+    assert "一手报道" in (ev.get("quality_echo") or ""), \
+        "quality 被丢弃却没留原样：%r" % ev.get("quality_echo")
+
+
+def test_structure_feedback_reaches_the_structure_call(tmp_path):
+    """重写轮的失败原因必须也进结构那趟。
+
+    只把反馈拼给提纲，等于结构字段的所有违约（horizon_days=90、quality.why 超长）
+    都要靠"再赌一次同样的形状"来修 —— 现网 run 35806236237 就是这样两轮白烧。
+    """
+    seen = {"struct": []}
+    inner = D.FakeClient()
+
+    class BadOnce:
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                seen["struct"].append(prompt)
+                if len(seen["struct"]) == 1:
+                    return json.dumps({
+                        "claims": inner.complete(prompt, key, "structure") and [
+                            {"text": "论断%d" % i, "kind": "causal", "evidence": ["c1"]}
+                            for i in range(4)],
+                        "causal_chains": [{"trigger": "触发", "mechanism": "机制", "outcome": "结果",
+                                           "confidence": 0.6, "evidence": ["c1"]} for _ in range(3)],
+                        "forecasts": [{"claim": "预计下季度", "horizon_days": 90,
+                                       "check_metric": "竞品发布数>=3"}],
+                        "quality": {"verdict": "一手", "score": 85, "why": "合" * 150,
+                                    "basis": ["sig:c1"]},
+                        "citations": [{"id": "c%d" % (i + 1)} for i in range(6)]},
+                        ensure_ascii=False)
+            return inner.complete(prompt, key=key, kind=kind)
+
+        def __getattr__(self, n):
+            return getattr(inner, n)
+
+    _run(tmp_path, BadOnce())
+    assert len(seen["struct"]) >= 2, "结构那趟没被重跑：%d" % len(seen["struct"])
+    assert "不合格原因" in seen["struct"][1], \
+        "第二轮结构调用没带上失败原因：%r" % seen["struct"][1][-160:]
+    assert "horizon_days" in seen["struct"][1], \
+        "点名了原因却没提到违约字段：%r" % seen["struct"][1][-200:]
 
 
 if __name__ == "__main__":
