@@ -345,10 +345,18 @@ def test_judge_reject_regrades_after_max_regen(tmp_path):
 
 
 def test_judge_is_called_separately_from_generator(tmp_path):
-    """spec 要求 judge 独立打分：把生成方自报的分当判定分就是自评。"""
+    """spec 要求 judge 独立打分：把生成方自报的分当判定分就是自评。
+
+    钉的是"判定与生成是两类调用、判定恰好一次"，不是 `kind=="generate"` 这个字面量 ——
+    两段式之后生成侧变成 outline + section，按 kind 名钉会把一条还在成立的不变量判红。
+    """
     c = D.FakeClient()
     _run(tmp_path, client=c)
-    assert c.calls.count("generate") == 1 and c.calls.count("judge") == 1, c.calls
+    gen = [k for k in c.calls if k != "judge"]
+    assert gen, c.calls
+    assert set(gen) <= {"generate", "outline", "section"}, "冒出了第三种生成侧调用：%s" % set(gen)
+    assert c.calls.count("judge") == 1, "判定次数不是 1：%s" % c.calls
+    assert "judge" not in set(gen), "判定与生成共用了 kind，等于让生成方自评"
 
 
 def test_half_finished_run_is_blocked_from_publishing(tmp_path):

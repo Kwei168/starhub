@@ -785,27 +785,46 @@ def load_anchor_events(raw, source_sha=""):
 
 
 PROMPT_FIELDS = ("narrative", "claims", "causal_chains", "forecasts", "quality", "citations")
+# 两段式第一段只出提纲与结构字段。字段清单必须跟着换：继续叫模型在一趟里既写 3,250 字
+# 论述又排 6 类结构，现网实测它把长度让给了结构（1,748 / 2,307 / 1,902 字，重写两轮不动）。
+OUTLINE_FIELDS = ("sections", "claims", "causal_chains", "forecasts", "quality", "citations")
+SECTIONS_MIN, SECTIONS_MAX = PARAS_MIN, PARAS_MIN + 3
 
 
-def build_prompt(event, ctx):
+def _evidence_block(a, cid=""):
+    return "【证据 %s｜%s｜%s｜%d 字】\n%s" % (
+        cid, a.get("source", ""), a.get("title", ""), count_chars(a.get("text") or ""),
+        a.get("text") or "")
+
+
+def build_prompt(event, ctx, mode="full"):
+    """mode="full" 一趟出全部（旧路径）；mode="outline" 只出提纲 + 结构字段。
+
+    两条路共用同一份结构契约，只换 narrative 那一条 —— 复制一份 prompt 文本
+    就等于埋下"改了常量忘了改文案"的分叉。
+    """
     arts = ctx.get("articles") or []
     ids = ctx.get("ids") or {}
-    blocks = []
-    for i, a in enumerate(arts):
-        cid = ids.get(a.get("url")) or ("c%d" % (i + 1))
-        blocks.append("【证据 %s｜%s｜%s｜%d 字】\n%s" % (
-            cid, a.get("source", ""), a.get("title", ""), count_chars(a.get("text") or ""),
-            a.get("text") or ""))
+    blocks = [_evidence_block(a, ids.get(a.get("url")) or ("c%d" % (i + 1)))
+              for i, a in enumerate(arts)]
     id_list = ", ".join("c%d" % (i + 1) for i in range(len(arts)))
+    if mode == "outline":
+        fields, body = OUTLINE_FIELDS, (
+            "- sections：%d-%d 条提纲，每条含 title/focus/evidence（evidence 只能取上面那批编号）；"
+            "focus 写清这一段论证什么、用哪几条证据，**不要写正文**。\n" % (SECTIONS_MIN, SECTIONS_MAX))
+    else:
+        fields, body = PROMPT_FIELDS, (
+            "- narrative：成文论述，%d-%d 字（**按 %d 字写，别贴下限**），"
+            "至少 %d 段且**每段不少于 %d 字**，段落式行文，"
+            "禁止分点罗列的条目体；必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。"
+            "段数够、每段短，仍判不合格。\n" % (
+                NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN))
     return (
         "你是深度分析员。只依据下面给出的证据写一条洞察，不得补充证据之外的事实或数字。\n"
         "事件：%s（主题 %s）\n\n"
         "输出一个 JSON 对象，字段必须是：%s。\n"
         "硬性要求（不满足会被判不合格并重写）：\n"
-        "- narrative：成文论述，%d-%d 字（**按 %d 字写，别贴下限**），"
-        "至少 %d 段且**每段不少于 %d 字**，段落式行文，"
-        "禁止分点罗列的条目体；必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。"
-        "段数够、每段短，仍判不合格。\n"
+        "%s"
         "- claims：3-10 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
         "写别的编号等于引用不存在的内容，整条判不合格。\n"
         "- causal_chains：2-6 条，每条含 trigger/mechanism/outcome/confidence/evidence"
@@ -819,9 +838,87 @@ def build_prompt(event, ctx):
         "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
         "- citations：5-12 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
-    ) % (event.get("title", ""), event.get("topic", ""), ", ".join(PROMPT_FIELDS),
-         NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN,
+    ) % (event.get("title", ""), event.get("topic", ""), ", ".join(fields), body,
          id_list or "（无）", id_list or "（无）", "\n\n".join(blocks))
+
+
+def build_section_prompt(event, ctx, sec, idx, total):
+    """第二段：一次只写一段，且只带这一段引用的证据。
+
+    逐段成文如果每段都重发整包证据，就是把输入放大 6 倍（现网单趟输入实测 ~52k token/事件），
+    成本上不接受，所以按 sections[].evidence 过滤。
+    """
+    ids = ctx.get("ids") or {}
+    by_cid = {}
+    for u, cid in ids.items():
+        by_cid.setdefault(cid, u)
+    picked = []
+    for cid in (sec.get("evidence") or []):
+        u = by_cid.get(cid)
+        a = next((x for x in (ctx.get("articles") or []) if x.get("url") == u), None)
+        if a is not None:
+            picked.append(_evidence_block(a, cid))
+    if not picked:
+        picked = [_evidence_block(a, "c%d" % (i + 1))
+                  for i, a in enumerate((ctx.get("articles") or [])[:3])]
+    return (
+        "接着写第 %d/%d 段正文，只写这一段，输出纯文本、不要 JSON、不要小标题。\n"
+        "事件：%s（主题 %s）\n"
+        "本段题目：%s\n本段论点：%s\n"
+        "要求：成文论述，**不少于 %d 字**，段落式行文，禁止分点罗列；"
+        "必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）；"
+        "不要重复其它段已经写过的内容。\n"
+        "===== 本段可用证据 =====\n%s\n"
+    ) % (idx, total, event.get("title", ""), event.get("topic", ""),
+         (sec.get("title") or "第%d段" % idx), sec.get("focus") or "", PARA_MIN,
+         "\n\n".join(picked))
+
+
+def _section_text(raw):
+    """段正文取回。模型很爱给 JSON，这里把它折回纯文本，别让一段话变成字典字面量上屏。"""
+    t = (raw or "").strip()
+    if t.startswith("{"):
+        doc = parse_model_json(t) or {}
+        for k in ("text", "narrative", "body", "section"):
+            if isinstance(doc.get(k), str) and doc[k].strip():
+                return doc[k].strip()
+    if t.startswith("```"):
+        t = t.strip("`")
+        t = t[t.find("\n") + 1:] if "\n" in t else t
+    return t.strip()
+
+
+def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=None, extra=""):
+    """两段式：先提纲与结构字段，再逐段成文。返回 (cand, note)。
+
+    `cand is None` 表示这趟没给出可用 sections —— 交回上层退单趟，而不是让整条空转：
+    提纲这一步是新流程里唯一没有契约兜底的环节（validate 只看最终 narrative/结构字段）。
+    """
+    raw = call_llm(client, build_prompt(event, ctx, "outline") + signals_note(ctx) + extra,
+                   key_pool, budget, "outline", wait_cap_s=wait_cap_s, sleep=sleep)
+    doc = dict(parse_model_json(raw) or {})
+    doc.pop("narrative", None)
+    secs = [s for s in (doc.get("sections") or []) if isinstance(s, dict)]
+    secs = secs[:SECTIONS_MAX]
+    if len(secs) < PARAS_MIN:
+        return None, {"reason": "提纲只给了 %d 段，少于 %d" % (len(secs), PARAS_MIN)}
+    parts, shorts = [], []
+    for i, s in enumerate(secs):
+        body = _section_text(call_llm(client, build_section_prompt(event, ctx, s, i + 1, len(secs)),
+                                      key_pool, budget, "section",
+                                      wait_cap_s=wait_cap_s, sleep=sleep))
+        if count_chars(body) < PARA_MIN:
+            again = _section_text(call_llm(client, build_section_prompt(event, ctx, s, i + 1, len(secs)),
+                                           key_pool, budget, "section",
+                                           wait_cap_s=wait_cap_s, sleep=sleep))
+            if count_chars(again) > count_chars(body):
+                body = again
+            if count_chars(body) < PARA_MIN:
+                shorts.append(i + 1)
+        parts.append(body)
+    doc["narrative"] = "\n\n".join(p for p in parts if p)
+    doc.pop("sections", None)
+    return doc, {"sections": len(secs), "short_sections": shorts}
 
 
 # ─────────────────────────── 并发提交协议 ─────────────────────────────────
@@ -1465,8 +1562,12 @@ def judge_event(client, cand, ctx, key_pool, budget, wait_cap_s=900, sleep=None)
 
 
 def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=900, sleep=None,
-               source_quality=None):
-    """一个事件：装证据 → 过证据门 → 生成 → 契约判定 + judge 独立打分 → 不过就重写。"""
+               source_quality=None, staged=True):
+    """一个事件：装证据 → 过证据门 → 生成 → 契约判定 + judge 独立打分 → 不过就重写。
+
+    `staged=True` 走两段式（提纲 → 逐段成文）。现网单趟的长度方差压不住
+    （1,748 / 2,307 / 1,902 字，重写两轮停在同一水平），把"写够长"单独交给每段一次调用。
+    """
     arts = select_articles(event, pool)
     gate_ok, gate_why = evidence_gate(arts)
     ctx = assemble_context(arts, budget_tokens=budget.budget_tokens)
@@ -1494,11 +1595,28 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         return rec
     prompt = (build_prompt(event, ctx) + signals_note(ctx))
     cand, last_fails, score = {}, [], {"mean": 0.0}
-    parse_echo = None
+    parse_echo, staged_note, extra = None, None, ""
     for attempt in range(max_regen + 1):
-        raw = call_llm(client, prompt, key_pool, budget, "generate",
-                       wait_cap_s=wait_cap_s, sleep=sleep)
-        cand = dict(parse_model_json(raw) or {})
+        raw = ""
+        if staged:
+            doc, note = staged_generate(event, ctx, client, key_pool, budget,
+                                        wait_cap_s=wait_cap_s, sleep=sleep, extra=extra)
+            cand = dict(doc or {})
+            if cand:
+                staged_note = note
+            else:
+                # 提纲没给够段数：这条退回单趟生成。新流程的唯一入口不设契约兜底
+                # （validate 只看最终 narrative 与结构字段），不退回就等于把整条打成 0 字。
+                staged_note = dict(note or {})
+                staged_note["fell_back"] = True
+                raw = call_llm(client, build_prompt(event, ctx) + signals_note(ctx) + extra,
+                               key_pool, budget, "generate",
+                               wait_cap_s=wait_cap_s, sleep=sleep)
+                cand = dict(parse_model_json(raw) or {})
+        else:
+            raw = call_llm(client, prompt, key_pool, budget, "generate",
+                           wait_cap_s=wait_cap_s, sleep=sleep)
+            cand = dict(parse_model_json(raw) or {})
         if not cand and raw:
             # 解析不出来时，日志里只剩"narrative 0 字"，与"模型真的没写"长得一模一样。
             # 现网 evt_20260923_008 就是这样：十个字段全空、truncated=0，谁也不知道它返回了什么。
@@ -1519,6 +1637,8 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
                 cand["contract_fails"] = []
                 cand["regen_used"] = attempt
                 cand["context_stats"] = rec["context_stats"]
+                if staged_note:
+                    cand["staged"] = staged_note
                 return cand
         else:
             score = {"mean": 0.0}
@@ -1526,11 +1646,15 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
             # 结构不合格时点名契约条目；结构过了但 judge 不合格时点名**分项维度**。
             # 两条路都走同一个"必须逐条修掉"的口子，否则 §2 的"按薄弱维度重生成"
             # 只剩均值一句话，重写两轮等于什么都没改。
-            prompt = (build_prompt(event, ctx) + signals_note(ctx)) + "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(
+            # 两段式时这段反馈必须跟着进提纲那趟调用 —— 不加的话重写就是原样再跑一遍。
+            extra = "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(
                 fails or judge_weak_spots(score))
+            prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
     cand["degraded_reason"] = "重写 %d 次仍不合格" % max_regen
     if parse_echo:
         cand["parse_echo"] = parse_echo
+    if staged_note:
+        cand["staged"] = staged_note
     cand["narrative"] = (cand.get("narrative") or "")[:DEGRADED_NARR_MAX]
     cand["forecasts"] = []
     cand["rubric"] = score
@@ -1682,9 +1806,10 @@ class FakeClient:
             v = 0.9 if self.judge_pass else 0.4
             return json.dumps({"narrative": v, "causal": v, "forecast": v, "quality": v})
         ids = re.findall(r"c\d+", prompt.split("证据编号里选")[-1][:200]) or ["c%d" % i for i in range(1, 7)]
-        return json.dumps({
-            "narrative": "\n\n".join("论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 380)
-                                     for _ in range(7)),
+        if kind == "section":
+            # 段正文必须真够长（越过每段下限）：给短了，测到的就是夹具尺寸而不是流程
+            return "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 470)
+        doc = {
             "claims": [{"text": "论断%d" % i, "kind": "causal", "evidence": [ids[0] if ids else "c1"]}
                        for i in range(4)],
             "causal_chains": [{"trigger": "触发", "mechanism": "机制", "outcome": "结果",
@@ -1695,7 +1820,17 @@ class FakeClient:
                         "why": "依据来源分布与是否一手材料判定，未采用生成方自评",
                         "basis": (re.findall(r"sig:c\d+", prompt or "") or ["sig:c1"])[:3]},
             "citations": [{"id": (ids[i] if i < len(ids) else "c%d" % (i + 1))} for i in range(6)],
-        }, ensure_ascii=False)
+        }
+        if kind == "outline":
+            # 第一段只该给提纲：连正文一起给，就等于测不到"逐段成文"这条新路径
+            doc["sections"] = [{"title": "第%d段" % (i + 1),
+                                "focus": "论证第%d个环节，并给出反证与口径限制" % (i + 1),
+                                "evidence": [ids[i % len(ids)] if ids else "c1"]}
+                               for i in range(PARAS_MIN)]
+            return json.dumps(doc, ensure_ascii=False)
+        doc["narrative"] = "\n\n".join(
+            "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 380) for _ in range(7))
+        return json.dumps(doc, ensure_ascii=False)
 
 
 class GithubDataApi:
@@ -1772,7 +1907,7 @@ class GithubDataApi:
 def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAULT_BUDGET_TOKENS,
               call_cap=80, keys=None, get=http_get, anchor_raw=None, pool=None, out_dir="_night_state",
               date_str=None, log=None, sleep=None, wait_cap_s=900, urls=None,
-              api_factory=None, max_regen=2, workers=1, pred_raw=None,
+              api_factory=None, max_regen=2, workers=1, pred_raw=None, staged=True,
               pred_url=PREDICTIONS_URL, verdicts=None, quality_raw=None,
               quality_url=SOURCE_QUALITY_URL):
     """跑一整夜。purpose=test 只落盘不提交；publish 才走 CAS 提交。"""
@@ -1864,7 +1999,7 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
             item_wait = max(1.0, min(wait_cap_s, budget.time_cap_s - budget.elapsed_s()))
         try:
             r = deepen_one(ev, pool, client, budget, kp, wait_cap_s=item_wait, sleep=sleep,
-                           max_regen=max_regen, source_quality=source_quality)
+                           max_regen=max_regen, source_quality=source_quality, staged=staged)
         except RateLimited as e:
             log("[夜场] %s 等待超上限(%s)：记 not_run，不阻断全场" % (ev["id"], e))
             return
@@ -1942,6 +2077,11 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     with open(ppath, "w", encoding="utf-8") as f:
         for r in ledger:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    if failed and not ship:
+        # 逐条吞异常是为了"一条抖动不换整晚"，但全军覆没必须当场喊红：
+        # 否则"每条都抛错"与"每条都没排上"在 CI 上都是同一个绿勾。
+        log("::error title=夜场全军覆没|%d 条全部抛错（%s），本场没有任何成果" % (
+            len(failed), "; ".join(str(x) for x in failed[:3])))
     out = {"payload": payload, "json": jpath, "html": hpath, "predictions": ppath,
            "budget": budget.snapshot(), "published": None}
     if purpose != "publish":
@@ -1997,7 +2137,11 @@ def main(argv=None):
     ap.add_argument("--events-limit", type=int, default=12)
     ap.add_argument("--out", default="_night_state")
     ap.add_argument("--budget-tokens", type=int, default=DEFAULT_BUDGET_TOKENS)
-    ap.add_argument("--cap-calls", type=int, default=80)
+    ap.add_argument("--cap-calls", type=int, default=150,
+                    help="整夜 LLM 调用上限。两段式之后单条约 1(提纲)+6~9(逐段)+1(判定)=%d~11 次，"
+                         "旧默认 80 只够 10 条，会在半夜把剩下的条目砍掉" % (1 + PARAS_MIN + 1))
+    ap.add_argument("--single-pass", action="store_true",
+                    help="退回单趟生成（省成本时用这条，代价是 §2 的字数下限再次靠模型自觉）")
     ap.add_argument("--wait-cap", type=int, default=900)
     ap.add_argument("--workers", type=int, default=1,
                     help="并发档；实际取 min(此值, key 数, %d)，首夜读数定档后不要凭感觉调大" % WORKERS_MAX)
@@ -2029,7 +2173,7 @@ def main(argv=None):
     out = night_run(purpose=a.purpose, events_limit=a.events_limit, out_dir=a.out,
                     budget_tokens=a.budget_tokens, call_cap=a.cap_calls,
                     wait_cap_s=a.wait_cap, date_str=a.date,
-                    workers=a.workers, verdicts=verdicts,
+                    workers=a.workers, verdicts=verdicts, staged=not a.single_pass,
                     client=FakeClient() if a.fake_client else None,
                     keys=env_keys(), log=log_live,
                     get=http_get)
