@@ -985,14 +985,15 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
     # 0.3 分：现网 run 35803569061 的 evt_003 契约全过，rubric 却是
     # {narrative 0.6, causal 0.3, forecast 0.3, quality 0.3} —— 机制链与预测都按提纲的认真度答。
     struct = dict(parse_model_json(call_llm(
-        client, build_structure_prompt(event, ctx, doc["narrative"]) + signals_note(ctx),
+        client, build_structure_prompt(event, ctx, doc["narrative"]) + signals_note(ctx) + extra,
         key_pool, budget, "structure", wait_cap_s=wait_cap_s, sleep=sleep)) or {})
     for k in STRUCT_FIELDS:
         if struct.get(k):
             doc[k] = struct[k]
+    # `struct_missing` 不在这里算：结构字段还要过 normalize_candidate，形状不对的会被掏空，
+    # 在这里记账只能得出"什么都没缺"（现网 evt_20260923_010 就是这么骗过去的）。
     return doc, {"sections": len(secs), "short_sections": shorts,
-                 "trimmed_sections": dropped,
-                 "struct_missing": [k for k in STRUCT_FIELDS if not struct.get(k)]}
+                 "trimmed_sections": dropped}
 
 
 # ─────────────────────────── 并发提交协议 ─────────────────────────────────
@@ -1573,6 +1574,11 @@ def normalize_candidate(cand, ids_map, arts_by_id=None):
         # 整段字符串当 quality：把原文塞进 why，其余留空，让契约去判它不合格
         cand["quality"] = {"verdict": "", "score": 0, "why": q.strip(), "basis": []}
     elif not isinstance(q, dict):
+        if q not in (None, "", [], {}):
+            # 留一份原样：否则"我们把它丢了"会被读成"模型没写"。
+            # 现网 evt_20260923_010 就是这样 —— struct_missing 报"什么都没缺"，
+            # 产物里的 quality 却是空的，缺口正在这一步。
+            cand["quality_echo"] = str(q)[:400]
         cand["quality"] = {}
     return cand
 
@@ -1701,6 +1707,8 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         cand.setdefault("topic", event.get("topic", ""))
         cand = normalize_candidate(cand, ctx["ids"],
                                    {"c%d" % (i + 1): art for i, art in enumerate(ctx["articles"])})
+        # 缺哪些结构字段，必须在归一**之后**数：形状不对的会被掏空，归一之前数只会报"什么都不缺"。
+        cand["struct_missing"] = [k for k in STRUCT_FIELDS if not cand.get(k)]
         ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids)
         last_fails = fails
         if ok:

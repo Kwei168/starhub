@@ -556,3 +556,48 @@ pusher 的"内容不同=0"只证明远端等于"上传那一刻"的字节，不�
 **另外一条必须先修的断链**：全仓 `deep-insight.html` 的**入链为 0** —— 即开了 publish，
 用户在站点上也找不到这一页。所以"publish 打开"不等于"上线"，入口（§7 阶段 2 的前端合并呈现）
 是 §6.4 验收的前置，不该排到后面。
+
+### 10.13 结构字段记账、独立页入口的落地顺序，以及一次必须记下的工具异常（2026-09-23 凌晨）
+
+**① `struct_missing` 之前是假账**。现网 `evt_20260923_010` 同一份产物里两句话互相打脸：
+`staged.struct_missing = []`（"什么都没缺"），而 `quality = {}`，契约失败项写着
+`quality.verdict None 不在枚举 / score 实为 None / why 0 字 / basis 为空`。
+成因是记账点写在 `normalize_candidate` **之前**：模型把 quality 给成了非对象形状，
+归一把它掏空了，归一之前它当然"在"。三处改动：
+
+| 改动 | 为什么必须有 |
+|---|---|
+| `struct_missing` 改在归一**之后**数 | 否则缺什么永远读不出来，重写轮也拿不到靶子 |
+| 掏空前留 `quality_echo`（原样截 400 字） | 否则"我们把它丢了"会被下一跑读成"模型没写" |
+| 重写轮的"不合格原因"也拼进结构那趟 | run 35806236237 的 `horizon_days=90`、`quality.why 154 字` 两轮白烧，就是因为反馈只进了提纲调用 |
+
+判据 4 新（`test_quality_squeezed_out_by_normalizer_counts_as_missing` /
+`test_dropped_quality_shape_is_echoed_into_the_artifact` /
+`test_structure_feedback_reaches_the_structure_call` + 改写 1 条），
+夜场 195 条全绿；隔离树变异 21 具全杀（新增 S4 不记账 / S6 归一前记账 / S7 不留原样 / S8 不带原因），
+工作树 sha256 未变。
+
+**② 独立"深度洞察"页的入口只能这么排**。用户已拍板"导航加一个独立深度洞察页"。
+但 2026-09-23 实测：`https://kwei168.github.io/starhub/deep-insight.html` → **HTTP 404**
+（同批 `ai-daily.html` / `rss-aggregator.html` / `index.html` 均 200）。
+所以顺序必须是 **先跑成一场 `purpose=publish` 让页面真存在，再挂导航** ——
+反过来做就是给整站三个页面各挂一条死链，正是本轮红线要避开的东西。
+夜场页自身反向挂回三个现役页（三个都是 200）不受此限制，可以先到手。
+
+**③ 死符号清扫的判据本身差点造成事故**。v1 普查用 `名字(` 匹配调用点，把
+`http_get` 报成零调用 —— 它是 `main()` 里 `get=http_get` 这种**裸引用**，
+照 v1 删掉就是半夜 NameError。v2 改成按 AST 的 Name/Load 计数后，
+`build_deep_insight.py` 71 个模块级函数里真正无生产引用的只有 5 个：
+`_due`（与 `_due_label` 同逻辑、只差兜底文案）、`title_overlap`（`select_articles` 内联了同一判据）、
+`load_done`（night_run 内联 `load_records` 取 id 集）、`append_predictions` + `reconcile`
+（账本改成"读远端→整体重写"之后被 `settle` / `prune_predictions` 取代）。
+删除时三条不变量要搬到现役路径上：checkpoint 续跑已由 `test_checkpoint_makes_second_run_do_no_work`
+端到端守住，补证据的同题重叠已由 `test_top_up_uses_title_overlap_not_only_same_source`
+（调 `select_articles`）守住，预测账本的"未到期不算 miss / auto_checkable_share"
+两条要重写成直接打 `settle` —— 它们目前只被这两个死函数守着。
+
+**④ 记一条工具异常，别再被它带跑**：本轮一次 Grep 返回了
+`build_deep_insight.py:1035 def render_chunk(event): return ""`，
+据此我一度认定存在一个空壳渲染函数并把它写进了判断。复查后该符号**全仓不存在**
+（`grep -rn "def render_chunk"` 零命中，真实 1035 行是 `_ABS` 附近的空行）。
+结论：工具输出里冒出来的"代码证据"也要落盘复核，不能因为格式像真结果就采信。
