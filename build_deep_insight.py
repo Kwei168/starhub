@@ -795,9 +795,11 @@ def load_anchor_events(raw, source_sha=""):
 
 
 PROMPT_FIELDS = ("narrative", "claims", "causal_chains", "forecasts", "quality", "citations")
-# 两段式第一段只出提纲与结构字段。字段清单必须跟着换：继续叫模型在一趟里既写 3,250 字
-# 论述又排 6 类结构，现网实测它把长度让给了结构（1,748 / 2,307 / 1,902 字，重写两轮不动）。
-OUTLINE_FIELDS = ("sections", "claims", "causal_chains", "forecasts", "quality", "citations")
+# 提纲那趟只要 sections。把结构字段也塞进"不要写正文"的那一趟，是我自己造出来的 0.3 分：
+# 现网 run 35803569061 的 evt_003 契约全过，rubric 却是
+# {narrative 0.6, causal 0.3, forecast 0.3, quality 0.3} —— 机制链与预测都按提纲的认真度答。
+OUTLINE_FIELDS = ("sections",)
+STRUCT_FIELDS = ("claims", "causal_chains", "forecasts", "quality", "citations")
 
 
 def _evidence_block(a, cid=""):
@@ -806,11 +808,38 @@ def _evidence_block(a, cid=""):
         a.get("text") or "")
 
 
-def build_prompt(event, ctx, mode="full"):
-    """mode="full" 一趟出全部（旧路径）；mode="outline" 只出提纲 + 结构字段。
+def _structure_rules(id_list):
+    """结构字段的契约，只写一份。
 
-    两条路共用同一份结构契约，只换 narrative 那一条 —— 复制一份 prompt 文本
-    就等于埋下"改了常量忘了改文案"的分叉。
+    单趟路径与"正文写完后补结构字段"那趟都要同一套数字；抄两遍就等于
+    改了常量忘改第二处 —— 那正是这批修复一路在拆的问题。
+    """
+    return (
+        "- claims：%d-%d 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
+        "写别的编号等于引用不存在的内容，整条判不合格。\n"
+        "- causal_chains：%d-%d 条，每条含 trigger/mechanism/outcome/confidence/evidence"
+        "（evidence 同样只能取上面那批编号），每个字段 ≤%d 字，写清为什么发生而不是只说发生了什么。\n"
+        "- forecasts：%d-%d 条，每条含 claim(≤%d字)/horizon_days(只能是 %s，"
+        "写成 30、90 一律判不合格 —— 永不到期的预测不算预测)/"
+        "check_metric（到期用什么可核验指标判命中，不许写“未来如何”这类空话）。\n"
+        "- quality：对证据本身下判断，verdict 只能取 %s，"
+        "score 0-100，why %d-%d 字（**按 %d-%d 字写**，超出判不合格），"
+        "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
+        "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
+        "- citations：%d-%d 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
+    ) % (CLAIM_MIN, CLAIM_MAX, id_list, CHAINS_MIN, CHAINS_MAX, CHAIN_FIELD_MAX,
+         FORECAST_MIN, FORECAST_MAX, FORECAST_CLAIM_MAX,
+         "、".join(str(h) for h in HORIZONS[:-1]) + " 或 " + str(HORIZONS[-1]),
+         "/".join(QUALITY_VERDICTS), WHY_MIN, WHY_MAX, (WHY_MIN + WHY_MAX) // 2,
+         (WHY_MIN + WHY_MAX) // 2 + 10,
+         CITE_MIN, CITE_MAX, id_list)
+
+
+def build_prompt(event, ctx, mode="full"):
+    """mode="full" 一趟出全部（`--single-pass` 的旧路径）；mode="outline" 只要提纲。
+
+    提纲那趟提前 return：它不该再看见结构字段的契约，否则又是"边写正文边排 6 类字段"，
+    模型只能牺牲一头。
     """
     arts = ctx.get("articles") or []
     ids = ctx.get("ids") or {}
@@ -818,37 +847,50 @@ def build_prompt(event, ctx, mode="full"):
               for i, a in enumerate(arts)]
     id_list = ", ".join("c%d" % (i + 1) for i in range(len(arts)))
     if mode == "outline":
-        fields, body = OUTLINE_FIELDS, (
-            "- sections：%d-%d 条提纲，每条含 title/focus/evidence（evidence 只能取上面那批编号）；"
-            "focus 写清这一段论证什么、用哪几条证据，**不要写正文**。\n" % (SECTIONS_MIN, SECTIONS_MAX))
-    else:
-        fields, body = PROMPT_FIELDS, (
-            "- narrative：成文论述，%d-%d 字（**按 %d 字写，别贴下限**），"
-            "至少 %d 段且**每段不少于 %d 字**，段落式行文，"
-            "禁止分点罗列的条目体；必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。"
-            "段数够、每段短，仍判不合格。\n" % (
-                NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN))
+        return (
+            "你是深度分析员。只依据下面给出的证据，先出一份提纲，**不要写正文**。\n"
+            "事件：%s（主题 %s）\n\n"
+            "输出一个 JSON 对象，字段必须是：%s。\n"
+            "硬性要求（不满足会被判不合格并重写）：\n"
+            "- sections：%d-%d 条，每条含 title/focus/evidence"
+            "（evidence 只能从这批编号里选：%s）；focus 一句话说清这一段论证什么、"
+            "用哪几条证据、准备用什么数据或反证收口。\n"
+            "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
+        ) % (event.get("title", ""), event.get("topic", ""), ", ".join(OUTLINE_FIELDS),
+             SECTIONS_MIN, SECTIONS_MAX, id_list or "（无）", "\n\n".join(blocks))
     return (
         "你是深度分析员。只依据下面给出的证据写一条洞察，不得补充证据之外的事实或数字。\n"
         "事件：%s（主题 %s）\n\n"
         "输出一个 JSON 对象，字段必须是：%s。\n"
         "硬性要求（不满足会被判不合格并重写）：\n"
+        "- narrative：成文论述，%d-%d 字（**按 %d 字写，别贴下限**），"
+        "至少 %d 段且**每段 %d-%d 字**，段落式行文，"
+        "禁止分点罗列的条目体；必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。"
+        "段数够、每段短，仍判不合格；总长超上限同样判不合格。\n"
         "%s"
-        "- claims：3-10 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
-        "写别的编号等于引用不存在的内容，整条判不合格。\n"
-        "- causal_chains：2-6 条，每条含 trigger/mechanism/outcome/confidence/evidence"
-        "（evidence 同样只能取上面那批编号），写清为什么发生而不是只说发生了什么。\n"
-        "- forecasts：1-4 条，每条含 claim(≤80字)/horizon_days(只能是 3、7 或 14，"
-        "写成 30、90 一律判不合格 —— 永不到期的预测不算预测)/"
-        "check_metric（到期用什么可核验指标判命中，不许写“未来如何”这类空话）。\n"
-        "- quality：对证据本身下判断，verdict 只能取 一手/深度/数据支撑/转载/通稿/营销，"
-        "score 0-100，why 20-120 字（**按 60-90 字写**，超 120 判不合格），"
-        "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
-        "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
-        "- citations：5-12 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
-    ) % (event.get("title", ""), event.get("topic", ""), ", ".join(fields), body,
-         id_list or "（无）", id_list or "（无）", "\n\n".join(blocks))
+    ) % (event.get("title", ""), event.get("topic", ""), ", ".join(PROMPT_FIELDS),
+         NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN, PERA_MAX,
+         _structure_rules(id_list or "（无）"), "\n\n".join(blocks))
+
+
+def build_structure_prompt(event, ctx, narrative):
+    """正文已经写好，单独补结构字段：机制链/预测/优质判断都是"对这篇成文的判断"。"""
+    arts = ctx.get("articles") or []
+    ids = ctx.get("ids") or {}
+    id_list = ", ".join("c%d" % (i + 1) for i in range(len(arts)))
+    return (
+        "下面是已经写好的一条洞察正文。只依据随后给出的证据，为它补齐结构字段。\n"
+        "事件：%s（主题 %s）\n\n"
+        "===== 正文 =====\n%s\n\n"
+        "输出一个 JSON 对象，字段必须是：%s。\n"
+        "硬性要求（不满足会被判不合格并重写）：\n"
+        "%s"
+        "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
+    ) % (event.get("title", ""), event.get("topic", ""), narrative,
+         ", ".join(STRUCT_FIELDS), _structure_rules(id_list or "（无）"),
+         "\n\n".join(_evidence_block(a, ids.get(a.get("url")) or ("c%d" % (i + 1)))
+                     for i, a in enumerate(arts)))
 
 
 def build_section_prompt(event, ctx, sec, idx, total):
@@ -939,7 +981,18 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
         body.append(p)
     doc["narrative"] = "\n\n".join(body)
     doc.pop("sections", None)
-    return doc, {"sections": len(secs), "short_sections": shorts, "trimmed_sections": dropped}
+    # 结构字段单独一趟，而且看得到已经写好的正文。把它们塞进提纲那趟是我自己造出来的
+    # 0.3 分：现网 run 35803569061 的 evt_003 契约全过，rubric 却是
+    # {narrative 0.6, causal 0.3, forecast 0.3, quality 0.3} —— 机制链与预测都按提纲的认真度答。
+    struct = dict(parse_model_json(call_llm(
+        client, build_structure_prompt(event, ctx, doc["narrative"]) + signals_note(ctx),
+        key_pool, budget, "structure", wait_cap_s=wait_cap_s, sleep=sleep)) or {})
+    for k in STRUCT_FIELDS:
+        if struct.get(k):
+            doc[k] = struct[k]
+    return doc, {"sections": len(secs), "short_sections": shorts,
+                 "trimmed_sections": dropped,
+                 "struct_missing": [k for k in STRUCT_FIELDS if not struct.get(k)]}
 
 
 # ─────────────────────────── 并发提交协议 ─────────────────────────────────
@@ -1843,14 +1896,17 @@ class FakeClient:
             "citations": [{"id": (ids[i] if i < len(ids) else "c%d" % (i + 1))} for i in range(6)],
         }
         if kind == "outline":
-            # 第一段只该给提纲：连正文一起给，就等于测不到"逐段成文"这条新路径
-            doc["sections"] = [{"title": "第%d段" % (i + 1),
-                                "focus": "论证第%d个环节，并给出反证与口径限制" % (i + 1),
-                                "evidence": [ids[i % len(ids)] if ids else "c1"]}
-                               for i in range(PARAS_MIN)]
-            return json.dumps(doc, ensure_ascii=False)
-        doc["narrative"] = "\n\n".join(
-            "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 380) for _ in range(7))
+            # 提纲那趟只给 sections：连结构字段一起给，就等于测不到"结构单独一趟"这条新路径
+            return json.dumps({"sections": [
+                {"title": "第%d段" % (i + 1),
+                 "focus": "论证第%d个环节，并给出反证与口径限制" % (i + 1),
+                 "evidence": [ids[i % len(ids)] if ids else "c1"]}
+                for i in range(PARAS_MIN)]}, ensure_ascii=False)
+        doc.pop("sections", None)
+        if kind != "structure":
+            doc["narrative"] = "\n\n".join(
+                "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 380)
+                for _ in range(7))
         return json.dumps(doc, ensure_ascii=False)
 
 

@@ -351,5 +351,68 @@ def test_single_pass_cli_switch_reaches_the_generator(tmp_path, monkeypatch):
     assert seen.get("staged") is False, "--single-pass 没传到 night_run：%s" % seen
 
 
+def test_structure_contract_lives_in_one_place_and_not_in_the_outline():
+    """结构契约只写一份，并且提纲那趟不许再背它。
+
+    两段式拆完之后，"单趟"与"结构那趟"共用同一段要求文字。复制两份的后果本仓已经
+    付过学费（改了常量忘改文案）：所以这里既判"两边都有"，也判"两边逐字一致"。
+    """
+    ctx = _ctx()
+    ev = {"title": "t", "topic": "ai", "summary": "s", "links": []}
+    full = D.build_prompt(ev, ctx)
+    struct = D.build_structure_prompt(ev, ctx, "已经写好的正文若干字")
+    outline = D.build_prompt(ev, ctx, mode="outline")
+    for tok in ("claims：", "causal_chains：", "forecasts：", "quality：", "citations："):
+        assert tok in full and tok in struct, "%s 从某一趟里消失了" % tok
+        assert tok not in outline, "提纲那趟又背上了结构字段：%s" % tok
+    a = full.split("claims：")[1][:200]
+    b = struct.split("claims：")[1][:200]
+    assert a == b, "两份结构契约开始漂移：改一处会漏另一处"
+    assert "已经写好的正文若干字" in struct, "结构那趟看不到正文，机制链只能凭提纲猜"
+
+
+def test_structure_call_happens_after_the_text_is_assembled(tmp_path, monkeypatch):
+    """调用顺序必须是 提纲 → 逐段 → 结构，而且结构那趟要看得见外证清单。
+
+    `basis` 只能引 `sig:cN`；这串编号是 `signals_note` 拼在提示尾部的。顺序反过来、
+    或者结构那趟没带 signals，模型就只能在没见过的编号里猜 —— 而 FakeClient 会用
+    正则兜底，本地照样绿，所以必须直接断结构提示里真有那份清单。
+    """
+    seen = {"kinds": [], "struct": ""}
+    inner = D.FakeClient()
+
+    class Spy:
+        def complete(self, prompt, key=None, kind="generate"):
+            seen["kinds"].append(kind)
+            if kind == "structure":
+                seen["struct"] = prompt
+            return inner.complete(prompt, key=key, kind=kind)
+
+    _run(tmp_path, Spy())
+    kinds = seen["kinds"]
+    assert "structure" in kinds, "结构字段那趟没发生：%s" % kinds[:12]
+    assert kinds.index("structure") > kinds.index("section"), "结构先于正文：%s" % kinds[:12]
+    assert kinds.count("outline") == 1 and kinds.count("structure") == 1, kinds[:14]
+    # 断一个只可能来自"外证清单"的编号：契约文字里自带 sig:c1 当例子，
+    # 只断 "sig:c" 会在清单被删掉时照样绿（S5 变异体就是这么骗过第一版的）。
+    assert "sig:c5" in seen["struct"], \
+        "结构那趟没带优质判定外证清单，basis 只能凭空编号：%r" % seen["struct"][-260:]
+
+
+def test_missing_structure_fields_are_accounted_for(tmp_path):
+    """结构那趟跑空时不许静默：`staged.struct_missing` 要指名缺哪几项。"""
+    class NoStruct(D.FakeClient):
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                self.calls.append("structure")
+                return json.dumps({"notes": "我不想给字段"}, ensure_ascii=False)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    doc = _run(tmp_path, NoStruct())
+    st = doc["events"][0].get("staged") or {}
+    assert set(st.get("struct_missing") or []) >= {"claims", "causal_chains", "quality"}, \
+        "结构跑空却没记账，事后只能看到一句 0 条：%s" % st
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q", "-s"]))

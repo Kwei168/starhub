@@ -354,7 +354,8 @@ def test_judge_is_called_separately_from_generator(tmp_path):
     _run(tmp_path, client=c)
     gen = [k for k in c.calls if k != "judge"]
     assert gen, c.calls
-    assert set(gen) <= {"generate", "outline", "section"}, "冒出了第三种生成侧调用：%s" % set(gen)
+    assert set(gen) <= {"generate", "outline", "section", "structure"}, \
+        "冒出了没预期的生成侧调用：%s" % set(gen)
     assert c.calls.count("judge") == 1, "判定次数不是 1：%s" % c.calls
     assert "judge" not in set(gen), "判定与生成共用了 kind，等于让生成方自评"
 
