@@ -174,8 +174,61 @@ def test_section_prompt_carries_only_the_cited_evidence():
     assert "证据 c3" in p, "本段引用的证据没进去：%s" % p[:200]
     assert "证据 c1" not in p and "证据 c5" not in p, "整包证据被原样重发，成本按段数放大"
     assert "第 3/6 段" in p
-    assert ("不少于 %d 字" % D.PARA_MIN) in p, "每段下限没写进段提示"
+    assert ("%d-%d 字" % (D.PARA_MIN, D.PERA_MAX)) in p, "每段没给区间内目标（只报下限会被写成 1,100 字/段）"
     assert "不要 JSON" in p, "没约束返回形状，段正文会变成字典字面量上屏"
+
+
+def test_section_quota_multiplies_into_the_hard_range():
+    """每段的配额必须"乘得回"§2 的硬区间，否则两段式只是把超限从偶发变成必然。
+
+    现网第一轮就是这样的：段数与每段下限都满足了，6 段 × 700~1,100 字 = 4.3k~7k，
+    evt_008 写到 6,950 字被上限整条作废（run 35801635817）。
+    """
+    assert D.PARA_MIN < D.PERA_MAX, "每段下限不小于上限，配额无解"
+    assert D.PARAS_MIN * D.PERA_TARGET >= D.NARR_MIN, \
+        "照目标写完仍够不到下限：%d×%d" % (D.PARAS_MIN, D.PERA_TARGET)
+    assert D.PARAS_MIN * D.PERA_MAX <= D.NARR_MAX, \
+        "每段都顶到上限就必然超线：%d×%d > %d" % (D.PARAS_MIN, D.PERA_MAX, D.NARR_MAX)
+
+
+def test_assembly_never_ships_more_than_the_ceiling(tmp_path):
+    """组装必须守住上限，而且只能整段丢 —— 截半句等于把论述切成两截。
+
+    夹具是 8 段 × ~600 字 = 4,800 字：不裁就超上限，裁完剩 6 段 3,600 字仍在硬区间内，
+    这样"整段丢弃"与"降级截断"两种结局能分得开（6 段 × 1,200 字那种夹具只会掉进降级，
+    截断后什么断言都测不到东西）。
+    """
+    verbose = "长。但该判断仍受样本量与统计口径限制。" + "句" * 580
+
+    class Verbose(D.FakeClient):
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "outline":
+                self.calls.append("outline")
+                # 结构字段得给真的：留空会让这条因为 claims=0 不合格而降级，
+                # 于是测到的是"结构契约"而不是"裁切"，两件事会互相掩护。
+                base = json.loads(D.FakeClient.complete(self, prompt, key=key, kind="generate"))
+                base.pop("narrative", None)
+                base["sections"] = [{"title": "第%d段" % (i + 1), "focus": "论证%d" % (i + 1),
+                                     "evidence": ["c1"]} for i in range(D.PARAS_MIN + 2)]
+                return json.dumps(base, ensure_ascii=False)
+            if kind == "section":
+                self.calls.append("section")
+                return verbose
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    doc = _run(tmp_path, Verbose())
+    ev = doc["events"][0]
+    st = ev.get("staged") or {}
+    n = D.count_chars(ev["narrative"])
+    assert not ev.get("degraded_reason"), "这条本该合格，掉进降级就测不到裁切：%r" % ev["degraded_reason"]
+    assert n <= D.NARR_MAX, "组装后仍超上限 %d > %d（trimmed 账=%r）" % (n, D.NARR_MAX, st)
+    assert st.get("trimmed_sections"), "超了却没记账：%s" % st
+    paras = ev["narrative"].split("\n\n")
+    assert len(paras) == st["sections"] - st["trimmed_sections"], \
+        "留下的段数与记账对不上：留 %d，账 %s" % (len(paras), st)
+    assert all(p == verbose for p in paras), \
+        "留下的段落不是整段原样（被截断或改写过）：%r" % [len(p) for p in paras]
+    assert len(paras) >= D.PARAS_MIN, "裁完连段数下限都不够了：%d" % len(paras)
 
 
 def test_regeneration_feedback_reaches_the_outline_call(tmp_path):
@@ -221,19 +274,26 @@ def test_regeneration_feedback_reaches_the_outline_call(tmp_path):
 # ── 成本形状 ──────────────────────────────────────────────────────────────
 
 def test_default_call_cap_fits_the_two_stage_cost(tmp_path):
-    """每条事件的调用数从 2 次涨到 ~8 次，旧的 80 次上限只够 10 条。
+    """每条事件的调用数从 ~2 次涨到最坏 ~20 次，上限必须跟着改，且只能有一个真值。
 
-    默认上限如果没跟着改，夜场会在半夜把剩余条目记 not_run —— 那是"计划里 12 条、
-    线上 10 条"这种最容易伪装成正常的降级。
+    现网实测：3 条 50 次调用（run 35801635817）≈ 17 次/条，最坏情况还要加上每段补写一次。
+    旧默认 80 只够 10 条，会在半夜把剩下的条目记成 not_run —— 那是"计划 12 条、线上 10 条"
+    这种最容易伪装成正常的降级。以前 CLI / night_run / Budget 各写一份 80，
+    改默认必然漏两处，所以这里判的是"只剩一处"。
     """
-    per_event = 1 + D.PARAS_MIN + 1
-    import argparse
-    ap_src = open(os.path.join(ROOT, "build_deep_insight.py"), encoding="utf-8").read()
-    i = ap_src.find('"--cap-calls"')
-    assert i > 0
-    default = int(ap_src[i:i + 120].split("default=")[1].split(",")[0].split(")")[0])
-    assert default >= 12 * per_event, \
-        "--cap-calls 默认 %d，撑不住 12 条 × %d 次/条 = %d" % (default, per_event, 12 * per_event)
+    src = open(os.path.join(ROOT, "build_deep_insight.py"), encoding="utf-8").read()
+    per_event_worst = 1 + 2 * D.SECTIONS_MAX + 1        # 提纲 + 每段最多两次 + 判定
+    assert D.CALL_CAP >= 12 * per_event_worst, \
+        "上限 %d 撑不住 12 条 × 最坏 %d 次/条" % (D.CALL_CAP, per_event_worst)
+    assert src.count("call_cap=80") + src.count("default=80") == 0, \
+        "还有写死的 80：CLI 与函数默认会各说各话"
+    for needle in ("call_cap=CALL_CAP, time_cap_s", "call_cap=CALL_CAP, keys=None",
+                   "default=CALL_CAP", "call_cap=CALL_CAP, stopped_by_cap"):
+        assert needle in src, "上限没收敛到一处，缺 %r" % needle
+    i = src.find('"--cap-calls"')
+    assert i > 0 and "default=CALL_CAP" in src[i:i + 120], "命令行默认没跟着常量"
+    assert D.can_publish([{"id": "a"}, {"id": "b"}], [{"id": "a"}]) is False, \
+        "未撞上限的半成品仍被放行：can_publish 的默认值不是这个常量"
 
 
 def test_cli_defaults_to_two_stage(tmp_path, monkeypatch):

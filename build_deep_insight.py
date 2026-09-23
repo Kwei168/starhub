@@ -36,6 +36,16 @@ PARAS_MIN = 6
 # 重写两轮也停在同一水平：总量它不接，段数它接。所以把配额下沉到段，
 # 并按 PARAS_MIN*PARA_MIN >= NARR_MIN 留出余量（字数口径含标点，实测略偏小）。
 PARA_MIN = NARR_MIN // PARAS_MIN + 50
+# 逐段成文把"写不够"解决了（现网 run 35801635817：6,950 / 4,338 字），紧接着撞上的是
+# 另一头 —— 每段实测落在 700~1,100 字，6 段就是 4.3k~7k，超出 §2 上限被整条作废。
+# 所以每段既给下限也给上限与目标值，让"6 段 × 每段"乘出来正好落在硬区间内。
+PERA_MAX = NARR_MAX // PARAS_MIN
+PERA_TARGET = (NARR_MIN + NARR_MAX) // 2 // PARAS_MIN
+# 提纲的段数区间：下限就是 §2 的每条目最少段数，上限留 3 段余量给模型自己分段。
+SECTIONS_MIN, SECTIONS_MAX = PARAS_MIN, PARAS_MIN + 3
+# 两段式之后的单条成本（现网 run 35801635817：3 条 50 次调用 ≈ 17 次/条，最坏每段还会补写一次）。
+# 上限只写在一处：以前 CLI、night_run、Budget 各写一份 80，改默认时必然漏两处。
+CALL_CAP = 12 * (1 + 2 * SECTIONS_MAX + 1)
 CLAIM_MIN, CLAIM_MAX = 3, 10
 CHAINS_MIN, CHAINS_MAX = 2, 6
 FORECAST_MIN, FORECAST_MAX = 1, 4
@@ -274,7 +284,7 @@ def append_jsonl(path, rows):
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def can_publish(events, done, budget_used_calls=0, call_cap=80, stopped_by_cap=False):
+def can_publish(events, done, budget_used_calls=0, call_cap=CALL_CAP, stopped_by_cap=False):
     """半套产物不上线；只有"撞预算/撞墙钟主动收口"允许带 not_run 上线。
 
     `stopped_by_cap` 必须单独进来：墙钟到点时 `llm_calls` 往往远低于 `call_cap`，
@@ -613,7 +623,7 @@ class Budget:
     读日志的人分不清是没跑成还是跑砸了。
     """
 
-    def __init__(self, call_cap=80, time_cap_s=150 * 60, budget_tokens=DEFAULT_BUDGET_TOKENS):
+    def __init__(self, call_cap=CALL_CAP, time_cap_s=150 * 60, budget_tokens=DEFAULT_BUDGET_TOKENS):
         self.call_cap = int(call_cap)
         self.time_cap_s = int(time_cap_s)
         self.budget_tokens = int(budget_tokens)
@@ -788,7 +798,6 @@ PROMPT_FIELDS = ("narrative", "claims", "causal_chains", "forecasts", "quality",
 # 两段式第一段只出提纲与结构字段。字段清单必须跟着换：继续叫模型在一趟里既写 3,250 字
 # 论述又排 6 类结构，现网实测它把长度让给了结构（1,748 / 2,307 / 1,902 字，重写两轮不动）。
 OUTLINE_FIELDS = ("sections", "claims", "causal_chains", "forecasts", "quality", "citations")
-SECTIONS_MIN, SECTIONS_MAX = PARAS_MIN, PARAS_MIN + 3
 
 
 def _evidence_block(a, cid=""):
@@ -865,12 +874,13 @@ def build_section_prompt(event, ctx, sec, idx, total):
         "接着写第 %d/%d 段正文，只写这一段，输出纯文本、不要 JSON、不要小标题。\n"
         "事件：%s（主题 %s）\n"
         "本段题目：%s\n本段论点：%s\n"
-        "要求：成文论述，**不少于 %d 字**，段落式行文，禁止分点罗列；"
+        "要求：成文论述，**%d-%d 字（按 %d 字写）**，段落式行文，禁止分点罗列；"
         "必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）；"
         "不要重复其它段已经写过的内容。\n"
         "===== 本段可用证据 =====\n%s\n"
     ) % (idx, total, event.get("title", ""), event.get("topic", ""),
-         (sec.get("title") or "第%d段" % idx), sec.get("focus") or "", PARA_MIN,
+         (sec.get("title") or "第%d段" % idx), sec.get("focus") or "",
+         PARA_MIN, PERA_MAX, (PARA_MIN + PERA_MAX) // 2,
          "\n\n".join(picked))
 
 
@@ -916,9 +926,20 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
             if count_chars(body) < PARA_MIN:
                 shorts.append(i + 1)
         parts.append(body)
-    doc["narrative"] = "\n\n".join(p for p in parts if p)
+    # 组装时守住上限：现网逐段写出来的每段是 700~1,100 字，6 段直接 4.3k~7k，
+    # 超 §2 上限会被整条作废（run 35801635817 的 evt_008 = 6,950 字）。
+    # 这里按"整段"丢，不截半句：宁可少一段并记账，也不把论述切成两截。
+    body, dropped = [], 0
+    for p in parts:
+        if not p:
+            continue
+        if body and count_chars("\n\n".join(body + [p])) > NARR_MAX:
+            dropped += 1
+            continue
+        body.append(p)
+    doc["narrative"] = "\n\n".join(body)
     doc.pop("sections", None)
-    return doc, {"sections": len(secs), "short_sections": shorts}
+    return doc, {"sections": len(secs), "short_sections": shorts, "trimmed_sections": dropped}
 
 
 # ─────────────────────────── 并发提交协议 ─────────────────────────────────
@@ -1905,7 +1926,7 @@ class GithubDataApi:
 # ───────────────────────────── 编排与入口 ──────────────────────────────────
 
 def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAULT_BUDGET_TOKENS,
-              call_cap=80, keys=None, get=http_get, anchor_raw=None, pool=None, out_dir="_night_state",
+              call_cap=CALL_CAP, keys=None, get=http_get, anchor_raw=None, pool=None, out_dir="_night_state",
               date_str=None, log=None, sleep=None, wait_cap_s=900, urls=None,
               api_factory=None, max_regen=2, workers=1, pred_raw=None, staged=True,
               pred_url=PREDICTIONS_URL, verdicts=None, quality_raw=None,
@@ -2137,7 +2158,7 @@ def main(argv=None):
     ap.add_argument("--events-limit", type=int, default=12)
     ap.add_argument("--out", default="_night_state")
     ap.add_argument("--budget-tokens", type=int, default=DEFAULT_BUDGET_TOKENS)
-    ap.add_argument("--cap-calls", type=int, default=150,
+    ap.add_argument("--cap-calls", type=int, default=CALL_CAP,
                     help="整夜 LLM 调用上限。两段式之后单条约 1(提纲)+6~9(逐段)+1(判定)=%d~11 次，"
                          "旧默认 80 只够 10 条，会在半夜把剩下的条目砍掉" % (1 + PARAS_MIN + 1))
     ap.add_argument("--single-pass", action="store_true",
