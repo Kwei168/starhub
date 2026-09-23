@@ -483,5 +483,6 @@
  "AvenueSnowStep/ClaudePanel": "Claude 和 AI 助手的桌面面板和工具包",
  "BinaryDeliverer/CodexDesk": "AI 编码代理和 Codex 工作流程的桌面伴侣",
  "davila7/claude-code-templates": "用于配置和监控 Claude Code 的 CLI 工具",
- "calesthio/Crucix": "您的个人情报代理。从多个数据源观察世界，并在发生变化时向您发出通知。"
+ "calesthio/Crucix": "您的个人情报代理。从多个数据源观察世界，并在发生变化时向您发出通知。",
+ "lahfir/agent-desktop": "Agent Desktop 使任何座席都能在桌面上可靠地使用计算机。它使用 Rust 构建，可以通过操作系统可访问性树查看任何应用程序的真实 UI 结构并对其进行操作 - 引用保持稳定，操作可以安全地重试，而不是根据像素进行猜测。"
 }
