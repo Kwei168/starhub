@@ -34,13 +34,16 @@ def _para(n):
     return body + "，但该判断仍受样本量与统计口径限制。"
 
 
-def _event(narr_chars=3000, paras=7, chains=3, forecasts=1, cites=6, quality_why=60, **over):
+def _event(narr_chars=4600, paras=7, chains=3, forecasts=1, cites=6, quality_why=60, **over):
     ev = {
         "id": "evt1",
         "topic": "ai",
         "title": "一条足够具体的标题",
         "narrative": "\n\n".join(_para(narr_chars // max(paras, 1)) for _ in range(paras)),
-        "claims": [{"text": "论断" + str(i), "kind": "causal", "evidence": ["c1", "c2"]}
+        # claims 的证据必须铺开：方案一之后"正文每 1,500 字要换一篇证据"是判据，
+        # 全部压在 c1/c2 上的夹具会先被这一条拦掉，测不到本条判据想测的东西。
+        "claims": [{"text": "论断" + str(i), "kind": "causal",
+                    "evidence": ["c%d" % (i % cites + 1)]}
                    for i in range(5)],
         "causal_chains": [{"trigger": "触发", "mechanism": "机制", "outcome": "结果",
                            "confidence": 0.6, "evidence": ["c1", "c2"]} for _ in range(chains)],
@@ -69,7 +72,7 @@ def test_narrative_below_floor_is_rejected():
 
 def test_narrative_above_ceiling_is_flagged_not_inflated():
     """超上限要记 overlen（而不是悄悄截完当合格）—— 否则"更长=更深"会重新长回来。"""
-    ev = _event(narr_chars=6000)
+    ev = _event(narr_chars=12000)
     ok, fails = D.validate_event(ev, valid_ids={c["id"] for c in ev["citations"]})
     assert any("overlen" in f for f in fails), fails
 
@@ -250,7 +253,7 @@ def test_empty_assembly_is_not_silently_fine():
 def test_checkpoint_resume_skips_done_items(tmp_path):
     p = tmp_path / "deep-x.jsonl"
     p.write_text(json.dumps({"id": "evt1"}) + "\n", encoding="utf-8")
-    done = D.load_done(str(p))
+    done = {r.get("id") for r in D.load_records(str(p)) if r.get("id")}
     assert done == {"evt1"}, done
     todo = [e for e in [{"id": "evt1"}, {"id": "evt2"}] if e["id"] not in done]
     assert [e["id"] for e in todo] == ["evt2"]
@@ -289,22 +292,44 @@ def test_crash_middle_is_not_disguised_as_budget_stop(tmp_path):
 
 # ── 6. 预测落盘与对账 ─────────────────────────────────────────────────────
 
-def test_predictions_are_dated_and_reconcilable(tmp_path):
-    p = tmp_path / "pred.jsonl"
-    rows = [{"event_id": "evt1", "claim": "三个月内出现跟随者", "horizon_days": 7,
-             "check_metric": "同类发布数>=3", "made_on": "2026-09-22"}]
-    D.append_predictions(str(p), rows)
-    st = D.reconcile(str(p), today="2026-09-30", verdicts={"三个月内出现跟随者": "hit"})
+def test_predictions_are_dated_and_settleable(tmp_path):
+    """账本口径直接打现役函数：`pred_rows` 产行、`settle` 结算。
+
+    旧的 `append_predictions`/`reconcile` 是"本地文件账本"时代的产物，账本已改成
+    读远端→整体重写，那两个函数生产侧零引用，判据却还挂在它们身上 ——
+    等于用死代码给活路径背书。
+    """
+    rows = D.pred_rows([{"id": "evt1", "forecasts": [
+        {"claim": "三个月内出现跟随者", "horizon_days": 7, "check_metric": "同类发布数>=3"}]}],
+        made_on="2026-09-22")
+    assert rows and rows[0]["made_on"] == "2026-09-22", rows
+    st, out = D.settle(rows, today="2026-09-30", verdicts={"三个月内出现跟随者": "hit"})
     assert st["due"] == 1 and st["hit"] == 1, st
     assert 0.0 <= st["auto_checkable_share"] <= 1.0, st
+    assert out[0]["status"] == "hit" and out[0]["settled_on"] == "2026-09-30", out
+
+
+def test_the_due_date_the_page_shows_is_the_one_settle_uses():
+    """页面上"到期 X"与账本结算用的到期日，必须出自同一个算法。
+
+    同一个日期加法写两遍，就是"页面说明天到期、账本按后天判 miss"的成因。
+    而这两个函数此前零判据（`_due_label`/`_due_day` 全无测试），改哪一边都没人红。
+    """
+    for made, hor in (("2026-09-22", 7), ("2026-09-22", 3), ("2026-12-30", 14)):
+        assert D._due_label(made, hor) == D._due_day({"made_on": made,
+                                                      "horizon_days": hor}).isoformat(), (made, hor)
+    # 拿不到窗口时页面不许编一个日期出来
+    assert D._due_label("", 7) == "未标"
+    assert D._due_label("2026-09-22", None) == "未标"
+    assert D._due_day({"made_on": "", "horizon_days": 7}) is None
 
 
 def test_unexpired_predictions_are_not_counted_as_miss(tmp_path):
-    p = tmp_path / "pred.jsonl"
-    D.append_predictions(str(p), [{"event_id": "e", "claim": "c", "horizon_days": 14,
-                                   "check_metric": "m", "made_on": "2026-09-22"}])
-    st = D.reconcile(str(p), today="2026-09-25", verdicts={})
+    rows = D.pred_rows([{"id": "e", "forecasts": [
+        {"claim": "c", "horizon_days": 14, "check_metric": "m"}]}], made_on="2026-09-22")
+    st, out = D.settle(rows, today="2026-09-25", verdicts={})
     assert st["due"] == 0 and st["miss"] == 0, st
+    assert out[0]["status"] == "pending", out
 
 
 # ── spec §3 上下文预算：丢整篇要记原因、不许越顶、丢了不能又留 ──────────────

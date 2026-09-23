@@ -198,7 +198,7 @@ def test_assembly_never_ships_more_than_the_ceiling(tmp_path):
     这样"整段丢弃"与"降级截断"两种结局能分得开（6 段 × 1,200 字那种夹具只会掉进降级，
     截断后什么断言都测不到东西）。
     """
-    verbose = "长。但该判断仍受样本量与统计口径限制。" + "句" * 580
+    verbose = "长。但该判断仍受样本量与统计口径限制。" + "句" * 1400
 
     class Verbose(D.FakeClient):
         def complete(self, prompt, key=None, kind="generate"):

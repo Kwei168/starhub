@@ -30,7 +30,15 @@ from datetime import date, datetime, timedelta, timezone
 
 SCHEMA_VERSION = "deep-insight/v1"
 
-NARR_MIN, NARR_MAX = 2500, 4000
+NARR_MIN, NARR_MAX = 4000, 10000
+# 2500→4000 / 4000→10000 的理由不是"模型能写更多"这么简单，而是旧上限只造成过损失：
+#   · 现网单趟写出过 6,950 / 4,338 字（run 35801635817），两条都被"超上限"判死；
+#   · 最近一场两段式 8 段里被组装裁掉 2 段（run 35806236237），token 全付了正文丢掉；
+#   · 证据侧实测每条 12 篇全文、9.4k~855k 字，长度根本不受证据约束。
+# 上限不再兼管"防水分"：防水分交给 EVID_CHARS（结构判据）与 judge 的 density 维度（agent 主判）。
+# 下限必须一起抬：只抬上限等于把"写多少看模型心情"的老路重新打开 —— A 方案存在的全部理由
+# 就是单趟稳定停在 1,748/2,307/1,902 字。
+EVID_CHARS = 1500   # 正文每 1,500 字至少要换一篇不同证据支撑，长而空在这里判死
 PARAS_MIN = 6
 # 单说"2500-4000 字"模型交回来的是 1748/2307/1902（run 35749459676 三条实测），
 # 重写两轮也停在同一水平：总量它不接，段数它接。所以把配额下沉到段，
@@ -77,6 +85,7 @@ WORKERS_MAX = 6
 BACKOFF_CAP_S = 120
 
 DEGRADED_NARR_MAX = 200
+FOLD_MIN_CHARS = 600    # 短到不像"一条洞察"的（快讯）不必折叠，折叠是给长文用的
 CAVEAT_MARKS = ("但", "不过", "限制", "风险", "尚未", "存疑", "未证实", "口径", "样本")
 _BULLET = re.compile(r"^\s*(?:[-•·*]|\d+[.)、])\s*")
 _CHECKABLE = re.compile(r"(>=|<=|≥|≤|>|<|不低于|不超过|至少|少于)")
@@ -108,6 +117,43 @@ def _is_cjk(ch):
 
 def _paragraphs(text):
     return [p.strip() for p in (text or "").split("\n\n") if p.strip()]
+
+
+_SENT_SPLIT = re.compile(u"[\u3002\uff01\uff1f\uff1b\n]")
+_SENT_NOISE = re.compile(u"[\\s\u3000\u3001\uff0c\u3002\uff01\uff1f\uff1b\uff1a\u2018\u2019"
+                         u"\u201c\u201d\uff08\uff09\u300a\u300b\u3010\u3011\u00b7\u2014._\\-/\\\\]")
+
+
+def repetition_rate(text):
+    """句级重复率 = 1 - 唯一句数 / 总句数。**只落观测，暂不当门禁。**
+
+    不当门禁的理由不是省事：手上没有任何 4,000 字以上的真样本可以定这个数 ——
+    白天侧 `analysis_snapshot.deep_insights` 实测每个字段只有 84~123 汉字、
+    21 句全唯一（重复率 0.000）。拿这种样本拍阈值就是把猜测当判据。
+    方案一真跑出 2~3 场 4k-10k 的正文后，从分布上读数再升成门；
+    在那之前"长而空"由 judge 的 density 维度与 EVID_CHARS 判据拦。
+    """
+    sents = []
+    for raw in _SENT_SPLIT.split(text or ""):
+        k = _SENT_NOISE.sub("", raw)
+        if len(k) >= 12:
+            sents.append(k)
+    if len(sents) < 2:
+        return 0.0
+    return round(1.0 - len(set(sents)) / float(len(sents)), 4)
+
+
+def clip_for_degrade(cand):
+    """降级只裁正文，但"本来写了多长"必须留在产物里。
+
+    本轮为了回答"4,000 上限是不是削掉了内容"，只能从 `trimmed_sections` 反推 ——
+    那是观测缺口：裁完再问长度，问到的只是裁后的碎片。
+    预测照旧清空：证据不足没资格做断言（§2 第 3 行）。
+    """
+    cand["narrative_chars_full"] = count_chars(cand.get("narrative") or "")
+    cand["narrative"] = (cand.get("narrative") or "")[:DEGRADED_NARR_MAX]
+    cand["forecasts"] = []
+    return cand
 
 
 def validate_event(ev, valid_ids=None, valid_basis=None):
@@ -156,6 +202,18 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
         if not u.startswith("http://") and not u.startswith("https://"):
             fails.append("citation url 不是绝对链接（死链）：%s" % (u or "<空>")[:60])
             break
+
+    # 反水分第一道（结构判据）：正文每 EVID_CHARS 字至少要换一篇不同证据支撑。
+    # 界按字数派生，不是拍的阈值 —— 9,000 字只压在 2 篇上就是复述，不是分析。
+    # 上限取"这条自己引了几篇"，不许要它引用没引过的东西。
+    cited_ids = {c.get("id") for c in cites}
+    need_cov = min(len(cited_ids), -(-n // EVID_CHARS)) if cited_ids else 0
+    used_cov = set()
+    for cl in (ev.get("claims") or []):
+        used_cov |= set(cl.get("evidence") or [])
+    if need_cov and len(used_cov) < need_cov:
+        fails.append("正文 %d 字只压在 %d 篇不同证据上（要 >=%d 篇）：长而空不算深度" % (
+            n, len(used_cov), need_cov))
 
     claims = ev.get("claims") or []
     if not CLAIM_MIN <= len(claims) <= CLAIM_MAX:
@@ -258,10 +316,6 @@ def assemble_context(articles, budget_tokens=DEFAULT_BUDGET_TOKENS):
     return {"articles": keep, "dropped": dropped, "total_tokens": tok, "total_chars": chars}
 
 
-def load_done(path):
-    return {r.get("id") for r in load_records(path) if r.get("id")}
-
-
 def load_records(path):
     """读 checkpoint 里的完整记录。
 
@@ -339,12 +393,6 @@ def _pred_row(claim, event_id, horizon, metric, made_on, status="pending"):
             "check_metric": metric or "", "made_on": made_on or "", "status": status}
 
 
-def append_predictions(path, rows):
-    keep = [_pred_row(r.get("claim"), r.get("event_id"), r.get("horizon_days"),
-                      r.get("check_metric"), r.get("made_on")) for r in (rows or [])]
-    append_jsonl(path, keep)
-
-
 def pred_rows(events, made_on):
     """合格条目的 forecasts 进账本。degraded 本来就不许产预测（§2 第 3 行），这里再兜一道：
     落进账本的每一条都得是可到期核对的，不然命中率统计会被自造的空预测污染。"""
@@ -369,14 +417,6 @@ def _due_day(r):
     if not made or not hor:
         return None
     return _to_day(made) + timedelta(days=int(hor))
-
-
-def _due(made_on, horizon):
-    """预测卡上要能算给读者到期日：没有到期日的预测无法核对（§2 第 3 行）。"""
-    try:
-        return (_to_day(made_on) + timedelta(days=int(horizon))).isoformat()
-    except (TypeError, ValueError, IndexError):
-        return ""
 
 
 def ship_digest(payload, ledger):
@@ -601,16 +641,6 @@ def signals_note(ctx):
             r.get("chars", 0), r.get("dup_sources", 0),
             " 白天档位=%s" % r["tier"] if r.get("tier") is not None else ""))
     return "\n".join(lines) + "\n"
-
-
-def reconcile(path, today, verdicts=None):
-    """按文件读入的兼容入口（统计口径与 settle 同一份实现）。"""
-    rows = []
-    if path and os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            rows = parse_jsonl(f.read())
-    stats, _ = settle(rows, today, verdicts)
-    return stats
 
 
 # ────────────────────────── 运行时：账号池与预算 ──────────────────────────
@@ -1081,7 +1111,9 @@ _PAGE_CSS = ("body{font:16px/1.9 -apple-system,BlinkMacSystemFont,'Segoe UI',san
              ".cap{background:#fff;border:1px solid #e3e5ea;border-radius:10px;padding:10px 12px;margin:12px 0}"
              ".warn{background:#fff7e6;border-color:#f0c36d}"
              "a{color:#1a56c4;word-break:break-all}footer{color:#5a6472;font-size:13px;padding:16px 0}"
-             "p{margin:0 0 12px}")
+             "p{margin:0 0 12px}"
+             "details{margin:0 0 12px}summary{cursor:pointer;color:#1a56c4;"
+             "font-size:14px;user-select:none}")
 
 
 def _due_label(made_on, horizon):
@@ -1095,7 +1127,16 @@ def _due_label(made_on, horizon):
 def render_event(e, made_on=""):
     narrative = (e.get("narrative") or "").strip()
     degraded = (e.get("degraded_reason") or "").strip()
-    paras = "".join("<p>%s</p>" % _esc(p) for p in re.split(r"\n{2,}", narrative) if p.strip())
+    plist = [p for p in re.split(r"\n{2,}", narrative) if p.strip()]
+    body = "".join("<p>%s</p>" % _esc(p) for p in plist)
+    nchars = count_chars(narrative)
+    # 方案一之后一条可以到 1 万字，12 条就是 12 万字；体积不是问题（本站
+    # rss-aggregator.html 现网就 3.46 MB），滚动长度才是。折叠只改呈现不改内容：
+    # 原生 details、正文逐段仍在 HTML 里，不引 JS、不异步取数 ——
+    # 折叠必须是"收起"，不能变成第二次丢内容。
+    folded = (('<details><summary>展开全文（%s 字 · %d 段）</summary>%s</details>'
+               % ("{:,}".format(nchars), len(plist), body))
+              if len(plist) >= 2 and nchars > FOLD_MIN_CHARS else body)
     cites = []
     for c in (e.get("citations") or []):
         u = (c.get("url") or "").strip()
@@ -1120,12 +1161,16 @@ def render_event(e, made_on=""):
             for f in (e.get("forecasts") or []))
     q = e.get("quality") or {}
     warn = ('<div class="cap warn">证据不足，按快讯处理：%s</div>' % _esc(degraded)) if degraded else ""
+    # 空区不留标题：浏览器里实测快讯条目下面挂着"因果""证据"两个光杆标题，
+    # 名字里带内容却什么都不保证 —— 那是"空壳"的页面版。
+    sec_chains = ("<h3>因果</h3><ul>%s</ul>" % chains) if chains else ""
+    sec_cites = ("<h3>证据</h3><ul>%s</ul>" % "".join(cites)) if cites else ""
     return ("<article><h2>%s</h2><p class='tag'>%s · rubric %s · 优质判定 %s %s</p>%s%s"
-            "<h3>因果</h3><ul>%s</ul>%s<h3>证据</h3><ul>%s</ul></article>") % (
+            "%s%s%s</article>") % (
         _esc(e.get("title")), _esc(e.get("topic")),
         _esc((e.get("rubric") or {}).get("mean", "?")),
         _esc(q.get("verdict")), _esc(q.get("score")),
-        warn, paras, chains, cards, "".join(cites))
+        warn, folded, sec_chains, cards, sec_cites)
 
 
 _FORECAST_STATE = {"pending": "待验证", "hit": "已命中", "miss": "未命中", "unknown": "无法自动判定"}
@@ -1302,11 +1347,6 @@ def _keywords(s):
         for i in range(len(part) - 1):
             out.add(part[i:i + 2])
     return out
-
-
-def title_overlap(a, b):
-    """标题词/二元组重叠 ≥2 视为同题。阶段 1 不引向量检索，先用这个可测的粗筛。"""
-    return len(_keywords(a) & _keywords(b)) >= 2
 
 
 def _link_keys(links):
@@ -1584,18 +1624,36 @@ def normalize_candidate(cand, ids_map, arts_by_id=None):
 
 
 def rubric_of(raw):
+    """judge 的每一维都必须进均值 —— 少算一维就等于那一维白判。"""
     out = {}
-    for k in ("narrative", "causal", "forecast", "quality"):
+    for k in JUDGE_DIMS:
         try:
             out[k] = max(0.0, min(1.0, float((raw or {}).get(k, 0.0))))
         except (TypeError, ValueError):
             out[k] = 0.0
-    out["mean"] = round(sum(out[k] for k in ("narrative", "causal", "forecast", "quality")) / 4.0, 4)
+    out["mean"] = round(sum(out[k] for k in JUDGE_DIMS) / float(len(JUDGE_DIMS)), 4)
     return out
 
 
 JUDGE_PASS = 0.75
-JUDGE_DIMS = ("narrative", "causal", "forecast", "quality")
+# 第五维 density 管的是"长而空"：方案一之后一条可以到 1 万字，字数上限不再兼管防水分，
+# 这一维就是主判口（机械重复率只落观测，见 repetition_rate）。
+JUDGE_DIMS = ("narrative", "causal", "forecast", "quality", "density")
+# 地板按噪声定，不是拍的：同一条重评的极差实测 0.17，
+# 0.75 - 2*0.17 ≈ 0.41，取 0.5 保证这一闸不会在复评噪声上翻脸。
+JUDGE_FLOOR = 0.5
+
+
+def judge_accepts(score):
+    """合格 = 均值达标 且 没有任何一维塌到地板以下。
+
+    只看均值时，"密度 0.2 + 另外四维 0.9"的均值是 0.76 —— 照样过线，
+    那新加的密度维度就是装饰。长文的水分只能在这种单维闸下被拦住。
+    """
+    s = score or {}
+    if s.get("mean", 0.0) < JUDGE_PASS:
+        return False
+    return all(s.get(k, 0.0) >= JUDGE_FLOOR for k in JUDGE_DIMS)
 # 每一维"该怎么修"必须写进重写消息：只说"均分 0.71 低于 0.75"，模型收到的是
 # "再写一遍"，两轮重写就停在同一水平（现网 evt_003 rubric=0.7125 就是这么废的）。
 JUDGE_FIX_HINT = {
@@ -1603,6 +1661,7 @@ JUDGE_FIX_HINT = {
     "causal": "因果分析偏弱（%s）：trigger/mechanism/outcome 每段都要有材料支撑",
     "forecast": "趋势预测偏弱（%s）：给到期的可核验指标，窗口只能是 3/7/14 天",
     "quality": "内容优质判断偏弱（%s）：why 说清报道形态，basis 逐条引外证编号",
+    "density": "信息密度偏弱（%s）：删掉换句话说的重复段，把省下的篇幅补进机制与反证",
 }
 
 
@@ -1616,22 +1675,34 @@ def judge_weak_spots(score, bar=JUDGE_PASS):
     for k in JUDGE_DIMS:
         v = (score or {}).get(k)
         if isinstance(v, (int, float)) and v < bar:
-            out.append(JUDGE_FIX_HINT[k] % ("%.2f" % v))
+            hint = JUDGE_FIX_HINT[k] % ("%.2f" % v)
+            if v < JUDGE_FLOOR:
+                hint += "（单这一条就低于地板 %.2f，均值再高也不过）" % JUDGE_FLOOR
+            out.append(hint)
     return out
 
 
 def build_judge_prompt(cand, ctx):
-    """judge 必须看到完整正文与完整证据：只喂片段就打"论述深度"分是自相矛盾的。"""
+    """judge 必须看到完整正文与完整证据：只喂片段就打"论述深度"分是自相矛盾的。
+
+    字数口径从 `NARR_MIN/PARAS_MIN` 渲染，不写死：写死过一次，结果是契约已经抬到 4,000
+    而评审还按 2,500 判 —— 两个数不一致时，被纵容的是评审那一侧。
+    """
     arts = ctx.get("articles") or []
+    dims = (
+        "narrative（是否成文论述、≥%d字、≥%d段、含反证或限制条件、不是分点罗列）、" % (NARR_MIN, PARAS_MIN)
+        + "causal（是否给出机制链条而非复述现象）、forecast（预测是否可核验、窗口是否合理）、"
+        + "quality（对信源优质与否的判断有无依据、是否只是自评）、"
+        + "density（信息密度：有没有把同一件事换句话再说一遍来充字数；"
+          "把重复表述删掉之后是否仍然成文、仍然够长）"
+    )
     return (
-        "你是评审。只依据下面给出的材料，为这篇洞察按四项各打 0-1 分："
-        "narrative（是否成文论述、≥2500字、≥6段、含反证或限制条件、不是分点罗列）、"
-        "causal（是否给出机制链条而非复述现象）、forecast（预测是否可核验、窗口是否合理）、"
-        "quality（对信源优质与否的判断有无依据、是否只是自评）。\n"
-        '只输出 JSON：{"narrative":0.0,"causal":0.0,"forecast":0.0,"quality":0.0,"notes":"≤80字"}\n'
-        "任一项不达标就必须给低于 0.75 的分；不要因为它写得长就给高分。\n\n"
+        "你是评审。只依据下面给出的材料，为这篇洞察按五项各打 0-1 分：" + dims + "。\n"
+        '只输出 JSON：{"narrative":0.0,"causal":0.0,"forecast":0.0,"quality":0.0,'
+        '"density":0.0,"notes":"≤80字"}\n'
+        "任一项不达标就必须给低于 %.2f 的分；不要因为它写得长就给高分 —— 长而空要在 density 上扣分。\n\n"
         "===== 待评正文（全文）=====\n%s\n\n===== 证据（%d 篇，均为全文）=====\n%s\n"
-    ) % ((cand.get("narrative") or ""), len(arts),
+    ) % (JUDGE_PASS, (cand.get("narrative") or ""), len(arts),
          "\n\n".join((a.get("text") or "") for a in arts))
 
 
@@ -1709,12 +1780,15 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
                                    {"c%d" % (i + 1): art for i, art in enumerate(ctx["articles"])})
         # 缺哪些结构字段，必须在归一**之后**数：形状不对的会被掏空，归一之前数只会报"什么都不缺"。
         cand["struct_missing"] = [k for k in STRUCT_FIELDS if not cand.get(k)]
+        # 水分先量一遍再判：这一格只观测不门（理由见 repetition_rate），
+        # 但必须每场都在产物里，否则"什么时候可以升成门"永远没有依据。
+        cand["repeat_rate"] = repetition_rate(cand.get("narrative") or "")
         ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids)
         last_fails = fails
         if ok:
             score = judge_event(client, cand, ctx, key_pool, budget,
                                 wait_cap_s=wait_cap_s, sleep=sleep)
-            if score["mean"] >= JUDGE_PASS:
+            if judge_accepts(score):
                 cand["rubric"] = score
                 cand["contract_fails"] = []
                 cand["regen_used"] = attempt
@@ -1737,8 +1811,7 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
         cand["parse_echo"] = parse_echo
     if staged_note:
         cand["staged"] = staged_note
-    cand["narrative"] = (cand.get("narrative") or "")[:DEGRADED_NARR_MAX]
-    cand["forecasts"] = []
+    clip_for_degrade(cand)
     cand["rubric"] = score
     cand["contract_fails"] = last_fails
     cand["regen_used"] = max_regen
@@ -1886,14 +1959,16 @@ class FakeClient:
             raise RateLimited(30)
         if kind == "judge":
             v = 0.9 if self.judge_pass else 0.4
-            return json.dumps({"narrative": v, "causal": v, "forecast": v, "quality": v})
+            return json.dumps({"narrative": v, "causal": v, "forecast": v,
+                               "quality": v, "density": v})
         ids = re.findall(r"c\d+", prompt.split("证据编号里选")[-1][:200]) or ["c%d" % i for i in range(1, 7)]
         if kind == "section":
             # 段正文必须真够长（越过每段下限）：给短了，测到的就是夹具尺寸而不是流程
-            return "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 470)
+            return "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 700)
         doc = {
-            "claims": [{"text": "论断%d" % i, "kind": "causal", "evidence": [ids[0] if ids else "c1"]}
-                       for i in range(4)],
+            "claims": [{"text": "论断%d" % i, "kind": "causal",
+                        "evidence": [ids[i % len(ids)] if ids else "c1"]}
+                       for i in range(7)],
             "causal_chains": [{"trigger": "触发", "mechanism": "机制", "outcome": "结果",
                                "confidence": 0.6, "evidence": [ids[0] if ids else "c1"]} for _ in range(3)],
             "forecasts": [{"claim": "预计三个月内出现跟随者", "horizon_days": 7,
@@ -1913,8 +1988,8 @@ class FakeClient:
         doc.pop("sections", None)
         if kind != "structure":
             doc["narrative"] = "\n\n".join(
-                "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 380)
-                for _ in range(7))
+                "论证与数据推演%s，但该判断仍受样本量与统计口径限制。" % ("依" * 700)
+                for _ in range(8))
         return json.dumps(doc, ensure_ascii=False)
 
 
