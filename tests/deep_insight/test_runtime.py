@@ -190,7 +190,8 @@ def test_prompt_demands_the_four_depth_criteria_and_json_shape():
     for token in ("narrative", "claims", "causal_chains", "forecasts", "horizon_days",
                   "check_metric", "quality", "citations"):
         assert token in p, "提示词没要求字段 %s" % token
-    assert "2500" in p and "至少 6 段" in p, "提示词没写每条目字数/段数下限"
+    assert str(D.NARR_MIN) in p and str(D.NARR_MAX) in p, "提示词没写每条目字数区间（应当从常量渲染）"
+    assert "至少 %d 段" % D.PARAS_MIN in p, "提示词没写段数下限"
     # 只写字段名不够：枚举值必须写出来，否则模型永远可以给出永不到期的预测
     assert "3、7 或 14" in p, "提示词没限定 horizon_days 只能是 3/7/14"
     assert "5-12" in p, "提示词没写引用条数区间"

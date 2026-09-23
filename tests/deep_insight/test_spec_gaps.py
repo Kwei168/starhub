@@ -40,8 +40,10 @@ def _event(**over):
               "chars_used": 4000, "full_len": 5706} for i in range(6)]
     ev = {
         "id": "evt1", "topic": "ai", "title": "一条足够具体的标题",
-        "narrative": "\n\n".join(_para(500) for _ in range(7)),
-        "claims": [{"text": "论断%d" % i, "kind": "causal", "evidence": ["c1", "c2"]}
+        "narrative": "\n\n".join(_para(700) for _ in range(8)),
+        # 铺开证据：方案一之后"每 1,500 字要换一篇证据"是判据，全压在 c1/c2 上
+        # 会让这批"只测某一条数字"的判据先被别的规则拦掉，归因就脏了。
+        "claims": [{"text": "论断%d" % i, "kind": "causal", "evidence": ["c%d" % (i % 6 + 1)]}
                    for i in range(5)],
         "causal_chains": [{"trigger": "触发", "mechanism": "机制", "outcome": "结果",
                            "confidence": 0.6, "evidence": ["c1", "c2"]} for _ in range(3)],
@@ -485,7 +487,7 @@ def test_string_shaped_evidence_is_not_iterated_character_wise():
     ids = {"c%d" % (i + 1): "https://x.test/%d" % i for i in range(6)}
     cand = {
         "id": "e1", "topic": "ai", "title": "标题",
-        "narrative": "\n\n".join(_para(500) for _ in range(7)),
+        "narrative": "\n\n".join(_para(700) for _ in range(7)),
         "claims": [{"text": "甲", "kind": "causal", "evidence": "c1"},
                    {"text": "乙", "kind": "causal", "evidence": "c2, c3"},
                    {"text": "丙", "kind": "trend", "evidence": ["c3"]}],
