@@ -1,0 +1,3 @@
+{"claim": "企业客户在medium档位使用Opus 5.5的Agent工作流实际成本将低于Astra，但max档位迁移企业将面临成本翻倍风险", "event_id": "evt_20260923_011", "horizon_days": 7, "check_metric": "统计未来7天内Opus 5.5与GPT-6 Astra在企业Agent场景中的平均单任务token消耗和账单金额对比", "made_on": "2026-09-23", "status": "pending"}
+{"claim": "OpenAI GPT-6 Sol/Luna的降价将对Opus 5.5的企业市场份额形成持续压力，Anthropic需进一步降价或提效以维持竞争力", "event_id": "evt_20260923_011", "horizon_days": 14, "check_metric": "14天后Anthropic是否公布新一轮定价调整或效率优化公告，以及第三方市场份额数据变化", "made_on": "2026-09-23", "status": "pending"}
+{"claim": "安全分类器透明路由机制将在生产环境中引发可观测的Agent工作流质量波动，推动更多组织申请验证豁免计划", "event_id": "evt_20260923_011", "horizon_days": 7, "check_metric": "7天内验证豁免计划的申请量变化，以及公开论坛/文档中关于路由降级导致任务失败的案例报告数量", "made_on": "2026-09-23", "status": "pending"}
