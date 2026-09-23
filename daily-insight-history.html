@@ -149,13 +149,13 @@ a{color:inherit;text-decoration:none;}
 
   <nav class="day-nav" aria-label="日期选择">
     <select id="daySelect" onchange="switchDay(this.value)">
-<option value="day-2026-09-23">2026-09-23 (7 事件)</option><option value="day-2026-09-22">2026-09-22 (12 事件)</option><option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
+<option value="day-2026-09-23">2026-09-23 (3 事件)</option><option value="day-2026-09-22">2026-09-22 (12 事件)</option><option value="day-2026-09-21">2026-09-21 (12 事件)</option><option value="day-2026-09-20">2026-09-20 (9 事件)</option><option value="day-2026-09-19">2026-09-19 (12 事件)</option><option value="day-2026-09-18">2026-09-18 (8 事件)</option><option value="day-2026-09-17">2026-09-17 (9 事件)</option>
     </select>
   </nav>
 
 
 <section id="day-2026-09-23" class="day-section" >
-  <div class="day-theme">从 OpenAI 与 Anthropic 同日发布旗舰模型降价掀开价格战，判断 AI 模型层进入性价比与真实负载双轨竞争阶段</div>
+  <div class="day-theme">从OpenAI与Anthropic同日双发旗舰引发价格战，判断前沿模型迭代正加速重塑市场格局</div>
   
 <article class="di-card">
   <div class="di-head">
@@ -163,43 +163,20 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.2</span>
   </div>
-  <h3 class="di-label">OpenAI 发布 GPT-6 Sol 与 Luna，API 价格比 GPT-5.6 低 50%</h3>
-  <p class="di-summary">9月23日，OpenAI 正式发布 GPT-6 家族两款新模型 GPT-6 Sol 与 GPT-6 Luna。两款模型基于 GPT-6 Astra 技术成果，主打更快、更便宜、支持大规模工作负载，API 价格较 GPT-5.6 促销定价下调 50%（Sol 为输入 $2/输出 $10，Luna 为输入 $0.10/输出 $0.50，每百万 token）。官方称部分编码任务成本比 Claude Opus 5 最多便宜 93%，社区普遍认为该激进定价将对大量开源与闭源竞品形成强力挤压。</p>
-  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wngzou/introducing_gpt6_sol_and_luna/" target="_blank" rel="noopener">reddit.com&#8599;</a><a class="di-link" href="https://aihot.news/items/cmud2dm9s03w3ro5yar53tpf3" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wnm10f/gpt6_sol_confirmed_weaker_than_56_sol_on_complex/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-src">aihot</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">Claude Opus 5.5与GPT-6双发引发价格战讨论</h3>
+  <p class="di-summary">素材存在日期冲突：一则素材称 Claude Opus 5.5 于 9 月 22 日发布，另一则素材称 GPT-6 Sol/Luna 于 9 月 23 日发布，但另有素材指出两者于同一天（9 月 23 日）发布。GPT-6 Sol 定价为每百万 token 输入$2、输出$10，Luna 低至$0.10/$0.50；Opus 5.5 降价 20% 至$4/$20，缓存读取降 60%，官方称在大多数任务上达到 Fable 5.1 水平，运行成本比 Opus 5 低 40%。第三方实测显示 Opus 5.5 出图更精细，总成本$4.37，是 GPT-6 Sol 成本$0.34 的约 13 倍。</p>
+  <div class="di-links"><a class="di-link" href="https://simonwillison.net/2026/Sep/22/opus-and-sol-and-luna" target="_blank" rel="noopener">simonwillison.net&#8599;</a><a class="di-link" href="https://x.com/shao__meng/status/2102574767303979491" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/testingcatalog/status/2102523754186256535" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，OpenAI 正式推出 GPT-6 家族的新成员 Sol 与 Luna，并在同日上线 ChatGPT Work 与 Codex，向 Plus、Pro、Business、Enterprise 及 Edu 等全量付费用户开放使用[1][5]。这两款模型基于 GPT-6 Astra 的技术成果构建，依托缓存与推理机制的效率改进，主打更快、更经济以支撑大规模工作负载[4][21]。API 定价方面，Sol 的短上下文价格由 5.6 版本的输入 $4/输出 $20 降至输入 $2/输出 $10，Luna 由输入 $0.20/输出 $1.20 降至输入 $0.10/输出 $0.50（每百万 token），整体价格较 5.6 促销价直接削减 50%[27][36]。官方宣称该定价策略极具竞争力，部分编码任务成本比 Claude Opus 5 最多便宜 93%，并强调 Sol 能以约 9% 的成本在 AutomationBench 上超越 Claude Opus 5[20]。尽管具体规格细节在发布初期仍存模糊，但两款模型已被纳入 Artificial Analysis Intelligence Index v4.3 进行横向评测，标志着这一价格调整已实际进入市场竞争视野[16]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期来看，50% 的价格腰斩直接重塑了 API 成本基准，OpenAI 官方数据显示其成本优势可达 93%，预计将迫使中小规模竞品及开源项目重新评估自身定价模型[1][21]。中期影响集中在开发者选型与流量分发，由于 Sol/Luna 已同步覆盖 Codex 与 ChatGPT Work 等高频入口，用户切换成本极低，这将迅速吸走对价格敏感的长尾需求，而 Anthropic 在同日推出的 Opus 5.5 虽降价 20% 并宣称性能更强，但在绝对单价上仍无法与 Luna 的 $0.10 正面抗衡，行业将进入短期的“性能-价格”多维博弈期[38][50]。长期而言，OpenAI 此举意在通过极致性价比构筑护城河，挤压依赖高价闭源模型生存的中间层厂商空间；然而，部分独立评测指出 Sol 在 DeepSWE 与 GDPval 知识工作等复杂场景下存在性能回退，若实际工程落地中错误率未能显著降低，这种“低价低质”的口碑可能阻碍其在关键企业级任务中的渗透，长期胜负仍取决于单位 token 的实际产出效能而非单纯的价格数字[16][46]。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>消息源在定位与实测表现上存在分歧：AGI Hunt 与 AIHOT 主要侧重于官方发布节奏、定价数据及“挤压市场”的商业影响[1][2]；Reddit 用户及部分技术分析源则对性能持保留态度，指出 Sol 在部分基准测试（如 DeepSWE）上不敌前代 5.6 版本，且存在任务交付缺失的质量问题，认为其核心卖点是“省钱”而非“全能超越”[46]；与此同时，关于竞品 Opus 5.5 的报道显示其在全基准跑分上领先 Sol，形成了“OpenAI 拼价格、Anthropic 拼纯性能”的舆论对比格局[41][46]。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>两款模型每 token 价格为前代 5.6 系列的一半，Sol 主打编码与计算机操作，Luna 主打快速计算与更低成本</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>鉴于 Opus 5.5 已在 Artificial Analysis 指数中全面压制 Sol 且价格降幅明显，预计 Q4 将看到 OpenAI 针对 Sol/Luna 推出更激进的缓存折扣或基于用量的捆绑套餐以巩固市场份额，同时 Anthropic 可能继续利用性能优势抢占高价值企业客户。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，Anthropic与OpenAI同日发布新一代模型，引爆价格战讨论。Anthropic推出Claude Opus 5.5，定位智能体编程、计算机使用和知识型工作，官方宣称其在多数任务上达到Fable 5.1水平，运行成本较Opus 5降低40%，输出速度提升30%以上，同时将API价格下调约20%至输入$4/输出$20每百万token [11][21]。同日，OpenAI发布GPT-6 Sol和GPT-6 Luna，将旗舰GPT-6 Astra的能力下放到更快速、便宜的层级，面向规模化生产场景 [2][5]。GPT-6 Sol定价为输入$2、输出$10，Luna为输入$0.10、输出$0.50，较GPT-5.6促销价再降50% [5]。第三方实测显示，Opus 5.5在3D场景生成中渲染更精细，但总成本$4.37，是GPT-6 Sol成本$0.34的13倍 [3][15]。Perplexity已全量上线GPT-6 Sol，称其以约五分之一价格超越Opus 5 [7]。Cognition确认GPT-6 Sol/Luna已在Devin中可用，Sol在FrontierCode 1.1基准上以低61%成本达到GPT-5.6 Sol同等分数 [33]。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：两大厂商同日降价直接挤压中间层模型生存空间，开发者面临选型纠结，第三方评测平台压力激增。Opus 5.5与GPT-6 Sol在性能与价格上形成差异化竞争——前者主打高质量代码与Agent任务，后者主打规模化低成本推理 [3][7]。中期：价格战将加速模型API均价下行，推动企业从&#x27;用最好模型&#x27;转向&#x27;用最优性价比模型&#x27;，Perplexity等 aggregator 平台将重新洗牌编排策略 [7][33]。长期：若&#x27;更强且更便宜&#x27;成为行业常态，底层算力效率将成为核心竞争力，拥有高效推理基础设施的厂商将获得结构性优势；同时，benchmark 内卷可能促使竞争从单点性能转向实际工作流 ROI [11][20]。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt [3][15] 聚焦质量与成本的权衡，指出Opus 5.5出图更精细但成本是GPT-6 Sol的13倍，强调&#x27;取舍&#x27;逻辑。Perplexity [7] 则主打性价比叙事，宣称GPT-6 Sol以五分之一价格超越Opus 5。Reddit用户汇总 [13][17] 倾向Opus 5.5全面领先，认为其中档配置以更低价跑赢GPT-6最高档。而AGI Hunt [6] 报道GPT-6 Sol评测意外不敌GPT-5.6 Sol，仅价格更低，与Perplexity说法形成直接矛盾。Simon Willison [1] 持观望态度，认为需时间验证。36氪 [22] 强调Opus 5.5在Terminal-Bench等基准上的绝对优势。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>Opus 5.5在大多数任务上达到 Claude Fable 5.1 的水平，但运行成本比上一代 Opus 5 低 40% [2]</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计国庆假期前后将涌现更多横向对比评测，Perplexity与Cognition等平台的 adoption 数据将验证GPT-6系列性价比叙事是否成立；若Opus 5.5 token消耗问题如部分用户担忧的那样未被根本解决，其高端定价策略将面临持续挑战。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.reddit.com/r/singularity/comments/1wngzou/introducing_gpt6_sol_and_luna/" target="_blank" rel="noopener">[1] reddit.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmud2dm9s03w3ro5yar53tpf3" target="_blank" rel="noopener">[4] aihot.news&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/singularity/comments/1wnm10f/gpt6_sol_confirmed_weaker_than_56_sol_on_complex/" target="_blank" rel="noopener">[16] reddit.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/ChatGPT/comments/1wnielg/gpt_6_luna_max_scores_as_high_as_gpt_6_sol_high/" target="_blank" rel="noopener">[20] reddit.com&#8599;</a> <a class="di-cite" href="https://www.reddit.com/r/singularity/comments/1wnha3r/gpt_6_sol_and_luna_at_half_the_gpt_56_prices/" target="_blank" rel="noopener">[21] reddit.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.2</span>
-  </div>
-  <h3 class="di-label">Opus 5.5 与 GPT-6 Sol 同日发布并引发价格战讨论</h3>
-  <p class="di-summary">Anthropic 的 Claude Opus 5.5 与 OpenAI 的 GPT-6 Sol/Luna 在同一晚接连发布，引发社交媒体与社区热议。报道指出 OpenAI 将 GPT-6 系列 API 价格较 GPT-5.6 促销价下调 50%，Luna 输出价格低至每百万 $0.50；Anthropic 将 Opus 5.5 定价定为输入 $4/输出 $20 并降价约 20%。Simon Willison 等分析者将这一事件解读为新一轮模型价格战的直接引爆点。</p>
-  <div class="di-links"><a class="di-link" href="https://simonwillison.net/2026/Sep/22/opus-and-sol-and-luna" target="_blank" rel="noopener">simonwillison.net&#8599;</a><a class="di-link" href="https://x.com/testingcatalog/status/2102523754186256535" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://www.youtube.com/watch?v=0t-eWrGFZyA" target="_blank" rel="noopener">youtube.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，Anthropic发布Claude Opus 5.5，定价为输入$4/输出$20（降价约20%）。约一小时后，OpenAI发布GPT-6 Sol及Luna，将API价格较GPT-5.6促销价下调50%，Luna输出价格低至每百万$0.50。两者同日密集发布旗舰模型，直接触发价格战。第三方实测显示，Opus 5.5在四个3D场景测试中渲染效果更精细，但单次生成成本达$4.37，而GPT-6 Sol仅花费$0.34，成本相差约13倍。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：OpenAI以Luna极低定价切入中低端应用市场，Opus 5.5主打高质量渲染但面临成本劣势。中期：13倍成本差距迫使开发者在质量与预算间重新权衡，可能加速GPT-6系列在商业落地中的采用。长期：旗舰模型命名节奏加快（版本号内卷），厂商言行不一（呼吁放缓却密集发布）将削弱行业监管信誉，竞争焦点从单点性能转向综合性价比。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>Simon Willison关注价格战对市场格局的冲击；AGI Hunt实测强调质量与成本的巨大落差；Matt Wolfe从技术体验角度盛赞Opus 5.5性能；社区调侃聚焦厂商言行不一与版本内卷。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>Claude Opus 5.5 出图更精细,成本却是 GPT-6 Sol 的 13 倍</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计OpenAI将凭借Luna的低价策略快速抢占应用层市场份额，而Anthropic需在后续迭代中优化推理成本以维持旗舰定位优势。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://simonwillison.net/2026/Sep/22/opus-and-sol-and-luna" target="_blank" rel="noopener">[1] simonwillison.net&#8599;</a> <a class="di-cite" href="https://x.com/testingcatalog/status/2102523754186256535" target="_blank" rel="noopener">[2] x.com&#8599;</a> <a class="di-cite" href="https://www.youtube.com/watch?v=0t-eWrGFZyA" target="_blank" rel="noopener">[3] youtube.com&#8599;</a> <a class="di-cite" href="https://agihunt.info/e/1a0ca7cad1b1da92d6cd1211c37" target="_blank" rel="noopener">[4] agihunt.info&#8599;</a> <a class="di-cite" href="https://x.com/ThePeterMick/status/2102478847308366050" target="_blank" rel="noopener">[5] x.com&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://simonwillison.net/2026/Sep/22/opus-and-sol-and-luna" target="_blank" rel="noopener">[1] simonwillison.net&#8599;</a> <a class="di-cite" href="https://x.com/shao__meng/status/2102574767303979491" target="_blank" rel="noopener">[2] x.com&#8599;</a> <a class="di-cite" href="https://x.com/testingcatalog/status/2102523754186256535" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/cmud1y2ku039iro5ysl7pq6d3" target="_blank" rel="noopener">[5] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/Angaisb_/status/2102460887760326688" target="_blank" rel="noopener">[6] x.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -209,79 +186,10 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">GPT-6 Sol 与 Luna 在 ChatGPT Work 和 Codex 中推送</h3>
-  <p class="di-summary">OpenAI 于 9 月 23 日发布 GPT-6 系列新成员 GPT-6 Sol 与 GPT-6 Luna，当天上线 ChatGPT Work、Codex 并开放 API。AI 开发平台 Lovable 宣布同时接入 Claude Opus 5.5 和 GPT-6 Sol，用户无需手动选择，平台会自动组合调度流量以获得最佳结果。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmudd3ig3068uroggif72kglr" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/AlexandrePesant/status/2102475284612038661" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月23日，OpenAI 正式发布 GPT-6 系列新成员 GPT-6 Sol 与 GPT-6 Luna。这两款模型旨在将 GPT-6 Astra 在专业工作、事实性、编码、计算机使用和对齐方面的性能，带入更快、更经济的模型。据 IT 早报报道，此次发布伴随 API 价格大降 50% 的举措。同日发布后，新模型当天即上线至 ChatGPT Work 和 Codex 产品中，并同时开放 API 接口供开发者调用。随后，AI 开发平台 Lovable 宣布重大升级，宣布同时接入 GPT-6 Sol 与 Claude Opus 5.5 两个前沿模型，以利用其能力进行产品迭代。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：API 价格下降 50% 直接降低了开发者的调用成本，有望加速 GPT-6 系列在应用层的渗透，特别是 Codex 等编程工具的使用量预计上升。中期：Lovable 等第三方平台的接入意味着生态层开始整合双模型调度策略，Sol 与 Opus 5.5 的竞争将从单一模型能力转向多模型协同体验。长期：GPT-6 Sol 和 Luna 通过降低价格门槛，将 Astra 的高端性能下沉，可能重塑中高端 AI 市场的价格体系，迫使竞争对手跟进降价或提升性能以维持竞争力。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材 [1] 侧重报道 OpenAI 的官方发布动作及价格策略，强调性能下放与降价；素材 [2] 则从第三方平台视角切入，关注 Lovable 同时接入 GPT-6 Sol 与 Claude Opus 5.5 的技术选型，侧面印证了新模型在实际产品负载下获得认可。两者角度互补，无根本分歧。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>OpenAI 发布 GPT-6 Sol 和 Luna 两款模型，API 价格大降 50%</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>预计后续将有更多头部开发平台跟进接入 GPT-6 Sol，多模型自动调度将成为标准配置，GPT-6 系列的市场份额将在成本敏感型场景中快速扩张。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/cmudd3ig3068uroggif72kglr" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/AlexandrePesant/status/2102475284612038661" target="_blank" rel="noopener">[2] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Claude Opus 5.5 上线 OpenRouter 并登顶 CursorBench</h3>
-  <p class="di-summary">Anthropic 的 Claude Opus 5.5 已在 OpenRouter 上线，提供 1M 上下文窗口，定价为每百万输入 token $4、输出 $20，每 token 价格比 Opus 5 低 20%。此外，该模型已在 Cursor 平台上线并拿下 CursorBench 前四名，其中 Max 模式以 57.8% 登顶榜首，每个任务的成本比 Opus 5 降低 40%。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucxgaki0sfkroed0n804wg5" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://aihot.news/items/cmud2dm9s03w6ro5ymdfkg55p" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">BestBlogs 早报涵盖 Claude Opus 5.5 与 MiMo V2.6</h3>
-  <p class="di-summary">BestBlogs 早报 09-23 本期精讲 Anthropic 发布 Claude Opus 5.5，称其典型任务运行成本较 Opus 5 低 40%，缓存读取价格下降 60%，输出速度提升超 30%；同时收录 MiMo V2.6 扩展强化学习以及美团分享统一推荐基座大模型实践等内容。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmucwy4l10rsjroedxt4zco2v" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://aihot.news/items/cmudd3ig3068uroggif72kglr" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">教师泄露准考证信息致学生篡改志愿，法院判学校承担次要责任</h3>
-  <p class="di-summary">新疆乌鲁木齐市新市区人民法院就一起隐私权、个人信息保护纠纷案作出一审判决：班主任徐某将包含准考证号、身份证号、志愿填报系统初始密码在内的准考证照片发到班级群，主观上无损害学生权益故意但直接为侵权提供便利，属职务行为由学校担责；同校学生孙某登录招考系统篡改 7 名考生第一志愿代码，构成破坏计算机信息系统罪，被判有期徒刑一年六个月，并在民事诉讼中承担 70% 主要侵权责任，赔偿约 2.3 万元；学校因管理疏漏承担 30% 次要责任，赔偿约 1.7 万元；班主任个人不承担民事赔偿责任，其他超额诉求被驳回。</p>
-  <div class="di-links"><a class="di-link" href="https://mp.weixin.qq.com/s?__biz=MjM5MDk1NzQzMQ==&amp;mid=2654155780&amp;idx=1&amp;sn=47cb9965b82f761351b66132aabd05ed" target="_blank" rel="noopener">mp.weixin.qq.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">policy</span></div>
+  <h3 class="di-label">OpenAI设立数学家顾问小组AGMAI</h3>
+  <p class="di-summary">OpenAI 宣布成立独立数学家顾问小组 AGMAI，由普林斯顿高等研究院 (IAS) 承办，九名成员来自 Stanford、Harvard、Oxford、Cambridge 等机构，将就新兴数学成果的评审与发布提供建议。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/cmudczysp063yroggiwyp80u1" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -299,12 +207,12 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     
-    <span class="di-score">0.1</span>
+    <span class="di-score">0.0</span>
   </div>
-  <h3 class="di-label">国庆假期酒店与民宿房价大幅上涨引发出行成本讨论</h3>
-  <p class="di-summary">媒体报道显示国庆期间酒店与民宿价格普遍大幅上涨：甘肃武威一家酒店行政大床房平日 321 元、10 月 1 日标价 799 元，陇南一家酒店同类房型从 325 元涨到 652 元；汕头一间民宿平日 97 元国庆报 645 元，另一家酒店从 186 元报到 947 元，此前网上疯传的“280 元涨到 5850 元”经当地调查认定属于平台房源展示异常。</p>
-  <div class="di-links"><a class="di-link" href="https://www.huxiu.com/article/4893344.html?f=rss" target="_blank" rel="noopener">huxiu.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
+  <h3 class="di-label">xAI发布Grok 4.7模型</h3>
+  <p class="di-summary">xAI 于 9 月 22 日发布 Grok 4.7，官方称其为迄今最强的编码与知识工作模型，在保持与 Grok 4.6 相同价格和速度的前提下实现显著提升。该模型已在 Grok Build、Cursor 等产品上线，Terminal-Bench 等基准测试成绩近乎翻倍；但 TheAIGRID 汇总的早期第三方测试显示，其实际表现与部分社区预期存在差距，该说法有争议。</p>
+  <div class="di-links"><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wmgudm/introducing_grok_47/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>

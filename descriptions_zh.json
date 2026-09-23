@@ -471,5 +471,6 @@
  "Nasiko-Labs/nasiko": "人工智能代理的开发者控制平面",
  "dream-num/univer": "AI 代理的 Office 工具 — 在一个运行时中处理电子表格、文档、幻灯片、画布、关系表和 PDF。",
  "superdesigndev/treg": "用于代理工具的 OpenRouter。在此加入社区：https://discord.gg/6mQYYfFMAn",
- "weave-os/router": "代理系统的模型路由器。在 <50 毫秒内将每个提示路由到正确的模型。只需更改端点即可将成本削减 40-70%。"
+ "weave-os/router": "代理系统的模型路由器。在 <50 毫秒内将每个提示路由到正确的模型。只需更改端点即可将成本削减 40-70%。",
+ "hazelpe/ComptyAI": "将代币活动转化为计算。为 Robinhood Chain 设计的计算访问协议：协议费用为代币持有者的 GPU 容量提供资金。"
 }
