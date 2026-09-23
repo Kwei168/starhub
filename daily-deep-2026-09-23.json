@@ -1,18 +1,16 @@
 {
  "date": "2026-09-23",
- "generated_at": "2026-09-23T14:26:29+08:00",
+ "generated_at": "2026-09-23T14:37:24+08:00",
  "engine": "deep-insight/v1",
  "budget": {
-  "llm_calls": 59,
-  "input_tokens": 2256565,
-  "output_tokens": 60013,
-  "wait_s": 60.0,
-  "c429": 2,
-  "truncated": 1,
-  "truncated_by": {
-   "section": 1
-  },
-  "elapsed_s": 777.6,
+  "llm_calls": 55,
+  "input_tokens": 1869214,
+  "output_tokens": 57473,
+  "wait_s": 0.0,
+  "c429": 0,
+  "truncated": 0,
+  "truncated_by": {},
+  "elapsed_s": 604.9,
   "call_cap": 684,
   "budget_tokens": 400000,
   "source_sha": "2958cd8a2691",
@@ -35,7 +33,7 @@
    "id": "evt_20260923_008",
    "reason": "重写 2 次仍不合格",
    "evidence_before": 11,
-   "evidence_after": 0
+   "evidence_after": 6
   },
   {
    "op": "drop",
@@ -197,42 +195,170 @@
    }
   },
   {
-   "narrative": "Opus 5.5 的时间路径并非从一条公告开始，而是先从几条碎片化的痕迹里被拼凑出来。Anthropic 官方账号 @claudeai 发布了一条题为\"A thread of early explorations with Claude Opus 5.5\"的推文，内容很简单——仅九十三字，提到一段由 @kevin_t_ngo 创作的\"西瓜故事\"，作为早期探索用例的展示素材。这条推文没有标注版本号，",
+   "narrative": "Opus 5.5 的早期泄露痕迹，并非出现在某一次集中的技术博客或者官方社交媒体预热中，而是隐藏在 Claude 官方账号 @claudeai 一条看似随意的推文里：该推文以线程形式发布了一段关于用 Opus 5.5 生成西瓜短篇故事的探索记录，作者标注为 @kevin_t_ngo，内容长度仅九十余字。这条推文之所以构成泄露证据，不在于其信息量有多大，而在于它出现的时间点——在 Anthropic",
+   "claims": [
+    {
+     "text": "Opus 5.5的早期泄露起源于@claudeai官方账号发布的一条实验性thread，该thread包含由@kevin_t_ngo创作的水瓜主题短篇故事，发布于Anthropic正式公告前窗口期。",
+     "kind": "事实",
+     "evidence": [
+      "c1"
+     ]
+    },
+    {
+     "text": "Claude Code v2.1.280的release notes早于AWS官方博客公告，首次以结构化格式披露Opus 5.5的完整技术规格与定价：1M上下文窗口、输入$4/Mtok、输出$20/Mtok、缓存读取$0.20/Mtok。",
+     "kind": "事实",
+     "evidence": [
+      "c2"
+     ]
+    },
+    {
+     "text": "AWS机器学习博客于2026年9月22日确认Opus 5.5在Amazon Bedrock上线，措辞为定性描述，未列出具体数字，与release notes形成定价信息的不对称披露。",
+     "kind": "事实",
+     "evidence": [
+      "c3"
+     ]
+    },
+    {
+     "text": "Opus 5.5在Terminal-Bench 4.0默认档获得57.6%得分、约2.94美元成本；GPT-6 Astra high档57.9%但需7.21美元，成本约为四成，显示性能相近但价格优势显著。",
+     "kind": "数据",
+     "evidence": [
+      "c5"
+     ]
+    },
+    {
+     "text": "xAI Grok 4.7发布时被TechPulse等媒体形容为\"晚到派对\"，CursorBench 4.0得46.3%低于Fable 5.1 Max的51.8%，Terminal-Bench 4.0仅38.0%远低于Fable 5.1的57.9%，暴露其在长时程终端任务上的短板。",
+     "kind": "数据",
+     "evidence": [
+      "c4"
+     ]
+    },
+    {
+     "text": "GitHub、Spotify、Optiver、Clio等企业客户在官方渠道分享了Opus 5.5的生产采用案例，覆盖长会话编程、代码审查、量化策略文档处理等场景，构成从边缘探索到生产采纳的证据链。",
+     "kind": "事实",
+     "evidence": [
+      "c5"
+     ]
+    },
+    {
+     "text": "release notes对Opus 5.5的处理方式采取制度化收编策略：既未否认泄露也未追溯来源，直接以技术规格形式编码为官方标准，同时将其作为众多更新项之一而非焦点，稀释泄露事件的关注度。",
+     "kind": "分析",
+     "evidence": [
+      "c2",
+      "c3"
+     ]
+    }
+   ],
+   "causal_chains": [
+    {
+     "trigger": "Claude Code v2.1.280内部CI流程将op5.5模型ID与默认权重推入主分支，release notes工具链自动生成\"Added Claude Opus 5.5 (claude-opus-5-5)\"条目。",
+     "mechanism": "标准化CHANGELOG结构具有不可消解的信息溢出特征：只要团队仍以\"default\"或\"Added\"标记记录模型新增，release notes本身即构成产品叙事工具与市场信号，主动压制会牺牲发布节奏透明度。",
+     "outcome": "Opus 5.5的技术规格与定价在官方博客公告前已对外可见，形成\"代码先行、公告滞后\"的时间差，泄露从意外转为结构性溢出。",
+     "confidence": "高",
+     "evidence": [
+      "c2",
+      "c3"
+     ]
+    },
+    {
+     "trigger": "@claudeai账号发布包含西瓜故事实验记录的thread，早于AWS官方博客上线。",
+     "mechanism": "官方账号的运营规范与线程格式发布习惯构成可信度背书，但推文本身未附API返回头或调用日志，仅能凭措辞风格间接推断可靠性；账号若存在权限降级或借用机制则身份归属存疑。",
+     "outcome": "泄露从\"传闻\"提升至\"可追溯\"证据层级，但精确时间窗口无法锁定，只能依靠\"推文先于博客、版本说明后于推文\"的顺序关系划定边界。",
+     "confidence": "中",
+     "evidence": [
+      "c1",
+      "c2",
+      "c3"
+     ]
+    },
+    {
+     "trigger": "Grok 4.7在Terminal-Bench等长时程任务基准上落后第一梯队，成本优势因过度思考导致的Token膨胀而被削弱。",
+     "mechanism": "Anthropic产品团队紧急启动\"抢先认知\"预案，前置释放Opus 5.5核心能力摘要，并与Claude Fable 5.1性能对标，强调\"推理能力相当、单token成本降低30%\"的差异化定位。",
+     "outcome": "Opus 5.5以\"准顶级性能+最优成本\"组合切入市场，在Grok 4.7与Fable 5.1之间撕开竞争缺口，为后续产品线定价话语权奠定基础。",
+     "confidence": "中高",
+     "evidence": [
+      "c4",
+      "c5"
+     ]
+    }
+   ],
+   "forecasts": [],
+   "quality": {
+    "source": "c3",
+    "verdict": "一手",
+    "score": 95,
+    "why": "AWS机器学习官方博客，由AWS Solutions Architect撰写，提供Opus 5.5可用性确认、技术架构说明与API示例，措辞严谨但回避具体定价，属于权威技术发布渠道。",
+    "basis": [
+     "sig:c3"
+    ]
+   },
+   "citations": [
+    {
+     "id": "c1",
+     "url": "https://x.com/claudeai/status/2102471866635919731",
+     "source": "Claude(@claudeai)",
+     "title": "A thread of early explorations with Claude Opus 5.5:\n\nA short story about a watermelon created by @k...",
+     "chars_used": 93
+    },
+    {
+     "id": "c2",
+     "url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.280",
+     "source": "Claude Code Releases",
+     "title": "v2.1.280",
+     "chars_used": 16480
+    },
+    {
+     "id": "c3",
+     "url": "https://aws.amazon.com/blogs/machine-learning/claude-opus-5-5-is-now-available-on-aws/",
+     "source": "AWS Machine Learning Blog",
+     "title": "Claude Opus 5.5 is now available on AWS",
+     "chars_used": 9088
+    },
+    {
+     "id": "c4",
+     "url": "https://mp.weixin.qq.com/s?__biz=Mjc1NjM3MjY2MA==&mid=2691572924&idx=1&sn=fbe7b07aad6921ec242d390afcfab492",
+     "source": "腾讯科技",
+     "title": "xAI正式发布Grok 4.7，还是没赶上这一代顶尖模型",
+     "chars_used": 7257
+    },
+    {
+     "id": "c5",
+     "url": "https://www.woshipm.com/ai/6468913.html",
+     "source": "人人都是产品经理",
+     "title": "Claude Opus 5.5 发布：强如 Fable，价格更低",
+     "chars_used": 6195
+    },
+    {
+     "id": "c8",
+     "url": "https://mp.weixin.qq.com/s?__biz=MzkwMzE4NjU5NA==&mid=2247521064&idx=1&sn=b666c6fe3a27f7827f76676e15f2ced1",
+     "source": "袋鼠帝AI客栈",
+     "title": "悄悄跨版本发布？！又一个国产开源模型站起来了～",
+     "chars_used": 13367
+    }
+   ],
    "id": "evt_20260923_008",
    "title": "Opus 5.5 早期泄露与官方发布过程",
    "topic": "ai-models",
-   "citations": [],
-   "claims": [],
-   "causal_chains": [],
-   "forecasts": [],
-   "quality": {},
-   "struct_missing": [
-    "claims",
-    "causal_chains",
-    "forecasts",
-    "quality",
-    "citations"
+   "quality_variants": 5,
+   "forecasts_dropped": [
+    {
+     "reason": "claim 95 字 > 80",
+     "claim": "未来14天内，下一个Opus迭代泄露风险处于中高区间，但若Anthropic采纳c8式stealth release策略"
+    }
    ],
+   "struct_missing": [],
    "repeat_rate": 0.0,
    "degraded_reason": "重写 2 次仍不合格",
    "staged": {
-    "sections": 6,
+    "sections": 7,
     "short_sections": [],
     "trimmed_sections": 0
    },
-   "narrative_chars_full": 7739,
+   "narrative_chars_full": 8396,
    "rubric": {
     "mean": 0.0
    },
    "contract_fails": [
-    "citations 0 条，须在 [5,12]",
-    "claims 0 条，须在 [3,10]",
-    "causal_chains 0 条，须在 [2,6]",
-    "forecasts 0 条，须在 [1,4]",
-    "quality.verdict None 不在枚举 ('一手', '深度', '数据支撑', '转载', '通稿', '营销')",
-    "quality.score 必须在 0-100，实为 None",
-    "quality.why 0 字，须在 [20,120]",
-    "quality.basis 为空：优质判断不许由生成方自评"
+    "正文 8396 字只压在 5 篇不同证据上（要 >=6 篇）：长而空不算深度"
    ],
    "regen_used": 2,
    "context_stats": {
@@ -245,99 +371,48 @@
    }
   },
   {
-   "narrative": "定价模式的重构，正悄然成为大模型竞争的新维度。Anthropic在Opus 5.5发布时以一种自嘲式的姿态将话题从\"每token单价\"转向\"每任务实际成本\"——这并非简单的营销话术，而是一种对定价逻辑的重新定义。此前行业竞争几乎全部围绕token单价展开，每百万token多少钱成为用户选择模型的唯一标尺；而Opus 5.5的发布将这一公式拆解为两个变量：单价×任务总token量。价格表上的数字直观",
+   "forecasts": [],
+   "quality": {
+    "verdict": "数据支撑",
+    "score": 88,
+    "why": "正文综合了 The New Stack、钛媒体、人人都是产品经理等多家媒体的披露数据，引用了 Box、GitHub、Deloitte、Artificial Analysis 等第三方实测数字，并明确标注了 max/medium 档位的差异与数据来源限制，证据交叉验证充分。",
+    "basis": [
+     "sig:c2",
+     "sig:c3",
+     "sig:c4",
+     "sig:c5",
+     "sig:c6"
+    ]
+   },
+   "narrative": "Anthropic对于Opus 5.5的发布姿态，带着一种罕见的自嘲式坦诚。官方宣传材料中直言不讳地将新模型定位为\"我们测试过的性能最强的模型\"，同时主动披露了其内部安全分类器会在运行中途将部分请求透明路由至旧版模型的机制——网络安全触发器会将请求转向Opus 4.8，生物及前沿模型开发相关请求则转至Opus 5。这种将架构缺陷包装成产品特性的叙事策略，本身就折射出Anthropic在Agent编",
    "claims": [
     {
-     "text": "Opus 5.5定价较Opus 5下调20%（输入$4/输出$20每百万token），结合token消耗降低约40%，典型任务实际成本下降约40%",
-     "kind": "fact",
-     "evidence": [
-      "c2",
-      "c3",
-      "c4"
-     ]
-    },
-    {
-     "text": "Opus 5.5在Terminal-Bench 4.0以66.4%超越Astra的57.9%，但在AutomationBench（40.0% vs 41.4%）和TBS 0.1（58.7% vs 64.6%）落后Astra",
-     "kind": "fact",
-     "evidence": [
-      "c2",
-      "c3",
-      "c4",
-      "c6"
-     ]
-    },
-    {
-     "text": "max effort档位下Opus 5.5单任务消耗约11.9万token、成本5.98美元，反超Astra的2.7万token和3.26美元",
-     "kind": "fact",
-     "evidence": [
-      "c2",
-      "c3"
-     ]
-    },
-    {
-     "text": "安全分类器触发后，网络安全请求透明降级至Opus 4.8，生物/前沿LLM请求降级至Opus 5，形成多模型链式响应",
-     "kind": "fact",
-     "evidence": [
-      "c2"
-     ]
-    },
-    {
-     "text": "OpenAI同日发布GPT-6 Sol，输入输出单价定为$2/$10，较GPT-5.6 Sol直接腰斩50%",
-     "kind": "fact",
-     "evidence": [
-      "c5"
-     ]
-    },
-    {
-     "text": "Anthropic自嘲式披露安全降级机制引发病毒传播，The New Stack相关报道成为发布期最出圈素材",
-     "kind": "analysis",
-     "evidence": [
-      "c2"
-     ]
-    },
-    {
-     "text": "Anthropic宣称Opus 5.5为'迄今为止测试过表现最强的模型'",
-     "kind": "fact",
+     "text": "Anthropic 将 Opus 5.5 定位为「测试过性能最强的模型」，定价输入 4 美元/输出 20 美元每百万 Token，较 Opus 5 降价 20%，官方称实际成本降幅约 40%",
+     "kind": "事实",
      "evidence": [
       "c1",
       "c2"
      ]
     },
     {
-     "text": "竞争力竞争维度从token单价转向每任务总成本，因多轮agent调用中token累积效应会成倍放大单价差异",
-     "kind": "analysis",
-     "evidence": [
-      "c2",
-      "c3",
-      "c5"
-     ]
-    }
-   ],
-   "causal_chains": [
-    {
-     "trigger": "Opus 5.5定价下调20%叠加效率提升约40%",
-     "mechanism": "Anthropic将竞争叙事从每token单价转向每任务总成本，通过双重驱动实现总拥有成本显著下降，打破行业单一token定价逻辑",
-     "outcome": "OpenAI被迫同日推出GPT-6 Sol并将定价腰斩至$2/$10，前沿大模型API价格战全面升级",
-     "confidence": "high",
+     "text": "Opus 5.5 内置安全分类器，网络安全请求会被透明路由至 Opus 4.8，生物/前沿模型开发类请求路由至 Opus 5，形成隐式降级机制",
+     "kind": "事实",
      "evidence": [
       "c2",
       "c5"
      ]
     },
     {
-     "trigger": "安全分类器在agent工作流中间件触发降级路由",
-     "mechanism": "高风险请求被透明转接至旧模型，同一会话内不同步骤由能力层级不同的模型承接，造成输出质量非线性波动",
-     "outcome": "多轮agent工作流出现隐式能力不一致，基于单模型假设设计的标准化评测无法暴露此类风险",
-     "confidence": "medium",
+     "text": "Opus 5.5 在 Terminal-Bench 4.0 上获得 66.4%，超越 Fable 5.1 的 55.8% 和 GPT-6 Astra 的 57.9%，在 CursorBench 以 57.8% 领先 GPT-5.6 Sol 的 41.7%",
+     "kind": "数据",
      "evidence": [
-      "c2"
+      "c2",
+      "c3"
      ]
     },
     {
-     "trigger": "Opus 5.5性能逼近Fable 5.1但价格仅为40%",
-     "mechanism": "官方模型选择指南重新定位为从Opus 5.5起步，仅在xhigh/max档位仍不满足时才切换Fable，Fable被降格为兜底选项",
-     "outcome": "Fable从'能力上限'定位被挤压为Opus系列与Mythos之间的缓冲垫，产品线分层逻辑面临结构性挑战",
-     "confidence": "high",
+     "text": "Artificial Analysis 独立测试显示，Opus 5.5 在 max 档位每任务平均生成约 11.9 万 Token，单任务成本达 5.98 美元，高于 Astra 的 3.26 美元；仅在 medium 档位体现性价比优势",
+     "kind": "数据",
      "evidence": [
       "c2",
       "c3",
@@ -345,37 +420,79 @@
      ]
     },
     {
-     "trigger": "max effort档位下单任务token消耗达11.9万，远超Astra的2.7万",
-     "mechanism": "单价降幅20%的红利被token消耗的非线性增长完全吞噬，导致极端性能场景下每任务成本翻倍",
-     "outcome": "Anthropic倡导的'每任务成本竞争'叙事在高effort场景自行瓦解，定价重构本质为选择性框架",
-     "confidence": "high",
+     "text": "Opus 5.5 取消了强制 tool_choice 机制（仅剩 auto 和 none），Adaptive Thinking 不可手动关闭，开发者对模型行为约束力减弱",
+     "kind": "事实",
      "evidence": [
-      "c2",
-      "c3"
+      "c3",
+      "c6"
      ]
     },
     {
-     "trigger": "Anthropic以自嘲口吻主动披露模型降级机制",
-     "mechanism": "将潜在信任危机转化为品牌诚信资产，把'不诚实'重构为'诚实'，The New Stack标题病毒式传播",
-     "outcome": "舆论好感度提升但企业部署担忧未消除，OpenAI同期选择量化指标路径，安全传播呈现两种范式分化",
-     "confidence": "medium",
+     "text": "OpenAI 在同窗口期发布 GPT-6 Sol（$2/$10）和 Luna（$0.10/$0.50），价格腰斩回应 Anthropic 降价攻势",
+     "kind": "事实",
      "evidence": [
-      "c2"
+      "c5"
+     ]
+    },
+    {
+     "text": "Box 评测显示 Opus 5.5 的 Token 消耗仅为 Opus 5 的约三分之一，输出冗长度降低 40% 而精度未损",
+     "kind": "数据",
+     "evidence": [
+      "c2",
+      "c4"
+     ]
+    },
+    {
+     "text": "Fable 5.1 于 9 月 1 日首发，至 9 月 18 日 Opus 5.5 公布可比较跑分时仅存活不到三周，已在多项 Agent 编程基准上被自家 Opus 反超",
+     "kind": "事实",
+     "evidence": [
+      "c3"
      ]
     }
    ],
-   "forecasts": [],
-   "quality": {
-    "verdict": "数据支撑",
-    "score": 82,
-    "why": "核心证据来自The New Stack一手报道，含详细定价表、跑分数据与第三方独立测试。中文媒体为编译转述非原始信源。整体数据支撑充分，但部分段落含厂商营销话术，结论需独立验证。",
-    "basis": [
-     "sig:c2",
-     "sig:c4",
-     "sig:c5",
-     "sig:c6"
-    ]
-   },
+   "causal_chains": [
+    {
+     "trigger": "Opus 5.5 安全分类器触发高风险请求路由",
+     "mechanism": "网络安全类请求转至 Opus 4.8，生物/前沿类请求转至 Opus 5，导致同一 Agent 工作流中不同请求由能力参差不齐的底层模型处理",
+     "outcome": "多轮 Agent 工作流的上下文连贯性与行为可预测性受损，下游步骤可能出现解析失败或参数错位，且在标准评测中难以暴露",
+     "confidence": "高",
+     "evidence": [
+      "c2",
+      "c5"
+     ]
+    },
+    {
+     "trigger": "Opus 5.5 在多数基准上超越 Fable 5.1 且价格仅为后者四成",
+     "mechanism": "官方模型选择指南建议开发者优先使用 Opus 5.5，仅在 xhigh/max 档位仍无法满足时才转向 Fable 5.1，实质将 Fable 降级为兜底选项",
+     "outcome": "Fable 5.1 产品定位被系统性削弱，其在 Opus 与 Mythos 之间的缓冲垫功能变为 Anthropic 产品线重新校准的过渡层",
+     "confidence": "高",
+     "evidence": [
+      "c2",
+      "c3",
+      "c4"
+     ]
+    },
+    {
+     "trigger": "OpenAI 以 GPT-6 Sol/Luna 价格腰斩回应",
+     "mechanism": "Sol 输入 2 美元/输出 10 美元，Luna 输入 0.10 美元/输出 0.50 美元，直接下探商业模型盈亏红线附近，同时强化安全对齐叙事",
+     "outcome": "价格竞争从 Anthropic 单方降价扩展为双寡头价格战，Agent 编程赛道定价天花板被进一步压低，但缺乏 Sol vs Opus 5.5 同场景横向对比数据",
+     "confidence": "中",
+     "evidence": [
+      "c5"
+     ]
+    },
+    {
+     "trigger": "Opus 5.5 在 max 档位 Token 消耗激增",
+     "mechanism": "max effort 下平均每任务生成约 11.9 万 Token（Astra 仅 2.7 万），高推理强度以 Token 效率为代价换取边际性能提升",
+     "outcome": "追求极致性能时单任务成本反而高于定位更低的 Astra；真正性价比优势体现在 medium effort 档位（51 分/1.34 美元）",
+     "confidence": "高",
+     "evidence": [
+      "c2",
+      "c3",
+      "c4"
+     ]
+    }
+   ],
    "citations": [
     {
      "id": "c1",
@@ -427,22 +544,17 @@
    "repeat_rate": 0.0,
    "degraded_reason": "重写 2 次仍不合格",
    "staged": {
-    "sections": 7,
+    "sections": 6,
     "short_sections": [],
     "trimmed_sections": 0
    },
-   "narrative_chars_full": 9870,
+   "narrative_chars_full": 8631,
    "rubric": {
-    "narrative": 0.85,
-    "causal": 0.7,
-    "forecast": 0.75,
-    "quality": 0.6,
-    "density": 0.45,
-    "mean": 0.725,
-    "scored_dims": 5,
-    "missing_dims": []
+    "mean": 0.0
    },
-   "contract_fails": [],
+   "contract_fails": [
+    "quality.why 128 字，须在 [20,120]"
+   ],
    "regen_used": 2,
    "context_stats": {
     "articles": 12,
