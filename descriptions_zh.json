@@ -481,5 +481,6 @@
  "router-for-me/CLIProxyAPI": "将 Antigravity、ChatGPT Codex、Claude Code、Grok Build、M​​use Code、Davin 包装为 OpenAI/Gemini/Claude/Codex 兼容的 API 服务，让您通过 API 享受免费的 Gemini Series、GPT Series、Grok Series、Claude 模型",
  "TNT-Likely/PanWatch": "盯盘侠 PanWatch · 自托管 AI 盯盘助手，集成 TradingAgents 多 Agent 投资决策 | A股/港股/美股实时监控、持仓管理、智能分析、全渠道推送",
  "AvenueSnowStep/ClaudePanel": "Claude 和 AI 助手的桌面面板和工具包",
- "BinaryDeliverer/CodexDesk": "AI 编码代理和 Codex 工作流程的桌面伴侣"
+ "BinaryDeliverer/CodexDesk": "AI 编码代理和 Codex 工作流程的桌面伴侣",
+ "davila7/claude-code-templates": "用于配置和监控 Claude Code 的 CLI 工具"
 }
