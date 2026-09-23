@@ -37,11 +37,14 @@ def test_prompt_pins_the_evidence_id_range_for_claims_and_chains():
     p = D.build_prompt(ev, _ctx())
     idseg = re.search(r"只能从[^。]*?((?:c\d+，?,?\s*){3,}c\d+)", p)
     assert idseg, "prompt 里没有可引用的编号清单"
-    low = p.lower()
     for field in ("claims", "causal_chains"):
-        seg = low[low.find(field):low.find(field) + 260]
-        assert seg and ("evidence" in seg) and ("编号" in seg or "只能" in seg or "c" in seg), \
-            "%s 的 evidence 取值范围没写进 prompt" % field
+        # 按条目切，不按"往后 260 个字符"切：后者会把邻条写长一点就判红，
+        # 钉的是"每条要求里带着编号取值范围"，不是"这条恰好离那个词够近"。
+        m = re.search(r"^- %s：(.*?)(?=^- |\Z)" % field, p, re.M | re.S)
+        assert m, "prompt 里没有 - %s： 这条要求" % field
+        seg = m.group(1)
+        assert "evidence" in seg and ("编号" in seg or "只能" in seg) and "c" in seg, \
+            "%s 的 evidence 取值范围没写进 prompt：%r" % (field, seg[:120])
 
 
 def test_prompt_tells_the_model_which_ids_basis_may_use():
@@ -177,7 +180,7 @@ def test_narrative_quota_is_pushed_down_to_the_paragraph_and_matches_the_contrac
     """
     p = D.build_prompt({"title": "t", "topic": "ai", "summary": "s", "links": []}, _ctx())
     assert D.PARA_MIN > 0
-    assert ("每段不少于 %d 字" % D.PARA_MIN) in p, "段配额没进 prompt：%s" % p[:300]
+    assert ("每段 %d-%d 字" % (D.PARA_MIN, D.PERA_MAX)) in p, "段配额没进 prompt：%s" % p[:300]
     assert ("%d-%d 字" % (D.NARR_MIN, D.NARR_MAX)) in p, "总区间不是从常量渲染的"
     assert D.PARAS_MIN * D.PARA_MIN >= D.NARR_MIN, \
         "段配额乘不出来 %d 字，模型照做也过不了契约" % D.NARR_MIN
