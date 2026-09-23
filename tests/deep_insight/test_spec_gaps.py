@@ -571,7 +571,7 @@ class _Flaky:
         self.n = 0
 
     def complete(self, prompt, key=None, kind="generate"):
-        if kind == "generate":
+        if kind in ("generate", "outline", "section"):
             self.n += 1
             if self.n == 2:
                 raise RuntimeError("Agnes HTTP 502")
@@ -591,6 +591,30 @@ def test_one_transient_error_does_not_destroy_the_whole_night(tmp_path):
     assert len(done) >= 1, "一条 5xx 把已经做完的条目也带走了：%s" % done
     assert doc.get("failed_items"), "吞了异常却不记账：%s" % sorted(doc)
     assert os.path.exists(out["html"]) and os.path.exists(out["json"])
+
+
+def test_every_item_failing_is_loud_not_a_green_checkmark(tmp_path):
+    """逐条吞异常换来的韧性，不能把"全部失败"伪装成"正常收工"。
+
+    加了 per-item catch 之后，最坏情况从"整场崩、CI 红"变成"每条都挂、产物空、CI 绿" ——
+    那是更难发现的一种失败，所以必须有一声 ::error 把全军覆没和"没排上条目"分开。
+    """
+    class AlwaysBroken:
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            self.calls.append(kind)
+            raise RuntimeError("Agnes HTTP 503")
+
+    msgs = []
+    arts, links = _pool()
+    D.night_run(purpose="test", client=AlwaysBroken(), out_dir=str(os.path.join(str(tmp_path), "ns")),
+                keys=["k1"], anchor_raw=_anchor(links, 2), pool=arts, date_str="2026-09-23",
+                pred_raw="", quality_raw={}, get=lambda url, timeout=90: b"",
+                log=msgs.append, sleep=lambda s: None, events_limit=2, call_cap=500)
+    err = [m for m in msgs if str(m).startswith("::error")]
+    assert any("全军覆没" in m for m in err), "每条都抛错却没有任何红色告警：%s" % err[-3:]
 
 
 def test_wallclock_stop_publishes_what_it_finished_and_says_why():
@@ -823,7 +847,9 @@ def test_judge_rewrite_prompt_carries_the_weak_dimension(tmp_path):
             if kind == "judge":
                 return json.dumps({"narrative": 0.9, "causal": 0.9,
                                    "forecast": 0.9, "quality": 0.1})
-            prompts.append(prompt)
+            if kind in ("generate", "outline"):
+                # 只收集生成入口那一趟：逐段调用的提示里没有判分信息，收进来会稀释断言
+                prompts.append(prompt)
             return inner.complete(prompt, key=key, kind=kind)
 
     arts, links = _pool()
@@ -848,6 +874,8 @@ def test_citation_row_carries_our_pool_metadata_not_the_models_claim(tmp_path):
             if kind == "judge":
                 return json.dumps({"narrative": 0.9, "causal": 0.9,
                                    "forecast": 0.9, "quality": 0.9})
+            if kind == "section":
+                return inner.complete(prompt, key=key, kind=kind)   # 段正文本来就不是 JSON
             body = json.loads(inner.complete(prompt, key=key, kind=kind))
             body["citations"] = [{"id": c.get("id"), "source": "自称权威媒体",
                                   "title": "假标题", "url": "https://fabricated.example/x"}
