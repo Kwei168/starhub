@@ -296,6 +296,66 @@ def test_the_post_faith_recheck_finds_only_new_breaks():
         "摘破覆盖却没报出来，出厂的那一版仍然是没人检查过的：%r" % (broke,)
 
 
+def test_the_coverage_block_count_reaches_the_aggregate():
+    """复判挡下必须进聚合与播报，否则"合格 0"这一格读起来像"一夜没干活"。
+
+    现网后果已数过（台账 §10.41）：#69 严格生效后，八场里有五场会从"1 条长文 + 7 条快讯"
+    变成"全场快讯"。聚合里没有这一列，跨夜就只能看到 qualified 掉 0，
+    分不清是"模型写不动"还是"核查摘破了下不了线" —— 那是两种要修在不同地方的病。
+    """
+    evs = [{"id": "a", "degraded_reason": "复判挡下", "faith_coverage_broken": True},
+           {"id": "b", "degraded_reason": "本来就短"},
+           {"id": "c"}]
+    p = D.build_payload(evs, {}, D.Budget(100000), "2026-09-24")
+    assert p["budget"]["coverage_blocked"] == 1, p["budget"]
+    assert p["budget"]["qualified"] == 1 and p["budget"]["degraded"] == 2, p["budget"]
+
+
+def test_the_generic_degrade_reason_names_the_weakest_dimension():
+    """现网八场 58 条里 35 条死在"判分没过线"，其中 **34 条的理由是同一句
+    "重写 N 次仍不合格"** —— 分数差在预测、差在密度、差在因果是三种不同的修法，
+    印成一句话下一批挑靶子就只能靠猜（本仓为"四笔账不能混成一句"改过三轮）。
+    五维分值本来就在 `rubric` 里，点名不花任何调用。
+    """
+    score = {"mean": 0.606, "narrative": 0.825, "causal": 0.685, "forecast": 0.475,
+             "quality": 0.55, "density": 0.55, "judged": True}
+    why = D._degrade_reason(2, 2, [], {}, last_score=score)
+    assert u"forecast" in why, "最弱那一维没进理由：%s" % why
+    assert u"0.475" in why and u"0.606" in why, "分数没带上，读的人没法判断差多少：%s" % why
+    # 没有判定读数时不许编：宁可用旧文案，也不能印一个凭空点出来的维度名
+    assert u"forecast" not in D._degrade_reason(2, 2, [], {}), "没读数却点名了维度：那是伪造"
+
+
+def test_the_weakest_dimension_note_survives_the_real_call_path():
+    """上一条判据直接调 `_degrade_reason(last_score=...)`，所以"调用处忘了传"它测不到
+    （R2 存活就是这么来的：函数有读数、caller 没给 ⇒ 页面上永远是那句笼统理由）。
+    这条走 `deepen_one` 真链路：契约能过、判定打低分 → 重写到头 → 降级理由带着最弱那一维。
+
+    池子必须给到 6 篇：FakeClient 的 claims 会绕着编号铺 c1..c7，4 篇池子会先死在
+    "citation id 不在检索池里"那一判据上（分数根本没跑，理由当然没有维度）——
+    第一版我就是这么写错的，别把夹具错当成功能缺失。
+    """
+    pool, links = {}, []
+    for i in range(6):
+        u = "https://s%d.test/a%d" % (i, i)
+        pool[u] = {"url": u, "source": "src%d" % i, "title": "T%d" % i,
+                   "text": "来源%d全文，独家数字 %d。" % (i, 100 + i) * 900,
+                   "has_full": True, "source_key": "src%d_%d" % (i, i)}
+        links.append(u)
+    rec = D.deepen_one({"id": "x1", "title": "事件甲", "topic": "ai", "summary": "摘",
+                        "links": list(links)},
+                       pool, D.FakeClient(judge_pass=False), D.Budget(400000),
+                       D.KeyPool(["k1"]), max_regen=0, source_quality={},
+                       sleep=lambda s: None, wait_cap_s=5)
+    rub = rec.get("rubric") or {}
+    assert rub.get("judged") is not False and rec.get("contract_fails") == [], \
+        "夹具先死在契约上，测不到分数那一档：%s" % (rec.get("contract_fails"),)
+    assert rub.get("mean", 1.0) < D.JUDGE_PASS, rub
+    reason = (rec.get("degraded_reason") or "")
+    assert u"最弱" in reason and u"判定中位" in reason, \
+        "理由没点名最弱那一维（调用处漏传 last_score 就是这个形状）：%s" % reason
+
+
 def test_faith_calls_are_bounded_by_claims():
     """成本要封顶：每条 claim 一次，不许顺带多问。"""
     kinds = []
