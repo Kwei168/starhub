@@ -488,5 +488,6 @@
  "strands-agents/harness-sdk": "构建代理线束并对其进行端到端控制。用于 Python 和 TypeScript 中的生产 AI 代理的开源 SDK - 任何模型、任何云。",
  "LibreChat-AI/LibreChat": "增强型 ChatGPT 克隆：功能代理、MCP、技能、DeepSeek、Anthropic、AWS、OpenAI、Responses API、Azure、Groq、o1、GPT-5、Mistral、OpenRouter、Vertex AI、Gemini、Artifacts、AI 模型切换、消息搜索、代码解释器、langchain、DALL-E-3、OpenAPI 操作、功能、安全多用户身份验证、预设、开源自托管。积极的",
  "vectorize-io/hindsight": "事后诸葛亮：智能体的学习记忆",
- "op7418/Humanizer-zh": "Humanizer 的汉化版本，Claude Code Skills，旨在消除文本中 AI 生成的痕迹。"
+ "op7418/Humanizer-zh": "Humanizer 的汉化版本，Claude Code Skills，旨在消除文本中 AI 生成的痕迹。",
+ "yukitorido/short-video-generator-AI": "AI 视频处理管道，用于使用法学硕士、Whisper 转录、亮点检测和自动编辑生成垂直短片"
 }
