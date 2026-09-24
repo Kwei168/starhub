@@ -8,6 +8,7 @@
 六篇同源文章照样能过覆盖线。这个分叉不记下来、不算清，S1 与覆盖线两条都只能靠猜
 （我这两小时里已经猜错两次：先说"写不到 4,000 字"，再说"池子给不出来源"）。
 """
+import json
 import os
 import re
 import sys
@@ -156,12 +157,17 @@ def test_the_rewrite_feedback_names_the_recycled_facts_for_density():
     "删掉换句话说的重复段"。模型拿到的是形容词，不是可下手的清单。
     这条判据同时钉两处用同一份渲染：judge 与重写反馈分叉就是第二份真相。
     """
+    # 每段必须 >=60 字：`_para_number_sets` 把短于 60 字的碎片直接丢掉，
+    # 段落被过滤光的话这条判据测的是夹具尺寸而不是流程（前两版分别因此空转：
+    # 一段 50 多字被当成碎片，"60%" 只出现在两段里，recycled 一直是空）。
+    def para(head):
+        return head + "，这条判断仍受样本量与统计口径限制，需要到期复核口径。" * 3
     paras = [
-        "该季度收入增长 60%，机制上来自渠道下沉与提价，但该判断受限于样本口径。",
-        "换个说法再看：60% 的增长同样反映在毛利改善上，限制是披露口径不一致。",
-        "第三段仍以 60% 为轴展开论证，反证是季节性因素，同样受限于统计口径。",
-        "第四段讲竞争格局的变化、数据与限制条件。",
-        "第五段讲监管窗口与可核验指标，另给出反证。",
+        para("该季度收入增长 60%，机制上来自渠道下沉与提价两条线"),
+        para("换个说法再看这 60% 的增长，它同样反映在毛利改善上"),
+        para("第三方口径下的 60% 也被反复引用，反证是季节性备货"),
+        para("第四段讲竞争格局变化，头部两家把产能转向中低端"),
+        para("第五段给监管窗口与可核验指标，看备案数量与投诉率"),
     ]
     cand = {"id": "e1", "title": "事件甲", "topic": "ai",
             "narrative": "\n\n".join(paras), "claims": [], "causal_chains": [],
@@ -178,6 +184,47 @@ def test_the_rewrite_feedback_names_the_recycled_facts_for_density():
     assert any(u"密度" in s or u"density" in s for s in out), out
     # 不传 cand 时不许崩，也不许凭空造清单
     assert not any(fact in s for s in D.judge_weak_spots(score)), "没给正文却印出了清单：那是伪造"
+
+
+def test_the_recycled_fact_list_reaches_the_real_rewrite_prompt():
+    """只单测 `judge_weak_spots(cand=...)` 测不到"调用处忘了传 cand"——
+    R2 那次就是这么存活的（同一个教训：每条出口都要有自己那条真链路判据）。
+    这条跑 `deepen_one`：判定给 density 0.4 ⇒ 触发重写，抓**重写那一趟真正收到的 prompt**。
+    """
+    def para(head):
+        # 每段必须落在 [PARA_MIN, PERA_MAX] = [716, 1666] 字里，
+        # 短了会先死在"每段太短"那条契约上，测的就不是密度了。
+        return head + "，这条判断仍受样本量与统计口径限制，需要到期复核口径。" * 28
+    narr = "\n\n".join(para("第%d个角度看这 60%% 的增长来自渠道下沉与提价" % i) for i in range(6))
+
+    class Rec(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.gen = []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            self.calls.append(kind)
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9, "forecast": 0.9,
+                                   "quality": 0.9, "density": 0.4})
+            if kind == "generate":
+                self.gen.append(prompt)
+                doc = json.loads(D.FakeClient.complete(self, prompt, key=key, kind="structure"))
+                doc["narrative"] = narr
+                return json.dumps(doc, ensure_ascii=False)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = Rec()
+    rec = D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                       max_regen=1, source_quality={}, sleep=lambda s: None,
+                       wait_cap_s=5, staged=False)
+    assert len(c.gen) == 2, "没触发重写（generate 只跑了 %d 趟），这条判据测不到反馈" % len(c.gen)
+    assert u"被多段复用的数" in c.gen[1], \
+        "重写那一趟收到的还是形容词，没带清单：%r" % c.gen[1][-320:]
+    assert u"60%（" in c.gen[1], "清单里没点名 60%：那是伪造或漏传 cand"
+    assert (rec.get("rubric") or {}).get("density") == 0.4, rec.get("rubric")
 
 
 def test_the_ask_is_never_looser_than_the_contract_itself():
