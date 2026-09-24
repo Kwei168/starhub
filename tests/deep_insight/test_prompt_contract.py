@@ -47,6 +47,30 @@ def test_prompt_pins_the_evidence_id_range_for_claims_and_chains():
             "%s 的 evidence 取值范围没写进 prompt：%r" % (field, seg[:120])
 
 
+def test_the_writer_sees_the_same_rubric_the_judge_scores_against():
+    """现网读数（台账 §10.42）：58 条里 35 条死在"判分没过线"，五维里
+    `forecast` 中位 0.475、`quality`/`density` 0.55 —— 而**评审用的五条标准从来没给过写的人**：
+    `build_judge_prompt` 里那份 dims 文案只有 judge 看得见。
+    第一趟写作拿不到评分口径，只能等 judge 打完分、重写那一趟才收到"哪一维弱"，
+    等于白白烧掉一趟预算（`MAX_REGEN=2`）。
+    这条判据同时是防分叉：judge 自己抄一份改写过的标准，红。
+    """
+    ev = {"title": "某事件", "topic": "ai", "summary": "s", "links": []}
+    ctx = _ctx()
+    crit = D.JUDGE_DIM_CRITERIA
+    for d in D.JUDGE_DIMS:
+        assert d in crit, "共享的评审标准里没有 %s：那一维等于没告诉写的人" % d
+    assert crit in D.build_prompt(ev, ctx), "单趟生成的 prompt 里没有评审五维"
+    assert crit in D.build_structure_prompt(ev, ctx, "正文" * 3000), \
+        "补结构字段那一趟看不到评审标准：forecast/quality 就是在那一趟写的"
+    sec = {"title": "第1段", "focus": "论证机制", "evidence": ["c1"]}
+    assert crit in D.build_section_prompt(ev, ctx, sec, 1, 6), \
+        "逐段成文那一趟看不到评审标准：density 要在写的时候就管，不是写完再扣分"
+    assert crit in D.build_judge_prompt({"narrative": "正文" * 3000, "claims": [],
+                                         "citations": [], "forecasts": []}, ctx), \
+        "judge 那份与共享常量不是同一份：两处各写一遍迟早分叉（本仓为这个改过三轮）"
+
+
 def test_prompt_tells_the_model_which_ids_basis_may_use():
     """§2 第 4 行"不由生成方自评"要落地：喂给模型的完整提示里，既要有可引用的 sig 清单，
     又要把 basis 和这份清单绑起来。
@@ -129,7 +153,12 @@ def test_normalize_candidate_preserves_string_rows_as_objects():
     assert out["claims"] and isinstance(out["claims"][0], dict), out["claims"]
     assert out["claims"][0].get("text") == "论断一", "字符串论断被丢弃而不是归一"
     assert out["causal_chains"][0].get("mechanism") == "因为A所以B", out["causal_chains"]
-    assert out["forecasts"][0].get("claim") == "三个月内出现跟随者", out["forecasts"]
+    # 预测现在多了一道"单格违约摘除"（repair_forecasts），但"不许静默抹掉内容"这条不变量
+    # 必须照样成立：要么留着，要么带着原因进 forecasts_dropped。
+    survived = [f.get("claim") for f in out["forecasts"]] + \
+               [d.get("claim") for d in (out.get("forecasts_dropped") or [])]
+    assert "三个月内出现跟随者" in survived, \
+        "字符串预测被丢弃且没留账：%r" % (out["forecasts"], out.get("forecasts_dropped"))
     # 归一之后仍必须是"必然过不了契约"的形态：不许因为填了字段就蒙混合格
     ok, fails = D.validate_event(dict(out, id="e1", title="t", topic="ai",
                                        narrative="反证：口径受限。" * 900,
