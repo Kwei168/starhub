@@ -486,5 +486,7 @@
  "calesthio/Crucix": "您的个人情报代理。从多个数据源观察世界，并在发生变化时向您发出通知。",
  "lahfir/agent-desktop": "Agent Desktop 使任何座席都能在桌面上可靠地使用计算机。它使用 Rust 构建，可以通过操作系统可访问性树查看任何应用程序的真实 UI 结构并对其进行操作 - 引用保持稳定，操作可以安全地重试，而不是根据像素进行猜测。",
  "strands-agents/harness-sdk": "构建代理线束并对其进行端到端控制。用于 Python 和 TypeScript 中的生产 AI 代理的开源 SDK - 任何模型、任何云。",
- "LibreChat-AI/LibreChat": "增强型 ChatGPT 克隆：功能代理、MCP、技能、DeepSeek、Anthropic、AWS、OpenAI、Responses API、Azure、Groq、o1、GPT-5、Mistral、OpenRouter、Vertex AI、Gemini、Artifacts、AI 模型切换、消息搜索、代码解释器、langchain、DALL-E-3、OpenAPI 操作、功能、安全多用户身份验证、预设、开源自托管。积极的"
+ "LibreChat-AI/LibreChat": "增强型 ChatGPT 克隆：功能代理、MCP、技能、DeepSeek、Anthropic、AWS、OpenAI、Responses API、Azure、Groq、o1、GPT-5、Mistral、OpenRouter、Vertex AI、Gemini、Artifacts、AI 模型切换、消息搜索、代码解释器、langchain、DALL-E-3、OpenAPI 操作、功能、安全多用户身份验证、预设、开源自托管。积极的",
+ "vectorize-io/hindsight": "事后诸葛亮：智能体的学习记忆",
+ "op7418/Humanizer-zh": "Humanizer 的汉化版本，Claude Code Skills，旨在消除文本中 AI 生成的痕迹。"
 }
