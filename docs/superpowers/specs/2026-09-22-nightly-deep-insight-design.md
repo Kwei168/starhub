@@ -1762,6 +1762,40 @@ run 36017029638（`insight-verify`、`purpose=test`、6 条、workers=3、keys=4
 那条真链路先死在"citation id 不在检索池里"的契约上，测不到分数那一档 —— **夹具错会被读成功能缺失，
 这条也记下来**。R1/R2 双杀，`tests/deep_insight` **357 passed / 0 failed**，工作树 sha256 未变。
 
+### 10.44 任务 #74 第一步：把评审那份五维标准前置给写的人
+
+§10.42 数出来的靶子是分数，而分数低的三维持生在**结构字段那一趟与逐段成文那一趟**里
+（`forecast`/`quality` 由 `build_structure_prompt` 写，`density` 在成文阶段就定型）。
+问题是：**这五条评分标准以前只有 judge 看得见** ——
+`build_judge_prompt` 里那份 dims 文案从没进过任何一份给写的人的 prompt。
+于是模型第一趟拿不到口径，只能等 judge 打完分、在重写那一趟才收到"哪一维弱"，
+等于把一趟 `MAX_REGEN` 预算花在"猜评审要什么"上。这与本会话一路在拆的是同一个病：
+**同一套标准写两份，被纵容的总是晚看到的那一侧**（覆盖要求前置那次是 §10.39）。
+
+做法：抽 `JUDGE_DIM_CRITERIA` 常量 + `_rubric_brief()` 一处渲染，
+`build_judge_prompt`、`build_prompt`（单趟）、`build_structure_prompt`（补结构字段）、
+`build_section_prompt`（逐段成文）**四处共用同一份字符串**；judge 那侧不再是副本。
+
+**代价是量过的，不是"应该不贵"**（`_scratch/prompt_cost.txt`）：新增文案 223 字；
+单趟 prompt 30,082 字 ⇒ 占 **0.7%**；逐段那一趟 5,191 字 ⇒ 占 **4.3%**，
+一场 6-8 段 × 8 条的输入增量在预算里可以忽略（`MAX_BUDGET_TOKENS=800000`）。
+
+**预登记验收口径**（免得到时候挑数字）：基线取 §10.42 那组五维中位
+`narrative 0.825 / causal 0.685 / quality 0.550 / density 0.550 / forecast 0.475`
+与"判分没过线占 60.3%"；上线后**连读两场**（探针 `read_dim_stats.py` 直接重跑即可）
+才判定有没有抬起来；两场以内不下结论，也不拿单场均值当效果。
+
+判据：`test_the_writer_sees_the_same_rubric_the_judge_scores_against` ——
+断的是"三处 writer prompt 都含那份常量" **且** "judge 那份与常量逐字相同"，
+所以将来谁在 judge 侧另抄一份改写版，红（这是防分叉，不是防缺失）。
+`tests/deep_insight` **358 passed / 0 failed**。
+变异体：Z1（judge 换回自己抄一份）、Z2（补结构那一趟漏带）、
+Z3（逐段那一趟漏带）、Z4（单趟那一页漏带）—— 第一遍 Z3/Z4 **锚点命中 0 次 = 未测**，
+原因是我把源码里那个真换行也写成了 `\\n`（双反斜杠在 Python 字符串里是字面反斜杠，
+不是换行），锚点因此对不上；这种"锚点没命中"绝不能记成"杀掉了"，已按 `\n` 修正重跑。
+重跑结果：`_scratch/mutZ2.txt`。
+
+
 
 
 

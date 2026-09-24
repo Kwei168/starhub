@@ -150,6 +150,36 @@ def test_the_citation_ask_reaches_the_real_prompt():
     assert int(CITE_ASK_RE.search(sp).group(1)) == lo, "补结构字段那趟口径又分叉了"
 
 
+def test_the_rewrite_feedback_names_the_recycled_facts_for_density():
+    """任务 #74 第二步：`density` 中位 0.55（§10.42），而"哪些数被多段复用"我们**本来就算得出**
+    —— `restatement_rate` 的 `recycled` 清单已经在喂 judge，重写反馈里却只有一句
+    "删掉换句话说的重复段"。模型拿到的是形容词，不是可下手的清单。
+    这条判据同时钉两处用同一份渲染：judge 与重写反馈分叉就是第二份真相。
+    """
+    paras = [
+        "该季度收入增长 60%，机制上来自渠道下沉与提价，但该判断受限于样本口径。",
+        "换个说法再看：60% 的增长同样反映在毛利改善上，限制是披露口径不一致。",
+        "第三段仍以 60% 为轴展开论证，反证是季节性因素，同样受限于统计口径。",
+        "第四段讲竞争格局的变化、数据与限制条件。",
+        "第五段讲监管窗口与可核验指标，另给出反证。",
+    ]
+    cand = {"id": "e1", "title": "事件甲", "topic": "ai",
+            "narrative": "\n\n".join(paras), "claims": [], "causal_chains": [],
+            "forecasts": [], "citations": [],
+            "quality": {"verdict": "一手", "score": 70, "why": "依" * 40, "basis": ["sig:c1"]}}
+    listed = D.restate_fact_list_text(cand)
+    assert listed != "（无）", "夹具没造出被 ≥3 段复用的数：这条判据会空转"
+    score = {"mean": 0.60, "judged": True, "narrative": 0.8, "causal": 0.7,
+             "forecast": 0.6, "quality": 0.6, "density": 0.4}
+    out = D.judge_weak_spots(score, cand=cand)
+    fact = listed.split(u"（")[0]
+    assert any(fact in s for s in out), \
+        "重写反馈没点名被复用的数（%s），只给了形容词：%s" % (listed, out)
+    assert any(u"密度" in s or u"density" in s for s in out), out
+    # 不传 cand 时不许崩，也不许凭空造清单
+    assert not any(fact in s for s in D.judge_weak_spots(score)), "没给正文却印出了清单：那是伪造"
+
+
 def test_the_ask_is_never_looser_than_the_contract_itself():
     """把"prompt 会不会要求得过松"变成一条不等式，而不是两边的口头判断。
 

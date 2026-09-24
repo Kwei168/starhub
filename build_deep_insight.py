@@ -254,6 +254,16 @@ def restatement_rate(text):
     return restatement_from_sets(_para_number_sets(text))
 
 
+def restate_fact_list_text(cand):
+    """"被 ≥3 段反复消费的数"清单，一处渲染两处用（judge 的输入、重写反馈的点名）。
+
+    以前只有 judge 看得见这份清单，重写反馈给的是"删掉换句话说的重复段"这种形容词 ——
+    模型拿到形容词没法下手，而清单是我们自己数出来的，不花任何调用。
+    """
+    m = restatement_rate((cand or {}).get("narrative") or "")
+    return "、".join("%s（%d 段）" % (x["fact"], x["paras"]) for x in m["recycled"][:6]) or "（无）"
+
+
 def annotate_observability(cand):
     """把"长而空"的量写进候选。**每条路径都要走这里** —— 证据门早退那条曾经根本不写，
     于是产物里有的条目有、有的没有，读的人无法区分"没测"与"测了是 0"。
@@ -1182,6 +1192,26 @@ def _cid_by_url(ctx):
     return out
 
 
+JUDGE_DIM_CRITERIA = (
+    "narrative（是否成文论述、≥%d字、≥%d段、含反证或限制条件、不是分点罗列）、" % (NARR_MIN, PARAS_MIN)
+    + "causal（是否给出机制链条而非复述现象）、forecast（预测是否可核验、窗口是否合理）、"
+    + "quality（对信源优质与否的判断有无依据、是否只是自评）、"
+    + "density（信息密度：有没有把同一件事换句话再说一遍来充字数；"
+      "把重复表述删掉之后是否仍然成文、仍然够长）"
+)
+
+
+def _rubric_brief():
+    """给写的人看的评分口径：与 judge 用的是同一份字符串，不是"另一套解释"。
+
+    现网读数（台账 §10.42）：58 条里 35 条死在"判分没过线"，`forecast` 中位 0.475、
+    `quality`/`density` 0.55 —— 而这份五维标准以前只有 judge 看得见，写的人第一趟拿不到，
+    只能等打完分才在重写那一趟收到"哪一维弱"，白烧一趟 `MAX_REGEN` 预算。
+    """
+    return ("评审按这五项各打 0-1 分，**任一项不达标就得低于 %.2f**（均值过 %.2f 才算合格）：\n%s\n"
+            % (JUDGE_PASS, JUDGE_PASS, JUDGE_DIM_CRITERIA))
+
+
 def _evidence_blocks(ctx):
     arts = ctx.get("articles") or []
     by_url = _cid_by_url(ctx)
@@ -1225,9 +1255,11 @@ def build_prompt(event, ctx, mode="full"):
         "禁止分点罗列的条目体；必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）。"
         "段数够、每段短，仍判不合格；总长超上限同样判不合格。\n"
         "%s"
+        "%s"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), ", ".join(PROMPT_FIELDS),
          NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN, PERA_MAX,
+         _rubric_brief(),
          _structure_rules(id_list or "（无）", len(arts)), "\n\n".join(blocks))
 
 
@@ -1243,9 +1275,11 @@ def build_structure_prompt(event, ctx, narrative):
         "输出一个 JSON 对象，字段必须是：%s。\n"
         "硬性要求（不满足会被判不合格并重写）：\n"
         "%s"
+        "%s"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), narrative,
-         ", ".join(STRUCT_FIELDS), _structure_rules(id_list or "（无）", len(arts)),
+         ", ".join(STRUCT_FIELDS), _rubric_brief(),
+         _structure_rules(id_list or "（无）", len(arts)),
          "\n\n".join(_evidence_blocks(ctx)))
 
 
@@ -1279,10 +1313,12 @@ def build_section_prompt(event, ctx, sec, idx, total):
         "要求：成文论述，**%d-%d 字（按 %d 字写）**，段落式行文，禁止分点罗列；"
         "必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）；"
         "不要重复其它段已经写过的内容。\n"
+        "%s"
         "===== 本段可用证据 =====\n%s\n"
     ) % (idx, total, event.get("title", ""), event.get("topic", ""),
          (sec.get("title") or "第%d段" % idx), sec.get("focus") or "",
          PARA_MIN, PERA_MAX, PERA_TARGET,
+         _rubric_brief(),
          "\n\n".join(picked))
 
 
@@ -2204,17 +2240,21 @@ JUDGE_FIX_HINT = {
 }
 
 
-def judge_weak_spots(score, bar=JUDGE_PASS):
+def judge_weak_spots(score, bar=JUDGE_PASS, cand=None):
     """judge 分项分数 → "哪一维薄弱 + 该改什么"（spec §2"按薄弱维度重生成"）。
 
     分项以前被 `rubric_of` 平均掉就没人看了：均值不合格时，重写消息里连
     "是哪一维拉低的"都没有，等于让 judge 主判却只消费它的一个标量。
+    `density` 这一维额外点名"被多段复用的是哪些数"（`cand` 给了才算，不给不许凭空造清单）：
+    只说"删掉重复段"是形容词，模型没法下手；清单是我们数出来的，零新增调用。
     """
     out = ["judge 均分 %.2f 低于 %.2f" % ((score or {}).get("mean", 0.0), bar)]
     for k in JUDGE_DIMS:
         v = (score or {}).get(k)
         if isinstance(v, (int, float)) and v < bar:
             hint = JUDGE_FIX_HINT[k] % ("%.2f" % v)
+            if k == "density" and cand:
+                hint += "（被多段复用的数：%s）" % restate_fact_list_text(cand)
             if v < JUDGE_FLOOR:
                 hint += "（单这一条就低于地板 %.2f，均值再高也不过）" % JUDGE_FLOOR
             out.append(hint)
@@ -2229,19 +2269,13 @@ def build_judge_prompt(cand, ctx):
     """
     arts = ctx.get("articles") or []
     m = restatement_rate(cand.get("narrative") or "")
-    facts = "、".join("%s（%d 段）" % (x["fact"], x["paras"]) for x in m["recycled"][:6])
+    facts = restate_fact_list_text(cand)      # 与重写反馈同一份渲染，两处不各写一遍
     measured = (
         "机械实测（不是你判断出来的，是数出来的）：复述率: %s —— %d 段里有 %d 段在"
         "换句话复述同一批数据，共 %d 对高重叠段。被 ≥3 段反复消费的数：%s。\n"
         "打 density 时以此为输入：把这些复述段删掉之后还剩下多少有效论述？\n\n"
     ) % (m["rate"], m["paras"], m["restated_paras"], m["pairs"], facts or "（无）")
-    dims = (
-        "narrative（是否成文论述、≥%d字、≥%d段、含反证或限制条件、不是分点罗列）、" % (NARR_MIN, PARAS_MIN)
-        + "causal（是否给出机制链条而非复述现象）、forecast（预测是否可核验、窗口是否合理）、"
-        + "quality（对信源优质与否的判断有无依据、是否只是自评）、"
-        + "density（信息密度：有没有把同一件事换句话再说一遍来充字数；"
-          "把重复表述删掉之后是否仍然成文、仍然够长）"
-    )
+    dims = JUDGE_DIM_CRITERIA      # 与写的人看到的同一份：两处各写一遍迟早分叉
     return (
         "你是评审。只依据下面给出的材料，为这篇洞察按五项各打 0-1 分：" + dims + "。\n"
         '只输出 JSON：{"narrative":0.0,"causal":0.0,"forecast":0.0,"quality":0.0,'
@@ -2772,7 +2806,7 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
             # 分项建议被挤掉，重写又变成"原样再写一遍"（本仓为这个踩过两轮）。
             # `proto` 已经进了 last_fails，这里去重而不是再拼一遍。
             reasons = list(last_fails)
-            reasons += [w for w in judge_weak_spots(score) if w not in reasons]
+            reasons += [w for w in judge_weak_spots(score, cand=cand) if w not in reasons]
             extra = "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(reasons)
             prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
     if best:
