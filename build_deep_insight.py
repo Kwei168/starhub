@@ -1161,7 +1161,11 @@ def _structure_rules(id_list, supply):
         "（evidence 同样只能取上面那批编号），每个字段 ≤%d 字，写清为什么发生而不是只说发生了什么。\n"
         "- forecasts：%d-%d 条，每条含 claim(≤%d字)/horizon_days(只能是 %s，"
         "写成 30、90 一律判不合格 —— 永不到期的预测不算预测)/"
-        "check_metric（到期用什么可核验指标判命中，不许写“未来如何”这类空话）。\n"
+        "check_metric（到期**去哪里查**、拿什么**当前基线**比，"
+        "不许写“未来如何”这类空话）。\n"
+        "  claim 只能写**这个窗口内就会见分晓**的事：想说“一年内/长期”的趋势，"
+        "就改写成窗口内会先发生的先导信号（首个公告、文档更新、试点签约），"
+        "别把长期判断塞进 %d 天的窗口里。\n"
         "- quality：对证据本身下判断，verdict 只能取 %s，"
         "score 0-100，why %d-%d 字（**按 %d-%d 字写**，超出判不合格），"
         "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
@@ -1172,6 +1176,7 @@ def _structure_rules(id_list, supply):
          CHAINS_MIN, CHAINS_MAX, CHAIN_FIELD_MAX,
          FORECAST_MIN, FORECAST_MAX, FORECAST_CLAIM_MAX,
          "、".join(str(h) for h in HORIZONS[:-1]) + " 或 " + str(HORIZONS[-1]),
+         max(HORIZONS),
          "/".join(QUALITY_VERDICTS), WHY_MIN, WHY_MAX, (WHY_MIN + WHY_MAX) // 2,
          (WHY_MIN + WHY_MAX) // 2 + 10,
          cite_low, CITE_MAX, id_list)

@@ -71,6 +71,24 @@ def test_the_writer_sees_the_same_rubric_the_judge_scores_against():
         "judge 那份与共享常量不是同一份：两处各写一遍迟早分叉（本仓为这个改过三轮）"
 
 
+def test_forecast_ask_states_baseline_source_and_window_coherence():
+    """#74 第三步：`forecast` 是五维里最低的一维（现网去重八场中位 0.475，§10.42）。
+    先说清楚**这不是结构性 bug**：我测过两个看起来像 bug 的假设，都被数据否了（§10.46）
+    —— 窗口矛盾只有 1/19 条命中；"0 条预测"是降级时 clip 清空的结果而不是原因。
+    所以这一步走"教"：把 judge 那三句话（可核验、窗口合理）翻译成写的时候能照做的要求。
+
+    判据只断"这三件信息在不在"，不断措辞：措辞换了不该让门禁变红。
+    """
+    p = D._structure_rules("c1, c2, c3", 3)
+    assert u"基线" in p, "check_metric 没要求给可比的当前基线：没有基线的命中无从核验"
+    assert (u"去哪里查" in p) or (u"来源" in p), "没要求点名核验出处（judge 那句『可核验』就落不了地）"
+    assert u"先导信号" in p, "没教怎么处理'长期判断与短窗口'的矛盾：只会把一年塞进 14 天"
+    assert (u"%d 天" % max(D.HORIZONS)) in p, \
+        "没把最长窗口写进那句话：模型不知道'窗口内见分晓'到底是多少天"
+    # 反向对照：不许把 FORECAST_MIN/MAX 与枚举窗口从文案里丢掉（这些是既有硬要求）
+    assert u"%d-%d 条" % (D.FORECAST_MIN, D.FORECAST_MAX) in p, p[:400]
+
+
 def test_prompt_tells_the_model_which_ids_basis_may_use():
     """§2 第 4 行"不由生成方自评"要落地：喂给模型的完整提示里，既要有可引用的 sig 清单，
     又要把 basis 和这份清单绑起来。
