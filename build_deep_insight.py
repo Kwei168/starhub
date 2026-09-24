@@ -2445,7 +2445,7 @@ def _dropped_digest(cand):
     return ",".join(parts[:3]) or "无"
 
 
-def _degrade_reason(max_regen, last_attempt, stalled, cand):
+def _degrade_reason(max_regen, last_attempt, stalled, cand, last_score=None):
     """降级理由必须对得上实际发生的事 —— 四笔账不能混成一句"重写 2 次仍不合格"。
 
     现网 09-24 那份产物里三条都写"重写 2 次仍不合格"，其中一条其实只因为
@@ -2486,7 +2486,22 @@ def _degrade_reason(max_regen, last_attempt, stalled, cand):
                 last_attempt, n)
         return "重写 %d 轮后无改善（判定均值 %s→%s，没好出噪声带 %s），按预算收手" % (
             last_attempt, s.get("prev_mean"), s.get("mean"), ADOPT_MARGIN)
-    return "重写 %d 次仍不合格" % max_regen
+    return "重写 %d 次仍不合格%s" % (max_regen, _weakest_dim_note(last_score))
+
+
+def _weakest_dim_note(last_score):
+    """把"最弱哪一维、差多少"补进降级理由：五维分值本来就在 `rubric` 里，不点名才是浪费。
+
+    没给判定读数时返回空串 —— 宁可留那句笼统的"仍不合格"，也不能凭空点一个维度名。
+    """
+    s = last_score or {}
+    dims = {k: float(s[k]) for k in JUDGE_DIMS
+            if isinstance(s.get(k), (int, float))}
+    if not dims or not isinstance(s.get("mean"), (int, float)):
+        return ""
+    weak = min(dims, key=dims.get)
+    return "（判定中位 %.3f，最弱 %s %.3f，其余分项见 rubric）" % (
+        float(s["mean"]), weak, dims[weak])
 
 
 def build_faith_prompt(event, ctx, claim):
@@ -2798,7 +2813,8 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
         cand["regen_scores"] = traj
     if not best or cand.get("faith_degraded") or cand.get("faith_coverage_broken"):
         if not cand.get("degraded_reason"):
-            cand["degraded_reason"] = _degrade_reason(max_regen, last_attempt, stalled, cand)
+            cand["degraded_reason"] = _degrade_reason(max_regen, last_attempt, stalled, cand,
+                                                      last_score=score)
     if not best:
         # 真重写了几轮就记几轮：原来这里恒写 max_regen，提前收手时是一笔假账。
         cand["regen_used"] = last_attempt
@@ -2874,6 +2890,9 @@ def build_payload(events, anchor_meta, budget, date_str, key_count=0, workers=1,
              # 压线里有两种因：抖过线、以及只判成一遍。没有这一列，跨夜只看到"压线 N 条"，
              # 不知道有几条根本没去噪（去噪本身没做成是另一码事，不是模型抖）。
              single_sample=len([e for e in good if e.get("judge_single_sample")]),
+             # 复判挡下的那一档要单独一列：没有它，"合格 0"读起来像"一夜没干活"，
+             # 而真相可能是"写了长文但核查一摘就撑不住"（台账 §10.41：八场里五场会这样）。
+             coverage_blocked=len([e for e in events if e.get("faith_coverage_broken")]),
              stalled=len([e for e in events if e.get("regen_stalled")]),
              key_count=int(key_count), workers=int(workers))
     return {"date": date_str, "generated_at": now_bj_iso(), "engine": SCHEMA_VERSION,
@@ -3454,6 +3473,11 @@ def main(argv=None):
         print("::warning title=上游非限流故障|本场 %d 次请求被 5xx/网络异常打断，"
               "换空闲 key 补试救回 %d 次调用（没救回的照旧进 failed_items/not_run）" % (
                   b["upstream_errors"], b.get("upstream_recovered") or 0))
+    if pb.get("coverage_blocked"):
+        # 这一档单独报：不然页面"合格 0 / 快讯 N"会被读成"一夜没干活"，
+        # 而真相是写了长文、核查一摘就撑不住那条判据（修法在补证据，不在换模型）。
+        print("::warning title=核查后复判挡下|本场 %d 条长文因逐条核查摘除后跌破覆盖判据，"
+              "按快讯发布并逐条标注原因（正文原长见 narrative_chars_full）" % pb["coverage_blocked"])
     if pb.get("stalled"):
         print("[夜场] 提前收手 %d 条（原因见各条 regen_stalled）：省下的调用留给后续条目"
               % pb["stalled"])
