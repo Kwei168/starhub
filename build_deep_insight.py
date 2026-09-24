@@ -2254,7 +2254,11 @@ def judge_weak_spots(score, bar=JUDGE_PASS, cand=None):
         if isinstance(v, (int, float)) and v < bar:
             hint = JUDGE_FIX_HINT[k] % ("%.2f" % v)
             if k == "density" and cand:
-                hint += "（被多段复用的数：%s）" % restate_fact_list_text(cand)
+                listed = restate_fact_list_text(cand)
+                if listed != "（无）":
+                    # 没清单就别印"（无）"：那句形容词本身就是全部信息，加一行空话
+                    # 只会让重写 prompt 变长而不带任何新信息。
+                    hint += "（被多段复用的数：%s）" % listed
             if v < JUDGE_FLOOR:
                 hint += "（单这一条就低于地板 %.2f，均值再高也不过）" % JUDGE_FLOOR
             out.append(hint)
