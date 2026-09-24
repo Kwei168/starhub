@@ -9,6 +9,7 @@
 """
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -194,7 +195,16 @@ def test_prompt_demands_the_four_depth_criteria_and_json_shape():
     assert "至少 %d 段" % D.PARAS_MIN in p, "提示词没写段数下限"
     # 只写字段名不够：枚举值必须写出来，否则模型永远可以给出永不到期的预测
     assert "3、7 或 14" in p, "提示词没限定 horizon_days 只能是 3/7/14"
-    assert "5-12" in p, "提示词没写引用条数区间"
+    # 引用条数区间必须写出来，但**下界不再写死 "5-12"**：它按池子能给出的篇数与最长正文
+    # 派生（写死就是把"模型照下界交卷、长文却被自己的长度判死"当成正确形状钉住）。
+    # 本夹具只有 2 篇证据 ⇒ 合法下界只能是 2：`cite_floor = min(CITE_MIN, supply)`，
+    # 要求超出池子供给就是造一条满足不了的要求（判据自己也不查）。
+    _ctx_ = _ctx()
+    _m = re.search(u"citations：([0-9]+)-([0-9]+) 条", D.build_prompt(ev, _ctx_))
+    assert _m, "提示词没写引用条数区间"
+    _sup = len(_ctx_.get("articles") or [])
+    assert min(D.CITE_MIN, _sup) <= int(_m.group(1)) <= D.CITE_MAX, _m.groups()
+    assert int(_m.group(2)) == D.CITE_MAX, _m.groups()
     assert "但" in p and "限制" in p, "提示词没要求反证或限制条件"
     assert "不得补充证据之外" in p, "提示词没约束模型只依据给定证据"
 

@@ -39,6 +39,14 @@ NARR_MIN, NARR_MAX = 4000, 10000
 # 下限必须一起抬：只抬上限等于把"写多少看模型心情"的老路重新打开 —— A 方案存在的全部理由
 # 就是单趟稳定停在 1,748/2,307/1,902 字。
 EVID_CHARS = 1500   # 正文每 1,500 字至少要换一篇不同证据支撑，长而空在这里判死
+
+
+def required_sources(n_chars):
+    """写 n 字至少要引几篇不同来源 —— 派生自 EVID_CHARS，判据与 prompt 共用这一份。
+
+    以前两处的数字各算各的（prompt 里写死"至少 3 篇"），改了常量行为不变。
+    """
+    return -(-int(n_chars or 0) // EVID_CHARS)
 PARAS_MIN = 6
 # 单说"2500-4000 字"模型交回来的是 1748/2307/1902（run 35749459676 三条实测），
 # 重写两轮也停在同一水平：总量它不接，段数它接。所以把配额下沉到段，
@@ -48,12 +56,52 @@ PARA_MIN = NARR_MIN // PARAS_MIN + 50
 # 另一头 —— 每段实测落在 700~1,100 字，6 段就是 4.3k~7k，超出 §2 上限被整条作废。
 # 所以每段既给下限也给上限与目标值，让"6 段 × 每段"乘出来正好落在硬区间内。
 PERA_MAX = NARR_MAX // PARAS_MIN
-PERA_TARGET = (NARR_MIN + NARR_MAX) // 2 // PARAS_MIN
-# 提纲的段数区间：下限就是 §2 的每条目最少段数，上限留 3 段余量给模型自己分段。
-SECTIONS_MIN, SECTIONS_MAX = PARAS_MIN, PARAS_MIN + 3
-# 两段式之后的单条成本（现网 run 35801635817：3 条 50 次调用 ≈ 17 次/条，最坏每段还会补写一次）。
-# 上限只写在一处：以前 CLI、night_run、Budget 各写一份 80，改默认时必然漏两处。
-CALL_CAP = 12 * (1 + 2 * SECTIONS_MAX + 1)
+# 每段目标只留一个数：以前 PERA_TARGET(1166) 生产里没人用，进 prompt 的是
+# 现算的 (PARA_MIN+PERA_MAX)//2(1191) —— 两个"目标值"并存且不同，改了常量也改不动行为。
+PERA_TARGET = (PARA_MIN + PERA_MAX) // 2
+# 段数上限必须被"段数 × 每段目标 ≤ 总上限"约束住，否则丢段是结构必然而不是偶发：
+# 原来 SECTIONS_MAX=9 而 9×1191=10,719 > 10,000，每段都写到位就一定超线被裁
+# （这正是方案一要消灭的"付了 8 段的钱丢 2 段"）。
+SECTIONS_MIN = PARAS_MIN
+SECTIONS_MAX = min(PARAS_MIN + 3, NARR_MAX // PERA_TARGET)
+
+
+def outline_section_cap(n_sources):
+    """段数上限还要受"有几篇不同证据可分"约束。
+
+    每段要一个不重复的主证据 ⇒ 只有 4 篇时排 6 段必然是两段抢同一篇，
+    而抢来的那一段除了复述没有别的内容可写。这是结构，不是风格问题。
+    """
+    return max(0, min(SECTIONS_MAX, int(n_sources or 0)))
+
+
+def outline_rejects(secs):
+    """提纲层面的结构缺陷检查。返回拒因，没问题返回 None。
+
+    `primary` 缺失**不当拒因**：模型没写过这个新字段时整批退回单趟，等于用新字段
+    把两段式废掉（而两段式正是压住长度方差的那一步）。没声明就取该段第一条证据顶上，
+    只拦真正的"两段抢同一篇"。
+    """
+    prim = []
+    for s in secs or []:
+        p = (s.get("primary") or "").strip()
+        if not p:
+            evs = [e for e in (s.get("evidence") or []) if isinstance(e, str) and e.strip()]
+            p = evs[0].strip() if evs else ""
+        prim.append(p)
+    prim = [p for p in prim if p]
+    if not prim:
+        return None
+    dup = sorted(set(p for p in prim if prim.count(p) > 1))
+    if dup:
+        return "%s —— 两段抢同一篇主证据，多出来的那段只能复述" % dup[:4]
+    return None
+EVENTS_DEFAULT = 12
+MAX_REGEN = 2
+# 单趟路径一次要吐完整条：正文上限 + 满额结构字段。按模块自己的口径
+# （CJK 1 字≈1 token）实测 10,000 字 + 满额结构 ≈ 13.5k token，
+# 客户端默认 12,000 必然截断 —— 而截断在产物里长得和"模型写不长"一模一样。
+SINGLE_PASS_OUT_TOKENS = NARR_MAX + 3600
 CLAIM_MIN, CLAIM_MAX = 3, 10
 CHAINS_MIN, CHAINS_MAX = 2, 6
 FORECAST_MIN, FORECAST_MAX = 1, 4
@@ -63,6 +111,37 @@ FORECAST_CLAIM_MAX = 80
 CHAIN_FIELD_MAX = 170
 WHY_MIN, WHY_MAX = 20, 120
 QUALITY_VERDICTS = ("一手", "深度", "数据支撑", "转载", "通稿", "营销")
+
+# ── 判定去噪的三个数 + 每趟成本（都放在各自依赖之后：CALL_CAP 由它们算出来）──
+JUDGE_SAMPLES = 2
+# 采纳/停滞边界取实测复评极差 0.17 的一半。白天那条 ±0.02 是它自己"改前/改后同一版配对"
+# 的方差，与我们"两个被改写过的版本比中位均值"不是同一个量 —— 这里不引它当依据。
+ADOPT_MARGIN = 0.09
+# 距合格线几个噪声带以内算"差一点点"（继续重写），之外的判定当"救不回来"。
+# 现网两条 0.6375 的降级形态落在这个带里，一条 0.425 的落在外面。
+HOPEFUL_BANDS = 2
+# 一次尝试的调用数（逐项点名，别再用"判定 1"那种旧账）：
+#   提纲 2（首问 + 主证据撞车那一次重问）
+# + 逐段 2*SECTIONS_MAX（每段太短会补写一次，`staged_generate` 里那趟 `again`）
+# + 结构 1 + 判定 JUDGE_SAMPLES（批 3 的去噪双采样）+ 逐条核查 CLAIM_MAX（批 2 的 faith，满额）
+# 现网实测：run 35940113012 三条事件 71 次调用（其中 faith 8 次），
+# 与本式的差在 regen 没跑满 —— 这个数拿来当"开一条之前要留多少"的预留，不拿来当成绩。
+OUTLINE_MAX_CALLS = 2
+# 这是**标称**成本（按我们要求它写的段数上限 SECTIONS_MAX 算）。真实成本随模型给的段数走：
+# 第四轮审查用 12 段提纲复现到一趟 37 次（outline 2 + section 24 + structure 2 + judge 2 + faith 7）。
+# 所以别把 `PER_ATTEMPT_CALLS * (MAX_REGEN+1)` 当成一条的上界 —— 上界没人保证，
+# 闸只能"每趟问一次"（见 deepen_one 里的 regen_cut_by_budget），并把超顶记成可读的一格。
+PER_ATTEMPT_CALLS = OUTLINE_MAX_CALLS + 2 * SECTIONS_MAX + 1 + JUDGE_SAMPLES + CLAIM_MAX
+# CALL_CAP 按 spec §7 的决定**不跟着最坏值抬**（12×3×31=1140 是纸面数）：
+# 真实约束是墙钟不是次数，先把 S6/S7 跑成一场 test 实测"每合格条目调用数"再定档。
+# 撞顶就按已批的风险⑤口径处理：保单条完整，砍没开写的（`_cutoff` 的预留就是为此存在）。
+CALL_CAP = 684          # 与批 3 之前同档：12 条 × 3 趟 × 旧 19 次/趟
+# 一条最坏要花多少：跑满 MAX_REGEN+1 趟。开一条之前按这个数预留，而不是按单趟 ——
+# faith 现在每趟合格版都可能跑，用单趟数预留会照样超发。
+ITEM_CALLS_MAX = (MAX_REGEN + 1) * PER_ATTEMPT_CALLS
+# 段数与每段目标是乘出来的：PARAS_MIN >= SECTIONS_MAX 时"每段够长"与"总长不超线"
+# 互斥（批 3 的变异表差点把这条不变量弄丢，这里钉死而不是靠注释提醒）。
+assert PARAS_MIN <= SECTIONS_MAX, "每段下限乘段数会顶破正文上限"
 
 GATE_MIN_SOURCES = 3
 GATE_MIN_TOTAL_CHARS = 12000
@@ -76,6 +155,10 @@ MAX_BUDGET_TOKENS = 800000
 # 无界追加就是第二个 rss_history，那条链的教训已经付过一次。
 PREDICTIONS_NAME = "predictions.jsonl"
 PRED_KEEP_DAYS = 90
+# 主干 ref 只许有这一个名字。以前 `heads/main` 硬编码在 head_info/update_ref 里，
+# 于是"验证走分支"根本走不了 —— 三场手动验证全部打在主干上，把白天构建唯一一发
+# push 重试撞光（2026-09-23 14:00 北京场红）。ref 现在必须由调用方显式给。
+MAIN_REF = "main"
 # 并发档上限：spec §4 `worker = min(len(api_keys), 6)`。免费 Agnes 池被 6 把以上
 # 并发推，换来的不是吞吐是 429 墙；档位最终值等首夜读数，但不许越过这个天花板。
 WORKERS_MAX = 6
@@ -119,28 +202,68 @@ def _paragraphs(text):
     return [p.strip() for p in (text or "").split("\n\n") if p.strip()]
 
 
-_SENT_SPLIT = re.compile(u"[\u3002\uff01\uff1f\uff1b\n]")
-_SENT_NOISE = re.compile(u"[\\s\u3000\u3001\uff0c\u3002\uff01\uff1f\uff1b\uff1a\u2018\u2019"
-                         u"\u201c\u201d\uff08\uff09\u300a\u300b\u3010\u3011\u00b7\u2014._\\-/\\\\]")
+def _para_number_sets(text):
+    """每段的数值签名。段按空行/换行切，短于 60 字的碎片不算一段。"""
+    ps = [p.strip() for p in re.split(r"\n+", text or "") if len(p.strip()) >= 60]
+    return [set(_NUM_TOKEN.findall(p)) for p in ps]
 
 
-def repetition_rate(text):
-    """句级重复率 = 1 - 唯一句数 / 总句数。**只落观测，暂不当门禁。**
+_NUM_TOKEN = re.compile(r"\d+(?:\.\d+)?%?")
 
-    不当门禁的理由不是省事：手上没有任何 4,000 字以上的真样本可以定这个数 ——
-    白天侧 `analysis_snapshot.deep_insights` 实测每个字段只有 84~123 汉字、
-    21 句全唯一（重复率 0.000）。拿这种样本拍阈值就是把猜测当判据。
-    方案一真跑出 2~3 场 4k-10k 的正文后，从分布上读数再升成门；
-    在那之前"长而空"由 judge 的 density 维度与 EVID_CHARS 判据拦。
+
+def restatement_from_sets(sets, min_shared=3, pair_floor=0.30):
+    """段落级复述率：同一批硬数据被几段反复消费。**这是"长而空"唯一的机械依据。**
+
+    为什么不是字面重复：现网两条合格长文（09-23 的 9,857 字、09-24 的 8,754 字）
+    的句级重复率都读 0.0、12 字 n-gram 只有 0.015，而按"段落共享数值集合"量分别是
+    0.636 与 0.46 —— 毛病是"换句话再说一遍"，字面口径结构上看不见它。
+
+    不做"版本号/模型名打折"那类旋钮：加了之后整段照抄（4 段里 3 段同一批数）
+    反而被折扣抹平。Jaccard 的分母天然吸收它 —— 全文都在提"5.5"时，
+    共享 3 个 / 并集 20 个 = 0.15 过不了 0.30 的线，不需要额外折扣。
     """
-    sents = []
-    for raw in _SENT_SPLIT.split(text or ""):
-        k = _SENT_NOISE.sub("", raw)
-        if len(k) >= 12:
-            sents.append(k)
-    if len(sents) < 2:
-        return 0.0
-    return round(1.0 - len(set(sents)) / float(len(sents)), 4)
+    n = len(sets or [])
+    if n < 2:
+        return {"rate": 0.0, "paras": n, "restated_paras": 0, "pairs": 0, "recycled": []}
+    cnt = {}
+    for s in sets:
+        for x in s:
+            cnt[x] = cnt.get(x, 0) + 1
+    S = [set(s) for s in sets]
+    live = [i for i, s in enumerate(S) if s]
+    if len(live) < 2:
+        return {"rate": 0.0, "paras": len(live), "restated_paras": 0, "pairs": 0,
+                "recycled": []}
+    bad, pairs = set(), 0
+    for a in range(len(live)):
+        for b in range(a + 1, len(live)):
+            i, j = live[a], live[b]
+            sh = S[i] & S[j]
+            union = len(S[i] | S[j]) or 1
+            if len(sh) >= min_shared and len(sh) / float(union) >= pair_floor:
+                bad.add(i)
+                bad.add(j)
+                pairs += 1
+    recycled = sorted(((c, k) for k, c in cnt.items() if c >= 3), reverse=True)[:8]
+    return {"rate": round(len(bad) / float(len(live)), 4), "paras": len(live),
+            "restated_paras": len(bad), "pairs": pairs,
+            "recycled": [{"fact": k, "paras": c} for c, k in recycled]}
+
+
+def restatement_rate(text):
+    return restatement_from_sets(_para_number_sets(text))
+
+
+def annotate_observability(cand):
+    """把"长而空"的量写进候选。**每条路径都要走这里** —— 证据门早退那条曾经根本不写，
+    于是产物里有的条目有、有的没有，读的人无法区分"没测"与"测了是 0"。
+    """
+    m = restatement_rate(cand.get("narrative") or "")
+    cand["restate_rate"] = m["rate"]
+    cand["restate_pairs"] = m["pairs"]
+    if m["recycled"]:
+        cand["restate_top"] = m["recycled"]
+    return cand
 
 
 def clip_for_degrade(cand):
@@ -153,6 +276,54 @@ def clip_for_degrade(cand):
     cand["narrative_chars_full"] = count_chars(cand.get("narrative") or "")
     cand["narrative"] = (cand.get("narrative") or "")[:DEGRADED_NARR_MAX]
     cand["forecasts"] = []
+    return cand
+
+
+_VERDICT_SPLIT = re.compile(r"[/、,，;；]")
+
+
+def repair_quality_verdict(cand):
+    """枚举被写成复合值时归一，而不是烧掉整条。
+
+    现网 evt_20260923_008：素材 115,487 字、7 段已成文、8 claims / 5 chains 齐全，
+    `contract_fails` 只有一条 "quality.verdict '一手/数据支撑' 不在枚举" ——
+    枚举里两个合法值中间一个斜杠，重写两轮（约 20 次调用）后整条降成 200 字快讯。
+    这是序列化缺陷不是内容缺陷，代价与过错不成比例。
+    """
+    q = cand.get("quality")
+    if not isinstance(q, dict):
+        return cand
+    v = q.get("verdict")
+    if not isinstance(v, str) or v in QUALITY_VERDICTS:
+        return cand
+    parts = [p.strip() for p in _VERDICT_SPLIT.split(v) if p.strip()]
+    legal = [p for p in parts if p in QUALITY_VERDICTS]
+    if not legal:
+        return cand          # 拆不出任何合法值：照判不合格，归一不是橡皮章
+    q["verdict"] = legal[0]
+    q["verdict_repaired"] = v
+    return cand
+
+
+def repair_quality_fields(cand):
+    """quality 这一组的形状归一：verdict 复合值 + `why` 超上界。
+
+    `why` 超上界是 09-24 现网 evt_20260924_001 的死因（170 字 > 120），与 verdict
+    同族。只往回收不往回填：太短的 why 是模型真没写理由，补字等于伪造证据。
+    裁掉的部分不留原长就等于什么都没发生 —— 下一跑还是读不出它写了多长。
+    """
+    repair_quality_verdict(cand)
+    q = cand.get("quality")
+    if not isinstance(q, dict):
+        return cand
+    why = q.get("why")
+    if isinstance(why, str):
+        w = count_chars(why)
+        if w > WHY_MAX:
+            q["why_chars_full"] = w
+            while count_chars(why) > WHY_MAX and len(why) > WHY_MIN:
+                why = why[:-1]
+            q["why"] = why.strip()
     return cand
 
 
@@ -186,8 +357,12 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
 
     cites = ev.get("citations") or []
     ids = [c.get("id") for c in cites]
-    if not CITE_MIN <= len(cites) <= CITE_MAX:
-        fails.append("citations %d 条，须在 [%d,%d]" % (len(cites), CITE_MIN, CITE_MAX))
+    # 池子里只有 4 篇时，"至少引 5 篇"是一条**满足不了**的要求 —— 与刚拆掉的那类钳制同族：
+    # 造一个供给给不出的下限，只会把扎实的小条目一律判死，而不会逼出更多来源。
+    supply = len(valid_ids) if valid_ids is not None else None
+    cite_floor = min(CITE_MIN, supply) if supply else CITE_MIN
+    if not cite_floor <= len(cites) <= CITE_MAX:
+        fails.append("citations %d 条，须在 [%d,%d]" % (len(cites), cite_floor, CITE_MAX))
     if len(set(ids)) != len(ids):
         fails.append("citations id 有重复")
     if valid_ids is not None:
@@ -205,13 +380,31 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
 
     # 反水分第一道（结构判据）：正文每 EVID_CHARS 字至少要换一篇不同证据支撑。
     # 界按字数派生，不是拍的阈值 —— 9,000 字只压在 2 篇上就是复述，不是分析。
-    # 上限取"这条自己引了几篇"，不许要它引用没引过的东西。
+    #
+    # 这里以前写成 `min(len(cited_ids), ceil(n/EVID_CHARS))`：要求被"模型自己引了几篇"
+    # 钳住 —— 9,857 字要 7 篇，只引 5 篇时要求自动降到 5，而 CITE_MIN=5 让 5 篇合法。
+    # 于是这条判据在它唯一该出手的长文场景里**必然通过**，等于没有判据
+    # （现网 evt_20260923_011 素材池 12 篇 / 635,321 字，只引 5 篇写 9,857 字照样合格）。
     cited_ids = {c.get("id") for c in cites}
-    need_cov = min(len(cited_ids), -(-n // EVID_CHARS)) if cited_ids else 0
+    # 要求按字数派生，但**上界只能是"我们供给了几篇不同来源"**。
+    # 这与刚拆掉的那道钳制不是一回事：旧的 `min(len(cited_ids), …)` 按"模型自愿引了几篇"
+    # 收敛，它可以少引再少要求；这里按上游装配给出的来源数收敛，是**我们的**责任边界 ——
+    # 池子只有 6 篇时，9,900 字的东西无论如何引不出 7 篇，那不该判模型不合格。
+    # 供给不足本身要看得见：note 里记 sources_short，批 4（证据门按长度派生）拿它定档。
+    supply = supply if supply is not None else len(cited_ids)
+    need_cov = min(required_sources(n), max(supply, 1))
+    ev["sources_short"] = (n, required_sources(n), supply) if supply < required_sources(n) else None
     used_cov = set()
     for cl in (ev.get("claims") or []):
         used_cov |= set(cl.get("evidence") or [])
-    if need_cov and len(used_cov) < need_cov:
+    # 只认这条自己引过的编号：claims 挂一个 citations 里没有的编号不算覆盖。
+    # 不求交的话，"多写几条 claim、各挂一个不同编号"就能白拿覆盖数，正文照样是水
+    # （对抗审查 P1-4 复现：9,598 字只引 5 篇，claims 铺满 c1..c10 被判合格）。
+    used_cov &= cited_ids
+    if need_cov and len(cited_ids) < need_cov:
+        fails.append("正文 %d 字只引了 %d 篇不同来源（要 >=%d 篇，每 %d 字换一篇）："
+                     "素材在池子里，多引不额外花钱" % (n, len(cited_ids), need_cov, EVID_CHARS))
+    elif need_cov and len(used_cov) < need_cov:
         fails.append("正文 %d 字只压在 %d 篇不同证据上（要 >=%d 篇）：长而空不算深度" % (
             n, len(used_cov), need_cov))
 
@@ -313,7 +506,16 @@ def assemble_context(articles, budget_tokens=DEFAULT_BUDGET_TOKENS):
         keep.append(a)
         tok += t
         chars += count_chars(text)
-    return {"articles": keep, "dropped": dropped, "total_tokens": tok, "total_chars": chars}
+    # "几篇"之外还要记"几家"：`source_key` 常带篇号后缀（src3_1），按 `source` 归一家，
+    # 没有 source 的退回 source_key 前缀、再退回 url。覆盖契约说的是"每 1,500 字换一篇
+    # 独立来源"，只记文章数就没法判断这条要求到底可不可满足（任务 #67）。
+    srcs = set()
+    for a in keep:
+        srcs.add(a.get("source") or (a.get("source_key") or "").split("_")[0]
+                 or a.get("url") or "")
+    srcs.discard("")
+    return {"articles": keep, "dropped": dropped, "total_tokens": tok, "total_chars": chars,
+            "sources": len(srcs)}
 
 
 def load_records(path):
@@ -412,11 +614,29 @@ def _to_day(s):
     return date(int(s[0:4]), int(s[5:7]), int(s[8:10]))
 
 
+def _day_or_none(s):
+    """账本里的日期来自上一夜发布的 JSONL：一行坏账不许把整晚烧掉。
+
+    `settle`/`prune_predictions` 在产物落盘**之前**执行，`_to_day` 直接抛
+    ValueError 就是"钱花完了、JSON/HTML 一个都没有"（审查 P2-4 复现）。
+    """
+    try:
+        return _to_day(s)
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
 def _due_day(r):
     made, hor = r.get("made_on"), r.get("horizon_days")
     if not made or not hor:
         return None
-    return _to_day(made) + timedelta(days=int(hor))
+    d = _day_or_none(made)
+    if d is None:
+        return None
+    try:
+        return d + timedelta(days=int(hor))
+    except (TypeError, ValueError):
+        return None
 
 
 def ship_digest(payload, ledger):
@@ -493,7 +713,8 @@ def prune_predictions(rows, today):
         if (r.get("status") or "pending") == "pending":
             out.append(r)
             continue
-        if r.get("made_on") and _to_day(r["made_on"]) >= cut:
+        made = _day_or_none(r.get("made_on"))
+        if made is not None and made >= cut:
             out.append(r)
     return out
 
@@ -663,26 +884,63 @@ class Budget:
         self.wait_s = 0.0
         self.c429 = 0
         self.truncated = 0
+        self.truncated_by = {}
+        # 上游非 429 故障（Agnes HTTP 520 这类）的两笔账：打断的请求数 / 补试救回的调用数
+        self.upstream_errors = 0
+        self.upstream_recovered = 0
         self.t0 = None
+        # 每条各花多少必须**按归属计**，不能拿"本条起止之间的全局增量"糊弄：
+        # workers=3 的现网验证场（run 35957864648）量到六条的窗口增量之和 594 > 总数 207，
+        # 正好是并发倍率 —— 那种数拿去定 CALL_CAP 会把成本估高近三倍。
+        self._owner = threading.local()
+        self._own_lock = threading.Lock()
+        self.by_owner = {}
+
+    def set_owner(self, name):
+        self._owner.name = name
+
+    def close_owner(self, name):
+        """交回这一条**实际**消耗的调用数（按归属计；并发下各条之和仍等于总数）。"""
+        self._owner.name = None
+        with self._own_lock:
+            return int(self.by_owner.pop(name, 0) or 0)
 
     def start(self):
         self.t0 = _now()
 
+    def raw_elapsed_s(self):
+        """不做 0.1s 量化的耗时。单条账必须用它：里层量化过，外面取几位小数都救不回来。"""
+        return 0.0 if self.t0 is None else (_now() - self.t0)
+
     def note_call(self, tokens_in=0, tokens_out=0):
         self.llm_calls += 1
+        who = getattr(self._owner, "name", None)
+        if who:
+            with self._own_lock:
+                self.by_owner[who] = int(self.by_owner.get(who) or 0) + 1
         self.tokens_in += int(tokens_in or 0)
         self.tokens_out += int(tokens_out or 0)
+
+    def note_upstream_error(self):
+        self.upstream_errors += 1
+
+    def note_upstream_recovered(self):
+        self.upstream_recovered += 1
 
     def note_wait(self, seconds):
         self.wait_s += float(seconds or 0)
 
-    def note_truncated(self):
+    def note_truncated(self, kind=""):
         """回复撞到输出上限（finish_reason=length）的独立一笔账。
 
         截断在产物里长得和"模型写得太短"一模一样：不记这一步，spec §3 那条
         `max_tokens` 待验假设就永远验不了，重写两轮也是在要求模型做不到的事。
+        `kind` 也必须记：现网第一次 truncated=1 时，逐段/提纲/结构/判定四趟里
+        到底是哪一趟撑破了上限查不出来，而下一步（提上限还是拆段）全看这个答案。
         """
         self.truncated += 1
+        if kind:
+            self.truncated_by[kind] = self.truncated_by.get(kind, 0) + 1
 
     def note_429(self, retry_after=0):
         self.c429 += 1
@@ -705,11 +963,20 @@ class Budget:
     def over_cap(self):
         return self.llm_calls > self.call_cap
 
+    def cap_exceeded(self):
+        # 超顶多少：>0 就是这一夜花得比允许多，必须让产物与播报都读得到。
+        return max(0, self.llm_calls - self.call_cap)
+
     def snapshot(self):
-        return {"llm_calls": self.llm_calls, "input_tokens": self.tokens_in,
+        return {"llm_calls": self.llm_calls,
+                "cap_exceeded": max(0, self.llm_calls - self.call_cap),
+                "input_tokens": self.tokens_in,
                 "output_tokens": self.tokens_out, "wait_s": round(self.wait_s, 1),
                 "c429": self.c429, "truncated": self.truncated,
-                "elapsed_s": self.elapsed_s(), "call_cap": self.call_cap}
+                "truncated_by": dict(self.truncated_by),
+                "elapsed_s": self.elapsed_s(), "call_cap": self.call_cap,
+                "upstream_errors": self.upstream_errors,
+                "upstream_recovered": self.upstream_recovered}
 
 
 def _now():
@@ -758,17 +1025,36 @@ class KeyPool:
     def total(self):
         return len(self._keys)
 
-    def acquire(self, kind="generate"):
+    def acquire(self, kind="generate", exclude=None):
+        """`exclude` 是给上游故障补试用的：刚报错那把 key 不该原地再问一遍。"""
         with self._lock:
             if not self._keys:
                 return None
             if kind == "judge" and self.workers > 1 and self.idle() < 2:
                 return None
             for k in self._keys:
+                if exclude is not None and k == exclude:
+                    continue
                 if self._is_free(k):
                     self._busy.add(k)
                     return k
             return None
+
+    def mark_dead(self, key):
+        """把刚报 5xx 的 key 挪到队尾（**不冷却**）。
+
+        上游按 key 拉黑某一把时，`acquire` 恒从队首扫就等于每次调用都先撞它、
+        再白补一发（现网红判据的形状就是 k1,k2,k1,k2）。
+        刻意不冷却：整池都是 5xx 时冷却会把每条都拖满 `wait_cap_s`，
+        那比白补一次糟得多（第六轮审查 P1-3 的取舍）。
+        """
+        with self._lock:
+            try:
+                i = self._keys.index(key)
+            except ValueError:
+                return
+            if i != len(self._keys) - 1:
+                self._keys.append(self._keys.pop(i))
 
     def release(self, key):
         with self._lock:
@@ -838,15 +1124,29 @@ def _evidence_block(a, cid=""):
         a.get("text") or "")
 
 
-def _structure_rules(id_list):
+def _structure_rules(id_list, supply):
     """结构字段的契约，只写一份。
 
     单趟路径与"正文写完后补结构字段"那趟都要同一套数字；抄两遍就等于
     改了常量忘改第二处 —— 那正是这批修复一路在拆的问题。
+
+    覆盖要求按**最长正文**派生，且上界只能是池子给得出的篇数。原来这里写的是
+    `required_sources(NARR_MIN)`（3 篇）与"每 7,500 字要引到 6 篇"，而判据查的是
+    这条实际写了多长 ⇒ 模型照 prompt 的下界交 5 篇，写到 8,848 字就被自己的长度判死
+    （现网八场 58 条里 11 条死于覆盖，`sources_short` 一条没亮、池内中位 12 篇）。
+    `max(supply, 1)` 与判据里 `need_cov = min(required_sources(n), max(supply, 1))`
+    同形：池子空的时候判据自己也只要求 1 篇，prompt 不许喊出 7 篇这种给不出的下界
+    （对抗审查 P0-2：那是 §10.34 刚拆掉的那类"满足不了的下限"）。
     """
+    need_top = required_sources(NARR_MAX)
+    ask = min(max(supply, 1), need_top)
+    cite_low = max(min(CITE_MIN, max(supply, 1)), ask)
     return (
         "- claims：%d-%d 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
-        "写别的编号等于引用不存在的内容，整条判不合格。\n"
+        "写别的编号等于引用不存在的内容，整条判不合格。"
+        "全部 claims 的 evidence 合计至少要覆盖 %d 篇**不同证据**（正文每 %d 字换一篇，"
+        "写到 %d 字就要引到 %d 篇），"
+        "整条只压在两三篇上会被判“长而空”而不合格。\n"
         "- causal_chains：%d-%d 条，每条含 trigger/mechanism/outcome/confidence/evidence"
         "（evidence 同样只能取上面那批编号），每个字段 ≤%d 字，写清为什么发生而不是只说发生了什么。\n"
         "- forecasts：%d-%d 条，每条含 claim(≤%d字)/horizon_days(只能是 %s，"
@@ -857,12 +1157,36 @@ def _structure_rules(id_list):
         "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
         "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
         "- citations：%d-%d 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
-    ) % (CLAIM_MIN, CLAIM_MAX, id_list, CHAINS_MIN, CHAINS_MAX, CHAIN_FIELD_MAX,
+    ) % (CLAIM_MIN, CLAIM_MAX, id_list, ask, EVID_CHARS,
+         NARR_MAX, ask,
+         CHAINS_MIN, CHAINS_MAX, CHAIN_FIELD_MAX,
          FORECAST_MIN, FORECAST_MAX, FORECAST_CLAIM_MAX,
          "、".join(str(h) for h in HORIZONS[:-1]) + " 或 " + str(HORIZONS[-1]),
          "/".join(QUALITY_VERDICTS), WHY_MIN, WHY_MAX, (WHY_MIN + WHY_MAX) // 2,
          (WHY_MIN + WHY_MAX) // 2 + 10,
-         CITE_MIN, CITE_MAX, id_list)
+         cite_low, CITE_MAX, id_list)
+
+
+def _cid_by_url(ctx):
+    """url → 证据编号。`ctx["ids"]` 的生产形状是 {"c1": url}（deepen_one 里就这么建的），
+    但历史上有两处消费者按反方向读它，于是一处靠位置兜底"看起来正常"、另一处静默失效。
+    这里两种方向都吸收，取值冲突时以生产形状为准。
+    """
+    ids = ctx.get("ids") or {}
+    out = {}
+    for k, v in ids.items():
+        if isinstance(v, str) and v.startswith(("http://", "https://")):
+            out[v] = k                      # {"c1": url}
+        elif isinstance(k, str) and k.startswith(("http://", "https://")) and isinstance(v, str):
+            out.setdefault(k, v)            # {url: "c1"}：只作补充，不覆盖上面那种
+    return out
+
+
+def _evidence_blocks(ctx):
+    arts = ctx.get("articles") or []
+    by_url = _cid_by_url(ctx)
+    return [_evidence_block(a, by_url.get(a.get("url")) or ("c%d" % (i + 1)))
+            for i, a in enumerate(arts)]
 
 
 def build_prompt(event, ctx, mode="full"):
@@ -873,21 +1197,24 @@ def build_prompt(event, ctx, mode="full"):
     """
     arts = ctx.get("articles") or []
     ids = ctx.get("ids") or {}
-    blocks = [_evidence_block(a, ids.get(a.get("url")) or ("c%d" % (i + 1)))
-              for i, a in enumerate(arts)]
+    blocks = _evidence_blocks(ctx)
     id_list = ", ".join("c%d" % (i + 1) for i in range(len(arts)))
     if mode == "outline":
+        cap = outline_section_cap(len(arts))
         return (
             "你是深度分析员。只依据下面给出的证据，先出一份提纲，**不要写正文**。\n"
             "事件：%s（主题 %s）\n\n"
             "输出一个 JSON 对象，字段必须是：%s。\n"
             "硬性要求（不满足会被判不合格并重写）：\n"
-            "- sections：%d-%d 条，每条含 title/focus/evidence"
-            "（evidence 只能从这批编号里选：%s）；focus 一句话说清这一段论证什么、"
-            "用哪几条证据、准备用什么数据或反证收口。\n"
+            "- sections：%d-%d 条（下面只给了 %d 篇证据，所以最多 %d 段），每条含 "
+            "title/focus/primary/evidence。primary 是这一段**主要靠哪一篇**立论，"
+            "只能是一个编号，且各段的 primary **不得重复**；"
+            "两段抢同一篇，多出来的那段就只能复述。\n"
+            "- evidence 只能从这批编号里选：%s；focus 一句话说清这一段论证什么、"
+            "用什么数据或反证收口。\n"
             "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
         ) % (event.get("title", ""), event.get("topic", ""), ", ".join(OUTLINE_FIELDS),
-             SECTIONS_MIN, SECTIONS_MAX, id_list or "（无）", "\n\n".join(blocks))
+             SECTIONS_MIN, cap, len(arts), cap, id_list or "（无）", "\n\n".join(blocks))
     return (
         "你是深度分析员。只依据下面给出的证据写一条洞察，不得补充证据之外的事实或数字。\n"
         "事件：%s（主题 %s）\n\n"
@@ -901,7 +1228,7 @@ def build_prompt(event, ctx, mode="full"):
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), ", ".join(PROMPT_FIELDS),
          NARR_MIN, NARR_MAX, (NARR_MIN + NARR_MAX) // 2, PARAS_MIN, PARA_MIN, PERA_MAX,
-         _structure_rules(id_list or "（无）"), "\n\n".join(blocks))
+         _structure_rules(id_list or "（无）", len(arts)), "\n\n".join(blocks))
 
 
 def build_structure_prompt(event, ctx, narrative):
@@ -918,9 +1245,8 @@ def build_structure_prompt(event, ctx, narrative):
         "%s"
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), narrative,
-         ", ".join(STRUCT_FIELDS), _structure_rules(id_list or "（无）"),
-         "\n\n".join(_evidence_block(a, ids.get(a.get("url")) or ("c%d" % (i + 1)))
-                     for i, a in enumerate(arts)))
+         ", ".join(STRUCT_FIELDS), _structure_rules(id_list or "（无）", len(arts)),
+         "\n\n".join(_evidence_blocks(ctx)))
 
 
 def build_section_prompt(event, ctx, sec, idx, total):
@@ -930,9 +1256,11 @@ def build_section_prompt(event, ctx, sec, idx, total):
     成本上不接受，所以按 sections[].evidence 过滤。
     """
     ids = ctx.get("ids") or {}
-    by_cid = {}
-    for u, cid in ids.items():
-        by_cid.setdefault(cid, u)
+    # ctx["ids"] 的形状是 {"c1": url, ...}。这里以前写 `for u, cid in ids.items()`，
+    # 方向反了 ⇒ by_cid 的键变成 url ⇒ 任何一段都查不到自己的证据 ⇒ **每段都走下面那条
+    # 兜底拿同样的前 3 篇**。这就是"8 段抢同一批富源、通篇换句话复述"的结构成因，
+    # 而兜底把它藏得严严实实：产物里只看得见 restate_rate 高，看不见原因。
+    by_cid = dict(ids)
     picked = []
     for cid in (sec.get("evidence") or []):
         u = by_cid.get(cid)
@@ -940,6 +1268,8 @@ def build_section_prompt(event, ctx, sec, idx, total):
         if a is not None:
             picked.append(_evidence_block(a, cid))
     if not picked:
+        # 兜底要留痕：无声退回"整段共用前 3 篇"就是上面那个 bug 能活这么久的原因。
+        sec["_evidence_fallback"] = True
         picked = [_evidence_block(a, "c%d" % (i + 1))
                   for i, a in enumerate((ctx.get("articles") or [])[:3])]
     return (
@@ -952,7 +1282,7 @@ def build_section_prompt(event, ctx, sec, idx, total):
         "===== 本段可用证据 =====\n%s\n"
     ) % (idx, total, event.get("title", ""), event.get("topic", ""),
          (sec.get("title") or "第%d段" % idx), sec.get("focus") or "",
-         PARA_MIN, PERA_MAX, (PARA_MIN + PERA_MAX) // 2,
+         PARA_MIN, PERA_MAX, PERA_TARGET,
          "\n\n".join(picked))
 
 
@@ -976,14 +1306,39 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
     `cand is None` 表示这趟没给出可用 sections —— 交回上层退单趟，而不是让整条空转：
     提纲这一步是新流程里唯一没有契约兜底的环节（validate 只看最终 narrative/结构字段）。
     """
-    raw = call_llm(client, build_prompt(event, ctx, "outline") + signals_note(ctx) + extra,
-                   key_pool, budget, "outline", wait_cap_s=wait_cap_s, sleep=sleep)
-    doc = dict(parse_model_json(raw) or {})
-    doc.pop("narrative", None)
-    secs = [s for s in (doc.get("sections") or []) if isinstance(s, dict)]
-    secs = secs[:SECTIONS_MAX]
+    def ask_outline(defect=""):
+        raw = call_llm(client, build_prompt(event, ctx, "outline") + signals_note(ctx)
+                       + extra + defect, key_pool, budget, "outline",
+                       wait_cap_s=wait_cap_s, sleep=sleep)
+        doc = dict(parse_model_json(raw) or {})
+        doc.pop("narrative", None)
+        return doc, [s for s in (doc.get("sections") or []) if isinstance(s, dict)]
+
+    doc, secs = ask_outline()
+    collisions = outline_rejects(secs)
+    note = {}
+    if collisions:
+        # 点名缺陷重问一次提纲，而不是整条退回单趟：两段式是压住长度方差那一步，
+        # 因为一个新字段没写对就废掉它，等于用一个新约束把旧故障请回来。
+        doc2, secs2 = ask_outline(
+            "\n【上一版提纲的缺陷】各段 primary 不得重复 —— %s\n" % collisions)
+        note["primary_retried"] = True
+        if outline_rejects(secs2):
+            # 还是重复：带着账继续写。硬拦会让这条彻底没有产物，
+            # 而"复述"最终由覆盖判据与 judge 的 density 去判，不只靠提纲形状。
+            note["primary_collisions"] = collisions
+        else:
+            doc, secs = doc2, secs2
+    # 段数与源数的关系**只做 prompt 约束与记账，不做硬截断**：
+    # 砍段会直接把总长削回上限以内，于是"组装守上限"那道守卫自己失效
+    # （现网夹具 8 段 × 1,400 字被砍成 6 段后 trimmed_sections 恒为 0）。
+    # 源数不够还硬要深挖，是 S1/S2（值得写与证据门）该管的事，不在提纲这一步偷偷改长度。
+    cap = outline_section_cap(len(ctx.get("articles") or []))
+    if len(secs) > cap:
+        note["sections_over_sources"] = "%d 段 / %d 篇可用源" % (len(secs), cap)
     if len(secs) < PARAS_MIN:
-        return None, {"reason": "提纲只给了 %d 段，少于 %d" % (len(secs), PARAS_MIN)}
+        return None, dict(note, reason="提纲只给了 %d 段，少于 %d" % (len(secs), PARAS_MIN))
+    note["sections"] = len(secs)
     parts, shorts = [], []
     for i, s in enumerate(secs):
         body = _section_text(call_llm(client, build_section_prompt(event, ctx, s, i + 1, len(secs)),
@@ -1022,8 +1377,9 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
             doc[k] = struct[k]
     # `struct_missing` 不在这里算：结构字段还要过 normalize_candidate，形状不对的会被掏空，
     # 在这里记账只能得出"什么都没缺"（现网 evt_20260923_010 就是这么骗过去的）。
-    return doc, {"sections": len(secs), "short_sections": shorts,
-                 "trimmed_sections": dropped}
+    return doc, dict(note, sections=len(secs), short_sections=shorts,
+                     trimmed_sections=dropped,
+                     evidence_fallback=sum(1 for s in secs if s.get("_evidence_fallback")))
 
 
 # ─────────────────────────── 并发提交协议 ─────────────────────────────────
@@ -1059,6 +1415,25 @@ def publish(api, files, msg, last_sha=None, max_attempts=6, log=None):
     return {"status": "failed", "attempts": max_attempts}
 
 
+def publish_ref_guard(purpose, ref, event="workflow_dispatch"):
+    """打哪条 ref 的准入判断。返回 (可以跑, 说明)。
+
+    这里只拦"手滑"，不拦"并发"：
+      · purpose=test 本来就不入库，给它一条"其实会提交"的旁路等于让注释骗人；
+      · 手动 publish 不点名 ref ⇒ 拒绝。这次三场验证本意是走分支，
+        却因为通道里写死主干而直接改线上，"忘了传"必须是异常。
+    夜场**不查有无在途构建**：白天场每小时都有，查了就等于夜场永远等不到窗口，
+    而"停更比快讯更糟"已经定过一次（spec §10.16）。撞车由 CAS 重试吸收。
+    """
+    if purpose != "publish":
+        return False, "purpose=%s 不该走到提交：test 的语义就是不入库" % purpose
+    if not (ref or "").strip():
+        return False, (
+            "purpose=publish 必须显式点名 ref（主干请传 %s；验证请传你的分支名）。"
+            "不给默认是因为默认一旦是主干，'验证走分支'就是一句空话。" % MAIN_REF)
+    return True, "ok"
+
+
 # ───────────────────────────── 独立页渲染 ─────────────────────────────────
 
 _ABS = ("http://", "https://")
@@ -1090,16 +1465,30 @@ def render_page(payload):
         body.append("<h3>已结算预测（近 %d 条）</h3><ul>%s</ul>" % (len(settled), rows))
     meta = "深度报告 · %s · 生成于 %s" % (_esc(payload.get("date", "")), _esc(payload.get("generated_at", "")))
     degraded_n = sum(1 for e in events if (e.get("degraded_reason") or "").strip())
-    foot = "合格 %d 条 / 快讯 %d 条 / LLM 调用 %s 次 / 耗时 %s 秒" % (
-        len(events) - degraded_n, degraded_n,
+    _bd = int((payload.get("budget") or {}).get("borderline") or 0)
+    _ss = int((payload.get("budget") or {}).get("single_sample") or 0)
+    foot = "合格 %d 条%s / 快讯 %d 条 / LLM 调用 %s 次 / 耗时 %s 秒" % (
+        len(events) - degraded_n,
+        "（其中 %d 条压线重判%s，不计达标）" % (
+            _bd, "、%d 条只判了一遍" % _ss if _ss else "") if _bd else "", degraded_n,
         _esc((payload.get("budget") or {}).get("llm_calls", "?")),
         _esc((payload.get("budget") or {}).get("elapsed_s", "?")))
+    nav = ('<nav class="site"><a href="index.html">收藏池</a>'
+           '<a href="ai-daily.html">AI 晨报</a>'
+           '<a href="rss-aggregator.html">RSS 聚合</a>'
+           '<span class="on">深度洞察</span></nav>')
+    # 全场降级也要上线，但要在页面上说清楚：读者看到的不该是"莫名安静的旧页面"，
+    # 也不该是"看起来像正常深度报告其实一条合格都没有"。
+    banner = ""
+    if events and degraded_n == len(events):
+        banner = ('<div class="cap warn">今日无合格深度条目：%d 条均按快讯呈现，'
+                  '每条已标注具体原因。页面照常更新，不是管线静默跳过。</div>' % degraded_n)
     return ("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             "<title>深度报告 %s</title><style>%s</style></head><body>"
-            "<header><h1>%s</h1><p>%s</p></header>%s<footer>%s</footer>"
+            "<header><h1>%s</h1><p>%s</p></header>%s%s%s<footer>%s</footer>"
             "</body></html>") % (_esc(payload.get("date", "")), _PAGE_CSS, meta,
-                                 _esc(payload.get("generated_at", "")),
+                                 _esc(payload.get("generated_at", "")), nav, banner,
                                  "".join(body), foot)
 
 
@@ -1112,6 +1501,9 @@ _PAGE_CSS = ("body{font:16px/1.9 -apple-system,BlinkMacSystemFont,'Segoe UI',san
              ".warn{background:#fff7e6;border-color:#f0c36d}"
              "a{color:#1a56c4;word-break:break-all}footer{color:#5a6472;font-size:13px;padding:16px 0}"
              "p{margin:0 0 12px}"
+             "nav.site{display:flex;gap:14px;flex-wrap:wrap;padding:10px 0;"
+             "border-bottom:1px solid #e3e5ea;font-size:14px}"
+             "nav.site .on{color:#1a56c4;font-weight:600}"
              "details{margin:0 0 12px}summary{cursor:pointer;color:#1a56c4;"
              "font-size:14px;user-select:none}")
 
@@ -1161,16 +1553,33 @@ def render_event(e, made_on=""):
             for f in (e.get("forecasts") or []))
     q = e.get("quality") or {}
     warn = ('<div class="cap warn">证据不足，按快讯处理：%s</div>' % _esc(degraded)) if degraded else ""
+    # 压线抖动的合格版必须跟稳的区分开：这句话是我们自己生成的（极差是数出来的），
+    # 不引模型文本，所以没有 citations 那套清洗要绕。
+    rub = e.get("rubric") or {}
+    if e.get("judge_single_sample"):
+        brd = " · 只判成 %d/%d 遍（去噪没做成，不给记达标）" % (
+            int(rub.get("judge_samples_used") or 0), JUDGE_SAMPLES)
+    elif e.get("judge_borderline"):
+        brd = (" · 判分极差 %s（≥采纳边界 %s，这一版抖过合格线）" % (
+            _esc(rub.get("judge_spread")), _esc(ADOPT_MARGIN)))
+    else:
+        brd = ""
+    # A5：核查摘除过的条数必须让读者看得见，否则"逐条核查有牙"只存在于 JSON 里。
+    # 只报条数与核查数：`claims_dropped[].reason` 是模型写的文本，不许跟着上屏。
+    dropped = e.get("claims_dropped") or []
+    cut = (" · 已摘除 %d 条无支撑论断（共核查 %d 条）" % (
+        len(dropped), (e.get("faith_summary") or {}).get("checked", len(dropped)))) \
+        if dropped else ""
     # 空区不留标题：浏览器里实测快讯条目下面挂着"因果""证据"两个光杆标题，
     # 名字里带内容却什么都不保证 —— 那是"空壳"的页面版。
     sec_chains = ("<h3>因果</h3><ul>%s</ul>" % chains) if chains else ""
     sec_cites = ("<h3>证据</h3><ul>%s</ul>" % "".join(cites)) if cites else ""
-    return ("<article><h2>%s</h2><p class='tag'>%s · rubric %s · 优质判定 %s %s</p>%s%s"
+    return ("<article><h2>%s</h2><p class='tag'>%s · rubric %s · 优质判定 %s %s%s%s</p>%s%s"
             "%s%s%s</article>") % (
         _esc(e.get("title")), _esc(e.get("topic")),
-        _esc((e.get("rubric") or {}).get("mean", "?")),
+        _esc(rubric_display(e.get("rubric"))),
         _esc(q.get("verdict")), _esc(q.get("score")),
-        warn, folded, sec_chains, cards, sec_cites)
+        brd, cut, warn, folded, sec_chains, cards, sec_cites)
 
 
 _FORECAST_STATE = {"pending": "待验证", "hit": "已命中", "miss": "未命中", "unknown": "无法自动判定"}
@@ -1369,16 +1778,19 @@ def select_articles(event, pool, max_articles=12):
     取词也不能只用事件标题：标题是翻译过的，池里是英文原文 —— 所以并用
     标题 + 摘要 + 链接 slug（reddit/HN 的 slug 就是英文原标题）。
     """
-    picked, seen = [], set()
+    picked, seen, srcs = [], set(), set()
 
     def take(a):
         if a and a["url"] not in seen and count_chars(a["text"]) > 0:
             seen.add(a["url"])
             picked.append(a)
+            # 取一篇就记一家：`cands` 的排序键是建表时算的，只有把 srcs 变成活的，
+            # 第二遍循环才知道"这家已经来过了"（红判据里 src1 一口气占 8 个坑就是这么来的）。
+            if a.get("source"):
+                srcs.add(a["source"])
 
     for u in (event.get("links") or []):
         take(pool.get((u or "").split("#")[0]))
-    srcs = {a["source"] for a in picked if a["source"]}
     keys = set(_keywords(event.get("title") or ""))
     keys |= _keywords(event.get("summary") or "")
     keys |= _link_keys(event.get("links"))
@@ -1396,10 +1808,16 @@ def select_articles(event, pool, max_articles=12):
         # 跨源优先补：同源的其它文章补不出"独立源"这一维，只能排后面
         cands.append((a["source"] in srcs, -ov, -count_chars(a["text"]), url, a))
     cands.sort()
-    for _, _, _, _, a in cands:
-        if len(picked) >= max_articles:
-            break
-        take(a)
+    # 两遍取：先把"还没来过的家"各取一篇，再回头补同家的后续篇。
+    # 一遍取会输给关键词重合度：一家高贴题的媒体能把坑占满，池子家数塌成个位数，
+    # 而覆盖契约要的是"每 1,500 字换一篇**独立来源**"（任务 #67）。
+    for fresh_only in (True, False):
+        for _, _, _, _, a in cands:
+            if len(picked) >= max_articles:
+                break
+            if fresh_only and a["source"] in srcs:
+                continue
+            take(a)
     return picked[:max_articles]
 
 
@@ -1436,11 +1854,41 @@ def call_llm(client, prompt, pool, budget, kind="generate", wait_cap_s=900,
                 raise RateLimited(0, "wait_cap_exceeded:429")
             continue
         except Exception:
+            # 一过性上游故障（现网 run 35966811294 一波 Agnes HTTP 520 吃掉 12 条里的 3 条，
+            # 而同场另外 9 条正常跑完 ⇒ 当时其它 key 是好的）。换一把**别的**空闲 key 补试一次：
+            # 不进等待预算（那是 429 的语义），至多补一次（持续故障不该把请求翻倍）。
             pool.release(key)
-            raise
+            pool.mark_dead(key)          # 下次别又从这把开始问
+            budget.note_upstream_error()
+            alt = pool.acquire(kind, exclude=key)
+            if alt is None:
+                raise          # 没有别的空闲 key 就快速失败；计数已经记过一笔，读者在播报里看
+            try:
+                out = client.complete(prompt, key=alt, kind=kind)
+            except RateLimited as e2:
+                # 补试撞 429 是**限流**不是上游故障：冷却那把 key、记 c429、推进 waited，
+                # 再回外层换 key 重问。并到 5xx 那一档会让播报说"等过窗口"而其实一秒没等，
+                # 而那把被限流的 key 还会立刻被下一条继续踩（第五轮审查 P1-2）。
+                cooldown = pool.mark_429(alt, getattr(e2, "retry_after", 0))
+                budget.note_429(cooldown)
+                waited += cooldown
+                if waited >= wait_cap_s:
+                    raise RateLimited(0, "wait_cap_exceeded:429")
+                continue
+            except Exception:
+                pool.release(alt)
+                pool.mark_dead(alt)
+                budget.note_upstream_error()
+                raise
+            pool.release(alt)
+            budget.note_upstream_recovered()
+            if getattr(client, "last_finish_reason", "") == "length":
+                budget.note_truncated(kind)
+            budget.note_call(estimate_tokens(prompt), estimate_tokens(out or ""))
+            return out
         pool.release(key)
         if getattr(client, "last_finish_reason", "") == "length":
-            budget.note_truncated()
+            budget.note_truncated(kind)
         budget.note_call(estimate_tokens(prompt), estimate_tokens(out or ""))
         return out
 
@@ -1552,6 +2000,55 @@ def _clean_url(u):
         return ""
 
 
+def _quality_richness(x):
+    """多个 quality 变体时按"信息量"挑：why 长度 → basis 条数 → score。
+
+    score 放最后：分数是结论，不是信息量；先按它挑会偏向"敢打分"的那条。
+    """
+    try:
+        score = float(x.get("score") or 0)
+    except (TypeError, ValueError):
+        score = 0.0
+    return (count_chars(x.get("why") or ""), len(x.get("basis") or []), score)
+
+
+def repair_forecasts(cand):
+    """单格违约的预测**摘掉那一条**，不许把整篇 8,000 字论述打成 200 字快讯。
+
+    现网 run 35823028980：evt_20260923_008 正文 8,621 字、结构字段齐全，
+    只因 `horizon_days 30` 一格被判不合格，重写两轮后整条降级成 192 字 —— 
+    代价与过错不成比例，而且 validate 每条规则都 `break` 在第一格，
+    连"其余几条是好的"都读不出来。
+    摘除必须留账（`forecasts_dropped`）：静默删掉就是替模型改答案。
+    摘完仍要过 §2：至少 1 条、且每条都有可核验判据 —— 全坏照样不合格。
+    """
+    keep, dropped = [], []
+    for f in (cand.get("forecasts") or []):
+        if not isinstance(f, dict):
+            # 摘除也要留正文：字符串行归一后是 {"claim": 原文}，
+            # 只记 raw 会把模型的论断抹掉（test_normalize_candidate_preserves_string_rows 钉这条）。
+            dropped.append({"reason": "不是对象", "claim": str(f)[:80]})
+            continue
+        if f.get("horizon_days") not in HORIZONS:
+            dropped.append({"reason": "horizon_days %r 不在 %s" % (f.get("horizon_days"), HORIZONS),
+                            "claim": (f.get("claim") or "")[:60]})
+            continue
+        if not (f.get("check_metric") or "").strip():
+            dropped.append({"reason": "缺 check_metric（不可核验就是空话）",
+                            "claim": (f.get("claim") or "")[:60]})
+            continue
+        if count_chars(f.get("claim") or "") > FORECAST_CLAIM_MAX:
+            dropped.append({"reason": "claim %d 字 > %d" % (
+                count_chars(f.get("claim") or ""), FORECAST_CLAIM_MAX),
+                "claim": (f.get("claim") or "")[:60]})
+            continue
+        keep.append(f)
+    cand["forecasts"] = keep
+    if dropped:
+        cand["forecasts_dropped"] = dropped
+    return cand
+
+
 def normalize_candidate(cand, ids_map, arts_by_id=None):
     """把模型返回的形状归一成契约认识的对象形态。
 
@@ -1610,7 +2107,18 @@ def normalize_candidate(cand, ids_map, arts_by_id=None):
         f.setdefault("claim", "")
         f.setdefault("check_metric", "")
     q = cand.get("quality")
-    if isinstance(q, str) and q.strip():
+    if isinstance(q, list):
+        # 现网 run 35816287694：模型对每篇证据各写一个 quality 对象，契约要单对象，
+        # 于是两条合格候选被归一掏空成不合格。取信息最全的那条，其余留计数不许静默丢。
+        objs = [x for x in q if isinstance(x, dict)]
+        if objs:
+            cand["quality"] = max(objs, key=_quality_richness)
+            cand["quality_variants"] = len(objs)
+        else:
+            # 数组里一个对象都没有：回到"留原样"那条路，不许把形状丢了当"模型没写"。
+            cand["quality_echo"] = str(q)[:400]
+            cand["quality"] = {}
+    elif isinstance(q, str) and q.strip():
         # 整段字符串当 quality：把原文塞进 why，其余留空，让契约去判它不合格
         cand["quality"] = {"verdict": "", "score": 0, "why": q.strip(), "basis": []}
     elif not isinstance(q, dict):
@@ -1620,40 +2128,71 @@ def normalize_candidate(cand, ids_map, arts_by_id=None):
             # 产物里的 quality 却是空的，缺口正在这一步。
             cand["quality_echo"] = str(q)[:400]
         cand["quality"] = {}
+    repair_forecasts(cand)
+    repair_quality_fields(cand)
     return cand
 
 
 def rubric_of(raw):
-    """judge 的每一维都必须进均值 —— 少算一维就等于那一维白判。"""
+    """judge 分项分数归一。**"没给这一维"与"给了 0 分"必须是两件事。**
+
+    旧写法对缺失键取 0.0：judge 少回一个 `density`，均值被摊薄、单维地板又必然踩破，
+    整夜从"均值略低"变成"必判死"，而产物里只留 `density: 0.0` 一种形状 ——
+    读日志的人会以为模型写得不好，实际是判据协议没跑通（对抗审查 P0-1 复现）。
+    缺失的维度不进均值分母，另记 `missing_dims` 交给 `judge_accepts` 单独处理。
+    """
+    raw = raw or {}
     out = {}
+    scored = []
     for k in JUDGE_DIMS:
         try:
-            out[k] = max(0.0, min(1.0, float((raw or {}).get(k, 0.0))))
+            v = float(raw.get(k))
         except (TypeError, ValueError):
-            out[k] = 0.0
-    out["mean"] = round(sum(out[k] for k in JUDGE_DIMS) / float(len(JUDGE_DIMS)), 4)
+            v = None
+        if v is None:
+            out[k] = None
+        else:
+            out[k] = max(0.0, min(1.0, v))
+            scored.append(k)
+    core = [k for k in scored if k in MEAN_DIMS]
+    out["mean"] = round(sum(out[k] for k in core) / float(len(core)), 4) if core else 0.0
+    out["scored_dims"] = len(scored)
+    out["missing_dims"] = [k for k in JUDGE_DIMS if k not in scored]
     return out
 
 
 JUDGE_PASS = 0.75
 # 第五维 density 管的是"长而空"：方案一之后一条可以到 1 万字，字数上限不再兼管防水分，
-# 这一维就是主判口（机械重复率只落观测，见 repetition_rate）。
+# 这一维就是主判口。机械侧只提供输入（restate_rate 与它数出来的复述段），不当硬门；
+# 已退役的句级 repetition_rate 对现网两条真长文都读 0.0，别再往回加。
 JUDGE_DIMS = ("narrative", "causal", "forecast", "quality", "density")
+# 均值只按四维实质分算。五维平均会把有效合格线从 0.75 挪到 0.6875 ——
+# judge 只要在 density 上慷慨，四维 0.7125 的东西就放行了，方向和"反水分"相反。
+MEAN_DIMS = ("narrative", "causal", "forecast", "quality")
+# density 走单维否决：它不许被另外四维的高分抬过去（那正是"长而空"的得分路径）。
+VETO_DIMS = ("density",)
 # 地板按噪声定，不是拍的：同一条重评的极差实测 0.17，
 # 0.75 - 2*0.17 ≈ 0.41，取 0.5 保证这一闸不会在复评噪声上翻脸。
 JUDGE_FLOOR = 0.5
 
 
 def judge_accepts(score):
-    """合格 = 均值达标 且 没有任何一维塌到地板以下。
+    """合格 = 四维均值达标 + 没有任何一维塌到地板以下 + judge 把维度给全了。
 
-    只看均值时，"密度 0.2 + 另外四维 0.9"的均值是 0.76 —— 照样过线，
-    那新加的密度维度就是装饰。长文的水分只能在这种单维闸下被拦住。
+    `missing_dims` 非空时判不过**并且必须点名**：这是判据协议没跑通，
+    不是模型写得差。两者混在同一个 `degraded_reason` 里，下一轮就会去改错的地方
+    （对抗审查 P0-1 复现的正是这种误记账）。
     """
     s = score or {}
     if s.get("mean", 0.0) < JUDGE_PASS:
         return False
-    return all(s.get(k, 0.0) >= JUDGE_FLOOR for k in JUDGE_DIMS)
+    if s.get("missing_dims"):
+        return False
+    for k in VETO_DIMS:
+        v = s.get(k)
+        if isinstance(v, (int, float)) and v < JUDGE_FLOOR:
+            return False
+    return True
 # 每一维"该怎么修"必须写进重写消息：只说"均分 0.71 低于 0.75"，模型收到的是
 # "再写一遍"，两轮重写就停在同一水平（现网 evt_003 rubric=0.7125 就是这么废的）。
 JUDGE_FIX_HINT = {
@@ -1689,6 +2228,13 @@ def build_judge_prompt(cand, ctx):
     而评审还按 2,500 判 —— 两个数不一致时，被纵容的是评审那一侧。
     """
     arts = ctx.get("articles") or []
+    m = restatement_rate(cand.get("narrative") or "")
+    facts = "、".join("%s（%d 段）" % (x["fact"], x["paras"]) for x in m["recycled"][:6])
+    measured = (
+        "机械实测（不是你判断出来的，是数出来的）：复述率: %s —— %d 段里有 %d 段在"
+        "换句话复述同一批数据，共 %d 对高重叠段。被 ≥3 段反复消费的数：%s。\n"
+        "打 density 时以此为输入：把这些复述段删掉之后还剩下多少有效论述？\n\n"
+    ) % (m["rate"], m["paras"], m["restated_paras"], m["pairs"], facts or "（无）")
     dims = (
         "narrative（是否成文论述、≥%d字、≥%d段、含反证或限制条件、不是分点罗列）、" % (NARR_MIN, PARAS_MIN)
         + "causal（是否给出机制链条而非复述现象）、forecast（预测是否可核验、窗口是否合理）、"
@@ -1701,8 +2247,9 @@ def build_judge_prompt(cand, ctx):
         '只输出 JSON：{"narrative":0.0,"causal":0.0,"forecast":0.0,"quality":0.0,'
         '"density":0.0,"notes":"≤80字"}\n'
         "任一项不达标就必须给低于 %.2f 的分；不要因为它写得长就给高分 —— 长而空要在 density 上扣分。\n\n"
+        "%s"
         "===== 待评正文（全文）=====\n%s\n\n===== 证据（%d 篇，均为全文）=====\n%s\n"
-    ) % (JUDGE_PASS, (cand.get("narrative") or ""), len(arts),
+    ) % (JUDGE_PASS, measured, (cand.get("narrative") or ""), len(arts),
          "\n\n".join((a.get("text") or "") for a in arts))
 
 
@@ -1712,8 +2259,331 @@ def judge_event(client, cand, ctx, key_pool, budget, wait_cap_s=900, sleep=None)
     return rubric_of(raw)
 
 
-def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=900, sleep=None,
-               source_quality=None, staged=True):
+def rubric_display(rubric):
+    """给读者看的分：契约没过时那不是"判了 0 分"，是"根本没送判定"。
+
+    现网两次印错（`evt_20260924_002`、`evt_20260924_008` 顶层 mean=0.0，而它们自己的
+    `regen_scores` 里有真判定值）；页面和播报共用这一个口径，免得只修了半个读者。
+    """
+    r = rubric or {}
+    if r.get("judged") is False:
+        # 三种"没判"要去修三个不同的地方，所以因由必须上屏，不能糊成一句
+        label = {"evidence_gate": u"证据门挡下", "protocol": u"判据协议没跑通"}.get(
+            r.get("judge_skip") or "", u"契约没过")
+        return u"未送判定（%s）" % label
+    return r.get("mean", "?")
+
+
+def _median(vals):
+    s = sorted(vals)
+    m = len(s) // 2
+    return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2.0
+
+
+def judge_event_multi(client, cand, ctx, key_pool, budget, wait_cap_s=900, sleep=None):
+    """同一版正文判 `JUDGE_SAMPLES` 次，逐维取中位。
+
+    单遍不可用的直接证据：现网 evt_011 均值 0.7500 正好压在合格线上，
+    而同一内容复评极差实测 0.17 —— 这个"合格"重跑一次就可能翻。
+
+    两趟之间的取舍有两条，都是被现网形状逼出来的：
+    · **某趟少给一维 ≠ 协议没跑通**。给到的那一趟的值照用（不许当 0 分这条不变量不动），
+      只记 `partial_dims`。按"任一趟缺就判死"，双采样会把协议误杀从 p 抬到 1-(1-p)²
+      —— 去噪做成了加倍误杀（对抗审查 P0-2 复现）。
+    · **后面几趟撞 429 不许把整条扔出去**。正文是花掉十几次调用换来的，第二趟只是去噪用的；
+      第一趟就没 key 才照旧抛（那是饥饿信号，不能咽）。
+    """
+    scores, failed, garbage = [], 0, 0
+    for i in range(JUDGE_SAMPLES):
+        try:
+            s = judge_event(client, cand, ctx, key_pool, budget,
+                            wait_cap_s=wait_cap_s, sleep=sleep)
+        except RateLimited:
+            if not scores:
+                # 一趟都没判成：这不是"去噪少一个样本"，是没 key。抛出去记 wait_exhausted。
+                raise
+            failed += 1
+            continue
+        except Exception:
+            # 判定趟撞 5xx（Agnes HTTP 520 这类，批 3.11 补试之后仍然可能全打不通）：
+            # 那是"这一趟没判成"，不是"这条不合格"。正文是 24~40 次调用换来的（现网真值），
+            # 批 3.9 已经给 429 定过同一条规矩，错误码不该决定要不要把钱扔掉（任务 #66）。
+            # 但**一趟都没判成**时照旧抛：上游不可用是饥饿信号，咽下来会变成
+            # "判定全挂、每条都记成快讯、CI 还是绿的"那种最难发现的失败形态。
+            if not scores:
+                raise
+            failed += 1
+            continue
+        if not any(isinstance(s.get(k), (int, float)) for k in JUDGE_DIMS):
+            # 空对象/散文被 `rubric_of` 摊成 mean=0.0：那是**什么都没判**，不是"给了 0 分"。
+            # 留在样本里会让极差立刻变 0.9、条目挂上 borderline 并再烧一整趟生成，
+            # 页面上还印"判分极差 0.9" —— 拿编造的数当去噪证据（第四轮审查 P0-2 复现）。
+            garbage += 1
+            continue
+        scores.append(s)
+    if not scores:
+        # 所有趟都没判出东西：按判据协议没跑通记（缺全部维度），不 raise ——
+        # 正文是花钱写的，扔了它才是真事故。
+        # 全 garbage = 判据协议没跑通，同样是"什么都没判"，不许被印成"判了 0 分"（第五轮 P1-2）
+        return {"mean": 0.0, "judged": False, "judge_skip": "protocol",
+                "scored_dims": 0, "missing_dims": list(JUDGE_DIMS),
+                "partial_dims": [], "judge_samples": [], "judge_samples_used": 0,
+                "judge_samples_failed": failed + garbage, "judge_samples_garbage": garbage,
+                "judge_spread": 0.0, "unstable": False}
+    out = {}
+    n_real = len(scores)
+    for k in JUDGE_DIMS:
+        vals = [s[k] for s in scores if isinstance(s.get(k), (int, float))]
+        missing = n_real - len(vals)
+        out[k] = round(_median(vals), 4) if vals else None
+        if not vals:
+            # 所有会跑的都缺这一维：判据协议没跑通，不许当内容分数
+            out.setdefault("missing_dims", []).append(k)
+        elif missing:
+            # 有趟给了、有趟没给：值照用，但极差是基于部分样本算的，必须留痕
+            out.setdefault("partial_dims", []).append(k)
+    core = [out[k] for k in MEAN_DIMS if isinstance(out.get(k), (int, float))]
+    out["mean"] = round(sum(core) / float(len(core)), 4) if core else 0.0
+    out["scored_dims"] = len([k for k in JUDGE_DIMS if out.get(k) is not None])
+    out.setdefault("missing_dims", [])
+    out.setdefault("partial_dims", [])
+    out["judge_samples_used"] = n_real
+    out["judge_samples_failed"] = failed + garbage
+    out["judge_samples_garbage"] = garbage
+    means = [s.get("mean", 0.0) for s in scores]
+    out["judge_samples"] = [round(m, 4) for m in means]
+    # 只有一趟作数时极差没有意义：一个数算不出方差，硬算出来的 0 会被读成"很稳"。
+    out["judge_spread"] = round(max(means) - min(means), 4) if len(means) > 1 else 0.0
+    out["unstable"] = bool(len(means) > 1 and out["judge_spread"] > ADOPT_MARGIN)
+    return out
+
+
+def beat_by_margin(new, old):
+    """新版比旧版**好出噪声带**才算好。
+
+    现网两场都在说明单遍判分不能信：evt_011 均值正好 0.7500 压线，evt_015 0.65、
+    evt_003 0.55 都在"差一点点"的带里，而同一内容复评极差实测 0.17。
+    所以重写不只要"过了"，还要"比上一版好得出来"，否则就是在重掷骰子。
+    否决维（density）回退单独判一次：均值涨、密度塌正是"长而空被综合分抬过去"的路径
+    （白天在 faith 上有同族事故：0.90→0.66 被综合分掩盖）。
+    """
+    new, old = new or {}, old or {}
+    nm, om = new.get("mean", 0.0), old.get("mean", 0.0)
+    if nm <= om + ADOPT_MARGIN:
+        return False
+    for k in VETO_DIMS:
+        a, b = new.get(k), old.get(k)
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)) and a < b - ADOPT_MARGIN:
+            return False
+    return True
+
+
+# 带下沿归一到 4 位小数：`0.75 - 2*0.09` 的真值是 0.5700000000000001，
+# 拿它当界会把"均值恰好 0.57"这一档挡在外面（第四轮审查 P1-1 复现）。
+HOPE_BAND = round(JUDGE_PASS - HOPEFUL_BANDS * ADOPT_MARGIN, 4)
+
+
+def single_dimension_gap(score):
+    """恰好一维低于合格线、其余都过线 ⇒ 重写有明确方向（`JUDGE_FIX_HINT` 就点名那一维）。
+
+    上一轮我按"坏维=0.30 时均值还剩 0.6375"判定这条豁免不可达，就把它删了；
+    第四轮审查给的形状是**坏维=0.0**：均值 0.5625 落在带外，于是真会误收手。
+    我那句"结构性不可达"是穷举做半截（只试了 0.30）下的结论 —— 形状按原样回来，
+    判据这次逐档试 0.30 / 0.10 / 0.0，外加"两维塌才算没方向"。
+    """
+    s = score or {}
+    bad = [k for k in JUDGE_DIMS
+           if isinstance(s.get(k), (int, float)) and s.get(k) < JUDGE_PASS]
+    return len(bad) == 1
+
+
+def near_pass_line(score):
+    """判定均值离合格线不到 `HOPEFUL_BANDS` 个噪声带 —— 这一档继续重写才真有机会翻盘。
+
+    带宽取两个噪声带（0.57 起豁免）而不是一个：批 2 验证场 run 35940113012 两条降级
+    终判 0.6375，按一个带（0.66）会被掐在第二轮，而"差一点点"恰恰是最该再给一次的机会。
+    每趟均值都记进 `regen_scores`，六场之后用真轨迹决定这条线要不要挪 —— 现在 n=3，
+    只有"0.40 那种救不回来"是有依据的。
+    """
+    return (score or {}).get("mean", 0.0) >= HOPE_BAND
+
+
+def no_progress(score, fails, prev_score, prev_fails):
+    """连续两趟的"失败信号"一模一样 ⇒ 重写没带来新信息，该收手。
+
+    覆盖面要说清楚，别拿规则救不了的那一档当战绩（对抗审查 P0-4 复现）：
+    违约串里带字数，所以"正文 1,748 → 2,307 → 1,902 字"那种**长度漂移**
+    走的是"清单变了"这一支，本规则**不收手** —— 它可能正在收敛。
+    现在真正收手的是两种：违约串逐字重复（含判据协议漏维），以及 mean<0.57 且没涨出噪声带。
+    长度漂移那档要先看 `regen_scores` 的真轨迹再定改法（批 4）。
+
+    只比均值也不够：契约没过时 `score` 恒为 `{"mean": 0.0}`，0.0 对 0.0 是
+    "压根没测到分"，不是"抖不动" —— 那种情况按违约清单变没变来判。
+    两趟都判过分时给两条豁免：均值离合格线不到 HOPEFUL_BANDS 个噪声带（`HOPE_BAND`=0.57），
+    或者只剩一维低于合格线（`single_dimension_gap`）—— 这两种都还有明确可改的方向。
+    反过来"多维一起塌、均值又在带外"才是该收手的那一档。
+    """
+    fails = list(fails or [])
+    if fails != list(prev_fails or []):
+        return False
+    if fails:
+        return True
+    if near_pass_line(score) or near_pass_line(prev_score):
+        return False
+    if single_dimension_gap(score) or single_dimension_gap(prev_score):
+        return False
+    return not beat_by_margin(score, prev_score)
+
+
+def _dropped_digest(cand):
+    """被摘论断的内容指纹：让"同一批违约"按内容比，而不是按条数撞车。
+
+    只进 `contract_fails` 与重写反馈；`degraded_reason`（要上屏的那格）只报条数。
+    """
+    parts = sorted(hashlib.sha1((d.get("claim") or "").encode("utf-8")).hexdigest()[:6]
+                   for d in (cand.get("claims_dropped") or []))
+    return ",".join(parts[:3]) or "无"
+
+
+def _degrade_reason(max_regen, last_attempt, stalled, cand):
+    """降级理由必须对得上实际发生的事 —— 四笔账不能混成一句"重写 2 次仍不合格"。
+
+    现网 09-24 那份产物里三条都写"重写 2 次仍不合格"，其中一条其实只因为
+    `quality.why 170 字` 这一格形状违约；提前收手的、形状违约的、判据协议没跑通的、
+    判分不够的长得一模一样，等于把归因又推回给人猜。
+    这里**只给条数与维度名，不拼违约原文**：这一格要渲染上屏，而违约原文里可能带着
+    模型自报的假链接（审查变异体 G17 复现过）。原文留在 contract_fails 里。
+    """
+    fs = cand.get("faith_summary") or {}
+    if cand.get("faith_coverage_broken"):
+        # 复判挡下的那一版：理由要说清是"摘完没人撑了"，不是"生成写得短"。
+        # 要求那一份必须与判据同式（`need_cov = min(required_sources(n), max(supply,1))`）：
+        # 报一个池子给不出的数，就是 §10.34 拆掉的那类"满足不了的下限"换了个出口。
+        cited = {c.get("id") for c in (cand.get("citations") or [])}
+        used = set()
+        for cl in (cand.get("claims") or []):
+            used |= set(cl.get("evidence") or [])
+        n = count_chars(cand.get("narrative") or "")
+        supply = (cand.get("context_stats") or {}).get("articles") or 0
+        return "逐条核查摘掉 %d 条后，正文只剩 %d 篇证据支撑（要 >=%d 篇）：被摘的论断补不回来就撑不起这篇" % (
+            fs.get("dropped", 0), len(used & cited),
+            min(required_sources(n), max(supply, 1)))
+    if cand.get("faith_degraded"):
+        return "逐条核查摘除无支撑论断后只剩 %d 条（<%d）：撑不起一条洞察" % (
+            fs.get("kept", 0), CLAIM_MIN)
+    if stalled:
+        s = stalled[-1]
+        n = s.get("fails_total") or len(s.get("fails") or [])
+        kind = s.get("kind")
+        if kind == "judge_proto":
+            return "重写 %d 轮后判据协议仍未跑通（缺维见 contract_fails），停止重掷" % last_attempt
+        if kind == "faith":
+            return "重写 %d 轮后逐条核查仍查无支撑（见 contract_fails），停止重掷" % last_attempt
+        if kind == "faith_coverage":
+            return "重写 %d 轮后仍是核查一摘就跌破覆盖判据（见 post_faith_contract_fails），停止重掷" % last_attempt
+        if kind == "contract":
+            return "重写 %d 轮后同一批违约未修掉（%d 条，见 contract_fails），停止重掷" % (
+                last_attempt, n)
+        return "重写 %d 轮后无改善（判定均值 %s→%s，没好出噪声带 %s），按预算收手" % (
+            last_attempt, s.get("prev_mean"), s.get("mean"), ADOPT_MARGIN)
+    return "重写 %d 次仍不合格" % max_regen
+
+
+def build_faith_prompt(event, ctx, claim):
+    """逐条核查的 prompt：只给**这条 claim 自己引用的那几篇全文**。
+
+    白天在 `_verify_faithfulness` 上留过一条同族教训：核查域与判定域不一致时，
+    会出现"judge 看得见、核查编辑看不见"，结果是把真实报道判成无支撑删掉。
+    所以这里既不许截断（截断会把支撑句切没了 → 假阳性误删），
+    也不许把没引的源塞进来（放大核查域 → 什么都能"找到支撑"）。
+    """
+    ids = ctx.get("ids") or {}
+    by_cid = dict(ids)          # 形状同 build_section_prompt：{"c1": url}，别再写反
+    blocks = []
+    for cid in (claim.get("evidence") or []):
+        u = by_cid.get(cid)
+        a = next((x for x in (ctx.get("articles") or []) if x.get("url") == u), None)
+        if a is not None:
+            blocks.append(_evidence_block(a, cid))
+    return (
+        "你是事实核查员。下面是一条洞察里的**单条论断**，以及这条论断自己引用的证据全文。\n"
+        "只判断一件事：这句话里的每个实体与数字，能否在下面这些证据里找到对应原文。\n"
+        "事件：%s（主题 %s）\n"
+        "论断：%s\n\n"
+        "判定口径：\n"
+        "- supported：证据里有这句话依赖的事实与数字；\n"
+        "- inflated：事情在证据里，但**数字对不上**（证据写 42%%，论断写 41%% 之类）；\n"
+        "- unsupported：证据里根本没有这件事 —— 包括那种『看起来很像行内常识』的市场份额数。\n"
+        "必须给**原文原句**（quote，从下面证据里逐字摘，不许改写、不许凭记忆），"
+        "unsupported 时 quote 留空。\n"
+        '只输出 JSON：{"verdict":"supported|inflated|unsupported","reason":"≤60字","quote":"原文原句"}\n'
+        "\n===== 本条论断的证据（全文，未截断）=====\n%s\n"
+    ) % ((event or {}).get("title", ""), (event or {}).get("topic", ""),
+         claim.get("text") or "", "\n\n".join(blocks) or "（这条论断没有可核对的证据编号）")
+
+
+def apply_faith(cand, verdicts):
+    """按 claim 顺序应用核查结论。返回留下的 claims。
+
+    摘除而不是废整条：§10.16 定过"一格违约只摘那一条"，代价要与过错成比例。
+    读不懂的结论一律保留并记 unknown —— 静默当 supported 等于伪造"核查过了"，
+    静默当 unsupported 会误删真话。
+    """
+    claims = list(cand.get("claims") or [])
+    dropped, keep = [], []
+    counts = {"supported": 0, "inflated": 0, "unsupported": 0, "unknown": 0}
+    for i, cl in enumerate(claims):
+        v = verdicts[i] if i < len(verdicts) else None
+        verdict = (v or {}).get("verdict") if isinstance(v, dict) else None
+        if verdict in ("supported", "inflated", "unsupported"):
+            counts[verdict] += 1
+        else:
+            verdict = None
+            counts["unknown"] += 1
+        if verdict in ("inflated", "unsupported"):
+            dropped.append({"claim": (cl.get("text") or "")[:200], "verdict": verdict,
+                            "reason": ((v or {}).get("reason") or "")[:120]})
+            continue
+        keep.append(cl)
+    cand["claims"] = keep
+    if dropped:
+        prev = cand.get("claims_dropped") or []
+        cand["claims_dropped"] = prev + dropped
+    cand["faith_summary"] = {
+        "checked": len(claims), "kept": len(keep), "dropped": len(dropped),
+        "below_minimum": len(keep) < CLAIM_MIN,
+        "unsupported": counts["unsupported"], "inflated": counts["inflated"],
+        "unknown": counts["unknown"]}
+    return keep
+
+
+def verify_claims(event, cand, ctx, client, key_pool, budget, wait_cap_s=900, sleep=None):
+    """逐条核查：每条 claim 一次调用，成本上限就是 claims 数（3–10）。"""
+    verdicts = []
+    for cl in (cand.get("claims") or []):
+        raw = call_llm(client, build_faith_prompt(event, ctx, cl), key_pool, budget, "faith",
+                       wait_cap_s=wait_cap_s, sleep=sleep)
+        verdicts.append(parse_model_json(raw))
+    return apply_faith(cand, verdicts)
+
+
+def faith_broke_contract(cand, valid_ids=None, valid_basis=None):
+    """核查摘过 claims ⇒ 判据必须在**最终形态**上重跑一遍，返回新违约列表。
+
+    `validate_event` 跑在 `verify_claims` 之前，而覆盖那一判据数的是
+    "claims 实际压住几篇不同证据"（`used_cov`）—— 摘掉一条挂着独有证据的 claim 就直接
+    把它摘小。现网八场去重后 6 条合格里 **5 条**出厂时已经不满足自己那条判据
+    （`_scratch/replay_read.txt`，含第 35 场 mean=0.8125 那条：9,142 字要 7 篇、只剩 6 篇）。
+    没摘过就别重跑：同一张判据问两遍会把停滞规则的"同批违约"比较带偏。
+    """
+    if not (cand.get("faith_summary") or {}).get("dropped"):
+        return []
+    ok, fails = validate_event(cand, valid_ids=valid_ids, valid_basis=valid_basis)
+    return [] if ok else list(fails)
+
+
+def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_cap_s=900, sleep=None,
+               source_quality=None, staged=True, call_cap=CALL_CAP):
     """一个事件：装证据 → 过证据门 → 生成 → 契约判定 + judge 独立打分 → 不过就重写。
 
     `staged=True` 走两段式（提纲 → 逐段成文）。现网单趟的长度方差压不住
@@ -1730,6 +2600,7 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
     rec = dict(event)
     rec["context_stats"] = {"articles": len(ctx["articles"]), "dropped": len(ctx["dropped"]),
                             "total_tokens": ctx["total_tokens"], "total_chars": ctx["total_chars"],
+                            "sources": ctx.get("sources", 0),
                             # spec §3 要"丢整篇并记理由"。只留 url 列表的话，事后读产物的人
                             # 分不开"素材本来就这么点"与"预算把证据挤掉了"这两种完全不同的结论。
                             "dropped_articles": [
@@ -1737,17 +2608,28 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
                                  "reason": d.get("reason", "")} for d in ctx["dropped"]],
                             "dropped_urls": [d["url"] for d in ctx["dropped"]]}
     if not gate_ok:
-        rec.update({"narrative": (event.get("summary") or "")[:DEGRADED_NARR_MAX],
+        short = (event.get("summary") or "")[:DEGRADED_NARR_MAX]
+        rec.update({"narrative": short,
+                    # 证据门降级也要留这些观测格：注释说"每场都在产物里"，
+                    # 早退路径不写就是假话（对抗审查 P2 复现：门降级条目根本没有复述观测字段）。
+                    "narrative_chars_full": count_chars(event.get("summary") or ""),
                     "degraded_reason": gate_why, "claims": [], "causal_chains": [],
                     "forecasts": [], "citations": [],
                     "quality": {"verdict": "转载", "score": 0, "why": "证据不足未做优质判定",
                                 "basis": ["evidence_gate"]},
-                    "rubric": {"mean": 0.0}})
-        return rec
+                    "rubric": {"mean": 0.0, "judged": False,
+                                                 "judge_skip": "evidence_gate"}})
+        return annotate_observability(rec)
     prompt = (build_prompt(event, ctx) + signals_note(ctx))
     cand, last_fails, score = {}, [], {"mean": 0.0}
     parse_echo, staged_note, extra = None, None, ""
+    # traj = 每趟的判定轨迹（attempt / 中位均值 / 两趟原始样本）。只留最后一版的分，
+    # "该不该再重写一次"就永远没有依据 —— 停滞阈值的下一次改档要靠它。
+    best, stalled, prev_score, prev_fails = None, [], None, None
+    traj = []
+    last_attempt = 0
     for attempt in range(max_regen + 1):
+        last_attempt = attempt
         raw = ""
         if staged:
             doc, note = staged_generate(event, ctx, client, key_pool, budget,
@@ -1780,33 +2662,146 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
                                    {"c%d" % (i + 1): art for i, art in enumerate(ctx["articles"])})
         # 缺哪些结构字段，必须在归一**之后**数：形状不对的会被掏空，归一之前数只会报"什么都不缺"。
         cand["struct_missing"] = [k for k in STRUCT_FIELDS if not cand.get(k)]
-        # 水分先量一遍再判：这一格只观测不门（理由见 repetition_rate），
+        # 水分先量一遍再判：这一格是观测 + judge 的输入，不当硬门（理由见 restatement_from_sets）；
         # 但必须每场都在产物里，否则"什么时候可以升成门"永远没有依据。
-        cand["repeat_rate"] = repetition_rate(cand.get("narrative") or "")
+        annotate_observability(cand)
         ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids)
         last_fails = fails
+        fail_kind = "contract"
         if ok:
-            score = judge_event(client, cand, ctx, key_pool, budget,
-                                wait_cap_s=wait_cap_s, sleep=sleep)
+            score = judge_event_multi(client, cand, ctx, key_pool, budget,
+                                      wait_cap_s=wait_cap_s, sleep=sleep)
+            traj.append({"attempt": attempt, "mean": score.get("mean", 0.0),
+                         "samples": score.get("judge_samples") or []})
+            # judge 少给维度是**判据协议没跑通**，不是模型写得差：单独记一笔进产物，
+            # 但不许顶掉"哪一维薄弱"的重写反馈（那是这条判据存在的意义）。
+            proto = (["judge 未给维度 %s：判据不可用，不许当合格" % "/".join(score["missing_dims"])]
+                     if score.get("missing_dims") else [])
+            last_fails = fails + proto
+            if fails:
+                fail_kind = "contract"
+            elif proto:
+                fail_kind = "judge_proto"
             if judge_accepts(score):
-                cand["rubric"] = score
-                cand["contract_fails"] = []
-                cand["regen_used"] = attempt
-                cand["context_stats"] = rec["context_stats"]
-                if staged_note:
-                    cand["staged"] = staged_note
-                return cand
+                # 核查紧跟判定：合格版如果论断查无支撑，那它根本不配当"最终入选的那一版"。
+                # 摘到不足 CLAIM_MIN 就当一次拒绝，把"按证据重写"写进反馈 ——
+                # 上一批这里是"先采纳再降级"，白扔了手里剩下的重写预算（审查 P1-5）。
+                verify_claims(event, cand, ctx, client, key_pool, budget,
+                              wait_cap_s=wait_cap_s, sleep=sleep)
+                fs = cand.get("faith_summary") or {}
+                # 核查会摘 claims，摘完"正文压在几篇证据上"就变了：判据必须在这一版的
+                # **最终形态**上再跑一遍，否则出厂那一版从来没被检查过（任务 #69，现网 5/6）。
+                broke = faith_broke_contract(cand, valid_ids=ids, valid_basis=basis_ids)
+                if broke:
+                    cand["post_faith_contract_fails"] = broke
+                if fs.get("below_minimum") and attempt < max_regen:
+                    traj[-1]["rejected"] = "faith"
+                    fail_kind = "faith"
+                    # 串里必须带上**被摘的是哪些**：只报条数的话，两版毫无重叠的论断
+                    # 会因为"都剩 0 条"被判成同一批违约而提前收手（P1-3 实测只跑 2 趟）。
+                    last_fails = ["逐条核查后只剩 %d 条（<%d）：论断查无支撑，按证据重写（本版被摘 %s）" % (
+                        fs.get("kept", 0), CLAIM_MIN, _dropped_digest(cand))]
+                    # `score` 不清零：均值与分项是重写反馈的输入，
+                    # 把判定过的版本记成 {"mean": 0.0} 会让下一轮只收到"原样再写一遍"。
+                elif broke and attempt < max_regen:
+                    traj[-1]["rejected"] = "faith_coverage"
+                    fail_kind = "faith_coverage"
+                    last_fails = ["逐条核查摘掉 %d 条后判据不过（要补的是被摘掉的论断所缺的证据，"
+                                  "不是重写一遍）：%s" % (fs.get("dropped", 0), "；".join(broke))]
+                else:
+                    cand["rubric"] = score
+                    best = (cand, score, attempt)
+                    if fs.get("below_minimum"):
+                        # 重写到头还是摘不够：照 §10.16 只降级不静默
+                        cand["faith_degraded"] = True
+                        break
+                    if broke:
+                        # 摘破了覆盖又没有重写预算：同一套规矩，降级而不是当合格出厂。
+                        # 违约原文要并进 `contract_fails`（页面与探针都读那一格），
+                        # 只放 `post_faith_contract_fails` 的话这条账在现网读数里是隐身的。
+                        cand["faith_coverage_broken"] = True
+                        last_fails = list(broke)
+                        break
+                    if not score.get("unstable"):
+                        break                   # 稳的合格版：收工
+                    # 压线抖动版：先兜住当 fallback，再花一轮重判 —— 本批新增的 unstable
+                    # 若没有这里做消费方，就又是一个"只写不读"的字段（审查 P0-1）。
+                    if attempt >= max_regen:
+                        break
         else:
-            score = {"mean": 0.0}
+            # 契约没过 ⇒ 判定根本没跑。`mean` 这个键要留着给 no_progress() 做可比值，
+            # 但 `judged=False` 是给读者的：0.0 与"没判"必须是两种形状（任务 #61）。
+            score = {"mean": 0.0, "judged": False, "judge_skip": "contract"}
+        # 重写只在"下一轮还带得来新信息"时继续；提前收手才叫省钱，
+        # 跑满 max_regen 那趟之后再记"按预算收手"是一笔没发生的账（审查 P1-8）。
+        if attempt > 0 and attempt < max_regen and prev_score is not None and \
+                no_progress(score, last_fails, prev_score, prev_fails):
+            # kind 分档：契约违约没修掉、判据协议没跑通、核查摘空、判定抖不动 ——
+            # 这四种"停"要去修四个不同的地方，混成一句就等于把归因推回给人猜。
+            stalled.append({"attempt": attempt, "kind": fail_kind if last_fails else "judge",
+                            "fails": [f[:80] for f in (last_fails or [])[:2]],
+                            "fails_total": len(last_fails or []),
+                            "mean": score.get("mean", 0.0),
+                            "prev_mean": prev_score.get("mean", 0.0)})
+            break
+        prev_score, prev_fails = score, list(last_fails)
+        # 每趟之前问一次预算：原来整条只在开头问一遍，一条最坏连着跑 3 趟，
+        # 实测把 CALL_CAP 顶穿 72 次而产物里没人说超了（第四轮审查 P0-1）。
+        if attempt < max_regen and budget.llm_calls + PER_ATTEMPT_CALLS > call_cap:
+            cand["regen_cut_by_budget"] = True
+            cand["regen_cut_reason"] = "budget:剩余 %d/%d" % (
+                max(0, call_cap - budget.llm_calls), call_cap)
+            break
         if attempt < max_regen:
-            # 结构不合格时点名契约条目；结构过了但 judge 不合格时点名**分项维度**。
-            # 两条路都走同一个"必须逐条修掉"的口子，否则 §2 的"按薄弱维度重生成"
-            # 只剩均值一句话，重写两轮等于什么都没改。
-            # 两段式时这段反馈必须跟着进提纲那趟调用 —— 不加的话重写就是原样再跑一遍。
-            extra = "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(
-                fails or judge_weak_spots(score))
+            # 契约条目与薄弱维度**都要**带上：上一版这里写成 `A or B`，于是协议缺维时
+            # 分项建议被挤掉，重写又变成"原样再写一遍"（本仓为这个踩过两轮）。
+            # `proto` 已经进了 last_fails，这里去重而不是再拼一遍。
+            reasons = list(last_fails)
+            reasons += [w for w in judge_weak_spots(score) if w not in reasons]
+            extra = "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(reasons)
             prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
-    cand["degraded_reason"] = "重写 %d 次仍不合格" % max_regen
+    if best:
+        cand, score, adopted_attempt = best
+        # 核查已经在"这一版被判合格"的当趟跑过了（见上面的 acceptance 分支）：
+        # 放到循环之后再跑一遍，就等于把摘空的信号晚了一整轮预算才说。
+        if staged_note:
+            cand["staged"] = staged_note
+        cand["rubric"] = score
+        cand["contract_fails"] = []
+        cand["regen_used"] = adopted_attempt
+        # 采纳的是第几趟 ≠ 一共跑了几趟：抖动兜底版确立后还会再跑（第四轮审查 P1-5
+        # 实测"跑 4 趟、账上只写 1"）。没有这一格，多烧的预算在产物里查不到。
+        cand["regen_attempts"] = last_attempt + 1
+        cand["regen_scores"] = traj
+        cand["context_stats"] = rec["context_stats"]
+        if score.get("unstable"):
+            # 抖到线上也要发（§10.16：停更比快讯更糟），但它不是"这条判据救回来的功"：
+            # 页面与播报都得能把它跟稳的合格版分开看。
+            cand["judge_borderline"] = True
+        elif int(score.get("judge_samples_used") or 0) < JUDGE_SAMPLES:
+            # 规则缺口（不是现网实锤）：只判成一遍时极差算不出来 ⇒ unstable 恒 False，
+            # 单遍读数必然从压线规则的缝里绕过被记成 stable。现网两场里合格条目都判满了两遍，
+            # 所以这一档至今对 qualified_stable 的实际影响是 0（台账 §10.20 第 3 条）；
+            # 那条 used=None 的条目是**降级**条目且 rubric 整块缺失，属另一形状（任务 #61）。
+            cand["judge_borderline"] = True
+            cand["judge_single_sample"] = True
+        # 采纳路径上**不**记 regen_stalled：合格那趟之后 prev_score 必在线上（近线豁免），
+        # 而 last_fails 是空表，两趟同违约那条也走不到 ⇒ 停滞在采纳之后不可达（第四轮审查
+        # P1-5 的账其实是"跑了没记"，由下面的 regen_attempts 兜住，不是"停滞被扔掉"）。
+        if not (cand.get("faith_degraded") or cand.get("faith_coverage_broken")):
+            return cand
+    # 停滞要落到产物里：只打在日志上的话，下一跑没人能核对这条规则真动过手。
+    # 合格路径上面已经记过一次，这里是给降级路径（没有 best，或 faith 摘空/摘破覆盖）兜底。
+    if stalled:
+        cand["regen_stalled"] = stalled
+    if traj:
+        cand["regen_scores"] = traj
+    if not best or cand.get("faith_degraded") or cand.get("faith_coverage_broken"):
+        if not cand.get("degraded_reason"):
+            cand["degraded_reason"] = _degrade_reason(max_regen, last_attempt, stalled, cand)
+    if not best:
+        # 真重写了几轮就记几轮：原来这里恒写 max_regen，提前收手时是一笔假账。
+        cand["regen_used"] = last_attempt
     if parse_echo:
         cand["parse_echo"] = parse_echo
     if staged_note:
@@ -1814,7 +2809,6 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=2, wait_cap_s=90
     clip_for_degrade(cand)
     cand["rubric"] = score
     cand["contract_fails"] = last_fails
-    cand["regen_used"] = max_regen
     cand["context_stats"] = rec["context_stats"]
     return cand
 
@@ -1850,10 +2844,18 @@ def build_anchor_diff(anchor_events, records, scheduled=None):
                          "evidence_before": before, "evidence_after": after})
         else:
             diff.append({"op": "keep", "id": eid,
-                         "reason": "过证据门与四条判据（judge 均分 %s）" % (
-                             (r.get("rubric") or {}).get("mean")),
+                         "reason": "过证据门与五维判据（judge 均分 %s）" % (
+                             rubric_display(r.get("rubric"))),
                          "evidence_before": before, "evidence_after": after})
     return diff
+
+
+def _calls_per_item(good):
+    # §7 定档看的是分布，不是"整场总除条数"：71 次/3 条什么都定不了。
+    used = [int(e.get("llm_calls_used") or 0) for e in good or []]
+    used = [u for u in used if u > 0]
+    return {"items": len(used), "max": max(used) if used else 0,
+            "mean": round(sum(used) / float(len(used)), 1) if used else 0}
 
 
 def build_payload(events, anchor_meta, budget, date_str, key_count=0, workers=1,
@@ -1863,6 +2865,16 @@ def build_payload(events, anchor_meta, budget, date_str, key_count=0, workers=1,
              source_sha=anchor_meta.get("source_sha", ""),
              anchor_date=anchor_meta.get("date", ""),
              degraded=len(events) - len(good), qualified=len(good),
+             # A6：压线重判的合格版不算"这条判据救回来的功"，达标数是 qualified_stable。
+             qualified_stable=len([e for e in good if not e.get("judge_borderline")]),
+             calls_per_qualified=_calls_per_item(good),
+             # 合格里"抖过线才过的那部分"与提前收手的那部分：跨夜比的是这两列，
+             # 只报 qualified 的话，停滞省下的调用会被读成"这轮没干活"。
+             borderline=len([e for e in good if e.get("judge_borderline")]),
+             # 压线里有两种因：抖过线、以及只判成一遍。没有这一列，跨夜只看到"压线 N 条"，
+             # 不知道有几条根本没去噪（去噪本身没做成是另一码事，不是模型抖）。
+             single_sample=len([e for e in good if e.get("judge_single_sample")]),
+             stalled=len([e for e in events if e.get("regen_stalled")]),
              key_count=int(key_count), workers=int(workers))
     return {"date": date_str, "generated_at": now_bj_iso(), "engine": SCHEMA_VERSION,
             "budget": b,
@@ -1996,8 +3008,13 @@ class FakeClient:
 class GithubDataApi:
     """真 Data API 通道：head/blob/tree/commit/ref。夜场只写自己的路径。"""
 
-    def __init__(self, repo="Kwei168/starhub", token=None):
+    def __init__(self, repo="Kwei168/starhub", token=None, ref=None):
         self.repo = repo
+        # ref 没有默认值：漏传时"打到主干"必须报错，而不是悄悄发生。
+        # 2026-09-23 的形态就是这里写死 main —— 我说"验证走分支"，三场却全打在主干上。
+        if not (ref or "").strip():
+            raise ValueError("GithubDataApi 必须显式给 ref（主干请传 MAIN_REF）")
+        self.ref = ref.strip()
         self.token = token or os.environ.get("GITHUB_TOKEN", "")
         if not self.token:
             raise RuntimeError("缺 GITHUB_TOKEN，无法提交夜场产物")
@@ -2015,7 +3032,7 @@ class GithubDataApi:
         return json.loads(raw) if raw else {}
 
     def head_info(self):
-        ref = self._req("GET", "/repos/%s/git/ref/heads/main" % self.repo)
+        ref = self._req("GET", "/repos/%s/git/ref/heads/%s" % (self.repo, self.ref))
         sha = ref["object"]["sha"]
         tree = self._req("GET", "/repos/%s/git/commits/%s" % (self.repo, sha))["tree"]["sha"]
         return sha, tree
@@ -2038,7 +3055,7 @@ class GithubDataApi:
 
     def update_ref(self, sha, force=False):
         try:
-            self._req("PATCH", "/repos/%s/git/refs/heads/main" % self.repo,
+            self._req("PATCH", "/repos/%s/git/refs/heads/%s" % (self.repo, self.ref),
                       {"sha": sha, "force": bool(force)})
             return True
         except urllib.error.HTTPError as e:
@@ -2047,14 +3064,14 @@ class GithubDataApi:
             raise
 
     def is_ancestor(self, sha):
-        """只认 ahead/identical —— 我方 sha 真在 main 历史里。
+        """只认 ahead/identical —— 我方 sha 真在这条 ref 的历史里。
 
         `diverged`/`behind` 恰恰是"提交已被白天的 auto-commit 甩出主线"的形态
-        （compare/<sha>...main 在主线另起一线时返回 diverged）。以前把四个状态全收，
+        （compare/<sha>...<ref> 在主线另起一线时返回 diverged）。以前把四个状态全收，
         等于 spec §4 那条"前科终检"恒真：被吞掉也会报告 published、退出码 0。
         """
         try:
-            doc = self._req("GET", "/repos/%s/compare/%s...main" % (self.repo, sha))
+            doc = self._req("GET", "/repos/%s/compare/%s...%s" % (self.repo, sha, self.ref))
         except urllib.error.HTTPError as e:
             if e.code in (404, 409, 410):
                 return False
@@ -2064,11 +3081,14 @@ class GithubDataApi:
 
 # ───────────────────────────── 编排与入口 ──────────────────────────────────
 
-def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAULT_BUDGET_TOKENS,
+def night_run(purpose="test", events_limit=EVENTS_DEFAULT, client=None,
+              budget_tokens=DEFAULT_BUDGET_TOKENS,
               call_cap=CALL_CAP, keys=None, get=http_get, anchor_raw=None, pool=None, out_dir="_night_state",
               date_str=None, log=None, sleep=None, wait_cap_s=900, urls=None,
-              api_factory=None, max_regen=2, workers=1, pred_raw=None, staged=True,
+              api_factory=None, max_regen=MAX_REGEN, workers=1, pred_raw=None, staged=True,
+              max_tokens=None,
               pred_url=PREDICTIONS_URL, verdicts=None, quality_raw=None,
+              ref=MAIN_REF,
               quality_url=SOURCE_QUALITY_URL):
     """跑一整夜。purpose=test 只落盘不提交；publish 才走 CAS 提交。"""
     log = log or (lambda s: None)
@@ -2114,7 +3134,14 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
         # 跑完整场，产出的东西与真洞察长得一样，还能走完判定与渲染。发布路径另有硬闸，
         # 但"test 模式下没人看得出产物是假的"同样不可接受，所以默认必须是真客户端。
         # （无 key 的拒绝已经提到函数开头，在出网之前就抛了。）
-        client = AgnesClient()
+        client = AgnesClient(**({"max_tokens": max_tokens} if max_tokens else {}))
+    # 告警要坐在构造之外：显式传 client 的调用方（含 CI 与本地复跑）同样会撞这个上限。
+    cap = getattr(client, "max_tokens", 0)
+    if not staged and cap and cap < SINGLE_PASS_OUT_TOKENS:
+        # 单趟一次吐完整条：上限不够就是必然截断。宁可开场喊话，
+        # 也不要半夜产出一堆"看起来是模型写不长"的 0 字条目。
+        log("::warning title=单趟输出上限不够|max_tokens=%d < 单趟最坏输出约 %d token，"
+            "正文必然被截；要么 --max-tokens 提上去，要么别用 --single-pass" % (cap, SINGLE_PASS_OUT_TOKENS))
     ck = os.path.join(out_dir, "deep-%s.jsonl" % date_str)
     prev_recs = load_records(ck)
     done = {r.get("id") for r in prev_recs if r.get("id")}
@@ -2122,7 +3149,22 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     stopped_by_cap = False
     stop_reason = ""
     failed = []
+    # 每条实际花掉的调用按**锚点 id** 结算（成功 / 429 / 异常三条路径都结一次）：
+    # 不结算的话死掉那条的钱整个从产物里消失，“各条之和 == 总数”对不上。
+    spent_by_id = {}
     recs_lock = threading.Lock()
+
+    def _settle_owner(ev_id):
+        """交回归属、按锚点 id 记下这条实际花掉的次数，并返回次数。
+
+        键必须是锚点里的 id，不能是 `r["id"]`：模型回来的 id 覆盖过锚点 id 时
+        （`cand.setdefault("id", ...)`）那条记录既进不了 `ship` 也进不了 `recs`，
+        钱就彻底查不到（第五轮审查 P1-3）。
+        """
+        spent = int(budget.close_owner(ev_id) or 0)
+        with recs_lock:
+            spent_by_id[ev_id] = spent
+        return spent
 
     def _emit(r, ev_id):
         """做完一条立刻落 checkpoint 并播报。
@@ -2138,7 +3180,7 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
         log("[夜场] %s %s narrative=%d 字 rubric=%s%s%s" % (
             ev_id, "降级" if why else "合格",
             count_chars(r.get("narrative") or ""),
-            (r.get("rubric") or {}).get("mean"),
+            rubric_display(r.get("rubric")),
             " 原因=%s" % why if why else "",
             " 判据=%s" % fails if fails else ""))
 
@@ -2148,12 +3190,36 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
             log("::warning title=夜场窗口将尽|已用 %.0fs ≥ 墙钟预算 %ds，剩余条目记 not_run"
                 "（产物照写，不等平台掐）" % (budget.elapsed_s(), budget.time_cap_s))
             return "wallclock"
-        if budget.llm_calls >= call_cap:
-            log("[夜场] 调用预算 %d 已用完，剩余条目记 not_run" % call_cap)
+        need = ITEM_CALLS_MAX if budget.llm_calls else PER_ATTEMPT_CALLS
+        if budget.llm_calls + need > call_cap:
+            # 开一条之前先问"还剩不够写完一趟"。原来只问 `llm_calls >= call_cap`：
+            # 剩 1 次也照开，而一条最坏要 93 次（3 趟 × 每趟 31，含每趟都可能跑的核查）。
+            # 预留只按**一趟**而不按 ITEM_CALLS_MAX：按 93 预留会让"总闸小于一条的最坏值"时
+            # 整夜空跑（测试档 80 就撞上），而超发的上界已经由每趟预留压住。
+            log("[夜场] 剩余调用 %d/%d 不够开下一条（要 %d 次；还没做过时按一趟 %d 次放行）" % (
+                max(0, call_cap - budget.llm_calls), call_cap, ITEM_CALLS_MAX,
+                PER_ATTEMPT_CALLS))
             return "budget"
         return ""
 
     def _do(ev):
+        nonlocal stopped_by_cap, stop_reason
+        # 收口闸必须坐进任务体里。原来只在 `ex.submit()` 之间问一次：submit 瞬时返回，
+        # 12 条在几微秒内全部派完，之后一路等到底 —— 对抗审查用假钟复现：
+        # workers=1 拦下 7 条并记 not_run:wallclock，workers=3 一条不拦、耗时 21,600s
+        # 超掉 job 的 180 分钟上限，那时既没产物也没重试。
+        why = _cutoff()
+        if why:
+            with recs_lock:
+                if not stop_reason:
+                    stopped_by_cap, stop_reason = True, why
+            log("[夜场] %s 未开始：窗口已收口（%s），记 not_run" % (ev["id"], why))
+            return
+        # 本条自己的账按**归属**计（thread-local）：并发下各条之和仍等于总数。
+        # 早先写法是取窗口增量，workers=3 的现网场（run 35957864648）量到六条之和 594 > 总数 207，
+        # 正好是并发倍率 —— 拿那种数定 CALL_CAP 会把成本估高近三倍。耗时是这一条的延迟，不相加。
+        t_item = budget.raw_elapsed_s()
+        budget.set_owner(ev["id"])
         item_wait = wait_cap_s
         if budget.time_cap_s > 0:
             item_wait = max(1.0, min(wait_cap_s, budget.time_cap_s - budget.elapsed_s()))
@@ -2161,16 +3227,22 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
             r = deepen_one(ev, pool, client, budget, kp, wait_cap_s=item_wait, sleep=sleep,
                            max_regen=max_regen, source_quality=source_quality, staged=staged)
         except RateLimited as e:
+            _settle_owner(ev["id"])
             log("[夜场] %s 等待超上限(%s)：记 not_run，不阻断全场" % (ev["id"], e))
             return
         except Exception as e:
             # 一次瞬时错误（Agnes 5xx、上游分块抖动）不能把整晚换掉：产物在循环之后才落盘，
             # 异常穿出去就是"钱花完了、JSON/HTML 一个都没有、还看不出为什么"。
+            _settle_owner(ev["id"])
             with recs_lock:
                 failed.append("%s:%s" % (ev.get("id"), type(e).__name__))
             log("::warning title=条目失败但继续|%s 抛 %s（%s），本场其余条目照做" % (
                 ev.get("id"), type(e).__name__, str(e)[:120]))
             return
+        r["llm_calls_used"] = _settle_owner(ev["id"])
+        # 3 位小数且走 raw 时钟：CI 实测单条落在 0.05~0.1s 档，量到 0.1 的时钟会把快条目
+        # 全塌成 0.0，"max < sum"的并发自证必假红（run 35966373547 预检就是这么红的）。
+        r["elapsed_item_s"] = round(budget.raw_elapsed_s() - t_item, 3)
         _emit(r, ev["id"])
 
     todo = []
@@ -2181,31 +3253,32 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
             todo.append(ev)
     # 并发档 >1 时才起线程：`KeyPool.workers` 以前只是个数字，全模块没有一处线程，
     # 于是"多账号池"的所有设计（每 key 一槽、429 冷却、judge 让位生成）永远不可能被触发。
+    # 收口闸只坐在 `_do` 里问一次。原来并发分支在 `ex.submit()` 之间问：submit 瞬时返回，
+    # 12 条在几微秒内全部派完，闸此后再没机会拦（对抗审查 P0-2 假钟复现：
+    # workers=1 拦下 7 条，workers=3 一条不拦、耗时 21,600s 超掉 job 的 180 分钟）。
+    # 串行分支直接调 `_do`，语义与"派单前问一次"相同，也不会多问第二遍。
     if kp.workers > 1:
         with ThreadPoolExecutor(max_workers=kp.workers) as ex:
-            pending = []
-            for ev in todo:
-                reason = _cutoff()
-                if reason:
-                    stopped_by_cap, stop_reason = True, reason
-                    break
-                pending.append(ex.submit(_do, ev))
-            for f in pending:
+            for f in [ex.submit(_do, ev) for ev in todo]:
                 f.result()
     else:
         for ev in todo:
-            reason = _cutoff()
-            if reason:
-                stopped_by_cap, stop_reason = True, reason
-                break
             _do(ev)
     # 产物 = 本场新做的 + checkpoint 里已做完的，按锚点顺序排；
     # 少了后半截就是"重试夜上线半套产物"那个坑。
     by_id = {r.get("id"): r for r in (prev_recs + recs)}
     ship = [by_id[e["id"]] for e in events if e.get("id") in by_id]
+    # 口径（第五轮审查 P0-1，写死在这里而不是加字段）：`prev_recs` 是上一趟做完的条目，
+    # 它们带着**上一趟**的 `llm_calls_used`，而本场 `budget.llm_calls` 只数本场发的请求。
+    # ⇒ "各条之和 == 本场总数"只对**本场做过的条目**成立。刻意不给产物加 carried 元数据：
+    #   加了就等于每趟重试都改产物字节，会把"同一夜不重复提交"那条幂等守卫打回
+    #   （`test_in_place_retry_does_not_commit_the_same_artifact_twice` 实测红过一次）。
     all_degraded = bool(ship) and all((r.get("degraded_reason") or "").strip() for r in ship)
     if all_degraded:
-        log("::warning title=本场全部降级|所有条目证据不足，产物只含快讯，不发布")
+        # 全场降级**不挡发布**：挡了就是"质量一抖、页面几天没更新甚至永远没更新"。
+        # 半套不上线管的是"有的条目根本没做"，不是"做了但只够快讯" —— 后者照上线，
+        # 并在页面上写清楚今天没有合格深度条目（见 render_page 的横幅）。
+        log("::warning title=本场全部降级|今日无合格深度条目，产物按快讯发布并逐条标注原因（页面照常更新）")
     # 预测账本：先结算上一夜的到期项，再把本场合格条目 appended，最后按窗口淘汰。
     ledger = load_prev_predictions(get, _bust(pred_url), log=log) if pred_raw is None \
         else parse_jsonl(pred_raw)
@@ -2224,6 +3297,11 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
     payload["settled_predictions"] = settled_rows
     payload["not_run"] = missing(events, [x.get("id") for x in ship],
                                   stop=stop_reason)
+    # 死掉那几条的调用数钉到对应的 not_run 行上：光有 not_run:incomplete 一个名字，
+    # 读的人分不开"没排上"（0 次）与"跑到一半被掐了"（几十次）。
+    for _row in payload["not_run"]:
+        # pop 而不是 get：锚点 id 重了时 missing() 会出两行同 id，get 会把同一笔钱记两遍。
+        _row["llm_calls_used"] = int(spent_by_id.pop(_row.get("id"), 0) or 0)
     # 逐条异常不再穿毁全场，但也不能 invisible：跑了几条挂了几条要进产物，
     # 否则"三条全挂 + 页面空白"和"三条都没做"读起来一模一样。
     payload["failed_items"] = failed
@@ -2248,11 +3326,13 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
         log("[夜场] purpose=%s，不提交（产物只在 %s）" % (purpose, out_dir))
         return out
     want = [e["id"] for e in events]
-    if all_degraded or not can_publish([{"id": i} for i in want],
-                        [x.get("id") for x in ship],
-                        budget_used_calls=budget.llm_calls, call_cap=call_cap,
-                        stopped_by_cap=stopped_by_cap):
-        log("::warning title=本场不发布|完成 %d/%d（全降级或未撞预算的半成品），本场不提交" % (
+    if not can_publish([{"id": i} for i in want],
+                       [x.get("id") for x in ship],
+                       budget_used_calls=budget.llm_calls, call_cap=call_cap,
+                       stopped_by_cap=stopped_by_cap):
+        # 只拦"半套"：有锚点条目根本没落地就上线，页面会静默少几块。
+        # 全部降级不是半套 —— 曾因这条闸让站点连着几天没新内容甚至永远没有。
+        log("::warning title=本场不发布|完成 %d/%d（未撞预算的半成品），本场不提交" % (
             len(ship), len(want)))
         out["published"] = {"status": "blocked", "attempts": 0}
         return out
@@ -2278,7 +3358,7 @@ def night_run(purpose="test", events_limit=12, client=None, budget_tokens=DEFAUL
                 log("[夜场] 与上次提交内容一致，走幂等跳过（sha %s）" % last_sha[:8])
         except ValueError:
             log("::warning title=上次提交记录不可读|幂等跳过失效，本场可能重复提交同一份产物")
-    api = (api_factory or GithubDataApi)()
+    api = (api_factory or (lambda: GithubDataApi(ref=ref)))()
     out["published"] = publish(api, files,
                                msg="ci(deep-insight): %s 夜场产物 %d 条" % (date_str, len(ship)),
                                last_sha=last_sha, log=log)
@@ -2294,17 +3374,26 @@ def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(description="夜间独立深度洞察管线（阶段 1）")
     ap.add_argument("--purpose", choices=("test", "publish"), default="test")
-    ap.add_argument("--events-limit", type=int, default=12)
+    ap.add_argument("--events-limit", type=int, default=EVENTS_DEFAULT)
     ap.add_argument("--out", default="_night_state")
     ap.add_argument("--budget-tokens", type=int, default=DEFAULT_BUDGET_TOKENS)
     ap.add_argument("--cap-calls", type=int, default=CALL_CAP,
-                    help="整夜 LLM 调用上限。两段式之后单条约 1(提纲)+6~9(逐段)+1(判定)=%d~11 次，"
-                         "旧默认 80 只够 10 条，会在半夜把剩下的条目砍掉" % (1 + PARAS_MIN + 1))
+                    help="整夜 LLM 调用上限。每趟最坏 %d 次（提纲 2 + 逐段 2*%d 含补写 + 结构 1 + "
+                         "双判 %d + 逐条核查 %d），一条最多 %d 趟 ⇒ 最坏 %d 次；"
+                         "现网实测 3 条 71 次（≈24/条，run 35940113012）。"
+                         "spec §7：本档先不抬，等分布再定" % (
+                             PER_ATTEMPT_CALLS, SECTIONS_MAX, JUDGE_SAMPLES, CLAIM_MAX,
+                             MAX_REGEN + 1, ITEM_CALLS_MAX))
     ap.add_argument("--single-pass", action="store_true",
                     help="退回单趟生成（省成本时用这条，代价是 §2 的字数下限再次靠模型自觉）")
     ap.add_argument("--wait-cap", type=int, default=900)
+    ap.add_argument("--max-tokens", type=int, default=None,
+                    help="单次回复输出上限；不传用客户端默认。单趟路径一次要吐完整条，"
+                         "上限低于 %d 时正文会被截断（截断在产物里长得和\"模型写不长\"一样）"
+                         % SINGLE_PASS_OUT_TOKENS)
     ap.add_argument("--workers", type=int, default=1,
-                    help="并发档；实际取 min(此值, key 数, %d)，首夜读数定档后不要凭感觉调大" % WORKERS_MAX)
+                    help="并发档；实际取 min(此值, key 数-1, %d) —— 减一是给 judge 留位，"
+                         "不留的话满池会把判定饿死" % WORKERS_MAX)
     ap.add_argument("--verdicts", default=None,
                     help="到期判定表 JSON（{\"<forecast claim>\": \"hit|miss|unknown\"}）。"
                          "不传则 predictions_reconciled 全记 unknown —— 宁可读到 unknown，"
@@ -2312,7 +3401,16 @@ def main(argv=None):
     ap.add_argument("--date", default=None)
     ap.add_argument("--fake-client", action="store_true",
                     help="只验装配与判定链，不产真洞察；purpose=publish 时会被拒绝")
+    ap.add_argument("--ref", default="",
+                    help="提交目标分支。purpose=publish 必须显式给（主干=%s）；"
+                         "留空即拒绝 —— 上次通道里写死主干，三场验证直接改到了线上" % MAIN_REF)
     a = ap.parse_args(argv)
+    event = os.environ.get("GITHUB_EVENT_NAME", "workflow_dispatch")
+    if a.purpose == "publish":
+        ok, why = publish_ref_guard(a.purpose, a.ref, event)
+        if not ok:
+            # 拒绝在任何出网之前：下面一跑就是几十 MB 的锚点/分块池/质量快照与真金白银的调用。
+            raise SystemExit("--ref: %s" % why)
     lines = []
 
     def log_live(s):
@@ -2331,8 +3429,9 @@ def main(argv=None):
         if not isinstance(verdicts, dict):
             raise ValueError("--verdicts 必须是 {claim: hit|miss|unknown} 的 JSON 对象")
     out = night_run(purpose=a.purpose, events_limit=a.events_limit, out_dir=a.out,
+                    ref=a.ref,
                     budget_tokens=a.budget_tokens, call_cap=a.cap_calls,
-                    wait_cap_s=a.wait_cap, date_str=a.date,
+                    wait_cap_s=a.wait_cap, date_str=a.date, max_tokens=a.max_tokens,
                     workers=a.workers, verdicts=verdicts, staged=not a.single_pass,
                     client=FakeClient() if a.fake_client else None,
                     keys=env_keys(), log=log_live,
@@ -2343,6 +3442,21 @@ def main(argv=None):
         len(out["payload"]["events"]), pb.get("qualified", 0), pb.get("degraded", 0),
         len(out["payload"].get("not_run") or []), b["llm_calls"], b["wait_s"], b["c429"],
         b["elapsed_s"]))
+    if pb.get("borderline"):
+        # 压线抖动的合格版不算"这条判据救回来的功"：播报里先点名，台账才不会拿它记达标。
+        print("::warning title=合格线抖动|本场 %d 条合格是压线版（极差 > %s，"
+              "或只判成一遍；其中 %d 条只判了一遍）：按噪声规则不给记功，页面每条已标注原因" % (
+                  pb["borderline"], ADOPT_MARGIN, pb.get("single_sample") or 0))
+    if pb.get("cap_exceeded"):
+        print("::warning title=顶穿调用预算|本场多花 %d 次（cap=%d）：『每趟问一次』的闸在超顶前没拦住，"
+              "定档前别拿这条当合格读数" % (pb["cap_exceeded"], b["call_cap"]))
+    if b.get("upstream_errors"):
+        print("::warning title=上游非限流故障|本场 %d 次请求被 5xx/网络异常打断，"
+              "换空闲 key 补试救回 %d 次调用（没救回的照旧进 failed_items/not_run）" % (
+                  b["upstream_errors"], b.get("upstream_recovered") or 0))
+    if pb.get("stalled"):
+        print("[夜场] 提前收手 %d 条（原因见各条 regen_stalled）：省下的调用留给后续条目"
+              % pb["stalled"])
     pr = out["payload"].get("predictions_reconciled") or {}
     if b.get("truncated"):
         print("::warning title=输出被截断|本场 %d 次回复撞到 max_tokens："
