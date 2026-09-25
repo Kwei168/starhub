@@ -390,6 +390,48 @@ def test_the_structure_pass_sees_which_evidence_each_section_owns():
         "清单里的编号不足 %d 个不同段（铺开的抓手不够）：%s" % (D.PARAS_MIN, sorted(set(ids)))
 
 
+def test_the_narrative_group_is_pinned_by_name_not_by_position():
+    """`narr_out` 现在按"这一段代码块"取内容，位置一变归属就变 —— 这条把它钉成明账。
+
+    审查第四轮 P1-A 说的是对的：`validate_event` 里那段切片今天没错，但**没有任何东西**
+    禁止以后有人在块中间插一条结构级判据，那条就会静默变成"段落级"。
+    判据因此正面要求"长度/条目体必须在组内"，并反向钉住两条最容易混进来的：
+    覆盖（"只压在 N 篇"，属结构字段）与 quality（整条级）。
+    """
+    good_body = "论证与数据推演" + "依" * 800 + "，但该判断仍受样本量与统计口径限制。"
+
+    def run(**kw):
+        ev = {"title": "t", "topic": "ai", "narrative": kw.get("narrative", "\n\n".join([good_body] * 6)),
+              "claims": kw.get("claims", [{"text": "论断%d" % i, "kind": "causal",
+                                          "evidence": ["c%d" % (i + 1)]} for i in range(7)]),
+              "causal_chains": [{"trigger": "触发", "mechanism": "机制", "outcome": "结果",
+                                 "confidence": 0.6, "evidence": ["c1"]}] * 3,
+              "forecasts": [{"claim": "三个月内出现跟随者", "horizon_days": 7,
+                             "check_metric": "同类竞品发布数>=3", "status": "pending"}],
+              "quality": kw.get("quality", {"verdict": "一手", "score": 80,
+                                            "why": "官方发布，未见第三方交叉核验。",
+                                            "basis": ["sig:c1"]}),
+              "citations": [{"id": "c%d" % (i + 1)} for i in range(8)]}
+        narr = []
+        ok, fails = D.validate_event(ev, valid_ids={"c%d" % i for i in range(1, 13)},
+                                    valid_basis={"sig:c1"}, narr_out=narr)
+        return ok, fails, narr
+
+    ok0, f0, n0 = run()
+    assert n0 == [], "夹具本身不干净，后面的断言都白搭：%s（fails=%s）" % (n0, f0[:2])
+    _ok, _f, n1 = run(narrative="短。但该判断仍受样本量与统计口径限制。")
+    assert any(u"字数" in m for m in n1), "长度违约没进正文组：%s" % (n1,)
+    _ok, _f, n2 = run(narrative="\n\n".join("- 只有一句%s，但该判断仍受口径限制。" % ("依" * 800)
+                                            for _ in range(6)))
+    assert any(u"条目体" in m for m in n2), "条目体没进正文组（那是本段就能改的）：%s" % (n2,)
+    _ok, _f, n3 = run(quality={"verdict": "一手", "score": 80,
+                               "why": "官方发布，未见第三方交叉核验。", "basis": []})
+    assert n3 == [], "quality 的账混进正文组了（段落改不了 basis）：%s" % (n3,)
+    _ok, f4, n4 = run(claims=[{"text": "论断一", "kind": "causal", "evidence": ["c1"]}] * 7)
+    assert n4 == [] and any(u"只压在" in m for m in f4), \
+        "覆盖违约的归属要写死在账上（它属结构字段，不进正文组）：%s / %s" % (n4, [m[:24] for m in f4])
+
+
 def test_the_two_coverage_asks_are_always_reconcilable():
     """"每条至少 2 篇"与"合计覆盖 ask 篇"不能互相够不着：够不着时要把另一条路说出口。
 
@@ -404,11 +446,14 @@ def test_the_two_coverage_asks_are_always_reconcilable():
         p = D._structure_rules(ids, supply)
         ask = int(CLAIMS_ASK_RE.search(p).group(1))
         short = D.CLAIM_MIN * D.CLAIM_EVID_MIN < ask
-        says = u"多写几条论断" in p
+        says = u"两条路择一" in p
         if supply >= D.CLAIM_EVID_MIN:
             assert says == short, (supply, ask, says, short)
         else:
             assert not says, "池子连每条 2 篇都给不出，还在讲覆盖几条：%s" % p[:200]
+        if says:
+            # 说出口的那条路必须是**算得出来的**最小条数，不是常量下限
+            assert (u"论断至少写 %d 条" % -(-ask // D.CLAIM_EVID_MIN)) in p, (supply, ask, p[-320:])
         hit += 1 if short else 0
     assert 0 < hit <= 21, "夹具没覆盖到'够不着'那一档，整条判据是空的：hit=%d" % hit
 
