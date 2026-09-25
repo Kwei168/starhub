@@ -315,6 +315,90 @@ def repair_quality_verdict(cand):
     return cand
 
 
+# 枚举顺序即质量阶梯（spec §2 那行同序）：一手 > 深度 > 数据支撑 > 转载 > 通稿 > 营销。
+# 吸收"逐信源表"时按**档位**取最差那一环，不按模型自报分值 —— 现网那张表里
+# 通稿=85 分、深度=62 分，按分值挑会把整条判得比它最差的那篇来源还好。
+VERDICT_RANK = {v: i for i, v in enumerate(QUALITY_VERDICTS)}
+
+
+def _verdict_of(raw):
+    """一块的 verdict 归一：逐字合法就用，复合值按平铺那套拆，拆不出就算非法。
+
+    与 `repair_quality_verdict` 同一把尺（`_VERDICT_SPLIT`）：两处口径分叉的话，
+    斜杠值在整条上能被救回来、在逐源表里却把整块挤出局（审查 P1-2）。
+    """
+    if raw in QUALITY_VERDICTS:
+        return raw, None
+    if isinstance(raw, str):
+        parts = [p.strip() for p in _VERDICT_SPLIT.split(raw) if p.strip()]
+        hit = [p for p in parts if p in QUALITY_VERDICTS]
+        if hit:
+            return hit[0], raw
+    return None, None
+
+
+def _absorb_per_source_quality(q):
+    """模型把 `quality` 写成"逐信源的表"（`{"c1": {...}, "c2": {...}}`）时的形状吸收。
+
+    第 37 场现网 `evt_20260925_r14` 就是这个形状：12 家各一个对象（数的是该场产物里
+    `quality` 那一格的 12 个键，见 `_scratch/dl37/_night_state/daily-deep-2026-09-25.json`），
+    结果 verdict/score/why/basis 四条硬判据同时违约，8,872 字的正文直接烧掉。
+    出现率按现测口径讲（`_scratch/qshape_census2.txt`：本地 13 份产物、去重 26 条、
+    长文 22 条里 **1 条**是表形状；`quality.verdict None + score` 那组死因指纹另有 2 条，
+    但那两条不是表形状）—— 是"值得兜住"而不是"到处都在发生"。
+    三条规则，都为的是不替模型编话：
+    1) 取**最差那一档**（`VERDICT_RANK`）：一条证据链的质量不高于它最差的那篇来源；
+    2) `verdict/score/why` 三格只能转述**同一块**的断言 —— 上一版把"跨表取最低分"与
+       "同档取最长 why"混着用，场 37 那条会印成"通稿 62"，而 62 是另一档（深度）那块的分数，
+       这个配对没有任何来源断言过（审查 P1-1）。同档里挑分值最低且 why 写完了的那一块；
+       该档全都写不完时照实交最低分那块，让 why 那格判不合格 —— 退让不等于补话；
+    3) 非法 verdict 的块不参与（不能把没读懂的值端上来），复合值按平铺那套归一并留痕。
+    """
+    if not isinstance(q, dict) or not q:
+        return None
+    blocks = [v for v in q.values() if isinstance(v, dict) and "verdict" in v]
+    if len(blocks) < 2 or len(blocks) != len(q):
+        return None                       # 不是"每篇一个"的形状：别乱猜
+    legal = []
+    for v in blocks:
+        verdict, repaired = _verdict_of(v.get("verdict"))
+        if verdict is None:
+            continue
+        blk = dict(v, verdict=verdict)
+        if repaired:
+            blk["verdict_repaired"] = repaired
+        legal.append(blk)
+    if not legal:
+        return None                       # 全是非法 verdict：那是内容问题，交回判据判死
+    worst = max(VERDICT_RANK[v["verdict"]] for v in legal)
+    tier = [v for v in legal if VERDICT_RANK[v["verdict"]] == worst]
+
+    def _why_written(v):
+        w = v.get("why")
+        return isinstance(w, str) and count_chars(w) >= WHY_MIN
+
+    def _rank(v):
+        # 缺分或越界（0-100 之外）的那颗排在后面：它自己会死在 score 判据上，
+        # 但同档还有一颗合法的数时没理由拖着整条一起烧（审查第二轮 P1-b）。
+        s = v.get("score")
+        if not isinstance(s, (int, float)):
+            return (2, 10 ** 9)
+        return (0 if 0 <= s <= 100 else 1, s)
+
+    # 三格同源：挑中的这一块报什么就发什么，不再从别的块借分数、借理由。
+    pickable = [v for v in tier if _why_written(v)] or tier
+    chosen = min(pickable, key=_rank)
+    out = {"verdict": chosen.get("verdict"), "score": chosen.get("score"),
+           "why": chosen.get("why") or "",
+           # basis 是"整条用了哪些外证"，不是"最差那篇的证据"：判定看的正是这批来源，
+           # 只收那一块的会把读者指向一篇而不是整条的证据面。
+           "basis": sorted({b for v in legal for b in (v.get("basis") or [])}),
+           "absorbed_from": len(legal)}
+    if chosen.get("verdict_repaired"):
+        out["verdict_repaired"] = chosen["verdict_repaired"]
+    return out
+
+
 def repair_quality_fields(cand):
     """quality 这一组的形状归一：verdict 复合值 + `why` 超上界。
 
@@ -322,6 +406,9 @@ def repair_quality_fields(cand):
     同族。只往回收不往回填：太短的 why 是模型真没写理由，补字等于伪造证据。
     裁掉的部分不留原长就等于什么都没发生 —— 下一跑还是读不出它写了多长。
     """
+    absorbed = _absorb_per_source_quality(cand.get("quality"))
+    if absorbed:
+        cand["quality"] = absorbed
     repair_quality_verdict(cand)
     q = cand.get("quality")
     if not isinstance(q, dict):
@@ -1166,7 +1253,8 @@ def _structure_rules(id_list, supply):
         "  claim 只能写**这个窗口内就会见分晓**的事：想说“一年内/长期”的趋势，"
         "就改写成窗口内会先发生的先导信号（首个公告、文档更新、试点签约），"
         "别把长期判断塞进 %d 天的窗口里。\n"
-        "- quality：对证据本身下判断，verdict 只能取 %s，"
+        "- quality：**整条只给一个对象**（对这篇所用证据链的整体判断，不是每篇各给一份；"
+        "要分源就写进 basis 引用），verdict 只能取 %s，"
         "score 0-100，why %d-%d 字（**按 %d-%d 字写**，超出判不合格），"
         "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
         "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
@@ -1288,11 +1376,13 @@ def build_structure_prompt(event, ctx, narrative):
          "\n\n".join(_evidence_blocks(ctx)))
 
 
-def build_section_prompt(event, ctx, sec, idx, total):
+def build_section_prompt(event, ctx, sec, idx, total, extra=""):
     """第二段：一次只写一段，且只带这一段引用的证据。
 
     逐段成文如果每段都重发整包证据，就是把输入放大 6 倍（现网单趟输入实测 ~52k token/事件），
     成本上不接受，所以按 sections[].evidence 过滤。
+    `extra` 是上一版的不合格原因：写字的正是这一趟，只发给提纲与结构两趟等于 feedback
+    永远到不了动手的人（审查 P1-1，staged 是生产默认）。
     """
     ids = ctx.get("ids") or {}
     # ctx["ids"] 的形状是 {"c1": url, ...}。这里以前写 `for u, cid in ids.items()`，
@@ -1319,10 +1409,12 @@ def build_section_prompt(event, ctx, sec, idx, total):
         "必须包含反证或限制条件（如“但该判断受限于…”“样本口径未覆盖…”）；"
         "不要重复其它段已经写过的内容。\n"
         "%s"
+        "%s"
         "===== 本段可用证据 =====\n%s\n"
     ) % (idx, total, event.get("title", ""), event.get("topic", ""),
          (sec.get("title") or "第%d段" % idx), sec.get("focus") or "",
          PARA_MIN, PERA_MAX, PERA_TARGET,
+         extra,
          _rubric_brief(),
          "\n\n".join(picked))
 
@@ -1341,12 +1433,16 @@ def _section_text(raw):
     return t.strip()
 
 
-def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=None, extra=""):
+def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=None, extra="",
+                    section_extra=None):
     """两段式：先提纲与结构字段，再逐段成文。返回 (cand, note)。
 
     `cand is None` 表示这趟没给出可用 sections —— 交回上层退单趟，而不是让整条空转：
     提纲这一步是新流程里唯一没有契约兜底的环节（validate 只看最终 narrative/结构字段）。
+    `extra` 给提纲与补结构那两趟（整条级的账它们改得动）；`section_extra` 单独给逐段成文那一趟，
+    不给就退回共用 `extra`。分流的目的见 `judge_weak_spots` 的 `dims`。
     """
+    sec_extra = extra if section_extra is None else section_extra
     def ask_outline(defect=""):
         raw = call_llm(client, build_prompt(event, ctx, "outline") + signals_note(ctx)
                        + extra + defect, key_pool, budget, "outline",
@@ -1382,13 +1478,15 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
     note["sections"] = len(secs)
     parts, shorts = [], []
     for i, s in enumerate(secs):
-        body = _section_text(call_llm(client, build_section_prompt(event, ctx, s, i + 1, len(secs)),
-                                      key_pool, budget, "section",
-                                      wait_cap_s=wait_cap_s, sleep=sleep))
+        body = _section_text(call_llm(client, build_section_prompt(
+            event, ctx, s, i + 1, len(secs), sec_extra),
+            key_pool, budget, "section",
+            wait_cap_s=wait_cap_s, sleep=sleep))
         if count_chars(body) < PARA_MIN:
-            again = _section_text(call_llm(client, build_section_prompt(event, ctx, s, i + 1, len(secs)),
-                                           key_pool, budget, "section",
-                                           wait_cap_s=wait_cap_s, sleep=sleep))
+            again = _section_text(call_llm(client, build_section_prompt(
+                event, ctx, s, i + 1, len(secs), sec_extra),
+                key_pool, budget, "section",
+                wait_cap_s=wait_cap_s, sleep=sleep))
             if count_chars(again) > count_chars(body):
                 body = again
             if count_chars(body) < PARA_MIN:
@@ -2244,9 +2342,18 @@ JUDGE_FIX_HINT = {
     "density": "信息密度偏弱（%s）：删掉换句话说的重复段，把省下的篇幅补进机制与反证",
 }
 
+# 逐段成文那一趟改得动的只有这两条（正文论述与本段复述）；
+# causal/forecast/quality 是结构字段的账，发给补结构那一趟 —— 分流是为了不逼一段话去修整条，
+# 也为了不把嵌在违约原文里的模型自报字符串送进正文通道（审查 P2-4/P2-5）。
+SECTION_FIX_DIMS = ("narrative", "density")
 
-def judge_weak_spots(score, bar=JUDGE_PASS, cand=None):
+
+def judge_weak_spots(score, bar=JUDGE_PASS, cand=None, dims=None):
     """judge 分项分数 → "哪一维薄弱 + 该改什么"（spec §2"按薄弱维度重生成"）。
+
+    `dims` 给定时只出这些维的建议：逐段成文那一趟改不动"预测窗口""优质依据"这类整条级的账，
+    把它们塞给只写一段的人既做不到、又顺带把模型自报的原文送回正文通道（审查 P2-4/P2-5）。
+    分流不是删账 —— 补结构那一趟照旧收到全部。
 
     分项以前被 `rubric_of` 平均掉就没人看了：均值不合格时，重写消息里连
     "是哪一维拉低的"都没有，等于让 judge 主判却只消费它的一个标量。
@@ -2255,6 +2362,8 @@ def judge_weak_spots(score, bar=JUDGE_PASS, cand=None):
     """
     out = ["judge 均分 %.2f 低于 %.2f" % ((score or {}).get("mean", 0.0), bar)]
     for k in JUDGE_DIMS:
+        if dims is not None and k not in dims:
+            continue
         v = (score or {}).get(k)
         if isinstance(v, (int, float)) and v < bar:
             hint = JUDGE_FIX_HINT[k] % ("%.2f" % v)
@@ -2508,9 +2617,14 @@ def _degrade_reason(max_regen, last_attempt, stalled, cand, last_score=None):
             used |= set(cl.get("evidence") or [])
         n = count_chars(cand.get("narrative") or "")
         supply = (cand.get("context_stats") or {}).get("articles") or 0
-        return "逐条核查摘掉 %d 条后，正文只剩 %d 篇证据支撑（要 >=%d 篇）：被摘的论断补不回来就撑不起这篇" % (
+        # 同一趟里论断数也跌破 CLAIM_MIN 时要一并说出来：只讲覆盖的话，
+        # "摘到剩 2 条"这笔更重的账就又隐身了（审查 P1-5）。
+        tail = ""
+        if fs.get("below_minimum"):
+            tail = "，且只剩 %d 条论断（<%d）" % (fs.get("kept", 0), CLAIM_MIN)
+        return "逐条核查摘掉 %d 条后，正文只剩 %d 篇证据支撑（要 >=%d 篇）%s：被摘的论断补不回来就撑不起这篇" % (
             fs.get("dropped", 0), len(used & cited),
-            min(required_sources(n), max(supply, 1)))
+            min(required_sources(n), max(supply, 1)), tail)
     if cand.get("faith_degraded"):
         return "逐条核查摘除无支撑论断后只剩 %d 条（<%d）：撑不起一条洞察" % (
             fs.get("kept", 0), CLAIM_MIN)
@@ -2680,7 +2794,7 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
         return annotate_observability(rec)
     prompt = (build_prompt(event, ctx) + signals_note(ctx))
     cand, last_fails, score = {}, [], {"mean": 0.0}
-    parse_echo, staged_note, extra = None, None, ""
+    parse_echo, staged_note, extra, section_extra = None, None, "", ""
     # traj = 每趟的判定轨迹（attempt / 中位均值 / 两趟原始样本）。只留最后一版的分，
     # "该不该再重写一次"就永远没有依据 —— 停滞阈值的下一次改档要靠它。
     best, stalled, prev_score, prev_fails = None, [], None, None
@@ -2691,7 +2805,8 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
         raw = ""
         if staged:
             doc, note = staged_generate(event, ctx, client, key_pool, budget,
-                                        wait_cap_s=wait_cap_s, sleep=sleep, extra=extra)
+                                        wait_cap_s=wait_cap_s, sleep=sleep, extra=extra,
+                                        section_extra=section_extra)
             cand = dict(doc or {})
             if cand:
                 staged_note = note
@@ -2772,6 +2887,12 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
                     if fs.get("below_minimum"):
                         # 重写到头还是摘不够：照 §10.16 只降级不静默
                         cand["faith_degraded"] = True
+                        # 同一趟里"摘到不足条数"与"摘破覆盖"是两笔账：先前这里直接
+                        # break，后者永远走不到 ⇒ coverage_blocked 少计、contract_fails
+                        # 空着，那条账在现网读数里隐身（审查 P1-5）。
+                        if broke:
+                            cand["faith_coverage_broken"] = True
+                            last_fails = list(broke)
                         break
                     if broke:
                         # 摘破了覆盖又没有重写预算：同一套规矩，降级而不是当合格出厂。
@@ -2817,6 +2938,13 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
             reasons = list(last_fails)
             reasons += [w for w in judge_weak_spots(score, cand=cand) if w not in reasons]
             extra = "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(reasons)
+            # 逐段那一趟另给一份窄的：只带本段改得动的分项建议，不带契约违约原文
+            # （整条级的账与嵌在里面的模型自报字符串，见 `SECTION_FIX_DIMS` 那条注释）。
+            # 判定根本没跑（契约没过）时不许说"上一版判分偏弱"：那是把"没送判定"讲成"判了 0 分"，
+            # 与 `rubric_display` 为页面修掉的同一个错（任务 #61，审查第二轮 P1-a）。
+            sec = ([] if score.get("judged") is False or score.get("judge_skip")
+                   else judge_weak_spots(score, cand=cand, dims=SECTION_FIX_DIMS))
+            section_extra = ("\n上一版判分偏弱、本段能改的地方：%s\n" % "; ".join(sec)) if sec else ""
             prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
     if best:
         cand, score, adopted_attempt = best

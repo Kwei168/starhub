@@ -135,6 +135,178 @@ def test_cite_min_still_binds_short_items():
     assert ok, fails
 
 
+def test_per_source_quality_map_is_absorbed_not_burned():
+    """第 37 场现网 `evt_20260925_r14`：模型把 quality 写成了**逐信源的表**
+    （`{"c1": {verdict,score,why,basis}, "c2": …}` 共 12 家），于是四条硬判据同时违约
+    （verdict None / score None / why 0 字 / basis 为空），一条写了 8,872 字的正文直接烧掉。
+    吸收规则要可辩护：**取最差那一档**（证据链的质量不高于最差的那篇），
+    basis 收齐它引用过的所有外证编号，折叠几块必须留痕。
+    夹具三块照抄现网那张表的档位与分值（通稿 85 / 深度 62 / 一手 100），
+    c1 的 why 用现网原文（`count_chars` 实测 24 字，过 WHY_MIN=20 那条线 —— 端上没写完的那格照样会烧）。
+    """
+    cand = {"quality": {
+        "c1": {"verdict": "通稿", "score": 85, "why": "短新闻摘要，多次搬运，缺乏原始数据，但信息准确。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "深度", "score": 62, "why": "解读研究，但侧重信息整理，口径未覆盖原始数据。",
+               "basis": ["sig:c2"]},
+        "c3": {"verdict": "一手", "score": 100, "why": "直接来自官方发布，信息权威。", "basis": ["sig:c3"]}}}
+    D.repair_quality_fields(cand)
+    q = cand["quality"]
+    # 取的是**最差那一档**（通稿 比 深度 差），不是模型自报数字最低的那一块：
+    # 现网这张表里 通稿 拿到 85 分、深度 只有 62 分，按分值挑会把整条判得比最差环节还好。
+    assert q["verdict"] == "通稿", \
+        "吸收按自报分值挑了（%s）：证据链的质量不许高于它最差的那篇来源" % (q,)
+    assert q["score"] == 85, \
+        "分值不是这一块自己报的数（verdict 与 score 被拼成一对了）：%s" % q
+    assert D.WHY_MIN <= D.count_chars(q["why"]) <= D.WHY_MAX, q
+    assert sorted(q["basis"]) == ["sig:c1", "sig:c2", "sig:c3"], q
+    assert q["absorbed_from"] == 3, "折叠了几块没留痕，读的人无法核对：%s" % q
+    ok, fails = D.validate_event({"title": "t", "topic": "ai", "narrative": "论证。" * 900,
+                                  "claims": [], "causal_chains": [], "forecasts": [],
+                                  "citations": [], "quality": q}, valid_ids=None)
+    assert not [f for f in fails if "quality" in f], fails
+    # 形状本来对的（单个对象）不许被动过
+    plain = {"quality": {"verdict": "深度", "score": 70, "why": "依" * 30, "basis": ["sig:c1"]}}
+    D.repair_quality_fields(plain)
+    assert plain["quality"].get("absorbed_from") is None, plain["quality"]
+    # 逐源表里混进非法 verdict 时，不许把非法值当结果端上来
+    mixed = {"quality": {"c1": {"verdict": "未知类型", "score": 40, "why": "依" * 30,
+                                 "basis": ["sig:c1"]},
+                          "c2": {"verdict": "深度", "score": 70, "why": "依" * 30,
+                                 "basis": ["sig:c2"]}}}
+    D.repair_quality_fields(mixed)
+    assert mixed["quality"]["verdict"] in D.QUALITY_VERDICTS, mixed["quality"]
+    # 非法那一块不许被"翻译"成任何一个合法档位再算进账：没读懂就是没参与
+    assert mixed["quality"].get("absorbed_from") == 1, \
+        "折叠数把读不懂的块也算进去了（那是替模型编了一次判断）：%s" % mixed["quality"]
+
+
+def test_absorption_picks_the_worst_tier_not_the_lowest_score():
+    """模型自报的分值不可用来排序：现网那张表里 通稿=85 分、深度=62 分。
+
+    按分值挑最"弱"会挑出 深度 —— 于是整条被贴上一个比它最差那篇来源**更好**的标签，
+    而这条判据的全部意义就是"证据链的质量不高于最差那一环"（审查 P1-3 的实证版）。
+    三格必须同源：分值取**那一档自己**报的数，不跨档借（审查第二轮 P1-1）。
+    """
+    cand = {"quality": {
+        "c1": {"verdict": "营销", "score": 95, "why": "全文围绕产品卖点展开，无第三方口径。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "一手", "score": 40, "why": "官方原话但信息量薄。", "basis": ["sig:c2"]}}}
+    q = D._absorb_per_source_quality(cand["quality"])
+    assert q["verdict"] == "营销", q
+    assert q["score"] == 95, \
+        "分值被另一档那块的 40 分拼走了（verdict/score 必须同源）：%s" % q
+    assert sorted(q["basis"]) == ["sig:c1", "sig:c2"], q
+
+
+def test_compound_verdicts_in_per_source_blocks_are_normalized_first():
+    """逐源表里的复合 verdict（`"转载/通稿"`）不许把整块挤出局（审查 P1-2）。
+
+    上一版 `legal` 只收逐字合法的块：一个斜杠就让那一块不参与，
+    最弱那一环因此被漏掉；而 `repair_quality_verdict` 在平铺形状上是会拆的 —— 两处口径分叉。
+    归一必须留痕（`verdict_repaired`），否则读产物的人看不出这个标签是拆出来的。
+    """
+    cand = {"quality": {
+        "c1": {"verdict": "一手/数据支撑", "score": 90, "why": "官方发布并给出可核验数据。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "转载/通稿", "score": 55, "why": "整篇转自律媒，未见原始口径。",
+               "basis": ["sig:c2"]}}}
+    q = D._absorb_per_source_quality(cand["quality"])
+    assert q["verdict"] == "转载", \
+        "复合 verdict 那一块被挤出局了（挑出来的是 %s）：%s" % (q.get("verdict"), q)
+    assert q.get("verdict_repaired") == "转载/通稿", q
+    assert q["absorbed_from"] == 2, "被归一的块不许少算：%s" % q
+
+
+def test_the_shipped_triple_is_one_real_block_not_a_spliced_pair():
+    """verdict / score / why 必须来自同一块：不许拼出没来源断言过的配对（审查 P1-1）。
+
+    场 37 的 `evt_20260925_r14` 实测：按"跨表取最低分"那版实现会把
+    `verdict=通稿`（两块通稿自己报 85 与 65）配上 `score=62`（那是另一档 深度 那块的分数），
+    页面上印出来就是"优质判定 通稿 62" —— 没有任何一篇来源这么断言过，
+    而且比该档真实最低分还低。上一条判据断的是这个配对本身。
+    """
+    blocks = {
+        "c1": {"verdict": "通稿", "score": 85, "why": "短新闻摘要，多次搬运，缺乏原始数据，但信息准确。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "深度", "score": 62, "why": "解读研究，但侧重信息整理，口径未覆盖原始数据。",
+               "basis": ["sig:c2"]},
+        "c3": {"verdict": "一手", "score": 100, "why": "直接来自官方发布，信息权威。", "basis": ["sig:c3"]}}
+    q = D._absorb_per_source_quality(blocks)
+    pairs = [(v["verdict"], v["score"], v["why"]) for v in blocks.values()]
+    assert (q["verdict"], q["score"], q["why"]) in pairs, \
+        "端上来的三元组没有任何一块来源断言过（那是拼出来的）：%s" % (q,)
+    assert q["verdict"] == "通稿" and q["score"] == 85, \
+        "该档只有这一块，它自己报 85：配成别的数就是拼的：%s" % (q,)
+
+
+def test_within_one_tier_it_takes_the_lowest_scored_usable_block():
+    """同档两块都写得完 why 时，取该档**分值最低**的那一块（既不是"最长 why"也不是字典序第一块）。
+
+    这条与下一条分钉两个不同的退让：这条钉"同档取最低分"，下一条钉"最低分那块的 why
+    写不完时才换块"。上一版夹具把两件事混在一起（最长那块恰好也是最低分那块），
+    两条规则给出同一个答案 ⇒ 删掉任一项都不红（审查 P1-2：夹具没鉴别力）。
+    """
+    blocks = {
+        "c1": {"verdict": "通稿", "score": 85, "why": "短新闻摘要，多次搬运，缺乏原始数据，但信息准确。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "通稿", "score": 65, "why": "日报式汇总，段落之间未见独立采访问证与后续跟进。",
+               "basis": ["sig:c2"]},
+        "c3": {"verdict": "一手", "score": 100, "why": "官方发布会实录。", "basis": ["sig:c3"]}}
+    q = D._absorb_per_source_quality(blocks)
+    assert (q["verdict"], q["score"]) == ("通稿", 65), q
+    assert q["why"] == blocks["c2"]["why"], "why 没跟着分值走（拼配对的回归）：%s" % (q,)
+
+
+def test_within_one_tier_a_block_with_an_unusable_why_is_not_taken():
+    """最低分那一块若 why 短到不合格 ⇒ 退回同档写得完的那一块，而不是把整条再烧一次。
+
+    这与上一条是两条不同的判据：上一条钉"配对不许拼"，这条钉"退让只在写不完时发生"。
+    夹具刻意让**分值高**的那一块才是写得完的：两条规则（纯取最低分 / 只看 why 最长）
+    在这里给出的答案不同，删掉任一项都会红（上一版夹具两条规则给同一个答案，测不到东西）。
+    """
+    blocks = {
+        "c1": {"verdict": "通稿", "score": 90,
+               "why": "整篇通稿口径，段落顺序与措辞与官方发布一致，未见独立采访问证。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "通稿", "score": 60, "why": "短。", "basis": ["sig:c2"]}}
+    q = D._absorb_per_source_quality(blocks)
+    assert D.count_chars(q["why"]) >= D.WHY_MIN, \
+        "端上来的是那格没写完的 why（%d 字）：%s" % (D.count_chars(q["why"]), q)
+    assert (q["verdict"], q["score"]) == ("通稿", 90), \
+        "退让没发生（分值仍来自那格写不完的块）：%s" % (q,)
+
+
+def test_an_out_of_range_score_does_not_take_the_item_down_with_it():
+    """同档里"最低分"那颗自己越界（-5 / 150）时，取同档**在 0-100 之内**的最低那颗。
+
+    批 3.13 第一轮把"跨表借分"禁了（对的），但顺手把唯一的救援也禁了：
+    `min(按分值)` 会先挑中越界那颗 ⇒ `quality.score 必须在 0-100` 判死 ⇒ 整条还是烧。
+    这仍然不是替模型编数：75 是 c2 自己报的，越界的 -5 也不是任何一篇的合格读数。
+    """
+    blocks = {
+        "c1": {"verdict": "通稿", "score": -5, "why": "整篇照抄同一份发稿通，措辞与官方发布完全一致。",
+               "basis": ["sig:c1"]},
+        "c2": {"verdict": "通稿", "score": 75, "why": "转自律媒的同一篇通稿，未做独立问询与核验。",
+               "basis": ["sig:c2"]},
+        "c3": {"verdict": "一手", "score": 95, "why": "官方发布会实录。", "basis": ["sig:c3"]}}
+    q = D._absorb_per_source_quality(blocks)
+    assert (q["verdict"], q["score"]) == ("通稿", 75), \
+        "越界那颗被当成'该档最低分'端上来了：整条会死在 score 判据上：%s" % (q,)
+    assert q["why"] == blocks["c2"]["why"], "三格又不同源了：%s" % (q,)
+
+
+def test_a_tier_whose_why_is_never_written_still_reports_the_worst_tier():
+    """该档两块都写不完 why ⇒ 照实交最低分那块（判死是应该的），但档位不许偷偷变好。"""
+    blocks = {
+        "c1": {"verdict": "营销", "score": 40, "why": "短。", "basis": ["sig:c1"]},
+        "c2": {"verdict": "一手", "score": 90, "why": "官方发布。", "basis": ["sig:c2"]},
+        "c3": {"verdict": "一手", "score": 95, "why": "官方发布。", "basis": ["sig:c3"]}}
+    q = D._absorb_per_source_quality(blocks)
+    assert q["verdict"] == "营销", "该档没人写得完 why 就换档：那是往好处挑：%s" % (q,)
+    assert q["score"] == 40 and D.count_chars(q["why"]) < D.WHY_MIN, q
+
+
 def test_prompts_state_the_derived_coverage_rule():
     """契约里写的篇数必须和判据用的是同一个派生，不许多套一份数字。"""
     p = D._structure_rules(", ".join(sorted(VALID)), len(VALID))
