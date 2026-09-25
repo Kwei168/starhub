@@ -294,10 +294,14 @@ def test_a_contract_failure_never_claims_a_judge_score():
             D.FakeClient.__init__(self)
             self.outline_n = 0
             self.sec = []
+            self.out = []          # [(第几趟, prompt)]：提纲与补结构那两趟收到的东西
 
         def complete(self, prompt, key=None, kind="generate"):
             if kind == "outline":
                 self.outline_n += 1
+                self.out.append((self.outline_n, prompt))
+            if kind == "structure":
+                self.out.append((self.outline_n, prompt))
             if kind == "section":
                 self.sec.append((self.outline_n, prompt))
                 # 第一趟整条写得太短 ⇒ 契约没过 ⇒ 判定根本没跑
@@ -316,6 +320,10 @@ def test_a_contract_failure_never_claims_a_judge_score():
     for p in second:
         assert u"judge 均分" not in p and u"判分偏弱" not in p, \
             "判定根本没跑，却对写字的人说上一版判分偏弱：%r" % p[:260]
+    # 同一条谎也顺着 extra 发给提纲与补结构那两趟（审查第三轮 F：上一版只堵了新开的通道）
+    for p in [x for (n, x) in c.out if n == 2]:
+        assert u"judge 均分" not in p, \
+            "提纲/补结构那一趟仍在被说'判分 0.00'：%r" % p[:260]
 
 
 def test_the_ask_is_never_looser_than_the_contract_itself():

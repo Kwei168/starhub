@@ -315,9 +315,8 @@ def repair_quality_verdict(cand):
     return cand
 
 
-# 枚举顺序即质量阶梯（spec §2 那行同序）：一手 > 深度 > 数据支撑 > 转载 > 通稿 > 营销。
-# 吸收"逐信源表"时按**档位**取最差那一环，不按模型自报分值 —— 现网那张表里
-# 通稿=85 分、深度=62 分，按分值挑会把整条判得比它最差的那篇来源还好。
+# 阶梯次序是**从"证据链不高于最差那一环"推出来的**，不是 spec §2 给的（那一行只列枚举与分数/字数
+# 边界，不谈次序，也不谈整条与逐源的关系）。次序反过来用会静默改变吸收结果，改动要过 #79 那条讨论。
 VERDICT_RANK = {v: i for i, v in enumerate(QUALITY_VERDICTS)}
 
 
@@ -381,7 +380,7 @@ def _absorb_per_source_quality(q):
         # 缺分或越界（0-100 之外）的那颗排在后面：它自己会死在 score 判据上，
         # 但同档还有一颗合法的数时没理由拖着整条一起烧（审查第二轮 P1-b）。
         s = v.get("score")
-        if not isinstance(s, (int, float)):
+        if not isinstance(s, (int, float)) or isinstance(s, bool):
             return (2, 10 ** 9)
         return (0 if 0 <= s <= 100 else 1, s)
 
@@ -545,7 +544,8 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
     if q.get("verdict") not in QUALITY_VERDICTS:
         fails.append("quality.verdict %r 不在枚举 %s" % (q.get("verdict"), QUALITY_VERDICTS))
     score = q.get("score")
-    if not isinstance(score, (int, float)) or not 0 <= score <= 100:
+    # bool 是 int 的子类：`score: true` 过去一路过关，页面印成 "优质判定 通稿 True"（审查第三轮 D）
+    if not isinstance(score, (int, float)) or isinstance(score, bool) or not 0 <= score <= 100:
         fails.append("quality.score 必须在 0-100，实为 %r" % (score,))
     w = count_chars(q.get("why") or "")
     if not WHY_MIN <= w <= WHY_MAX:
@@ -1713,11 +1713,19 @@ def render_event(e, made_on=""):
     # 名字里带内容却什么都不保证 —— 那是"空壳"的页面版。
     sec_chains = ("<h3>因果</h3><ul>%s</ul>" % chains) if chains else ""
     sec_cites = ("<h3>证据</h3><ul>%s</ul>" % "".join(cites)) if cites else ""
-    return ("<article><h2>%s</h2><p class='tag'>%s · rubric %s · 优质判定 %s %s%s%s</p>%s%s"
+    # 页面上"优质判定 X"只能是**我们自己枚举里**的值：场 39 现网出厂过 "优质判定 深度报道 82"，
+    # 而那条自己的 contract_fails 就写着 "quality.verdict '深度报道' 不在枚举" —— 判据对降级条目
+    # 不查 quality 这一组，于是模型自造的分类直接上屏（审查第三轮 P1-B）。分值同理只印 0-100 的数字
+    # （`score: true` 现在会一路过关，页面印出 "True"）。
+    _v, _s = q.get("verdict"), q.get("score")
+    qual = ("优质判定 %s %s" % (_esc(_v), _esc(_s))
+            if _v in QUALITY_VERDICTS and isinstance(_s, (int, float))
+            and not isinstance(_s, bool) and 0 <= _s <= 100 else "")
+    return ("<article><h2>%s</h2><p class='tag'>%s · rubric %s · %s%s%s</p>%s%s"
             "%s%s%s</article>") % (
         _esc(e.get("title")), _esc(e.get("topic")),
         _esc(rubric_display(e.get("rubric"))),
-        _esc(q.get("verdict")), _esc(q.get("score")),
+        qual,
         brd, cut, warn, folded, sec_chains, cards, sec_cites)
 
 
@@ -2360,6 +2368,10 @@ def judge_weak_spots(score, bar=JUDGE_PASS, cand=None, dims=None):
     `density` 这一维额外点名"被多段复用的是哪些数"（`cand` 给了才算，不给不许凭空造清单）：
     只说"删掉重复段"是形容词，模型没法下手；清单是我们数出来的，零新增调用。
     """
+    if (score or {}).get("judged") is False or (score or {}).get("judge_skip"):
+        # 判定根本没跑 ⇒ 不许报均分、也不许给分项建议：那正是任务 #61 为页面修掉的错
+        # （"没送判定"讲成"判了 0 分"），而它一直顺着 extra 发给提纲与补结构那两趟。
+        return []
     out = ["judge 均分 %.2f 低于 %.2f" % ((score or {}).get("mean", 0.0), bar)]
     for k in JUDGE_DIMS:
         if dims is not None and k not in dims:
@@ -2940,10 +2952,9 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
             extra = "\n上一版不合格原因（必须逐条修掉）：%s\n" % "; ".join(reasons)
             # 逐段那一趟另给一份窄的：只带本段改得动的分项建议，不带契约违约原文
             # （整条级的账与嵌在里面的模型自报字符串，见 `SECTION_FIX_DIMS` 那条注释）。
-            # 判定根本没跑（契约没过）时不许说"上一版判分偏弱"：那是把"没送判定"讲成"判了 0 分"，
-            # 与 `rubric_display` 为页面修掉的同一个错（任务 #61，审查第二轮 P1-a）。
-            sec = ([] if score.get("judged") is False or score.get("judge_skip")
-                   else judge_weak_spots(score, cand=cand, dims=SECTION_FIX_DIMS))
+            # 守卫只放在 `judge_weak_spots` 一处：判定没跑时它自己返回空清单。
+            # 这里曾另有一份同款判断，变异体 U11 复跑时存活 ⇒ 证明它已经是死代码（一处真相）。
+            sec = judge_weak_spots(score, cand=cand, dims=SECTION_FIX_DIMS)
             section_extra = ("\n上一版判分偏弱、本段能改的地方：%s\n" % "; ".join(sec)) if sec else ""
             prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
     if best:
