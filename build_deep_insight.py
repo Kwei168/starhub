@@ -427,8 +427,14 @@ def repair_quality_fields(cand):
     return cand
 
 
-def validate_event(ev, valid_ids=None, valid_basis=None):
-    """按 spec §2 逐条判一个洞察条目合不合格。返回 (是否合格, 失败原因列表)。"""
+def validate_event(ev, valid_ids=None, valid_basis=None, narr_out=None):
+    """按 spec §2 逐条判一个洞察条目合不合格。返回 (是否合格, 失败原因列表)。
+
+    `narr_out` 是一个由调用方给的列表：本函数把**正文这一组**（长度/段数/条目体/缺反证）
+    的违约原文追加进去。为什么用出参而不让调用方去认字符串：逐段成文那一趟只改得动这几条
+    （任务 #77），而"哪几条归正文"这件事**只有这里知道**（就是这一组 if 的位置），
+    到了外面再按关键词认一遍，等于把归属重新猜一次。
+    """
     fails = []
     degraded_reason = (ev.get("degraded_reason") or "").strip()
     narrative = ev.get("narrative") or ""
@@ -441,6 +447,7 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
             fails.append("degraded 条目不许产预测：证据不足没资格做断言")
         return (not fails), fails
 
+    i_narr = len(fails)
     if n < NARR_MIN:
         fails.append("narrative 字数 %d < 下限 %d" % (n, NARR_MIN))
     if n > NARR_MAX:
@@ -454,6 +461,8 @@ def validate_event(ev, valid_ids=None, valid_basis=None):
         fails.append("narrative 是条目体（分点罗列 %d/%d 段），不算成文论述" % (bullets, len(paras)))
     if narrative and not any(m in narrative for m in CAVEAT_MARKS):
         fails.append("narrative 未出现任何反证/限制条件表述")
+    if narr_out is not None:
+        narr_out.extend(fails[i_narr:])
 
     cites = ev.get("citations") or []
     ids = [c.get("id") for c in cites]
@@ -1248,6 +1257,12 @@ def _structure_rules(id_list, supply, primaries=None):
     if supply >= CLAIM_EVID_MIN:
         spread += ("每条至少挂 %d 篇不同证据（一段论断只靠一篇来源，就是把那一篇换个说法再讲一遍）；"
                    % CLAIM_EVID_MIN)
+        # 两条要求要同时可满足：CLAIM_MIN 条 × 每条 CLAIM_EVID_MIN 篇可能还不够 ask 篇，
+        # 那就得明说"多写几条 or 每条多挂几篇"，否则模型照条数下界交卷必死（§10.34 那类下限）。
+        if CLAIM_MIN * CLAIM_EVID_MIN < ask:
+            spread += ("要覆盖 %d 篇，就只有两条路：多写几条论断（本项下限 %d 条），"
+                       "或每条多挂几篇 —— 别只写 %d 条各挂 2 篇就交卷。"
+                       % (ask, CLAIM_MIN, CLAIM_MIN))
     if primaries:
         spread += ("各段主证据（论断按段铺开，别都挤在同几篇上）：%s。\n"
                    % "、".join("段%d=%s" % (i + 1, p) for i, p in enumerate(primaries)))
@@ -2867,7 +2882,9 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
         # 水分先量一遍再判：这一格是观测 + judge 的输入，不当硬门（理由见 restatement_from_sets）；
         # 但必须每场都在产物里，否则"什么时候可以升成门"永远没有依据。
         annotate_observability(cand)
-        ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids)
+        narr_fails = []
+        ok, fails = validate_event(cand, valid_ids=ids, valid_basis=basis_ids,
+                                   narr_out=narr_fails)
         last_fails = fails
         fail_kind = "contract"
         if ok:
@@ -2971,8 +2988,9 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
             # （整条级的账与嵌在里面的模型自报字符串，见 `SECTION_FIX_DIMS` 那条注释）。
             # 守卫只放在 `judge_weak_spots` 一处：判定没跑时它自己返回空清单。
             # 这里曾另有一份同款判断，变异体 U11 复跑时存活 ⇒ 证明它已经是死代码（一处真相）。
-            sec = judge_weak_spots(score, cand=cand, dims=SECTION_FIX_DIMS)
-            section_extra = ("\n上一版判分偏弱、本段能改的地方：%s\n" % "; ".join(sec)) if sec else ""
+            sec = list(narr_fails) + judge_weak_spots(score, cand=cand, dims=SECTION_FIX_DIMS)
+            section_extra = ("\n上一版本段能改的地方（正文那几条契约 + 判分分项）：%s\n"
+                             % "; ".join(sec)) if sec else ""
             prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
     if best:
         cand, score, adopted_attempt = best

@@ -302,6 +302,14 @@ def test_a_contract_failure_never_claims_a_judge_score():
                 self.out.append((self.outline_n, prompt))
             if kind == "structure":
                 self.out.append((self.outline_n, prompt))
+                # 顺手造一条**整条级**的违约（basis 为空），好让"段落那趟收不到它"这条反向断言
+                # 真有东西可比。第一版我用 forecast 窗口=90 天当靶子，结果 `repair_forecasts`
+                # 半路就把它修回合法值 ⇒ 违约根本没发生，反向断言是空的（变异体 K3 存活抓出来的）。
+                doc = json.loads(D.FakeClient.complete(self, prompt, key=key, kind="structure"))
+                doc["quality"] = {"verdict": "一手", "score": 80,
+                                  "why": "官方发布，信息权威，未见第三方口径与交叉核验。",
+                                  "basis": []}
+                return json.dumps(doc, ensure_ascii=False)
             if kind == "section":
                 self.sec.append((self.outline_n, prompt))
                 # 第一趟整条写得太短 ⇒ 契约没过 ⇒ 判定根本没跑
@@ -320,6 +328,14 @@ def test_a_contract_failure_never_claims_a_judge_score():
     for p in second:
         assert u"judge 均分" not in p and u"判分偏弱" not in p, \
             "判定根本没跑，却对写字的人说上一版判分偏弱：%r" % p[:260]
+    # 任务 #77：契约里"一段就能改"的那几条必须落到写字的人手里（现在只有 judge 的分项建议会到）
+    for p in second:
+        assert u"narrative 字数" in p, \
+            "本段改得动的契约条目没进来，下一趟还会写出同样短的正文：%r" % p[:300]
+    # 同一条 prompt 里不许混进整条级的账（结构字段那类，一段改不了）
+    for p in second:
+        assert u"优质判断不许由生成方自评" not in p, \
+            "结构字段的账又被塞给只写一段的人（basis 为空不是这一段能修的）：%r" % p[:300]
     # 同一条谎也顺着 extra 发给提纲与补结构那两趟（审查第三轮 F：上一版只堵了新开的通道）
     for p in [x for (n, x) in c.out if n == 2]:
         assert u"judge 均分" not in p, \
@@ -372,6 +388,29 @@ def test_the_structure_pass_sees_which_evidence_each_section_owns():
     ids = re.findall(r"c\d+", p.split(u"各段主证据")[-1][:200])
     assert len(set(ids)) >= D.PARAS_MIN, \
         "清单里的编号不足 %d 个不同段（铺开的抓手不够）：%s" % (D.PARAS_MIN, sorted(set(ids)))
+
+
+def test_the_two_coverage_asks_are_always_reconcilable():
+    """"每条至少 2 篇"与"合计覆盖 ask 篇"不能互相够不着：够不着时要把另一条路说出口。
+
+    场 41 的现网教训就是这个（要求抬上去了，代价是核查一摘就跌破）：prompt 里同时喊两个数，
+    模型照条数下界（3 条 ×2 篇=6）交卷时，合计 7 篇**结构上就不可能满足**，
+    于是它要么硬凑弱配对、要么死在覆盖上。这条判据把"够不着就要讲明白"钉住，
+    并且反向断言"够得着时不许多喊"（否则又变成 §10.34 那类无谓的下限压力）。
+    """
+    hit = 0
+    for supply in range(0, 21):
+        ids = ", ".join("c%d" % i for i in range(1, supply + 1)) or "（无）"
+        p = D._structure_rules(ids, supply)
+        ask = int(CLAIMS_ASK_RE.search(p).group(1))
+        short = D.CLAIM_MIN * D.CLAIM_EVID_MIN < ask
+        says = u"多写几条论断" in p
+        if supply >= D.CLAIM_EVID_MIN:
+            assert says == short, (supply, ask, says, short)
+        else:
+            assert not says, "池子连每条 2 篇都给不出，还在讲覆盖几条：%s" % p[:200]
+        hit += 1 if short else 0
+    assert 0 < hit <= 21, "夹具没覆盖到'够不着'那一档，整条判据是空的：hit=%d" % hit
 
 
 def test_the_ask_is_never_looser_than_the_contract_itself():
