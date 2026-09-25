@@ -493,5 +493,9 @@
  "chelinho139/wow-ai": "在魔兽世界 (WoW) 中使用 AI（Claude、Codex 和 Grok）的插件",
  "andududu/jeview": "Jev 的非官方本地可视化工具（TypeSafe）：代码进行的每次调用的实时视图。不隶属于 TypeSafe AI。",
  "paperclipai/paperclip": "每个人都用它来管理工作中的座席的开源应用程序",
- "google/langextract": "一个 Python 库，用于使用具有精确源基础和交互式可视化的法学硕士从非结构化文本中提取结构化信息。"
+ "google/langextract": "一个 Python 库，用于使用具有精确源基础和交互式可视化的法学硕士从非结构化文本中提取结构化信息。",
+ "NVIDIA/Model-Optimizer": "量化、蒸馏、剪枝、神经架构搜索、推测解码等 SOTA 模型优化技术的统一库。它为 TensorRT-LLM、TensorRT、vLLM 等下游部署框架压缩深度学习模型，以优化推理速度。",
+ "leejet/stable-diffusion.cpp": "纯 C/C++ 中的扩散模型（SD、Flux、Wan、Qwen Image、Z-Image、...）推理",
+ "amitshekhariitbhu/ai-system-design": "AI 系统设计 - 了解如何逐步设计基于 LLM、RAG 和 AI Agent 的 AI 系统。",
+ "wildminder/awesome-qwen-image": "Qwen-图像 2.1。检查点、量化、提示引擎、LoRA 和工具"
 }
