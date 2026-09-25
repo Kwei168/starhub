@@ -8,6 +8,7 @@ CAS 父不符就返回 False），不给任何"宽松通过"。
 import json
 import os
 import sys
+import time
 
 import pytest
 
@@ -136,18 +137,50 @@ def test_missing_chunk_is_a_hard_failure_not_a_warning():
         D.load_rss_pool(urls=D.CHUNK_URLS, get=flaky, log=lambda s: None)
 
 
-def test_all_degraded_run_is_blocked_from_publishing(tmp_path):
-    """一场跑下来全是快讯 ⇒ 不发。这等于什么都没分析，发出去只会伪装成成功。"""
+def test_all_degraded_run_still_publishes(tmp_path):
+    """全场降级**照发布**。这条推翻我自己写过的 `..._is_blocked_from_publishing`。
+
+    旧政策的后果是用户 2026-09-23 指出的那句：质量一抖，站点"几天都没信息或者永久没信息"。
+    沉默对读者和"管线坏了"长得一模一样；"半套不上线"管的是**有条目根本没做**，
+    不是"做了但只够快讯"。伪装成功的正确解法是把话说清楚（页面横幅 + 每条标原因），
+    不是不发。
+    """
     pool = {u: {"url": u, "source": "src%d" % i, "title": "t%d" % i, "text": "短" * 400,
-                "has_full": True}
+                "has_full": True, "source_key": "s%d_%d" % (i, i)}
             for i, u in enumerate(["https://a.test/1", "https://b.test/2"])}
     logs = []
-    out = D.night_run(purpose="publish", client=D.FakeClient(), out_dir=str(tmp_path / "ns"),
+
+    class Api:
+        def __init__(self):
+            self.head = "h"; self.tree = "t_base"; self.n = 0
+            self.paths = []
+        def head_info(self): return self.head, self.tree
+        def create_blob(self, c): self.n += 1; return "b%d" % self.n
+        def create_tree(self, base, entries):
+            self.paths = [e["path"] for e in entries]; return "t1"
+        def create_commit(self, parent, tree, msg): return "c1"
+        def update_ref(self, sha, force=False): self.head = sha; return True
+        def is_ancestor(self, sha): return True
+
+    made = {}
+
+    class Realish:
+        """组合而非继承：发布路径硬拒 `isinstance(client, FakeClient)`，
+        这里要测的是"全降级也发布"，不是那道假客户端闸。"""
+        def __init__(self):
+            self._f = D.FakeClient()
+        def complete(self, prompt, key=None, kind="generate"):
+            return self._f.complete(prompt, key, kind)
+
+    out = D.night_run(purpose="publish", client=Realish(), out_dir=str(tmp_path / "ns"),
                       keys=["k1", "k2", "k3"], anchor_raw=_anchor(list(pool)), pool=pool,
-                      api_factory=lambda: pytest.fail("全降级不该提交"), pred_raw="", quality_raw={},
+                      api_factory=lambda: made.setdefault("api", Api()) or made["api"],
+                      pred_raw="", quality_raw={},
                       date_str="2026-09-23", log=logs.append, sleep=lambda s: None)
-    assert out["published"]["status"] == "blocked", out["published"]
-    assert any("全降级" in l or "不发布" in l for l in logs), logs
+    assert out["published"] != {"status": "blocked", "attempts": 0}, \
+        "全降级仍被挡：站点会连续多日无更新 %s" % (out["published"],)
+    assert "deep-insight.html" in made["api"].paths, made["api"].paths
+    assert any("无合格深度条目" in l or "按快讯发布" in l for l in logs), logs
 
 
 def test_empty_pool_is_a_hard_stop():
@@ -236,7 +269,7 @@ def test_client_refuses_keyless_call():
 
 
 def _run(tmp_path, client=None, purpose="test", api_factory=None, call_cap=80, pool=None,
-         anchor=None, out_dir=None, max_regen=2, pred_raw="", quality_raw={}):
+         anchor=None, out_dir=None, max_regen=2, pred_raw="", quality_raw={}, workers=1):
     pool = pool or _pool_articles(6)[0]
     anchor = anchor or _anchor(list(pool)[:6])
     # sleep/wait_cap 必须注入：默认走 time.sleep(5s) 等满 900s，一旦哪天 KeyPool
@@ -245,6 +278,7 @@ def _run(tmp_path, client=None, purpose="test", api_factory=None, call_cap=80, p
         out_dir or (tmp_path / "ns")), keys=["k1", "k2", "k3"], anchor_raw=anchor,
         pool=pool, api_factory=api_factory, call_cap=call_cap, max_regen=max_regen,
         date_str="2026-09-23", log=lambda s: None, pred_raw=pred_raw, quality_raw={},
+        workers=workers,
         sleep=lambda s: None, wait_cap_s=5)
 
 
@@ -334,12 +368,200 @@ def test_call_cap_records_not_run(tmp_path):
     assert doc["not_run"] and doc["not_run"][0]["reason"] == "not_run:budget", doc["not_run"]
 
 
-def test_judge_reject_regrades_after_max_regen(tmp_path):
+def test_every_item_carries_its_own_call_and_time_account(tmp_path):
+    """spec §7 要"每合格条目调用数"来定 CALL_CAP —— 这个数必须在产物里。
+
+    第四轮审查量到的真实形状：整场只有 `llm_calls=756` 一个总数，摊到 7 条什么也定不了；
+    定档要看分布。`llm_calls_used` 自批 3.9 起按**归属**计（不是"本条起止之间的全局新增数"，
+    那种窗口增量在 workers=3 下会把同一段调用重复计给每条），所以这里断言严格相等。
+    """
+    pool, links = _pool_articles(6)
+    anchor = json.dumps({"date": "2026-09-23", "events": [
+        {"id": "evt%d" % i, "title": "事件%d" % i, "topic": "ai", "summary": "概述",
+         "key_links": list(links)} for i in range(3)]}, ensure_ascii=False)
+    out = _run(tmp_path, pool=pool, anchor=anchor, call_cap=4000)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    evs = doc["events"]
+    assert len(evs) == 3, [e.get("id") for e in evs]
+    used = [e.get("llm_calls_used") for e in evs]
+    assert all(isinstance(u, int) and u > 0 for u in used), used
+    assert all(isinstance(e.get("elapsed_item_s"), float) for e in evs), \
+        [e.get("elapsed_item_s") for e in evs]
+    # 相加必须**恰好**等于总数。早先写法取窗口增量，并发下会重复计：
+    # 现网 run 35957864648（workers=3）量到六条之和 594 > 总数 207，正好是并发倍率。
+    assert sum(used) == doc["budget"]["llm_calls"], \
+        "各条之和 %d != 总数 %d：归属计账没生效" % (sum(used), doc["budget"]["llm_calls"])
+    cpq = doc["budget"]["calls_per_qualified"]
+    assert cpq["items"] and cpq["max"] >= cpq["mean"] > 0, cpq
+
+
+def test_per_item_accounts_are_exact_under_real_concurrency(tmp_path):
+    """真并发（workers=3）下各条归属计数仍要相加等于总数，并且要证明确实重叠了。
+
+    只测串行等于没测 —— 这条判据红过一次的原因就是"窗口增量"在并发下重复计数，
+    而并发档才是生产值（deep-insight.yml 里 workers=3）。
+    """
+    pool, links = _pool_articles(6)
+    anchor = json.dumps({"date": "2026-09-23", "events": [
+        {"id": "evt%d" % i, "title": "事件%d" % i, "topic": "ai", "summary": "概述",
+         "key_links": list(links)} for i in range(3)]}, ensure_ascii=False)
+    class SlowFirst(D.FakeClient):
+        """每条第一次提纲调用真睡 0.12s：并发时三条同睡，串行时排队睡。
+
+        信号必须自己造：`_run` 把预算的 sleep 钩子换成了 no-op，正常跑三条各 ~30ms，
+        量出来的耗时分辨不出重叠不重叠。
+        """
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "outline":
+                time.sleep(0.12)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    out = _run(tmp_path, client=SlowFirst(), pool=pool, anchor=anchor,
+               call_cap=4000, workers=3)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    evs = doc["events"]
+    assert len(evs) == 3, [e.get("id") for e in evs]
+    used = [int(e.get("llm_calls_used") or 0) for e in evs]
+    assert all(u > 0 for u in used), used
+    assert sum(used) == doc["budget"]["llm_calls"], \
+        "并发下各条之和 %d != 总数 %d" % (sum(used), doc["budget"]["llm_calls"])
+    secs = [float(e.get("elapsed_item_s") or 0) for e in evs]
+    total = float(doc["budget"]["elapsed_s"] or 0)
+    assert max(secs) < sum(secs), "三条各跑 %s 秒：根本没重叠，这条测不到并发" % (secs,)
+    # 结构性自证：排队时"各条之和 == 全场耗时"，真并发时之和≈3×单条 > 全场。
+    assert sum(secs) > total, "各条之和 %s <= 全场 %s：三条是排队的，这条测不到并发" % (
+        sum(secs), total)
+
+
+def test_an_item_that_crashes_still_returns_its_call_account(tmp_path):
+    """走 `except Exception` 那条早退路径（Agnes 5xx 的形状）时同样要交回自己的账。
+
+    与下一条判据成对：早退有两条路径，只钉一条的话另一条删了照样绿（第五轮审查 P1-5）。
+    """
+    pool, links = _pool_articles(3)
+    anchor = json.dumps({"date": "2026-09-23", "events": [
+        {"id": "evt%d" % i, "title": "事件%d" % i, "topic": "ai", "summary": "概述",
+         "key_links": list(links)} for i in range(3)]}, ensure_ascii=False)
+
+    class Crashes(D.FakeClient):
+        n = 0
+
+        def complete(self, prompt, key=None, kind="generate"):
+            self.n += 1
+            if self.n in (2, 3):
+                raise ValueError("upstream 5xx")
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    out = _run(tmp_path, client=Crashes(), pool=pool, anchor=anchor, call_cap=4000)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    assert doc.get("failed_items"), doc.keys()
+    alive = sum(int(e.get("llm_calls_used") or 0) for e in doc["events"])
+    dead = [int(r.get("llm_calls_used") or 0) for r in doc.get("not_run") or []]
+    assert alive + sum(dead) == doc["budget"]["llm_calls"], (alive, dead)
+
+
+def test_a_resumed_run_counts_only_this_attempt_money(tmp_path):
+    """续跑场：本场总数只该等于"本场做过的条目 + 本场死掉的条目"。
+
+    `prev_recs` 里的条目带着上一趟的 `llm_calls_used`，而 `budget.llm_calls` 只数本场。
+    这条判据**从 checkpoint 文件自己算出哪些条是带回来的**，不靠产物里的元数据字段：
+    加那种字段会让每趟重试都改产物字节，把幂等守卫打回（现网判据实测过一次红）。
+    """
+    pool, links = _pool_articles(3)
+    anchor = json.dumps({"date": "2026-09-23", "events": [
+        {"id": "evt%d" % i, "title": "事件%d" % i, "topic": "ai", "summary": "概述",
+         "key_links": list(links)} for i in range(3)]}, ensure_ascii=False)
+    nd = tmp_path / "ns"
+    out1 = _run(tmp_path, pool=pool, anchor=anchor, out_dir=nd,
+                call_cap=D.PER_ATTEMPT_CALLS + 5)
+    d1 = json.load(open(out1["json"], encoding="utf-8"))
+    assert len(d1["events"]) == 1, [e["id"] for e in d1["events"]]
+    carried = {json.loads(l)["id"] for l in
+               open(os.path.join(str(nd), "deep-2026-09-23.jsonl"), encoding="utf-8")
+               if l.strip()}
+    assert carried == {d1["events"][0]["id"]}, carried
+
+    out2 = _run(tmp_path, pool=pool, anchor=anchor, out_dir=nd, call_cap=4000)
+    d2 = json.load(open(out2["json"], encoding="utf-8"))
+    this = [e for e in d2["events"] if e["id"] not in carried]
+    assert this and len(this) + len(carried) == len(d2["events"]), (
+        [e["id"] for e in d2["events"]], carried)
+    dead = sum(int(r.get("llm_calls_used") or 0) for r in d2.get("not_run") or [])
+    assert sum(int(e.get("llm_calls_used") or 0) for e in this) + dead == \
+        d2["budget"]["llm_calls"], (this, dead, d2["budget"]["llm_calls"])
+    # 上一趟的钱不许被算进本场：混起来的话 §7 会把两趟的成本当一趟定档
+    assert int(d2["budget"]["llm_calls"]) < \
+        sum(int(e.get("llm_calls_used") or 0) for e in d2["events"]), d2["budget"]
+
+
+def test_an_item_that_dies_still_returns_its_call_account(tmp_path):
+    """条目中途被 429 掐出去：已花掉的调用要钉在自己的 not_run 行上。
+
+    两条早退路径（429 等不到 key、瞬时异常）以前只 log 就 return —— 钱花在死掉那条身上，
+    产物里却只剩 not_run:incomplete 一个名字，读的人分不开"没排上"（0 次）与
+    "跑到一半被掐了"（几十次）。异常那条由 test_an_item_that_crashes_... 钉，成对。
+    """
+    pool, links = _pool_articles(3)
+    anchor = json.dumps({"date": "2026-09-23", "events": [
+        {"id": "evt%d" % i, "title": "事件%d" % i, "topic": "ai", "summary": "概述",
+         "key_links": list(links)} for i in range(3)]}, ensure_ascii=False)
+
+    class Dies(D.FakeClient):
+        n = 0
+
+        def complete(self, prompt, key=None, kind="generate"):
+            self.n += 1
+            if self.n in (2, 3):
+                # 首发与补试都抛 ⇒ 条目真的死掉（批 3.11 之后只抛一次会被换 key 救回来）。
+                # 第一次已经记过一笔账，正是要钉的形状。
+                raise D.RateLimited(30)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    out = _run(tmp_path, client=Dies(), pool=pool, anchor=anchor, call_cap=4000)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    rows = doc.get("not_run") or []
+    assert rows, [e.get("id") for e in doc["events"]]
+    alive = sum(int(e.get("llm_calls_used") or 0) for e in doc["events"])
+    dead = [int(r.get("llm_calls_used") or 0) for r in rows]
+    assert max(dead) > 0, "死掉那条的调用没进产物：not_run 只写着没做，看不出已经花了多少"
+    assert alive + sum(dead) == doc["budget"]["llm_calls"], (
+        "活着 %d + 死了 %s != 总数 %d" % (alive, dead, doc["budget"]["llm_calls"]))
+
+
+def test_a_run_may_not_start_an_item_it_cannot_finish(tmp_path):
+    """预算不够写完一条就不许开这条：旧闸只问 `llm_calls >= call_cap`，剩 1 次也照开。
+
+    一条最坏 3 趟 × 每趟 PER_ATTEMPT_CALLS 次 —— 那是整夜最大的一笔超发，
+    而且事后从 `not_run` 上读不出来（它看起来只是"没排上"）。
+    """
+    cap = D.PER_ATTEMPT_CALLS + 5          # 只够开一条，第二条必超发
+    pool, links = _pool_articles(3)
+    anchor = json.dumps({"date": "2026-09-22", "events": [
+        {"id": "evt%d" % i, "title": "事件%d" % i, "topic": "ai", "summary": "概述",
+         "key_links": list(links)} for i in range(3)]}, ensure_ascii=False)
+    out = _run(tmp_path, call_cap=cap, pool=pool, anchor=anchor)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    assert len(doc["events"]) == 1, [e["id"] for e in doc["events"]]
+    reasons = [r["reason"] for r in doc.get("not_run") or []]
+    assert reasons and all(x == "not_run:budget" for x in reasons), reasons
+    assert doc["budget"]["llm_calls"] <= cap, \
+        "超发 %d 次：开条前的预留没起作用" % (doc["budget"]["llm_calls"] - cap)
+
+
+def test_judge_reject_degrades_without_burning_the_whole_regen_budget(tmp_path):
+    """判定不过线且离合格线远（0.40）：降级 + 只重写 1 轮就收手。
+
+    原来这条钉的是"跑满 max_regen 后降级"。批 3 之后账变了：0.40→0.40 的第三趟
+    是重掷骰子（同一内容复评极差实测 0.17），预算要留给下一条洞察。
+    近线那档（0.70/0.72）仍跑满三轮，判据在 test_judge_denoise 里成对钉着。
+    """
     out = _run(tmp_path, client=D.FakeClient(judge_pass=False))
     doc = json.load(open(out["json"], encoding="utf-8"))
     ev = doc["events"][0]
     assert "重写" in (ev.get("degraded_reason") or ""), ev.get("degraded_reason")
-    assert ev["regen_used"] == 2
+    assert ev["regen_used"] == 1, ev["regen_used"]
+    assert ev.get("regen_stalled"), "收手没留痕：读产物的人分不开'没预算'与'判定停滞'"
     assert ev["forecasts"] == [] and len(ev["narrative"]) <= D.DEGRADED_NARR_MAX
     assert doc["budget"]["degraded"] == 1
 
@@ -354,9 +576,13 @@ def test_judge_is_called_separately_from_generator(tmp_path):
     _run(tmp_path, client=c)
     gen = [k for k in c.calls if k != "judge"]
     assert gen, c.calls
-    assert set(gen) <= {"generate", "outline", "section", "structure"}, \
+    # faith 是批 2 新增的独立核查阶段：既不是生成也不是判定，白名单要显式承认它。
+    assert set(gen) <= {"generate", "outline", "section", "structure", "faith"}, \
         "冒出了没预期的生成侧调用：%s" % set(gen)
-    assert c.calls.count("judge") == 1, "判定次数不是 1：%s" % c.calls
+    # 判定的次数由采样数决定（批 3：单遍均值落在复评噪声带里，不可复现）。
+    # 这条判据真正钉的是"判定与生成不共用 kind"，不是次数等于 1。
+    assert c.calls.count("judge") == D.JUDGE_SAMPLES, \
+        "判定次数不等于采样数 %d：%s" % (D.JUDGE_SAMPLES, c.calls)
     assert "judge" not in set(gen), "判定与生成共用了 kind，等于让生成方自评"
 
 
@@ -421,7 +647,9 @@ def _budget_snapshot():
 ])
 def test_main_exit_code_reflects_publish_outcome(monkeypatch, status, fatal):
     _fake_night(monkeypatch, {"status": status, "attempts": 1})
-    rc = D.main(["--purpose", "publish"])
+    # ref 必须点名：批 0 之后 purpose=publish 不给 ref 会在出网前就被拒，
+    # 那样这条判据测的就不是退出码而是守卫了。打主干在这里是显式决定。
+    rc = D.main(["--purpose", "publish", "--ref", D.MAIN_REF])
     assert (rc != 0) is fatal, "status=%s 时 rc=%d，绿勾会把没上线说成已上线" % (status, rc)
 
 
@@ -611,7 +839,9 @@ def test_judge_not_starved_when_only_one_key(tmp_path):
     doc = json.load(open(out["json"], encoding="utf-8"))
     assert doc["budget"]["qualified"] == len(doc["events"]) == 1, \
         doc["events"][0].get("degraded_reason")
-    assert c.calls.count("judge") == 1, "单 key 下 judge 一次都不该被卡住：%s" % c.calls
+    # 这条钉的是"单 key 部署下判定不被预留位饿死"，次数按采样数走，不是 1。
+    assert c.calls.count("judge") >= D.JUDGE_SAMPLES, \
+        "单 key 下 judge 没被叫满采样数：%s" % c.calls
 
 
 def test_workers_cap_never_exceeds_key_pool():
@@ -754,6 +984,9 @@ def test_model_may_return_string_shaped_rows_without_crashing(tmp_path):
     assert "fabricated" not in json.dumps(cites, ensure_ascii=False), cites
     assert "fabricated" not in open(out["html"], encoding="utf-8").read(), \
         "编造域名上屏了"
+    # `degraded_reason` 是要渲染上屏的那一格：把违约原文（内含模型自报的假链接）
+    # 原样拼进理由，等于绕开 citations 的清洗把假域名送上线。原文只许留在 JSON 账里。
+    assert "fabricated" not in (ev.get("degraded_reason") or ""), ev.get("degraded_reason")
     assert ev.get("invented_citations") or any(
         "假链接" in f for f in (ev.get("contract_fails") or [])), ev
     # 字符串形态的 claims/chains/forecasts/quality 不算合格内容，必须降级而不是当合格
@@ -780,3 +1013,244 @@ def test_truncated_replies_are_counted_separately(tmp_path):
     assert b.snapshot()["truncated"] == 1, b.snapshot()
     D.call_llm(c, "p", D.KeyPool(["k1"]), b, "judge", sleep=lambda s: None)
     assert b.snapshot()["truncated"] == 1, "judge 正常收尾也被记成截断"
+
+
+def test_the_broadcast_says_not_judged_rather_than_rubric_zero(tmp_path, monkeypatch):
+    """播报读者：CI 日志里那行 `rubric=0.0` 是运维唯一看得见的分，也得改口。
+
+    页面改了而日志没改，等于只修了半个读者（"观测字段必须连读者一起交付"）。
+    """
+    pool, links = _pool_articles(6)
+    anchor = json.dumps({"date": "2026-09-23", "events": [
+        {"id": "evt1", "title": "事件甲", "topic": "ai", "summary": "概述",
+         "key_links": list(links)}]}, ensure_ascii=False)
+    logs = []
+
+    class AlwaysShort(D.FakeClient):
+        """每一趟都交一份注定过不了契约的短正文（走单趟模式，判定没机会跑）。"""
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "generate":
+                self.calls.append("generate")
+                doc = json.loads(D.FakeClient.complete(self, prompt, key=key, kind="structure"))
+                doc["narrative"] = "论证很短。" * 30
+                return json.dumps(doc, ensure_ascii=False)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    def _no_network(*a, **kw):
+        raise AssertionError("判据不许真出网：漏传 pred_raw/quality_raw 就会走到这里"
+                             "（第五轮审查 P0-1：那次未复现的红就是这个）")
+
+    monkeypatch.setattr(D, "http_get", _no_network)
+    out = D.night_run(purpose="test", client=AlwaysShort(), out_dir=str(tmp_path / "ns"),
+                      keys=["k1", "k2", "k3"], anchor_raw=anchor, pool=pool,
+                      api_factory=None, call_cap=4000, max_regen=2, date_str="2026-09-23",
+                      log=logs.append, sleep=lambda s: None, wait_cap_s=5, staged=False,
+                      pred_raw="", quality_raw={})
+    lines = [l for l in logs if "rubric" in l]
+    assert lines, logs[-6:]
+    assert any("未送判定" in l for l in lines), lines
+    assert not any("rubric=0.0" in l for l in lines), lines
+
+
+def test_transient_upstream_error_retries_on_another_key():
+    """一过性 5xx 换一把 key 立刻再问一次；不许吃掉整条洞察。
+
+    与 429 的分工要守住：5xx 不带 Retry-After、**不进等待预算**，
+    所以它不能复用 429 那条冷却-等待路径，只是"换人再问一次"。
+    """
+    used = []
+
+    class Flaky:
+        def complete(self, prompt, key=None, kind="generate"):
+            used.append(key)
+            if len(used) == 1:
+                raise RuntimeError("Agnes HTTP 520")
+            return '{"ok":1}'
+
+    b = D.Budget(call_cap=80)
+    p = D.KeyPool(["k1", "k2"])
+    assert D.call_llm(Flaky(), "p", p, b, "generate", sleep=lambda s: None) == '{"ok":1}'
+    assert len(used) == 2, used
+    assert used[1] != used[0], "重试还用了刚报错那把 key"
+    snap = b.snapshot()
+    assert snap["upstream_errors"] == 1 and snap["upstream_recovered"] == 1, snap
+    assert snap["c429"] == 0 and snap["wait_s"] == 0, "5xx 被记成了限流等待"
+    # 补试用过的那把 key 必须交还：漏 release 会让池子越跑越小（第五轮 P1-5，原先无人钉）
+    assert p.snapshot()["busy"] == 0, "补试的 key 没 release，留在 busy 里：%s" % p.snapshot()
+
+
+def test_sustained_upstream_error_costs_at_most_one_extra_attempt():
+    """持续故障要快速失败：每次调用最多补试一次，不叠加、不退避重试。
+
+    最坏情况的账写死在这里：整场都是 5xx 时请求数至多翻倍
+    （现网第 30 场三条死条目共 54 次成功调用 ⇒ 上限也就多 ~54 次请求），
+    换 key 再问一次救不回持续故障，但也不会把预算拖没。
+    """
+    used = []
+
+    class AlwaysDown:
+        def complete(self, prompt, key=None, kind="generate"):
+            used.append(key)
+            raise RuntimeError("Agnes HTTP 520")
+
+    b = D.Budget(call_cap=80)
+    p = D.KeyPool(["k1", "k2"])
+    for _ in range(5):
+        with pytest.raises(RuntimeError):
+            D.call_llm(AlwaysDown(), "p", p, b, "generate", sleep=lambda s: None)
+    assert len(used) == 10, "5 次调用各应试两把 key，实际 %d 次" % len(used)
+    snap = b.snapshot()
+    assert snap["upstream_errors"] == 10 and snap["upstream_recovered"] == 0, snap
+
+
+def test_no_other_free_key_means_no_retry():
+    """只有一把 key 时**不**原地再问：那把刚报错，补试只会多烧一次请求。
+
+    这条钉的是"换 key"而不是"重试"这个措辞 —— 实现要是写成同一个 key 循环，
+    单 key 场景就会白烧一倍请求还照样失败。
+    """
+    used = []
+
+    class AlwaysDown:
+        def complete(self, prompt, key=None, kind="generate"):
+            used.append(key)
+            raise RuntimeError("Agnes HTTP 520")
+
+    b = D.Budget(call_cap=80)
+    p = D.KeyPool(["k1"])
+    with pytest.raises(RuntimeError):
+        D.call_llm(AlwaysDown(), "p", p, b, "generate", sleep=lambda s: None)
+    assert len(used) == 1, "没有别的空闲 key 还补试：%s" % used
+
+
+def test_an_evidence_gate_item_is_not_printed_as_a_zero_score(tmp_path):
+    """证据门挡下的条目同样"没送判定"，而且文案要说得出是哪一道门（第五轮 P1-2）。
+
+    这条判据的靶子是"修了一个写点漏了另两个"：契约、证据门、判据协议三支都写 0.0，
+    只补契约那一支的话，页面上另外两类条目还在被印成"判了 0 分"。
+    """
+    pool, links = _pool_articles(1)
+    ev = {"id": "e9", "title": "只有短摘要", "topic": "ai", "summary": "概述",
+          "key_links": list(links)}
+    anchor = json.dumps({"date": "2026-09-23", "events": [ev]}, ensure_ascii=False)
+    out = _run(tmp_path, anchor=anchor, pool=pool, call_cap=4000)
+    doc = json.load(open(out["json"], encoding="utf-8"))
+    hit = [e for e in doc["events"] if (e.get("rubric") or {}).get("judge_skip") == "evidence_gate"]
+    html = D.render_page(doc)
+    if hit:
+        assert u"证据门挡下" in html, html[:900]
+        assert "rubric 0.0" not in html
+    else:
+        # 这个夹具没造出门挡下的形状时也必须说得出为什么，否则判据是空的
+        assert u"证据门挡下" not in html, "页面出现了没有产物对应的标注"
+
+
+def test_total_requests_are_derivable_from_the_three_counters():
+    """恒等式：实际发出的请求数 == 成功调用 + 被限流 + 上游故障打断。
+
+    这是"表征判据"而不是修 bug：批 3.11 之后调用数与请求数第一次不等价，
+    现在不钉住，等下一次拿 `llm_calls` 去定 `CALL_CAP` 时就会在故障场里低估真实开销。
+    三个计数器各自都已有变异体守着，这里钉的是**它们之间**的关系。
+    """
+    sent = []
+
+    class Mixed:
+        """第 1 次 429、第 2 次 5xx、第 3 次（补试）成功 ⇒ 3 个请求、1 次成功调用。"""
+
+        def complete(self, prompt, key=None, kind="generate"):
+            sent.append(key)
+            n = len(sent)
+            if n == 1:
+                raise D.RateLimited(10)
+            if n == 2:
+                raise RuntimeError("Agnes HTTP 520")
+            return '{"ok":1}'
+
+    b = D.Budget(call_cap=80)
+    b.start()
+    p = D.KeyPool(["k1", "k2", "k3"])
+    # 1) 三种故障各来一次后成功：请求 3 个、账上 1+1+1
+    assert D.call_llm(Mixed(), "p", p, b, "generate", sleep=lambda s: None) == '{"ok":1}'
+    snap = b.snapshot()
+    assert snap["llm_calls"] == 1 and snap["c429"] == 1 and snap["upstream_errors"] == 1, snap
+    assert len(sent) == snap["llm_calls"] + snap["c429"] + snap["upstream_errors"], (
+        "三种计数器凑不齐：发了 %d 个请求，账上是 %s" % (len(sent), snap))
+
+    # 2) 首发 5xx、补试成功：请求 2、成功 1、打断 1（至多补试一次，第二次 5xx 就该抛）
+    sent2 = []
+
+    class DownThenUp:
+        def complete(self, prompt, key=None, kind="generate"):
+            sent2.append(key)
+            if len(sent2) == 1:
+                raise RuntimeError("Agnes HTTP 502")
+            return '{"ok":1}'
+
+    b2 = D.Budget(call_cap=80)
+    b2.start()
+    assert D.call_llm(DownThenUp(), "p", D.KeyPool(["k1", "k2", "k3"]), b2, "generate",
+                      sleep=lambda s: None) == '{"ok":1}'
+    snap2 = b2.snapshot()
+    assert snap2["llm_calls"] == 1 and snap2["upstream_errors"] == 1, snap2
+    assert len(sent2) == snap2["llm_calls"] + snap2["c429"] + snap2["upstream_errors"], (
+        "补试过的请求没进恒等式：发了 %d 个，账上 %s" % (len(sent2), snap2))
+
+
+def test_a_retry_that_hits_429_is_still_treated_as_429():
+    """补试撞 429 必须走限流那一档：冷却那把 key、记 c429、推进 waited，而不是当上游故障抛出去。
+
+    429 与 5xx 的下一步不同（一个等窗口、一个换人），归因合并成同一个计数器，
+    读日志的人就会去查错的地方；而没被 mark 的 key 会立刻被下一条继续踩。
+    """
+    sent = []
+
+    class Mixed:
+        def complete(self, prompt, key=None, kind="generate"):
+            sent.append(key)
+            n = len(sent)
+            if n == 1:
+                raise RuntimeError("Agnes HTTP 520")     # 首发：上游故障
+            if n == 2:
+                raise D.RateLimited(45)                   # 补试：其实是被限流
+            return '{"ok":1}'                             # 再换一把就成功
+
+    p = D.KeyPool(["k1", "k2", "k3"])
+    b = D.Budget(call_cap=80)
+    b.start()
+    assert D.call_llm(Mixed(), "p", p, b, "generate", sleep=lambda s: None) == '{"ok":1}'
+    snap = b.snapshot()
+    assert snap["llm_calls"] == 1, snap
+    assert snap["c429"] == 1, "补试那次 429 没进限流账：%s" % snap
+    assert snap["upstream_errors"] == 1, "429 被误记成上游故障：%s" % snap
+    assert snap["wait_s"] >= 45, "429 该推进等待预算，却一秒都没等：%s" % snap
+    assert p.snapshot()["cooling"] >= 1, "那把 429 的 key 没被冷却，下一条会继续踩"
+    assert len(sent) == snap["llm_calls"] + snap["c429"] + snap["upstream_errors"], (
+        "请求数恒等式破了：发了 %d 个，账上 %s" % (len(sent), snap))
+
+
+def test_a_key_that_just_5xxed_is_not_the_next_one_picked():
+    """上游按 key 拉黑时，每次都先撞那把坏 key = 每次白补一发请求。
+
+    只做"挪队尾"，**不冷却**：全池都是 5xx 时冷却会把每条都拖满 `wait_cap_s`，
+    那比白补一次糟得多（第六轮审查 P1-3 的取舍）。
+    """
+    picked = []
+
+    class FirstKeyIsBad:
+        def complete(self, prompt, key=None, kind="generate"):
+            picked.append(key)
+            if key == "k1":
+                raise RuntimeError("Agnes HTTP 520")
+            return '{"ok":1}'
+
+    p = D.KeyPool(["k1", "k2", "k3"])
+    b = D.Budget(call_cap=80)
+    b.start()
+    assert D.call_llm(FirstKeyIsBad(), "p", p, b, "generate", sleep=lambda s: None) == '{"ok":1}'
+    assert picked == ["k1", "k2"], "补试没换人：%s" % picked
+    assert p.snapshot()["cooling"] == 0, "5xx 被当成限流去冷却了"
+
+    assert D.call_llm(FirstKeyIsBad(), "p", p, b, "generate", sleep=lambda s: None) == '{"ok":1}'
+    assert picked[2] != "k1", "刚 5xx 的 key 还是第一个被拿到，每趟都白补一发：%s" % picked
+    assert b.snapshot()["upstream_errors"] == 1, "第二次不该再算一次上游故障：%s" % b.snapshot()
