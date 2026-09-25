@@ -227,6 +227,97 @@ def test_the_recycled_fact_list_reaches_the_real_rewrite_prompt():
     assert (rec.get("rubric") or {}).get("density") == 0.4, rec.get("rubric")
 
 
+def test_the_section_pass_only_gets_what_a_paragraph_can_act_on():
+    """逐段那一趟只收"本段改得动"的那几条（审查 P2-5），结构字段的账仍发给补结构那一趟。
+
+    把"预测窗口不对""优质判断依据不足"这类整条级要求塞给只写一段的人，它既做不到、
+    又要在一趟里为它们重写本段；而这些原文里还嵌着模型自报的字符串（verdict 原值、
+    编造的 basis 编号），等于新开一条把模型散文送回正文的通道（P2-4）。
+    所以这里两头都断：段落那趟**收得到**密度那条，**收不到**预测与优质那两条；
+    结构那趟照旧收得到全部（账不能因为分流而丢掉）。
+    """
+    def para(i):
+        return ("第%d个角度看这 60%% 的增长来自渠道下沉与提价" % i +
+                "，这条判断仍受样本量与统计口径限制，需要到期复核口径。" * 28)
+
+    class Rec(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.outline_n = 0
+            self.sec, self.st = [], []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "outline":
+                self.outline_n += 1
+            if kind == "section":
+                self.sec.append((self.outline_n, prompt))
+                return para(len(self.sec))
+            if kind == "structure":
+                self.st.append((self.outline_n, prompt))
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9, "forecast": 0.4,
+                                   "quality": 0.4, "density": 0.4})
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = Rec()
+    D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                 max_regen=1, source_quality={}, sleep=lambda s: None,
+                 wait_cap_s=5, staged=True)
+    second = [p for (n, p) in c.sec if n == 2]
+    assert second, "第二趟没逐段成文：%s" % (c.outline_n,)
+    assert all(u"信息密度偏弱" in p for p in second), \
+        "段落那趟收不到它改得动的那条（分流分掉了正事）：%r" % second[0][:200]
+    for p in second:
+        assert u"趋势预测偏弱" not in p and u"内容优质判断偏弱" not in p, \
+            "整条级的要求又被塞给只写一段的人了：%r" % p[:200]
+    st2 = [p for (n, p) in c.st if n == 2]
+    assert st2 and all(u"趋势预测偏弱" in p and u"内容优质判断偏弱" in p for p in st2), \
+        "补结构那一趟没收到全部分项建议（账在分流里丢了）：%r" % [(n, p[:120]) for n, p in c.st]
+
+
+def test_a_contract_failure_never_claims_a_judge_score():
+    """契约没过 ⇒ 判定根本没跑 ⇒ 段落那趟不许收到"judge 均分 0.00 低于 0.75"。
+
+    批 3.13 第一轮的分流在这里露出了一个谎：`judge_weak_spots` 无条件先放一行均分，
+    于是 `sec` 永远非空，"没跑判定"的那一轮也给写字的人印一句"上一版判分偏弱"。
+    这正是 `rubric_display` 为页面修过的同一个错（任务 #61：没送判定 != 判了 0 分），
+    而它顺着新开的通道爬进了 prompt。
+    """
+    def para(i):
+        return ("第%d个角度看这 60%% 的增长来自渠道下沉与提价" % i +
+                "，这条判断仍受样本量与统计口径限制，需要到期复核口径。" * 28)
+
+    class Rec(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.outline_n = 0
+            self.sec = []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "outline":
+                self.outline_n += 1
+            if kind == "section":
+                self.sec.append((self.outline_n, prompt))
+                # 第一趟整条写得太短 ⇒ 契约没过 ⇒ 判定根本没跑
+                return "只写了一句。" if self.outline_n == 1 else para(len(self.sec))
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = Rec()
+    rec = D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                       max_regen=1, source_quality={}, sleep=lambda s: None,
+                       wait_cap_s=5, staged=True)
+    assert c.outline_n == 2, "第一趟没死在契约上（提纲跑了 %d 趟）" % c.outline_n
+    second = [p for (n, p) in c.sec if n == 2]
+    assert second, "第二趟没逐段成文"
+    for p in second:
+        assert u"judge 均分" not in p and u"判分偏弱" not in p, \
+            "判定根本没跑，却对写字的人说上一版判分偏弱：%r" % p[:260]
+
+
 def test_the_ask_is_never_looser_than_the_contract_itself():
     """把"prompt 会不会要求得过松"变成一条不等式，而不是两边的口头判断。
 
@@ -251,4 +342,97 @@ def test_the_ask_is_never_looser_than_the_contract_itself():
                 "池内 %d 篇 / 正文 %d 字：判据要 %d 篇，prompt 的 claims 只要 %d 篇" % (
                     supply, n, need_cov, claims_ask)
             assert ask >= need_cov, (supply, n, need_cov, ask)
+
+
+def test_the_rewrite_feedback_reaches_the_section_pass():
+    """重写反馈必须落到**真正写字的那一趟**（审查 P1-1）。
+
+    staged 是生产默认（只有 `--single-pass` 才关），而上一版 `extra` 只进了提纲与结构
+    两趟：逐段成文那一趟收不到清单，于是 #74 第二步（把"被多段复用的数"点名给模型）
+    在现网等于从没生效过 —— 单测只跑 `staged=False` 时全套照样绿。
+    """
+    def para(i):
+        # 每段必须落在 [PARA_MIN, PERA_MAX] 里，且同一个数在多段复用：
+        # 短了会先死在"每段太短"那条契约上，测的就不是密度反馈了。
+        return ("第%d个角度看这 60%% 的增长来自渠道下沉与提价" % i +
+                "，这条判断仍受样本量与统计口径限制，需要到期复核口径。" * 28)
+
+    class Rec(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.outline_n = 0
+            self.sec = []              # [(第几趟, prompt)]
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "outline":
+                self.outline_n += 1
+            if kind == "section":
+                self.sec.append((self.outline_n, prompt))
+                return para(len(self.sec))
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9, "forecast": 0.9,
+                                   "quality": 0.9, "density": 0.4})
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = Rec()
+    rec = D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                       max_regen=1, source_quality={}, sleep=lambda s: None,
+                       wait_cap_s=5, staged=True)
+    assert c.outline_n == 2, \
+        "没触发重写（提纲只跑了 %d 趟），这条判据测不到反馈：%s" % (c.outline_n, rec.get("contract_fails"))
+    second = [p for (n, p) in c.sec if n == 2]
+    assert len(second) >= D.PARAS_MIN, \
+        "第二趟没逐段成文（section 只收到 %d 次调用）：%s" % (len(second), sorted(rec))
+    assert all(u"被多段复用的数" in p for p in second), \
+        "重写反馈没进逐段成文那一趟，写字的人收到的还是形容词：%r" % second[0][-320:]
+    assert all(u"60%（" in p for p in second), \
+        "清单没点名 60%：那是伪造或漏传 cand：%r" % second[0][-320:]
+
+
+def test_the_short_section_retry_carries_the_feedback_too():
+    """写太短那一趟重问（`again = ...`）是**第二个调用点**：只给第一处补上反馈，
+    这条出口照旧收不到清单 —— 一个函数两个出口只测一个，是本仓 R2/Q9 那轮的教训。
+    """
+    def para(i):
+        return ("第%d个角度看这 60%% 的增长来自渠道下沉与提价" % i +
+                "，这条判断仍受样本量与统计口径限制，需要到期复核口径。" * 28)
+
+    class Rec(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.outline_n = 0
+            self.in_attempt = 0
+            self.sec = []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "outline":
+                self.outline_n += 1
+                self.in_attempt = 0
+            if kind == "section":
+                self.in_attempt += 1
+                # 每趟第一段第一次写都太短 ⇒ 逼出重试那一趟
+                if self.in_attempt == 1:
+                    self.sec.append((self.outline_n, prompt))
+                    return "这一版只写了一句。"
+                self.sec.append((self.outline_n, prompt))
+                return para(self.in_attempt)
+            if kind == "judge":
+                return json.dumps({"narrative": 0.9, "causal": 0.9, "forecast": 0.9,
+                                   "quality": 0.9, "density": 0.4})
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = Rec()
+    D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                 max_regen=1, source_quality={}, sleep=lambda s: None,
+                 wait_cap_s=5, staged=True)
+    second = [(n, p) for (n, p) in c.sec if n == 2]
+    retried = [p for (n, p) in second if u"接着写第 1/%d 段" % D.PARAS_MIN in p]
+    assert len(retried) == 2, \
+        "没造出'写太短→重问'那一路（第 1 段被调用 %d 次）：%s" % (len(retried), c.outline_n)
+    assert all(u"被多段复用的数" in p for p in retried), \
+        "重问那一趟的 prompt 没带清单：改第一个调用点就以为两处都修了"
 

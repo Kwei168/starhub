@@ -165,10 +165,11 @@ def test_deepen_one_calls_faith_after_the_text_is_final():
 
 # ---------- 任务 #69：核查摘过 claims 之后，必须在最终形态上复跑判据 ----------
 
-def _coverage_break_client():
+def _coverage_break_client(bad_idx=(2, 3, 6)):
     """夹具：4 篇池子、7 条论断按 c1..c4 轮着挂证据。
     判据要 4 篇；核查看掉挂 c3/c4 的那几条后，剩下 4 条（≥CLAIM_MIN，所以
     `below_minimum` 不响）只压住 c1/c2 两篇 ⇒ **只有复跑判据才抓得住**。
+    `bad_idx` 给宽一点就能同时把 claims 摘到不足 CLAIM_MIN（P1-5 那一支）。
     """
     class Breaker(D.FakeClient):
         def __init__(self):
@@ -180,7 +181,7 @@ def _coverage_break_client():
             if kind == "faith":
                 i = self.faith_n % 7
                 self.faith_n += 1
-                bad = i in (2, 3, 6)          # 挂 c3/c4/c3 的那三条
+                bad = i in bad_idx          # 按 claims 的**序号**摘（第 7 条一循环），不是按证据编号
                 return json.dumps({"verdict": "unsupported" if bad else "supported",
                                    "reason": "查无对应数字" if bad else "在",
                                    "quote": "" if bad else "来源0全文"})
@@ -269,6 +270,36 @@ def test_out_of_regen_budget_a_coverage_break_degrades_with_its_own_reason():
         "降级却没用降级通道（正文 %d 字）：上屏会撞'快讯超长'那一判据" % len(rec.get("narrative") or "")
     assert (rec.get("narrative_chars_full") or 0) > D.DEGRADED_NARR_MAX, \
         "原长没记进产物：裁掉多少字就没人能核对"
+
+
+def test_the_last_faith_attempt_reports_both_breaks():
+    """末趟同时"摘到不足 CLAIM_MIN"与"摘破覆盖"时，两笔账都要记（审查 P1-5）。
+
+    上一版 `if below_minimum: … break` 排在 `if broke:` 前面 ⇒ 后一支永远走不到：
+    `coverage_blocked` 少计一条、`contract_fails` 还是空的，页面与探针里这条账隐身
+    ——正是本函数注释里警告过的那种形状。
+    """
+    pool, links = _four_article_env()
+    rec = D.deepen_one({"id": "x2", "title": "事件乙", "topic": "ai", "summary": "摘",
+                        "links": list(links)},
+                       pool, _coverage_break_client(bad_idx=(1, 2, 3, 5, 6)),
+                       D.Budget(400000), D.KeyPool(["k1"]),
+                       max_regen=0, source_quality={}, sleep=lambda s: None, wait_cap_s=5)
+    fs = rec.get("faith_summary") or {}
+    assert fs.get("dropped") and fs.get("below_minimum"), \
+        "夹具没造出'摘空 + 摘破'的双重形状：%s" % (fs,)
+    assert rec.get("faith_degraded") is True, sorted(rec)
+    assert rec.get("faith_coverage_broken") is True, \
+        "摘破覆盖那一笔被摘空吞掉了：聚合里的 coverage_blocked 会少计：%s" % sorted(rec)
+    assert any(u"只压在" in f or u"只引了" in f for f in (rec.get("contract_fails") or [])), \
+        "复判违约没进 contract_fails，探针与页面读不到这一档：%s" % (rec.get("contract_fails"),)
+    reason = (rec.get("degraded_reason") or "").strip()
+    assert u"篇" in reason, "降级理由没提覆盖：%s" % reason
+    assert u"<%d" % D.CLAIM_MIN in reason, \
+        "理由只说了覆盖跌破，没提论断数也不足 CLAIM_MIN（两笔账又混成一句）：%s" % reason
+    p = D.build_payload([rec], {}, D.Budget(100000), "2026-09-24")
+    assert p["budget"]["coverage_blocked"] == 1, \
+        "条目级旗标齐了但聚合没接住：%s" % (p["budget"],)
 
 
 def test_the_post_faith_recheck_finds_only_new_breaks():
