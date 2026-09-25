@@ -1260,9 +1260,10 @@ def _structure_rules(id_list, supply, primaries=None):
         # 两条要求要同时可满足：CLAIM_MIN 条 × 每条 CLAIM_EVID_MIN 篇可能还不够 ask 篇，
         # 那就得明说"多写几条 or 每条多挂几篇"，否则模型照条数下界交卷必死（§10.34 那类下限）。
         if CLAIM_MIN * CLAIM_EVID_MIN < ask:
-            spread += ("要覆盖 %d 篇，就只有两条路：多写几条论断（本项下限 %d 条），"
-                       "或每条多挂几篇 —— 别只写 %d 条各挂 2 篇就交卷。"
-                       % (ask, CLAIM_MIN, CLAIM_MIN))
+            need_claims = -(-ask // CLAIM_EVID_MIN)
+            spread += ("要覆盖 %d 篇，两条路择一：论断至少写 %d 条（本项条数下限是 %d），"
+                       "或每条多挂几篇 —— 只写 %d 条各挂 %d 篇结构上就到不了 %d 篇。"
+                       % (ask, need_claims, CLAIM_MIN, CLAIM_MIN, CLAIM_EVID_MIN, ask))
     if primaries:
         spread += ("各段主证据（论断按段铺开，别都挤在同几篇上）：%s。\n"
                    % "、".join("段%d=%s" % (i + 1, p) for i, p in enumerate(primaries)))
@@ -2989,8 +2990,10 @@ def deepen_one(event, pool, client, budget, key_pool, max_regen=MAX_REGEN, wait_
             # 守卫只放在 `judge_weak_spots` 一处：判定没跑时它自己返回空清单。
             # 这里曾另有一份同款判断，变异体 U11 复跑时存活 ⇒ 证明它已经是死代码（一处真相）。
             sec = list(narr_fails) + judge_weak_spots(score, cand=cand, dims=SECTION_FIX_DIMS)
-            section_extra = ("\n上一版本段能改的地方（正文那几条契约 + 判分分项）：%s\n"
-                             % "; ".join(sec)) if sec else ""
+            head = ("上一版本段能改的地方（正文契约条目 + 判分分项）" if narr_fails and sec[len(narr_fails):]
+                    else "上一版本段能改的地方（正文契约条目）" if narr_fails
+                    else "上一版判分偏弱、本段能改的地方")
+            section_extra = ("\n%s：%s\n" % (head, "; ".join(sec))) if sec else ""
             prompt = build_prompt(event, ctx) + signals_note(ctx) + extra
     if best:
         cand, score, adopted_attempt = best
