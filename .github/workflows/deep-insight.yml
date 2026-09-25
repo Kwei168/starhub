@@ -4,10 +4,12 @@ name: Deep Insight (nightly)
 # 一跑就撞上下一场定时刷新被 cancel-in-progress 砍掉，等于白跑。
 # 阶段 1 边界：本工作流只新增文件，不改 update.yml / build_daily_insight.py 的任何行为。
 on:
-  # 首夜先不自动发布：spec §4 明写"并发档位由首夜压测读数定"，而 §6.4 要求先拿到
-  # 真模型的字数/耗时/429/上下文利用率读数。手动 purpose=test 跑完、读数确认后再放 cron 回来。
-  # schedule:
-  #   - cron: '0 20 * * *'          # UTC 20:00 = 北京 04:00，避开北京 05:00 全量场与整点刷新
+  # 2026-09-25 放开 cron：手动 purpose=test 已连跑四夜（场 37~40），字数/耗时/429/上下文
+  # 利用率与成本恒等式都读过，墙钟与并发档按那批读数定的（spec §4/§6.4 的前置条件已满足）。
+  # schedule 分支在 `Resolve purpose` 里**显式**输出 purpose=publish + ref=main（见测试
+  # test_schedule_path_targets_main_explicitly）：打主干是决定，不是"忘了传参"的结果。
+  schedule:
+    - cron: '0 20 * * *'          # UTC 20:00 = 北京 04:00，避开北京 05:00 全量场与整点刷新
   workflow_dispatch:
     inputs:
       purpose:
@@ -20,6 +22,13 @@ on:
         description: '本场最多深挖几个事件'
         required: false
         default: '12'
+      ref:
+        # 故意不给 default：default 一旦是 main，手动验证就会静默改到线上（2026-09-23 的
+        # 14:00 白天场就是这么被撞红的 —— 通道里 heads/main 是硬编码，--ref 从没接进来）。
+        # 验证请填写你的分支名；打主干必须自己写 main。cron 那一档由脚本内解析显式给 main。
+        description: '提交目标分支。验证填分支名；purpose=publish 且留空会被拒绝'
+        required: false
+        default: ''
 
 concurrency:
   group: deep-insight
@@ -59,15 +68,19 @@ jobs:
           # events_limit 填 `12"; curl … | sh; #` 就等于把远程命令执行开放给任何有写权限的人。
           GH_EVENT: ${{ github.event_name }}
           IN_PURPOSE: ${{ github.event.inputs.purpose }}
+          IN_REF: ${{ github.event.inputs.ref }}
         run: |
           set -euo pipefail
           if [ "$GH_EVENT" = "schedule" ]; then
             echo "purpose=publish" >> "$GITHUB_OUTPUT"
+            # cron 那一档是生产本身：打主干必须是**显式写出来的**，不是"忘了传"的结果。
+            echo "ref=main" >> "$GITHUB_OUTPUT"
           else
             case "${IN_PURPOSE:-test}" in
               test|publish) echo "purpose=${IN_PURPOSE:-test}" >> "$GITHUB_OUTPUT" ;;
               *) echo "::error title=purpose 取值非法|只允许 test/publish"; exit 2 ;;
             esac
+            echo "ref=${IN_REF:-}" >> "$GITHUB_OUTPUT"
           fi
 
       # pipefail 不能省：Actions 默认 shell 是 `bash -e {0}`（无 pipefail），
@@ -76,6 +89,7 @@ jobs:
         shell: bash
         env:
           RUN_PURPOSE: ${{ steps.p.outputs.purpose }}
+          RUN_REF: ${{ steps.p.outputs.ref }}
           RUN_EVENTS_LIMIT: ${{ github.event.inputs.events_limit || '12' }}
         run: |
           set -euo pipefail
@@ -84,6 +98,7 @@ jobs:
           esac
           python build_deep_insight.py \
             --purpose "$RUN_PURPOSE" \
+            --ref "$RUN_REF" \
             --events-limit "$RUN_EVENTS_LIMIT" \
             --workers 3 \
             --out _night_state | tee deep_run.log
@@ -97,15 +112,17 @@ jobs:
         shell: bash
         env:
           RUN_PURPOSE: ${{ steps.p.outputs.purpose }}
+          RUN_REF: ${{ steps.p.outputs.ref }}
           RUN_EVENTS_LIMIT: ${{ github.event.inputs.events_limit || '12' }}
         run: |
           set -euo pipefail
           case "$RUN_EVENTS_LIMIT" in
             ''|*[!0-9]*) echo "::error title=events_limit 非数字|必须是整数"; exit 2 ;;
           esac
-          echo "[夜场] 上一趟失败，原地重试 1 次（checkpoint 会跳过已完成的条目）" | tee -a deep_run.log
+          echo "[夜场] 上一趟失败，原地重试 1 次（同一 ref：${RUN_REF:-<未点名>}，checkpoint 会跳过已完成的条目）" | tee -a deep_run.log
           python build_deep_insight.py \
             --purpose "$RUN_PURPOSE" \
+            --ref "$RUN_REF" \
             --events-limit "$RUN_EVENTS_LIMIT" \
             --workers 3 \
             --out _night_state | tee -a deep_run.log
