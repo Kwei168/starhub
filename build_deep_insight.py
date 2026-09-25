@@ -106,6 +106,10 @@ CLAIM_MIN, CLAIM_MAX = 3, 10
 CHAINS_MIN, CHAINS_MAX = 2, 6
 FORECAST_MIN, FORECAST_MAX = 1, 4
 CITE_MIN, CITE_MAX = 5, 12
+# 每条 claim 至少挂几篇不同证据（#75）。§10.49 数过：达标与不达标两组的 claims **条数**只差 1，
+# 差的是每条挂几篇（1.62 vs 1.29）—— 合计覆盖数被"一条一篇、五条同一篇"这种交卷方式吃掉。
+# 这只动 prompt 的前置要求，不动判据（判据仍按整条实际覆盖数判，改判据是产品决定，见 #70/#71）。
+CLAIM_EVID_MIN = 2
 HORIZONS = (3, 7, 14)
 FORECAST_CLAIM_MAX = 80
 CHAIN_FIELD_MAX = 170
@@ -1221,7 +1225,7 @@ def _evidence_block(a, cid=""):
         a.get("text") or "")
 
 
-def _structure_rules(id_list, supply):
+def _structure_rules(id_list, supply, primaries=None):
     """结构字段的契约，只写一份。
 
     单趟路径与"正文写完后补结构字段"那趟都要同一套数字；抄两遍就等于
@@ -1238,9 +1242,19 @@ def _structure_rules(id_list, supply):
     need_top = required_sources(NARR_MAX)
     ask = min(max(supply, 1), need_top)
     cite_low = max(min(CITE_MIN, max(supply, 1)), ask)
+    # 铺开的两条抓手都从这里出：每条的下限（池子给得出才喊）与各段主证据清单。
+    # 清单只有 staged 路径给得出（提纲刚定完每段靠哪一篇），单趟那页没有段落概念。
+    spread = ""
+    if supply >= CLAIM_EVID_MIN:
+        spread += ("每条至少挂 %d 篇不同证据（一段论断只靠一篇来源，就是把那一篇换个说法再讲一遍）；"
+                   % CLAIM_EVID_MIN)
+    if primaries:
+        spread += ("各段主证据（论断按段铺开，别都挤在同几篇上）：%s。\n"
+                   % "、".join("段%d=%s" % (i + 1, p) for i, p in enumerate(primaries)))
     return (
         "- claims：%d-%d 条，每条含 text/kind/evidence。evidence 是数组，元素只能从这批编号里选：%s；"
         "写别的编号等于引用不存在的内容，整条判不合格。"
+        "%s"
         "全部 claims 的 evidence 合计至少要覆盖 %d 篇**不同证据**（正文每 %d 字换一篇，"
         "写到 %d 字就要引到 %d 篇），"
         "整条只压在两三篇上会被判“长而空”而不合格。\n"
@@ -1259,7 +1273,7 @@ def _structure_rules(id_list, supply):
         "basis 是数组且必须逐条引用下方「优质判定外证」里的 sig 编号"
         "（形如 sig:c1）；自由文本的理由一律判不合格。\n"
         "- citations：%d-%d 条，id 只能从下面的证据编号里选：%s；不得编造编号或链接。\n"
-    ) % (CLAIM_MIN, CLAIM_MAX, id_list, ask, EVID_CHARS,
+    ) % (CLAIM_MIN, CLAIM_MAX, id_list, spread, ask, EVID_CHARS,
          NARR_MAX, ask,
          CHAINS_MIN, CHAINS_MAX, CHAIN_FIELD_MAX,
          FORECAST_MIN, FORECAST_MAX, FORECAST_CLAIM_MAX,
@@ -1356,7 +1370,7 @@ def build_prompt(event, ctx, mode="full"):
          _structure_rules(id_list or "（无）", len(arts)), "\n\n".join(blocks))
 
 
-def build_structure_prompt(event, ctx, narrative):
+def build_structure_prompt(event, ctx, narrative, primaries=None):
     """正文已经写好，单独补结构字段：机制链/预测/优质判断都是"对这篇成文的判断"。"""
     arts = ctx.get("articles") or []
     ids = ctx.get("ids") or {}
@@ -1372,7 +1386,7 @@ def build_structure_prompt(event, ctx, narrative):
         "\n===== 证据（每篇均为全文，未截断）=====\n%s\n"
     ) % (event.get("title", ""), event.get("topic", ""), narrative,
          ", ".join(STRUCT_FIELDS), _rubric_brief(),
-         _structure_rules(id_list or "（无）", len(arts)),
+         _structure_rules(id_list or "（无）", len(arts), primaries),
          "\n\n".join(_evidence_blocks(ctx)))
 
 
@@ -1509,7 +1523,10 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
     # 0.3 分：现网 run 35803569061 的 evt_003 契约全过，rubric 却是
     # {narrative 0.6, causal 0.3, forecast 0.3, quality 0.3} —— 机制链与预测都按提纲的认真度答。
     struct = dict(parse_model_json(call_llm(
-        client, build_structure_prompt(event, ctx, doc["narrative"]) + signals_note(ctx) + extra,
+        client, build_structure_prompt(event, ctx, doc["narrative"],
+                                      [p for p in ((s.get("primary")
+                                                   or (s.get("evidence") or [None])[0])
+                                                  for s in secs) if p]) + signals_note(ctx) + extra,
         key_pool, budget, "structure", wait_cap_s=wait_cap_s, sleep=sleep)) or {})
     for k in STRUCT_FIELDS:
         if struct.get(k):
