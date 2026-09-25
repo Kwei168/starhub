@@ -326,6 +326,54 @@ def test_a_contract_failure_never_claims_a_judge_score():
             "提纲/补结构那一趟仍在被说'判分 0.00'：%r" % p[:260]
 
 
+def test_each_claim_has_a_floor_of_two_sources():
+    """#75 的第一刀：覆盖要求要从"整条合计"落到"每条至少几篇"。
+
+    §10.49 数过：不达标 23 条与达标 49 条的 claims 条数只差 1，差的是**每条挂几篇**
+    （1.29 vs 1.62）。所以光喊"合计要覆盖 7 篇"没用 —— 模型用 5 条各挂同一篇就交卷。
+    这条要求必须由 `_structure_rules` 单点发出（两处各写一遍迟早分叉），
+    而且不许喊出池子给不出的数（池内只有 1 篇时不能要求每条 2 篇）。
+    """
+    p = D._structure_rules(", ".join("c%d" % i for i in range(1, 13)), 12)
+    assert (u"每条至少挂 %d 篇" % D.CLAIM_EVID_MIN) in p, \
+        "claims 那格里没有每条下限，模型仍能一条一篇地交卷：%s" % p[:300]
+    p1 = D._structure_rules("c1", 1)
+    assert u"每条至少挂" not in p1, \
+        "池内只有 1 篇却要求每条 2 篇：那是 §10.34 拆掉的'满足不了的下限'换了个格子：" % p1[:300]
+    p3 = D._structure_rules("c1, c2, c3", 3)
+    assert (u"每条至少挂 %d 篇" % D.CLAIM_EVID_MIN) in p3 and D.CLAIM_EVID_MIN <= 3, p3[:300]
+
+
+def test_the_structure_pass_sees_which_evidence_each_section_owns():
+    """真链路判据：补结构那一趟必须看到"各段主证据"清单，否则它不知道该把论断铺到哪些编号上。
+
+    只单测 `_structure_rules` 测不到"调用处没把 primaries 传进去"（本仓 R2 的老教训），
+    所以这里驱动 `deepen_one(staged=True)`，抓**实际发出的** structure prompt。
+    """
+    class Rec(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.st = []
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                self.st.append(prompt)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = Rec()
+    D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                 max_regen=0, source_quality={}, sleep=lambda s: None,
+                 wait_cap_s=5, staged=True)
+    assert c.st, "staged 路径没走补结构那一趟（夹具退回了单趟？）"
+    p = c.st[-1]
+    assert u"各段主证据" in p, "结构那一趟看不到段落归属，只能把论断全压在头几篇：%r" % p[:300]
+    ids = re.findall(r"c\d+", p.split(u"各段主证据")[-1][:200])
+    assert len(set(ids)) >= D.PARAS_MIN, \
+        "清单里的编号不足 %d 个不同段（铺开的抓手不够）：%s" % (D.PARAS_MIN, sorted(set(ids)))
+
+
 def test_the_ask_is_never_looser_than_the_contract_itself():
     """把"prompt 会不会要求得过松"变成一条不等式，而不是两边的口头判断。
 
