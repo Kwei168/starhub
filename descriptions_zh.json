@@ -491,5 +491,7 @@
  "op7418/Humanizer-zh": "Humanizer 的汉化版本，Claude Code Skills，旨在消除文本中 AI 生成的痕迹。",
  "yukitorido/short-video-generator-AI": "AI 视频处理管道，用于使用法学硕士、Whisper 转录、亮点检测和自动编辑生成垂直短片",
  "chelinho139/wow-ai": "在魔兽世界 (WoW) 中使用 AI（Claude、Codex 和 Grok）的插件",
- "andududu/jeview": "Jev 的非官方本地可视化工具（TypeSafe）：代码进行的每次调用的实时视图。不隶属于 TypeSafe AI。"
+ "andududu/jeview": "Jev 的非官方本地可视化工具（TypeSafe）：代码进行的每次调用的实时视图。不隶属于 TypeSafe AI。",
+ "paperclipai/paperclip": "每个人都用它来管理工作中的座席的开源应用程序",
+ "google/langextract": "一个 Python 库，用于使用具有精确源基础和交互式可视化的法学硕士从非结构化文本中提取结构化信息。"
 }

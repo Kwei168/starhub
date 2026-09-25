@@ -264,5 +264,6 @@
  "agentscope-ai/AgentTeams": "agent",
  "agentscope-ai/agentscope": "assistant",
  "songquanpeng/wechat-server": "content",
- "LibreChat-AI/LibreChat": "assistant"
+ "LibreChat-AI/LibreChat": "assistant",
+ "vectorize-io/hindsight": "agent"
 }
