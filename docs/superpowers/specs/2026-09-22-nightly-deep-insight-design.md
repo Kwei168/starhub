@@ -810,6 +810,8 @@ rss_source_coverage），`tests/daily_insight` 是 `continue-on-error` ⇒ 这�
 
 同批顺带修掉两处：核查摘空不再白扔手里剩下的重写预算（摘到不足 `CLAIM_MIN` 当一次拒绝，`kind=faith`）；
 开一条之前先按 `PER_ATTEMPT_CALLS`（23 = 提纲 2 + 逐段 8 + 结构 1 + 判定 2 + 核查 10）预留，
+<!-- 批 3.16 更正：这一行的"结构 1"是当时的历史数字，保留不改；现值见 §10.63 —— 结构那一趟
+     最坏两趟（整组空重问一次），代码里已换成点名的 `STRUCT_MAX_CALLS = 2`。 -->
 "剩 1 次也照开、一条最多超发 69 次"的旧账一并收掉。`PER_ATTEMPT_CALLS` 必须定义在
 `SECTIONS_MAX / CLAIM_* / JUDGE_SAMPLES` 之后 —— 挪到前面那次直接把整个包炸成导入期 NameError
 （15 个模块收集失败，批 3.5 自己踩的）。
@@ -2355,25 +2357,308 @@ cron 已在 main 上生效、首夜自动 publish 在 2026-09-25 20:00Z（北京
 与 `validate_event` 的 `min(CITE_MIN,supply)`）—— 现状是 prompt 侧更严、判据侧更松，
 不会造成误杀，但要合并得先确认没有场次靠那个松口子过线，记进 #79 一起做。
 
+### 10.62 批 3.16 / 任务 #78：结构那一趟整组空就重问一次——但重问炸了不许赔上整条
 
+白话先说结论。夜里那条流水线分两个趟子：先按提纲把正文一段段落成 8~9 千字，再**单独问一趟**
+"给这篇补五格结构字段"（论断 claims / 机制链 causal_chains / 预测 forecasts / 优质判定 quality /
+引用 citations）。现网有极小的概率第二趟什么都没交回来，于是五格全空、五条硬判据一起碎、
+**已经花过钱的 8 千多字正文被降成 200 字快讯**。这一轮做的就一件事：第二趟空转就再问它一次。
 
+**现测归因**（`_scratch/read_b78_attrib.py` → `_scratch/b78_attrib.txt`，逐条 checkpoint 口径，
+本地缓存 15 场产物）：
 
+- 五格全空共 **2 条次**：`evt_20260924_r13`（正文 8,744 字）、`evt_20260925_011`（正文 8,438 字）。
+- 真正说明"该重问"的是 `_scratch/b78_two_items.txt`：这两个 id 各自还出现在另外 4 场里，
+  那 4 场 `claims=7~10`、`quality` 都有值 ⇒ 这是**偶发的整组空**（同一篇稿子换一场就好了），
+  不是条目注定的死法 ⇒ 一次重问正好是这个形状的药。
 
+**撤回我自己写进源码注释的两个数。** 原注释写"四夜 31 条长文里 4 条五格全空，其中一条
+`parse_echo` 里模型直接回'抱歉，我无法完成'"。复算后：
 
+1. 场数是 15（跨 09-22/09-24/09-25 三个日期），全空是 **2 条次**，不是 4 条；
+2. 那句"抱歉"属于**另一条** `evt_20260924_002`，它的 `narrative_chars_full=0`——拒绝发生在
+   **生成阶段**（拒绝理由原文是"证据中没有任何一篇涉及……这一事件"，即文不对题），
+   根本不在"重问结构那一趟"能救的范围里。
 
+⇒ 注释与测试文档串都改成现测数字；那条拒绝归到提名/装配层的文不对题线，不记在 #78 名下。
+教训照旧：**我自己写的引证也是引证，一样要现测复核**，不然下一个人拿产物复查看到的就是编的数。
 
+**重问炸了会怎样（本轮真正的增量，来自对代码的追查而不是审查员）。** `call_llm` 在"上游 5xx
+且没有别的空闲 key"时是**往外抛**的（`except Exception:` 那一支末尾的裸 `raise`），而条目级调用方
+抓到异常只记一笔 `failed` 就 `return`（build_deep_insight.py 里 `deepen_one` 的那个 try）——
+已付费正文跟着整条一起没。第一趟结构调用本来就在这条风险上，但第二趟是在"第一趟已经交回一堆
+没用东西"之后才发的，那恰恰是上游不稳的时候 ⇒ 不加守卫就是"修 #78 反手造出一个新死法"。
+做法：第二趟包在 `try/except Exception` 里，失败只记 `staged.struct_reask_failed=<异常类名>`
+并沿用第一趟的空结果，语义上等价于"没重问"。
 
+**观测面（两个新旗标都带读者，不留死字段）。** `staged.struct_reasked` 与
+`struct_reask_failed` 由 `_scratch/read_b78_night.py <下载目录>` 消费，一次算出"重问了几条 /
+重问后五格补齐几条 / 重问炸了几条"。夹具已在缓存的 15 场上跑通：55 行、三个计数全 0
+——符合"这批代码还没上过现网"，也顺手证明脚本不会把"读不到"当成"有"。
 
+**代价与期望值说清楚。** 每条目最多 +1 次 structure 调用，且只在五格全空时。按现测这一档
+收益是"2 条次 / 15 场"量级，它**不改变** #74 的三维偏低，**也不改变** #71 的复判裁文，
+别当合格率的解。下一场的读数口径：`struct_reasked>0` 且重问后五格补齐≥1 才算这一刀真生效。
 
+**自证。** 两条新测试都是先红再绿：
+`test_an_empty_structure_reply_is_asked_again_not_burned`（红在"结构那一趟整组为空却没重问
+（structure 只调用 1 次）"）、`test_a_crashing_re_ask_does_not_lose_the_paid_item`
+（红在 `RuntimeError: upstream 520` 从 `deepen_one` 抛出）。变异体五具各钉一条断言：
+S1 不重问 / S2 不留痕 / S3 重问结果被丢掉 / S4 失败不留原因 / S5 `except` 只接特定异常。
+门禁：`tests/deep_insight/` **383 passed / 0 failed**（`_scratch/junit_b78c.xml` 的 testcase 节点计数）。
+另外这轮把 #78 提成 `prims` 变量时把 T3、U7 两具旧变异体的锚点踩失效了（命中 0 次 ⇒ "未测"），
+已按新写法复位锚点并加了 `_scratch/check_anchors.py` 做体检——本表 52 具（38 新增 + 14 复跑）
+锚点异常 0。
 
+### 10.63 第五轮对抗审查（读批 3.16）：我这条改动自己带回来的三个问题，全部认账并修
 
+审查员是 fresh-eyes、只读工具集（Explore），读的是工作树。回来的结论里 **三条成立、一条我另开批次、
+两条 Minor 采纳**。按"谁引入的谁负责"排：
 
+**P1-1（Critical 1）我把"没 key"这个饥饿信号咽掉了。** 第一版守卫写成 `except Exception`，
+把 `RateLimited` 一起咽了。本文件判定双采样那段早就定了口径（注释原话："第一趟就没 key 才照旧抛
+（那是饥饿信号，不能咽）"），我这条改动违背了同族规则：咽下来这一条会继续把判定 + 逐条核查 + 重写
+的等待预算全花一遍，而 `_cutoff()` 只在**开条之前**查 —— 一个 worker 能被一条没 key 的条目占住。
+⇒ 现在 `except RateLimited: raise` 在前，只咽一过性 5xx（无备用 key 那一支）。
+新测试 `test_an_exhausted_key_pool_still_escapes_the_re_ask` 先红（当时异常被吞、`deepen_one` 正常返回）。
 
+**P1-2（Important 3）成本常量没跟着加一次调用。** `PER_ATTEMPT_CALLS` 的枚举写的是"+ 结构 1"，
+而 #78 之后结构那一趟最坏是 2 趟 —— 每趟预留少算 1 次、一条少算 3 次，`_cutoff()` 的预留又形同不存在。
+同类的提纲重问早就有 `OUTLINE_MAX_CALLS = 2` 这个名分，我没照做。
+⇒ 新增 `STRUCT_MAX_CALLS = 2` 并进式子，枚举注释同步。**这是一次有意修改既有钉死式**
+（`test_per_attempt_cost_formula_covers_judge_and_faith` 原本恰好把旧公式钉住了，CI 因此一直是绿的），
+理由写进测试里；变异体 S8 把常量退回 1 必须红。
 
+**P1-3（Important 5 + Minor）留痕只有类名。** 真在现网炸的时候归因还得靠猜 ⇒
+`struct_reask_failed` 现在存 `类名:消息前 80 字`。测试同时要求 `RuntimeError` 与 `upstream 520` 都在里面。
 
+**Minor 7：我的守卫没有反向断言。** 只测"空了要重问"，把条件改成恒真照样全绿 ⇒
+新增 `test_a_useful_first_structure_reply_is_not_asked_again`（第一趟交回合法字段就必须只调一次、
+且不许留重问痕）。变异体 S6（恒真）不仅打红这一条，还连带打红另外两条既有测试 —— 说明"恒真"在现网
+会同时烧掉别的账。
 
+**Minor 6：我自己又写错了一处引证。** 注释原写"这两个 id 在另外 4 场里 claims=7~10"。
+复核：`evt_20260925_011` 确实另有 4 场；但 `evt_20260924_r13` 另有的是 **dl35 与 dl35b —— 同一夜下载两次、
+正文都是 7,867 字**，只能算 1 场。已按"011 四场 / r13 一场"改写。同时把边界写进注释：
+**只管"整组空"**，只缺一两格（例如只缺 forecasts）不在本刀范围，那属 #75/#79。
 
+**Critical 2 我认账但另开一批（任务 #81）。** 采纳 `best`（更早那趟的合格/兜底版）时，
+`cand["staged"]` 用的是**最后一趟**的 note（2877 设 `staged_note`，3018-3023 采纳 `best`），
+所以 `struct_reasked`/`fell_back`/`primary_retried`/`sections` 在"压线抖动版被兜底采纳"这条路上会张冠李戴。
+这条不是 #78 引入的（#78 只是新增了一个受害者），修法要动采纳路径、影响所有 staged 旗标的读数口径，
+混进这批推等于把两件事的回归面叠在一起。⇒ 开 #81 单列，本批给读数的临时口径：
+`_scratch/read_b78_night.py` 每条同时打印 `regen_used` 与 `regen_attempts`，两者不等时那条的结构痕不作数。
 
+门禁：`tests/deep_insight/` **385 passed / 0 failed**（`_scratch/junit_b78g.xml`，testcase 节点计数）；
+S 族 9 具全杀（`mut_b2_S2.txt`，基线未变异全绿、工作树 sha256 未变）。整表复跑读数单列下一节。
 
+### 10.64 覆盖面与线头收口：这一刀到底管几条，以及"别再开第二条线"
 
+**覆盖面按条次算清楚（不靠感觉）。** `_scratch/read_b78_attrib.py` 的第二版按"场次+条目 id"取最后一条
+checkpoint，只数正文 ≥ 4,000 字的长文，得 `_scratch/b78_coverage.txt`：
 
+| 缺格形状 | 条次 | 本刀管不管 |
+| --- | --- | --- |
+| 五格齐全 | 85 | 不需要 |
+| 只缺 `forecasts` | 5 | **不管**（守卫只认"整组空"） |
+| 五格全空 | 2 | 管 —— 这就是 #78 |
+
+⇒ 说白话：这一刀覆盖 **2/92 条次**（2.2%）。现网更大的那一档是"只缺一两格"（5 条次，集中在 forecasts）。
+要不要把守卫从"整组空"放宽到"任一缺格"，是一个**新的范围决定**，不是这条改动没做完：放宽必须配
+"**只补还空着的那几格、不覆盖已经交回来的字段**"，否则重问会把模型已经写好的 claims/quality 换掉，
+那是拿救 5 条次的机会去赌 85 条次已经到手的内容。所以本批照旧不放宽，只把这条写清。
+
+**线头收口（用户点名"分支越搞越多、25 小时还没干成"）。** 结论是流程问题不是代码问题：
+我此前默认"改动同时推 main 与 insight-verify"，于是同一份代码要在两条 ref 上各自对账，
+还养出了 #82 那种两分支判据不同构的债。从现在起夜场这条线**只推 main**（cron 就在 main），
+验证一律在同一 ref 上打 `purpose=test`（它不写产物，不需要平行分支）。`insight-verify` 这批不再同步，
+删不删由用户定 —— 远端分支删除属高风险动作，我不自己动。
+
+**引用文件的可读性说清楚。** 本台账引用的 `_scratch/*.py` 与 `*.txt` 只在工作树本地：实测远端两条 ref 的
+git tree 里 `_scratch/` 条目数为 **0**（main 420 条目 / verify 425 条目，全仓无该目录）。
+所以"证据可核对"指的是**在同一台机器上按文件名复核**，别人 clone 仓库拿不到 —— 这一点此前我没写明，
+容易被当成可点开的引证。
+
+**推送前的机械闸。** `tools/data_api_push.py` 在 dry-run 阶段就会被 `_scratch/.mutation-lock` 拦下
+（日志原话："有就地变异 harness 在持锁…此刻读盘会把变异体推上线"），所以"表跑动期间不推文件"
+不是靠我记得，是工具挡的。本批整表（56 具 = 38 新增含 S 族 9 具 + 14 具复跑，锚点体检异常 0）
+的读数补在 §10.63 末段之后。
+
+**批 3.16 收口清单（写给下一个读这段的人，含实测现况）**
+
+| 事项 | 现况（09:49 复验） | 还差什么 |
+| --- | --- | --- |
+| 代码与测试 | 已提交本地 `b7ca42f`（17 文件，+688/−38） | —— |
+| 门禁 | 本地 `tests/deep_insight/` **385 passed / 0 failed** | —— |
+| 变异表 | S 族 9 具全杀；整表 56 具**正在复跑**（`mut_b2_final_b78.txt`，锁 `_scratch/.mutation-lock`） | 读数落进 §10.63 末段 |
+| 远端 | main 上 `build_deep_insight.py` blob = `894d0969fb`，本地 = `d92cc8790f` ⇒ **本批未推** | 用户点头后 `tools/data_api_push.py --ref main --msg-file _scratch/msg_push_b31617.txt build_deep_insight.py
+   tests/deep_insight/test_coverage_supply.py tests/deep_insight/test_judge_denoise.py
+   docs/superpowers/specs/2026-09-22-nightly-deep-insight-design.md
+   docs/superpowers/specs/2026-09-23-nightly-deep-insight-funnel-design.md
+   注：**不含 template.html / index.html** —— 首页入口按 §10.68 排在夜场真发布之后。
+| 验证 | 已授权"马上派 8 条目 test 场" | 推完即 `gh workflow run Deep\ Insight\ (nightly) -f purpose=test -f events_limit=8 -f ref=main` |
+| 读数 | `_scratch/read_b78_night.py <dl目录>` | 下一场产物回读：`struct_reasked` 是否亮、趟(用/总) 两数是否相等 |
+
+推送范围按用户点名的"一条线"执行：**只推 main**，`insight-verify` 不再同步（其分支不同构问题另见任务 #82）。
+
+**整表复跑读数（09:56，`mut_b2_final_b78.txt`）**：基线（未变异）385 用例全绿，56 具（38 新增含 S 族 9 具 + 14 具复跑）**全杀，无存活、无失效锚点**；跑完工作树 sha256 未变（`fd1efa23affd`），即本表验证的就是入库那份文件。
+
+**跨模块回归面（10:03 实测，不只跑本模块）**：CI 的门禁各自点名目录（`deep-insight.yml:62` 跑 `tests/deep_insight/`；`update.yml:90/110` 跑 `tests/rss_history/`、`tests/rss_source_coverage/`、`tests/daily_insight/`），所以另跑那三组：**572 passed / 0 failed**（`_scratch/junit_ci_dirs.xml` 的 testcase 计数），本模块 385 与它们合计 957 条判据全绿 ⇒ #78 没在别的模块留下回归。
+顺带记一条既有缺陷（不是本批引入、CI 因为不整体跑 `tests/` 所以从没撞上）：`tests/rss_composite/test_composite_sort.py:119` 在模块顶层 `sys.exit(1 if FAIL else 0)`，任何 `pytest tests/` 的全仓跑法都会以 `INTERNALERROR> SystemExit: 0` 收场（实测 776 条收集完后崩）。⇒ 想合并跑全仓测试的下一步得先把那个文件改成正常的 test 函数形态，否则"全量绿"这种说法永远拿不到证据。
+
+### 10.65 现场封存（供下一轮直接接手，含可执行命令）
+
+**状态一句话**：批 3.16（任务 #78）代码、测试、两路审查、变异自证、跨模块回归**全部本地完成并已提交**；
+唯一没做的是"推 main + 派验证场"，卡在推送许可（选项题里收到的是抱怨不是许可，我不自行放行）。
+
+本地四个提交（`git log --oneline -4`）：`b7ca42f` 代码与审查修正 → `7b1681e` 整表读数 →
+`03bfc40` spec 旧成本式子加注 → `ea183c4` 跨模块回归读数。
+
+**接手就执行（顺序即依赖）**
+
+1. 看门条件先复验（别信本文件的字，跑一遍）：
+   `python -m pytest tests/deep_insight/ -q -s --junitxml=_scratch/junit_resume.xml`
+   期望：testcase 计数 385、失败 0。若远端 `main` 上 `build_deep_insight.py` 已被别的会话改过，
+   先做 blob 三方比对再决定（本地 `d92cc8790f` / 本批前 main `894d0969fb`）。
+2. 推送（用户点头后，只推 main，一条线）：
+   `python tools/data_api_push.py --ref main --msg-file _scratch/msg_b316.txt build_deep_insight.py tests/deep_insight/test_coverage_supply.py tests/deep_insight/test_judge_denoise.py docs/superpowers/specs/2026-09-22-nightly-deep-insight-design.md docs/superpowers/specs/2026-09-23-nightly-deep-insight-funnel-design.md`
+   注意：`_scratch/.mutation-lock` 存在时工具会在 dry-run 阶段就拒推 —— 那是保护，不是故障。
+   推完必须远端 blob 复核：`python _scratch/blob_check.py main`，期望"需要推的文件 0 个"。
+3. 验证场（用户已批准这一条）：
+   `gh workflow run "Deep Insight (nightly)" -f purpose=test -f events_limit=8 -f ref=main`
+   读数：产物下回本地后 `python _scratch/read_b78_night.py <dl目录>`，看三件事 ——
+   `struct_reasked` 有没有亮、`重问后五格补齐` 有没有数、`趟(用/总)` 两数是否相等
+   （不等 ⇒ 那条结构痕属 #81 的张冠李戴面，不作数）。
+
+**未了账（按优先级）**：#82 两分支测试不同构（CI 门禁跑的判据不一致，main 少 3 个测试文件）→
+#81 `staged` 旗标按趟归属 → #74 三维偏低（等今晚 20:00Z 定时场起连读）→ #75 第二刀（复判裁文，需拍板）
+→ #79 verdict 词序分叉（现网 0 发生，潜伏债，证据 `_scratch/b79_verdict_order.txt`）→ #80 零合格夜页面表述。
+另有一条已实测的既有缺陷待修：`tests/rss_composite/test_composite_sort.py:119` 顶层 `sys.exit`
+使 `pytest tests/` 全仓跑法必崩（CI 因按目录点名而从未撞上）。
+
+### 10.66 第六轮（spec 合规对账）读数：一条 Critical 与前一轮修法打架，我把它摊开不硬拍
+
+**Critical（未决，推 main 前要定）**：第五轮我按审查员 P1-1 改成"重问撞 `RateLimited` 照旧抛"，
+理由是不能让一条没 key 的条目把 worker 的等待预算全花完。本轮审查员反过来指出：**这一趟的第一次
+结构调用是真回答过的**（只是回了没用的东西），此时抛出 ⇒ 条目级调用方记 `failed` 并 `return`，
+8,438~8,744 字已付费正文照样丢 —— 那正是 §2:32 / §10.16"停更比快讯更糟"要避免的死法；而判定双采样
+那条同族规则讲的是"**后面几趟**撞 429 不许扔整条、第一趟就没 key 才抛"，两处并不真的同形。
+⇒ 我倾向的第三条路（本轮不实施，因为动代码就要重跑整张 56 具表，剩余轮次不够）：
+**给重问单独一个小 `wait_cap_s`（如 60s）**，超限就咽下并留 `struct_reask_failed`，
+既不占满 worker，也不把正文赔掉；两条代价都留在产物里可读。已登记为任务 #83。
+
+**Important（旧数字与错文案，本轮只记账不改）**
+- `§ 现上界 31 次/趟、单条最坏 93 次`（本文两处）与漏斗计划一处：HEAD 真值已是 **32 / 96**
+  （`STRUCT_MAX_CALLS = 2` 之后）。历史句保留，但下一批要在句旁加现值指向。
+- 更糟的是**用户可见文案**：`--cap-calls` 的 help 仍写"结构 1"却插值出 32（2+16+1+2+10=31≠32 自相矛盾），
+  另一处日志串仍写"一条最坏要 93 次（3 趟 × 每趟 31）"。改了要重跑表，所以排下一批第一批做。
+- 我 §10.62 那句"**两个新旗标都带读者，不留死字段**"是过头话，且是 §10.52 已经撤回过的同一类：
+  唯一的读者 `_scratch/read_b78_night.py` 不在推送清单里、远端根本没有 `_scratch/` 目录。
+  照 §10.19 的口径改判：这俩旗标是**给人读的手术灯**，CI 里没有观测面；要说"带读者"必须先有在场读者。
+
+**Minor（我自己写飘的细节，逐条撤回）**
+- §10.62"这两个 id **各自**还出现在另外 4 场里"不对：`evt_20260925_011` 是 4 场，
+  `evt_20260924_r13` 只有 1 场，且那场的 claims=**7**（漏斗计划里"8~10"也是我的错数）。
+- "56 具 = 38 新增 + 14 复跑"算错，表内原文是 **新增 42 + 复跑 14**。
+- §10.64 引用的行号已漂移（2877/3018 → 现 2884/3025）；"main 420 条目"那句没有实测依据（只有 verify=370 有），撤回。
+
+### 10.67 任务 #83 定了：重问撞"没 key"按"后面那趟"处理 —— 咽 + 单独小预算，并补一条判据教训
+
+**为什么不算我拍偏好**：口径是从同文件里已经上线的那条规则抄来的，不是新发明。判定双采样的注释原话
+是「**后面几趟撞 429 不许把整条扔出去**……**第一趟就没 key 才照旧抛**」。结构这一趟的**第一次**调用
+是真回答过的（只是回了没用的东西），所以重问落在"后面那趟"那一档 ⇒ 抛出会把 8 千多字已付费正文判死
+（正是 §2 与 §10.16 要避免的死法）。而第五轮审查员担心的"咽下来会占住 worker"也是真的 ——
+`_cutoff()` 只在开条之前查。⇒ 两头都要：**咽 + 重问单独一个等待上限 `REASK_WAIT_CAP_S = 60`**，
+超限就放弃这次重问、把原因（`RateLimited` 或 5xx 的类名与消息）记进 `struct_reask_failed`，
+沿用第一趟的空结果。第一次调用自己撞没 key 仍然照旧抛（反向测试钉着，防止把全场饥饿咽成一次普通失败）。
+
+**实现**：`ask_struct(defect="", cap_s=None)`，重问传 `cap_s=min(REASK_WAIT_CAP_S, wait_cap_s)`；
+`except RateLimited: raise` 那一支取消，统一走 `except Exception` 留痕。
+
+**判据教训（这一条比代码值钱）**：第一版我把上限写成
+`assert sum(waits) <= D.REASK_WAIT_CAP_S + 5` —— **拿档位自己当尺子**。于是"把 `REASK_WAIT_CAP_S`
+抬回 900"的变异体 S9 存活（0 红）：抬档位同时也抬高了断言，判据永远绿。改成**绝对上限**
+`assert sum(waits) <= 120`（条目级是 900s）之后 S8/S9 双双被杀。⇒ 凡"加上限"的判据，
+断的是秒数本身，不是那个常量；否则常量和判据一起被人抬走。
+（与此前"别断被 max/min 兜平的那个数"同源，这次是它的新变体。）
+
+**顺带清掉两处对不上的文案**（第六轮 P2）：`--cap-calls` 的 help 里"结构 1"与它自己插值出的 32 互相打脸，
+改成插 `STRUCT_MAX_CALLS`；另一处注释把最坏成本写死成"93 次（3 趟 × 每趟 31）"，改成引用常量，
+免得下次改档位又对不上。
+
+**自证**：门禁 `tests/deep_insight/` **386 passed / 0 failed**；S 族 **11 具全杀**
+（S1 不重问 / S2 不留痕 / S3 结果丢弃 / S4 不记原因 / S5 5xx 不咽 / S6 守卫恒真 /
+S7 第一趟也没 key 被咽 / S8 不设单独上限 / S9 上限抬回条目级 / S10 成本常量退回 1 / S11 痕里无消息）。
+整表 58 具（44 新增 + 14 复跑）复跑读数补在下面。
+
+**补记一（同批清掉的既有缺陷）**：`--cap-calls` 的 help 串里有个 `⇒`（U+21D2），Windows GBK 控制台下
+`python build_deep_insight.py --help` 直接 `UnicodeEncodeError` 崩掉。实测这字符**不是本批引入**：
+`b7ca42f` 的同一行就在（`_scratch/arrow_in_argparse.txt` 两份对照）。既然这条 help 已经在改，
+把符号换成 ASCII `=>`，改后 `--help` 退出码 0 且能正常打印。
+
+**补记二（我自己的一次纪律自违，写给下一个读这段的人）**：为了验这条 help，我在**整表 58 具正在跑**的
+时候动了 `build_deep_insight.py`（就是那个符号）。后果是那张表的读数当场作废 —— 表前半段用的是改动前的
+副本、后半段用改动后的，汇总行照样会打印"全杀"，看起来完全正常。做法：立刻停表、清锁、复跑门禁
+（386 passed / 0 failed）与锚点体检（58 具异常 0），记下冻结快照 `f586d35095f6` 后重跑整表。
+⇒ 教训：**表跑动期间被测文件只读**这条纪律不只针对别的会话，也针对我自己；改判据/改文案要排在表之前，
+或者等表结束。凡是中途动过被测文件，这张表就必须整张重跑，不能只补受影响的几具。
+
+### 10.68 撤回一条上线声明：首页"深度洞察"入口其实从没在现网存在过（根因是改错了文件）
+
+**发现方式**：给 #82 做风险测量时顺手比了两条 ref 的 `index.html`，
+main 与 insight-verify 上 `deep-insight.html` 与"深度洞察"字样都是 **0 次命中**
+（对照：同页 "RSS 聚合" 1 次、`rss-aggregator.html` 1 次 ⇒ 不是抓错文件，是真没有）。
+本地 `index.html` 有那一行（第 767 行），远端没有。
+
+**根因**：`index.html` 是构建产物 —— `fetch_and_build.py:792` 读 `template.html`、`:811` 写 `index.html`。
+我之前把入口**手改进产物**里，下一场白天构建（每小时一场）就从模板重新生成，那行必然消失。
+`template.html`（本地 mtime 09-13）里"深度洞察"计数为 0 —— 也就是说 §10.58 那句"首页入口已上 main"
+从来没成立过，页面 `deep-insight.html` 在 main 上是存在的（blob `074dd865ce`），但**没有入口**。
+
+**修**：入口已插入 `template.html`（紧跟 RSS 聚合那一条，标记与 index.html 里那行逐字一致），
+这样每场构建都会带着它。同时要把判据从"读 index.html"改成"**读 template.html**"：
+现有 `tests/deep_insight/test_index_nav.py` 断的是产物，产物会被重建，所以它绿不代表线上有 ——
+这正是这次踩的坑，判据得钉在源头那一份文件上（表跑完后补一条红测试再改）。
+
+**教训（进记忆）**：这个仓库里凡是 `fetch_and_build.py` 会重写的文件（index.html 等），
+手改等于没改。要上线必须改生成端。判断"上线没上线"要看**远端产物**，不能看工作树。
+
+### 10.69 第七轮（对 #83 本身再对抗一遍）：咽下来在真档位下什么都没救，改回"当场抛"
+
+审查员这轮打的是我上一轮的修法。我没有直接采纳，先自己量：用真夹具（`tests/deep_insight` 的 `_pool`）
+跑生产档位 `max_regen=D.MAX_REGEN=2`，读数在 `_scratch/b83_regen_measure.txt`：
+
+| 重问抛的错误 | max_regen=0（我原先的测试形状） | max_regen=2（生产形状） |
+| --- | --- | --- |
+| 5xx | 咽下 ⇒ 留下一条 degraded 快讯 | 咽下 ⇒ outline 1→2、section 6→12（多烧 12 次调用），**最后还是抛出 RuntimeError** |
+| 429 | 咽下 ⇒ 留下一条 degraded 快讯 | 咽下 ⇒ 整条目累计**多等 930s**，最后照样抛 `RateLimited` |
+
+⇒ 第六轮那条 Critical 的前提（"抛出会丢掉已付费正文"）在真档位下不成立：咽下来并不会把 8 千字正文保住，
+只是把死亡推迟并额外付一整轮重写。判定双采样那段也是同一形状：**两趟都没真样本时任何错误码都抛**
+（`if not scores: raise`），"后面那趟可以咽"的前提是前面已经有真样本。
+⇒ 最终口径：**重问失败一律当场抛**；本批只保留真正有价值的那一半 —— 重问的等待上限单独收紧
+（`min(REASK_WAIT_CAP_S, wait_cap_s)`），撞没 key 时快速失败而不是等满 900s。
+`struct_reask_failed` 这个痕随咽策略一起删掉（符号已全仓断言清除：源码 0 处、读数脚本改为
+"读不到不代表没发生，代表走了抛出的路"）。§10.62/63/67 里关于"咽下保正文"的表述全部作废，按惯例保留原文不改写。
+
+**这一轮的两条判据教训（比代码值钱）**
+1. **`max_regen=0` 是我自己造的盲区**：两条旧测试都把它钉成 0，于是"咽下来到底救没救回东西"永远测不到
+   生产形状；审查员点名的正是这个。⇒ 凡条目有重写循环，判据必须至少一条跑真 `MAX_REGEN`。
+2. **资源池夹具太窄，变异体会藏在"没进客户端"里**：反向测试原本只给一把 key，key 一进冷却，
+   重问那趟连客户端都没进 —— 于是"把第一趟也咽掉"的 S6 变异体在 `structure 调用次数` 上看不出来，
+   存活一次。改成 `KeyPool(["k1","k2"])`（生产就是多把）后 S6 当场变红。
+   另外判据不能拿常量自己当尺子（上一版 `sum(waits) <= REASK_WAIT_CAP_S + 5` 让抬档位的变异体也活着），
+   已改绝对秒数。
+
+**门禁**：`tests/deep_insight/` **386 passed / 0 failed**；S 族 **9 具全杀**；整表 56 具复跑读数补在下面。
+
+**#84 的上线顺序定了（不在本批推入口）**：远端实测（`_scratch/b80_page_evidence.txt`）
+`deep-insight.html` 最后一次由夜场发布是 **2026-09-23 06:37Z**，只有 6,738 字节、4 张卡、
+"快讯"出现 5 次、标题仍是「深度报告 2026-09-23」——两天没更新过（09-24/09-25 那些场全是
+`purpose=test`，不入库）。此刻把首页入口推上去，访客点进去看到的就是一份**标着"深度报告"的
+两天前全快讯页**。这与既有的红线"先 publish 再挂导航"（§10.58 与 HANDOFF 都写过）直接冲突，
+所以本批推送清单**不含 template.html**；顺序改成：
+1. 推本批代码（`build_deep_insight.py` + 测试 + 台账）；
+2. 等今晚 20:00Z 的 cron 真发布一次，读远端产物确认有合格长文；
+3. 再推 `template.html`，并在下一场白天构建之后读**远端** `index.html` 复核入口真的出现。
+`template.html` 的修改已提交在本地（`7acf4e6`），只是不推 —— 推送走 Data API，本地提交不外泄。

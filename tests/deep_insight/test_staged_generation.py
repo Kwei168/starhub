@@ -144,7 +144,9 @@ def test_outline_without_sections_falls_back_instead_of_emptying(tmp_path):
 def _ctx():
     arts, links = _arts()
     lst = list(arts.values())
-    return {"articles": lst, "ids": {u: "c%d" % (i + 1) for i, u in enumerate(links)},
+    # ids 的方向按生产来（deepen_one 里是 {"c1": url}）。这份夹具以前写成 {url: "c1"}，
+    # 正好和 build_section_prompt 那个反解包互相掩护 —— 于是"每段拿同样 3 篇"能全绿。
+    return {"articles": lst, "ids": {"c%d" % (i + 1): u for i, u in enumerate(links)},
             "dropped": [], "total_tokens": 0, "total_chars": 0, "quality_signals": {}}
 
 
@@ -214,6 +216,21 @@ def test_assembly_never_ships_more_than_the_ceiling(tmp_path):
             if kind == "section":
                 self.calls.append("section")
                 return verbose
+            if kind == "structure":
+                # 覆盖判据解钳之后，长文必须引够篇数（9,800 字要 7 篇）。
+                # 这条测的是"组装守上限"，不该顺手踩进另一条契约；夹具把引用给够，
+                # 两件事才不互相掩护。
+                base = json.loads(D.FakeClient.complete(self, prompt, key=key, kind=kind))
+                # 这个文件的池子是 6 篇（_arts 默认），所以只能引到 c1..c6：
+                # 引出不存在的编号会被"假链接"硬失败判死，测的就不是裁切了。
+                n_cite = 6
+                base["citations"] = [{"id": "c%d" % (i + 1),
+                                      "url": "https://s%d.test/a%d" % (i, i)}
+                                     for i in range(n_cite)]
+                base["claims"] = [{"text": "论断%d" % i, "kind": "causal",
+                                   "evidence": ["c%d" % (i % n_cite + 1)]}
+                                  for i in range(D.CLAIM_MAX)]
+                return json.dumps(base, ensure_ascii=False)
             return D.FakeClient.complete(self, prompt, key=key, kind=kind)
 
     doc = _run(tmp_path, Verbose())
@@ -252,7 +269,9 @@ def test_regeneration_feedback_reaches_the_outline_call(tmp_path):
         def complete(self, prompt, key=None, kind="generate"):
             if kind == "outline":
                 self.outline_prompts.append(prompt)
-                if len(self.outline_prompts) > 1:
+                # 翻面按"这趟有没有带失败原因"判，不按第几次调用判：
+                # 提纲现在会因两种具名缺陷被重问（主证据重复 / 重写轮原因），下标不稳定。
+                if "不合格原因" in prompt:
                     self.short = False
                 return json.dumps({
                     "sections": [{"title": "第%d段" % (i + 1),
@@ -267,8 +286,11 @@ def test_regeneration_feedback_reaches_the_outline_call(tmp_path):
     c = FailOnce()
     _run(tmp_path, c)
     assert len(c.outline_prompts) >= 2, "提纲没被重跑：%d" % len(c.outline_prompts)
-    assert "不合格原因" in c.outline_prompts[1], \
-        "第二轮提纲调用没带上失败原因：%s" % c.outline_prompts[1][-160:]
+    # 不绑下标：提纲现在会因两种具名缺陷被重问（主证据重复 / 重写轮的不合格原因），
+    # 断"第一次之后有一次带上了失败原因"才是这条判据的本意。
+    later = c.outline_prompts[1:]
+    assert any("不合格原因" in p for p in later), \
+        "重写轮的原因没进任何一次提纲调用：%s" % [p[-120:] for p in later]
 
 
 # ── 成本形状 ──────────────────────────────────────────────────────────────

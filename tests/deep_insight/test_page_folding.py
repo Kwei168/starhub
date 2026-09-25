@@ -111,14 +111,30 @@ def test_no_heading_sits_over_an_empty_section():
     full = D.render_page(_payload())
     assert "<h3>因果</h3>" in full and "<h3>证据</h3>" in full, \
         "有内容时标题也不见了 —— 那是把板块悄悄删了"
+def test_nightly_page_links_back_to_the_served_pages():
+    """夜场页不许是死胡同：必须挂回站内三页（三页现网实测均 200，不构成死链）。
+
+    反向不成立：`deep-insight.html` 自己还没上线（实测 404），
+    站内任何地方出现指向它的链接都要等 publish 成功之后。
+    """
+    html = D.render_page(_payload())
+    for p in ("index.html", "ai-daily.html", "rss-aggregator.html"):
+        assert 'href="%s"' % p in html, "夜场页缺回链 %s" % p
+    assert 'href="deep-insight.html"' not in html, "自己链自己：站点入口还没上线"
     """导航/回链红线：站内 href 只能指向确实在服务的页面。
 
     `deep-insight.html` 现网实测 404 —— 在它真被 publish 出来之前，
     任何页面挂它都会立刻长出一条死链，这条判据就是拦这个的。
+    正向对照必须有：`render_page` 目前根本不产相对链接，没有对照这条判据就是空转。
+
+def test_no_internal_link_points_at_a_page_the_site_does_not_serve():
     """
-    for html in (D.render_page(_payload()),):
-        for href in re.findall(r'href="([^"]+)"', html):
-            if href.startswith(("http://", "https://", "#", "mailto:")):
-                continue
-            assert href.strip(), "空 href 就是死链"
-            assert href in SERVED, "站内链接指向未上线页面 %s（SERVED 里没有）" % href
+    def scan(html):
+        return [h for h in re.findall(r'href="([^"]*)"', html)
+                if not h.startswith(("http://", "https://", "#", "mailto:"))]
+
+    assert scan('<a href="deep-insight.html">x</a>') == ["deep-insight.html"], "判据空转：未上线页没被抓到"
+    assert scan('<a href="">x</a>') == [""], "判据空转：空 href 没被抓到"
+    for href in scan(D.render_page(_payload())):
+        assert href.strip(), "空 href 就是死链"
+        assert href in SERVED, "站内链接指向未上线页面 %s（SERVED 里没有）" % href

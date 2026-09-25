@@ -127,15 +127,21 @@ HOPEFUL_BANDS = 2
 # 一次尝试的调用数（逐项点名，别再用"判定 1"那种旧账）：
 #   提纲 2（首问 + 主证据撞车那一次重问）
 # + 逐段 2*SECTIONS_MAX（每段太短会补写一次，`staged_generate` 里那趟 `again`）
-# + 结构 1 + 判定 JUDGE_SAMPLES（批 3 的去噪双采样）+ 逐条核查 CLAIM_MAX（批 2 的 faith，满额）
+# + 结构 2（首问 + 五格全空那一次重问，批 3.16/#78）+ 判定 JUDGE_SAMPLES（批 3 的去噪双采样）+ 逐条核查 CLAIM_MAX（批 2 的 faith，满额）
 # 现网实测：run 35940113012 三条事件 71 次调用（其中 faith 8 次），
 # 与本式的差在 regen 没跑满 —— 这个数拿来当"开一条之前要留多少"的预留，不拿来当成绩。
 OUTLINE_MAX_CALLS = 2
+# 结构那一趟自批 3.16 起最坏是两趟：五格全空 ⇒ 带着缺陷提示重问一次（任务 #78）。
+STRUCT_MAX_CALLS = 2
+# 重问那一趟**单独**的等待上限：重问失败是照旧往外抛的（任务 #83），但抛之前不该再等满
+# 条目级 900s —— 那是给一次正常长上下文调用准备的。撞没 key 就快速失败、把条目让出去。
+REASK_WAIT_CAP_S = 60
 # 这是**标称**成本（按我们要求它写的段数上限 SECTIONS_MAX 算）。真实成本随模型给的段数走：
 # 第四轮审查用 12 段提纲复现到一趟 37 次（outline 2 + section 24 + structure 2 + judge 2 + faith 7）。
 # 所以别把 `PER_ATTEMPT_CALLS * (MAX_REGEN+1)` 当成一条的上界 —— 上界没人保证，
 # 闸只能"每趟问一次"（见 deepen_one 里的 regen_cut_by_budget），并把超顶记成可读的一格。
-PER_ATTEMPT_CALLS = OUTLINE_MAX_CALLS + 2 * SECTIONS_MAX + 1 + JUDGE_SAMPLES + CLAIM_MAX
+PER_ATTEMPT_CALLS = (OUTLINE_MAX_CALLS + 2 * SECTIONS_MAX + STRUCT_MAX_CALLS
+                     + JUDGE_SAMPLES + CLAIM_MAX)
 # CALL_CAP 按 spec §7 的决定**不跟着最坏值抬**（12×3×31=1140 是纸面数）：
 # 真实约束是墙钟不是次数，先把 S6/S7 跑成一场 test 实测"每合格条目调用数"再定档。
 # 撞顶就按已批的风险⑤口径处理：保单条完整，砍没开写的（`_cutoff` 的预留就是为此存在）。
@@ -1538,12 +1544,34 @@ def staged_generate(event, ctx, client, key_pool, budget, wait_cap_s=900, sleep=
     # 结构字段单独一趟，而且看得到已经写好的正文。把它们塞进提纲那趟是我自己造出来的
     # 0.3 分：现网 run 35803569061 的 evt_003 契约全过，rubric 却是
     # {narrative 0.6, causal 0.3, forecast 0.3, quality 0.3} —— 机制链与预测都按提纲的认真度答。
-    struct = dict(parse_model_json(call_llm(
-        client, build_structure_prompt(event, ctx, doc["narrative"],
-                                      [p for p in ((s.get("primary")
-                                                   or (s.get("evidence") or [None])[0])
-                                                  for s in secs) if p]) + signals_note(ctx) + extra,
-        key_pool, budget, "structure", wait_cap_s=wait_cap_s, sleep=sleep)) or {})
+    prims = [p for p in ((s.get("primary") or (s.get("evidence") or [None])[0])
+                         for s in secs) if p]
+
+    def ask_struct(defect="", cap_s=None):
+        raw = call_llm(client, build_structure_prompt(event, ctx, doc["narrative"], prims)
+                       + signals_note(ctx) + extra + defect,
+                       key_pool, budget, "structure",
+                       wait_cap_s=wait_cap_s if cap_s is None else cap_s, sleep=sleep)
+        return dict(parse_model_json(raw) or {})
+
+    struct = ask_struct()
+    # 结构那一趟**整组**没交回东西 ⇒ 重问一次（任务 #78）。现测（`_scratch/read_b78_attrib.py`
+    # 与 `_scratch/b78_two_items.txt`，15 场缓存产物）：五格全空 2 条次 —— evt_20260925_011
+    # 在另外 4 场里 claims=8~10、quality 都有值；evt_20260924_r13 只另有 1 场（dl35 与 dl35b
+    # 是同一夜下载两次，正文 7,867 字相同，不能算两场），那场 claims=7。⇒ 偶发的整组空。
+    # 只管"整组空"：只缺一两格（如只缺 forecasts，另有 5 条次）不在本刀范围，那属 #75/#79。
+    # 重问这一趟的失败**照旧往外抛**（任务 #83 的最终口径，两处现测撑着）：
+    #   · 咽下来救不回条目 —— 真档位 `MAX_REGEN=2` 下，5xx 会多烧一整轮重写（outline 1→2、
+    #     section 6→12）后照样抛出，整条目实测多等 930s 才死（`_scratch/b83_regen_measure.txt`）；
+    #   · 判定双采样同一形状：那一块是"两趟都没判成 ⇒ 任何错误码都抛"（`if not scores: raise`）。
+    #     "后面那趟可以咽"的前提是前面已经有真样本，而这里第一次只回了没用的东西。
+    # 唯一保留的保护是**等待上限单独收紧**：条目级 900s 是给一次正常长上下文调用用的，
+    # 重问撞没 key 时不该再等满它，所以传 min(REASK_WAIT_CAP_S, wait_cap_s) 后快速失败。
+    if not any(struct.get(k) for k in STRUCT_FIELDS):
+        note["struct_reasked"] = True
+        defect = ("\n上一版没有交回任何结构字段。必须输出一个 JSON 对象，字段是：%s；"
+                  "不要输出解释文字。\n" % ", ".join(STRUCT_FIELDS))
+        struct = ask_struct(defect, cap_s=min(REASK_WAIT_CAP_S, wait_cap_s))
     for k in STRUCT_FIELDS:
         if struct.get(k):
             doc[k] = struct[k]
@@ -3432,7 +3460,8 @@ def night_run(purpose="test", events_limit=EVENTS_DEFAULT, client=None,
         need = ITEM_CALLS_MAX if budget.llm_calls else PER_ATTEMPT_CALLS
         if budget.llm_calls + need > call_cap:
             # 开一条之前先问"还剩不够写完一趟"。原来只问 `llm_calls >= call_cap`：
-            # 剩 1 次也照开，而一条最坏要 93 次（3 趟 × 每趟 31，含每趟都可能跑的核查）。
+            # 剩 1 次也照开，而一条最坏要 %d 次（3 趟 × 每趟 %d，含每趟都可能跑的核查）。
+            # 数字别写死：上一版写 93/31，STRUCT_MAX_CALLS 一抬就对不上了（第六轮审查 P2）。
             # 预留只按**一趟**而不按 ITEM_CALLS_MAX：按 93 预留会让"总闸小于一条的最坏值"时
             # 整夜空跑（测试档 80 就撞上），而超发的上界已经由每趟预留压住。
             log("[夜场] 剩余调用 %d/%d 不够开下一条（要 %d 次；还没做过时按一趟 %d 次放行）" % (
@@ -3617,11 +3646,12 @@ def main(argv=None):
     ap.add_argument("--out", default="_night_state")
     ap.add_argument("--budget-tokens", type=int, default=DEFAULT_BUDGET_TOKENS)
     ap.add_argument("--cap-calls", type=int, default=CALL_CAP,
-                    help="整夜 LLM 调用上限。每趟最坏 %d 次（提纲 2 + 逐段 2*%d 含补写 + 结构 1 + "
-                         "双判 %d + 逐条核查 %d），一条最多 %d 趟 ⇒ 最坏 %d 次；"
+                    help="整夜 LLM 调用上限。每趟最坏 %d 次（提纲 2 + 逐段 2*%d 含补写 + 结构 "
+                         "%d（首问 + 整组空重问） + "
+                         "双判 %d + 逐条核查 %d），一条最多 %d 趟 => 最坏 %d 次；"
                          "现网实测 3 条 71 次（≈24/条，run 35940113012）。"
                          "spec §7：本档先不抬，等分布再定" % (
-                             PER_ATTEMPT_CALLS, SECTIONS_MAX, JUDGE_SAMPLES, CLAIM_MAX,
+                             PER_ATTEMPT_CALLS, SECTIONS_MAX, STRUCT_MAX_CALLS, JUDGE_SAMPLES, CLAIM_MAX,
                              MAX_REGEN + 1, ITEM_CALLS_MAX))
     ap.add_argument("--single-pass", action="store_true",
                     help="退回单趟生成（省成本时用这条，代价是 §2 的字数下限再次靠模型自觉）")

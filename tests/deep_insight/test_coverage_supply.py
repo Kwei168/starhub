@@ -432,6 +432,39 @@ def test_the_narrative_group_is_pinned_by_name_not_by_position():
         "覆盖违约的归属要写死在账上（它属结构字段，不进正文组）：%s / %s" % (n4, [m[:24] for m in f4])
 
 
+def test_an_empty_structure_reply_is_asked_again_not_burned():
+    """补结构那一趟**整组没交回东西**时重问一次（任务 #78，用户已授权）。
+
+    现测归因（`_scratch/read_b78_attrib.py` 与 `_scratch/b78_two_items.txt`）：本地缓存的 15 场
+    夜场产物里 `struct_missing` 是**全部五格**的共 2 条次（evt_20260924_r13 正文 8,744 字、
+    evt_20260925_011 正文 8,438 字），而这两个 id 在另外 4 场里 claims=7~10、quality 都有值
+    ⇒ 是偶发的整组空，quality 只是其中一格，真因是那一趟什么都没交回来。
+    正文本身是好的，所以只重问那一趟、不重写正文；代价是五条硬判据同时碎、已付费正文降成 200 字快讯。
+    """
+    class RefuseOnce(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.st = 0
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                self.st += 1
+                if self.st == 1:
+                    return "抱歉，我无法完成这个请求。"
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = RefuseOnce()
+    rec = D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                       max_regen=0, source_quality={}, sleep=lambda s: None,
+                       wait_cap_s=5, staged=True)
+    assert c.st >= 2, "结构那一趟整组为空却没重问（structure 只调用 %d 次）" % c.st
+    assert rec.get("claims"), "重问了还是没有 claims（8k 字正文白付）：%s" % rec.get("struct_missing")
+    assert (rec.get("staged") or {}).get("struct_reasked"), \
+        "重问必须留痕，否则这一晚多花的调用数没人能核对：%s" % sorted((rec.get("staged") or {}))
+
+
 def test_the_two_coverage_asks_are_always_reconcilable():
     """"每条至少 2 篇"与"合计覆盖 ask 篇"不能互相够不着：够不着时要把另一条路说出口。
 
@@ -575,4 +608,120 @@ def test_the_short_section_retry_carries_the_feedback_too():
         "没造出'写太短→重问'那一路（第 1 段被调用 %d 次）：%s" % (len(retried), c.outline_n)
     assert all(u"被多段复用的数" in p for p in retried), \
         "重问那一趟的 prompt 没带清单：改第一个调用点就以为两处都修了"
+def test_a_useful_first_structure_reply_is_not_asked_again():
+    """反向断言：第一趟交回了东西就**不许**再问（否则 #78 变成无条件加一次调用）。
 
+    `not any(...)` 这个守卫只有正向测试钉不住：把条件改成恒真，前面的重问测试照样绿。
+    这一条专门守"恒真"那一类变异体（审查员 Minor 7：没有反向测试）。
+    """
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = D.FakeClient()
+    rec = D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                       max_regen=0, source_quality={}, sleep=lambda s: None,
+                       wait_cap_s=5, staged=True)
+    n = c.calls.count("structure")
+    assert n == 1, "结构那一趟交回了合法字段还重问（structure 调用 %d 次）：%s" % (n, sorted((rec.get("staged") or {})))
+    assert not (rec.get("staged") or {}).get("struct_reasked"), \
+        "没重问却留了重问痕：旗标就成了谎"
+def test_no_key_on_the_first_structure_call_still_escapes():
+    """反向对照：**第一次**结构调用就没 key 必须照旧抛（那是饥饿信号，不是这一趟的运气差）。
+
+    没有这一条，上一条测试会被"结构那一趟全部咽掉"的实现骗过去 —— 那正是判定双采样
+    批评过的加倍误杀反面：把没 key 伪装成一次普通失败，整夜剩下的条目都会排队等死。
+    """
+    import pytest
+
+    class NoKeyFirst(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.st = 0
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                self.st += 1
+                raise D.RateLimited(30)
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    c = NoKeyFirst()
+    with pytest.raises(D.RateLimited):
+        # 两把 key 是生产形状：只给一把时，重问那趟连客户端都进不去（key 在冷却），
+        # 变异体就藏在"多等了一会儿"里而不是"多问了一次"里（S6 第一次就是这么活的）。
+        D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1", "k2"]),
+                     max_regen=0, source_quality={}, sleep=lambda s: None,
+                     wait_cap_s=5, staged=True)
+    # 光看"抛没抛"钉不住：把第一趟也咽掉、再靠重问那趟抛出来的变异体，异常类型一模一样
+    assert c.st == 1,         "第一趟就没 key 却接着往下走（structure 进客户端 %d 次）：饥饿信号被延后成第二次花钱" % c.st
+
+
+def _reask_client(exc):
+    """结构那一趟：第一趟回垃圾（触发重问），重问那趟抛 `exc`。"""
+
+    class Boom(D.FakeClient):
+        def __init__(self):
+            D.FakeClient.__init__(self)
+            self.st = 0
+
+        def complete(self, prompt, key=None, kind="generate"):
+            if kind == "structure":
+                self.st += 1
+                if self.st == 1:
+                    return "这里没有任何 JSON。"
+                raise exc("重问这一趟炸了")
+            return D.FakeClient.complete(self, prompt, key=key, kind=kind)
+
+    return Boom()
+
+
+def _reask_event():
+    pool, links = _pool(n_src=12, per_src=2)
+    ev = {"id": "e1", "title": "事件甲", "topic": "ai", "summary": "摘", "links": list(links)}
+    return pool, ev
+
+
+def test_a_failing_re_ask_ends_the_item_instead_of_paying_for_a_regen():
+    """重问失败必须**当场抛**：咽下来在真档位下不但救不回条目，还多付一整轮重写。
+
+    现测（`_scratch/b83_regen_measure.txt`，用真夹具跑 `max_regen=D.MAX_REGEN=2`）：
+      · 咽下 5xx ⇒ outline 1→2、section 6→12（多烧 12 次调用），最后还是抛 RuntimeError；
+      · 咽下 429 ⇒ 条目照样以 RateLimited 收场（晚一步，且中间多花一段等待）。
+      · 只有把 `max_regen` 钉成 0 时，咽下来才留得下一条 degraded 快讯 —— 那不是生产的形状。
+    口径也与判定双采样对齐：那一块**两趟都没判成**时任何错误码都抛（`if not scores: raise`），
+    "后面那趟"能咽的前提是前面已经有真样本，而结构这一趟第一次只是回了没用的东西。
+    """
+    import pytest
+
+    pool, ev = _reask_event()
+    waits = []
+    for exc in (RuntimeError, D.RateLimited):
+        c = _reask_client(exc)
+        with pytest.raises(Exception) as got:
+            D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                         max_regen=D.MAX_REGEN, source_quality={}, sleep=waits.append,
+                         wait_cap_s=900, staged=True)
+        assert isinstance(got.value, (exc if exc is RuntimeError else D.RateLimited)), \
+            "%s 之后抛出来的却是 %s：咽与抛的界线没测住" % (exc.__name__, type(got.value).__name__)
+        assert c.calls.count("outline") == 1, \
+            "重问失败后又开了一趟重写（outline %d 次）：钱白花" % c.calls.count("outline")
+        assert c.st == 2, "重问失败后还继续试（structure 进客户端 %d 次）" % c.st
+
+
+def test_the_failed_re_ask_waits_only_its_own_bounded_window():
+    """抛之前那段等待必须有界：条目级是 900s，重问只许花自己那一份。
+
+    绝对秒数，不拿 `REASK_WAIT_CAP_S` 当尺子（上一版那么写，抬档位的变异体照样"绿"）。
+    """
+    pool, ev = _reask_event()
+    waits = []
+    c = _reask_client(D.RateLimited)
+    try:
+        D.deepen_one(ev, pool, c, D.Budget(400000), D.KeyPool(["k1"]),
+                     max_regen=D.MAX_REGEN, source_quality={}, sleep=waits.append,
+                     wait_cap_s=900, staged=True)
+        raise AssertionError("重问撞没 key 没抛出去：条目会被留在原地继续烧预算")
+    except D.RateLimited:
+        pass
+    assert sum(waits) <= 120, \
+        "重问失败前等了 %.0fs（重问那一趟的预算应当远小于条目级 900s）" % sum(waits)

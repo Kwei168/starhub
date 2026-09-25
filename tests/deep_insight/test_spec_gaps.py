@@ -386,6 +386,7 @@ def test_ancestor_check_rejects_diverged_and_behind():
             self.status = status
             self.token = "t"
             self.repo = "o/r"
+            self.ref = "main"
         def _req(self, method, path, payload=None):
             return {"status": self.status}
 
@@ -394,7 +395,7 @@ def test_ancestor_check_rejects_diverged_and_behind():
 
     class Gone(D.GithubDataApi):
         def __init__(self):
-            self.token = "t"; self.repo = "o/r"
+            self.token = "t"; self.repo = "o/r"; self.ref = "main"
         def _req(self, method, path, payload=None):
             raise urllib.error.HTTPError("u", 409, "gone", {}, None)
 
@@ -591,7 +592,12 @@ def test_one_transient_error_does_not_destroy_the_whole_night(tmp_path):
     doc = json.load(open(out["json"], encoding="utf-8"))
     done = [e["id"] for e in doc["events"]]
     assert len(done) >= 1, "一条 5xx 把已经做完的条目也带走了：%s" % done
-    assert doc.get("failed_items"), "吞了异常却不记账：%s" % sorted(doc)
+    # 批 3.11 之后：一过性 5xx 该被换 key 补试救回，而不是扔掉整条洞察。
+    # 这笔账必须在产物里看得见（要么救回了几次，要么确实挂了几条），不许静默。
+    _b = doc["budget"]
+    assert (_b.get("upstream_recovered") or 0) >= 1 or doc.get("failed_items"), \
+        "瞬时故障既没记账也没救回：%s" % (_b.get("upstream_errors"),)
+    assert (_b.get("upstream_errors") or 0) >= 1, "补试发生过却没进 budget：%s" % _b
     assert os.path.exists(out["html"]) and os.path.exists(out["json"])
 
 
