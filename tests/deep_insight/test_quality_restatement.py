@@ -307,6 +307,40 @@ def test_a_tier_whose_why_is_never_written_still_reports_the_worst_tier():
     assert q["score"] == 40 and D.count_chars(q["why"]) < D.WHY_MIN, q
 
 
+def test_an_illegal_verdict_or_bool_score_never_reaches_the_page():
+    """场 39 现网出厂过 "优质判定 深度报道 82"，而那条自己的 contract_fails 就写着不在枚举。
+
+    判据对降级条目不查 quality 这一组（正文已裁成快讯，长度类判据会全响），
+    于是模型自造的分类一路走到页面 —— 这既是"上屏的枚举"红线，也是页面替我们撒了谎。
+    同一格的 `score: true` 也一路过关（bool 是 int 的子类），页面会印 "True"。
+    """
+    def _page(quality):
+        ev = {"id": "x", "title": "某事件", "topic": "ai", "narrative": "快讯正文。",
+              "degraded_reason": "重写 2 次仍不合格", "quality": quality, "claims": [],
+              "causal_chains": [], "forecasts": [], "citations": [],
+              "rubric": {"mean": 0.6, "judged": True}}
+        return D.render_page({"date": "2026-09-25", "events": [ev], "budget": {},
+                              "anchor_diff": []}), ev
+
+    html_bad, ev_bad = _page({"verdict": "深度报道", "score": 82, "why": "依" * 25,
+                              "basis": ["sig:c1"]})
+    assert "深度报道" not in html_bad, "模型自造的分类直接上屏了"
+    assert u"优质判定" not in html_bad, "没有合法取值时宁可整段不印"
+    html_bool, ev_bool = _page({"verdict": "通稿", "score": True, "why": "依" * 25,
+                                "basis": ["sig:c1"]})
+    assert "True" not in html_bool, "bool 当成了分值印上屏"
+    # 判据对降级条目不查 quality 这一组（那是上一条泄漏存在的原因），所以要拿**非降级**的形状验 bool 判据
+    probe = {"title": "t", "topic": "ai", "narrative": "论证。" * 900, "claims": [],
+             "causal_chains": [], "forecasts": [], "citations": [],
+             "quality": {"verdict": "通稿", "score": True, "why": "依" * 25, "basis": ["sig:c1"]}}
+    ok, fails = D.validate_event(probe)
+    assert any(u"0-100" in f for f in fails), \
+        "score: true 仍被判据接受（bool 是 int 的子类）：%s" % (fails,)
+    html_ok, _ev_ok = _page({"verdict": "通稿", "score": 65, "why": "依" * 25,
+                             "basis": ["sig:c1"]})
+    assert "通稿 65" in html_ok, "合法配对被一起挡掉了：%s" % html_ok[-300:]
+
+
 def test_prompts_state_the_derived_coverage_rule():
     """契约里写的篇数必须和判据用的是同一个派生，不许多套一份数字。"""
     p = D._structure_rules(", ".join(sorted(VALID)), len(VALID))
