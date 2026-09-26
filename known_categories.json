@@ -265,5 +265,7 @@
  "agentscope-ai/agentscope": "assistant",
  "songquanpeng/wechat-server": "content",
  "LibreChat-AI/LibreChat": "assistant",
- "vectorize-io/hindsight": "agent"
+ "vectorize-io/hindsight": "agent",
+ "NVIDIA/Model-Optimizer": "finance",
+ "Comfy-Org/workflow_templates": "agent"
 }
