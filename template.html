@@ -723,7 +723,10 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
 @media (max-width:640px){
   .hd{padding:10px 14px;flex-wrap:wrap;row-gap:8px}
   .nav-links{order:3;flex:1 1 100%;justify-content:flex-start;overflow-x:auto;padding:2px 0}
-  .nav-drop-panel{left:0;transform:none;min-width:260px}
+  /* 手机端必须用 fixed：.nav-links 的 overflow-x:auto 会让 overflow-y 的使用值也变成 auto
+     （规范强制），绝对定位的面板虽然 opacity:1 却被裁剪到点不到。top:auto 取静态位置，
+     天然贴在自己那个按钮下方，不用 JS 写 inline top。 */
+  .nav-drop-panel{position:fixed;top:auto;margin-top:6px;left:12px;right:12px;transform:none;min-width:0;max-width:none}
   .hd .acts{gap:6px}
   .hd .acts .btn span{display:none}
   .hd .acts .btn{padding:0 9px}
