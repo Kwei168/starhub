@@ -91,6 +91,14 @@ jobs:
       - name: Quality gate A2 — RSS history persistence & site nav structure (blocking)
         run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ -q -s
 
+      # ── 质量门禁 A3：产物与生成端漂移（advisory）──
+      # 只观测不拦截：index.html 每场由 template.html 重写，漂移下一场自愈。
+      # 拿它去挡构建会自锁——能修好产物的那场构建恰好被它自己屏掉（2026-09-26 实测：
+      # 模板已修、产物未重建时该条红，而 A2 一红即不部署）。结构配平的正在 A2。
+      - name: Quality gate A3 — artifact drift vs template (advisory)
+        continue-on-error: true
+        run: python -m pytest tests/site_nav_drift/ -q -s
+
       # ── 质量门禁 B：洞察测试（advisory）──
       # 本 job 是唯一产出者（stars/RSS/ai-daily/每日洞察 + bot 提交 + Vercel 部署），
       # 硬失败会冻结每天 5 个定时档并阻断一行热修的上线，故先观察再收紧。
