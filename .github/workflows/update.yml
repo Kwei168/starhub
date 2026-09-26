@@ -86,8 +86,10 @@ jobs:
       # 无网络、无凭证、毫秒级；断言含"每场抓全部源"的策略守卫与 update.yml 自身的缓存步骤。
       # rss_source_coverage 锁住 2026-09-16 起让"有数据源"从 968 掉到 776 的三条路径：
       # 去重把 datetime 当字符串、域名熔断把"合法空 feed"计为失败、异常被静默吞成 0 条。
-      - name: Quality gate A2 — RSS history persistence (blocking)
-        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ -q -s
+      # site_nav 锁住首页 header 的 div 配平：2026-09-25 删入口时连带删掉一个开标签，
+      # 多出的 </div> 提前闭合了 flex 行容器，页面在次日构建后整条导航纵向堆叠。
+      - name: Quality gate A2 — RSS history persistence & site nav structure (blocking)
+        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ -q -s
 
       # ── 质量门禁 B：洞察测试（advisory）──
       # 本 job 是唯一产出者（stars/RSS/ai-daily/每日洞察 + bot 提交 + Vercel 部署），
