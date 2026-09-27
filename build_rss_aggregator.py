@@ -5332,6 +5332,59 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       setTimeout(_translateWallItems,2500);
     })();
   }
+  /* 运行时翻译诊断：摘要翻译自 2026-09-16 起移出构建期，"到底翻没翻"只有浏览器知道，
+     构建日志看不到这一半。带 ?transdiag=1 自动跑一次，或在 console 里调 transDiag()。 */
+  function _transDiag(){
+    var cjk = function(s){ return /[一-鿿]/.test(String(s || '')); };
+    var rep = { at: new Date().toISOString(), total: ART.length };
+    var sNeed = 0, sDone = 0, tNeed = 0, tDone = 0, tried = 0;
+    ART.forEach(function(a){
+      if (a.s && String(a.s).trim()) { if (cjk(a.s)) sDone++; else sNeed++; }
+      if (a.t) { if (cjk(a.t)) tDone++; else tNeed++; }
+      if (a._zhTried) tried++;
+    });
+    rep.summary_english = sNeed; rep.summary_cjk = sDone;
+    rep.title_english = tNeed; rep.title_cjk = tDone;
+    rep.tried = tried; rep.untried = ART.length - tried;
+    function probe(name, url, opts){
+      var t0 = Date.now();
+      return fetch(url, opts).then(function(r){
+        return r.text().then(function(t){
+          return { name: name, ok: r.ok, status: r.status, ms: Date.now() - t0, head: String(t).slice(0, 36) };
+        });
+      }).catch(function(e){
+        return { name: name, ok: false, ms: Date.now() - t0, err: String(e).slice(0, 56) };
+      });
+    }
+    var sample = 'the riverbed hosts coral reef and betta fish';
+    var p1 = probe('gtx_direct ', 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=' + encodeURIComponent(sample));
+    var p2 = probe('vercel_bulk', TR_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts: [sample], mode: 'bulk' }) });
+    Promise.all([p1, p2]).then(function(rs){
+      rep.channels = rs;
+      try { console.log('[transDiag] ' + JSON.stringify(rep)); } catch (e) {}
+      _renderDiag(rep);
+    });
+    return rep;
+  }
+  function _renderDiag(rep){
+    var NL = String.fromCharCode(10);
+    var d = document.getElementById('transDiag');
+    if (!d) {
+      d = document.createElement('div'); d.id = 'transDiag';
+      d.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;max-width:92vw;background:#111;color:#eee;font:11px/1.5 monospace;padding:8px 10px;border:1px solid #444;border-radius:6px;white-space:pre-wrap';
+      document.body.appendChild(d);
+    }
+    var lines = ['运行时翻译诊断 ' + rep.at,
+      '条目 ' + rep.total + ' ｜ 摘要：英文 ' + rep.summary_english + ' / 中文 ' + rep.summary_cjk,
+      '标题：英文 ' + rep.title_english + ' / 中文 ' + rep.title_cjk,
+      '补翻已尝试 ' + rep.tried + ' / 未尝试 ' + rep.untried];
+    (rep.channels || []).forEach(function(c){
+      lines.push(c.name + (c.ok ? ' HTTP ' + c.status : ' 失败') + ' ' + c.ms + 'ms ' + (c.head || c.err || ''));
+    });
+    d.textContent = lines.join(NL);
+  }
+  window.transDiag = _transDiag;
+  if (location.search.indexOf('transdiag=1') >= 0) setTimeout(_transDiag, 12000);
   function _fmtRel(s){ if(!s) return ''; try{ var d=new Date(s),n=Date.now(),diff=n-d.getTime(); if(diff<0)return ''; var m=Math.floor(diff/60000); if(m<1)return '\u521a\u521a'; if(m<60)return m+' \u5206\u949f\u524d'; var h=Math.floor(m/60); if(h<24)return h+' \u5c0f\u65f6\u524d'; return Math.floor(h/24)+' \u5929\u524d'; }catch(e){return '';} }
 
   function toggleAiFeed(){
@@ -8455,6 +8508,10 @@ def main(mode="full"):
         "trans_cache_size": _LAST_TRANS_ACCOUNT.get("size"),
         "trans_cache_trimmed": _LAST_TRANS_ACCOUNT.get("trimmed"),
         "trans_google": _TRANS_STATS.get("google", 0),
+        # LLM 兜底那两个引擎以前只印在 stdout 上：日志里 google/mymemory/dict 都有，
+        # 唯独 agnes/zen 缺席 —— 于是"这场到底有没有走 LLM 兜底"在构建日志里问不出答案。
+        "trans_agnes": _TRANS_STATS.get("agnes", 0),
+        "trans_zen": _TRANS_STATS.get("zen", 0),
         "trans_mymemory": _TRANS_STATS.get("mymemory", 0),
         "trans_dict": _TRANS_STATS.get("dict", 0),
         "trans_skip": _TRANS_STATS.get("skip", 0),
