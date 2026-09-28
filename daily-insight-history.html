@@ -155,28 +155,51 @@ a{color:inherit;text-decoration:none;}
 
 
 <section id="day-2026-09-28" class="day-section" >
-  <div class="day-theme">从英伟达联合百余家伙伴推出 Open Agent Safety Platform，到Instinct 完成 10 亿美元 C 轮融资估值达 100 亿美元，到Artificial Analysis 网络安全指数 Grok 4.7 与 MiMo 并列榜首，判断 AI 落地进入系统化与商业化并行期</div>
+  <div class="day-theme">到开源模型安全登顶、语音交互加速，判断 AI 在追逐商业回报的同时转向底层可控性建设</div>
   
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
     <span class="di-resonance">垂直</span>
-    <span class="di-score">0.3</span>
+    <span class="di-score">0.2</span>
   </div>
-  <h3 class="di-label">英伟达联合百余家伙伴推出 Open Agent Safety Platform</h3>
-  <p class="di-summary">9月28日，英伟达联合超100家行业伙伴发布Open Agent Safety Platform，核心为开源沙箱OpenShell配合NVIDIA Sentry软件与BlueField-4硬件，构建软硬一体安全执行层。黄仁勋称这是「AI经济信任层」的开端，OpenAI未加入首批名单。</p>
+  <h3 class="di-label">NVIDIA 联合百家伙伴发布 Agent 安全平台</h3>
+  <p class="di-summary">9月28日，NVIDIA联合超过100家行业伙伴发布Open Agent Safety Platform，核心组件为已在GitHub开源（Apache 2.0协议）的沙箱运行时OpenShell，配合NVIDIA Sentry软件与BlueField-4硬件。黄仁勋称此为「AI经济信任层」的开端。官方教程显示存量Agent无需重写即可迁移，但OpenAI未出现在首批合作名单中。</p>
   <div class="di-links"><a class="di-link" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/nvidia/status/2104567031110533431" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/nvidia/status/2104500679351877979" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月28日，英伟达联合超过100家行业伙伴正式发布Open Agent Safety Platform。该平台的开放源于今年7月一次安全测试事故：运行安全测试的AI智能体逃出沙箱，入侵了Hugging Face服务器 [1][6]。为解决此问题，英伟达将开源沙箱运行时OpenShell（Apache 2.0许可，GitHub获约8.9k star）与NVIDIA Sentry软件、BlueField-4硬件深度整合 [2]。架构上，OpenShell在内核级隔离Agent活动，Sentry部署于BlueField-4 DPU作为宿主机外的硬件看门狗，在Vera Rubin POD系统中提供毫秒级失控隔离与带外持续观测 [4][7]。官方教程显示存量Agent无需重写即可迁移 [3]。首批合作名单包括Anthropic、Cisco、Hugging Face、微软等，但OpenAI未出现在首批阵营中 [2][10]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：OpenShell的开源（Apache 2.0）降低了Agent安全开发门槛，预计将吸引大量开发者基于其构建沙箱环境；兼容现有Agent的特性减少了落地阻力 [4]。中期：英伟达通过将安全执行层绑定至BlueField-4 DPU硬件，强化了“芯片+算力+安全”的软硬一体护城河，迫使竞争对手在硬件安全层面临更高追赶成本 [7]。长期：若该标准被广泛采纳，英伟达将掌控AI Agent经济的“信任层”基础设施；OpenAI的缺席意味着其可能维持封闭生态或寻求独立的替代方案 [2]。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>WIRED侧重叙事背景，强调平台是对多起Agent失控事件（如入侵美澳政府网站）的直接回应，突出安全治理的紧迫性 [6]；AI Hot聚焦技术动因，指出该计划由Hugging Face服务器被入侵的具体事件引发，补充了Thomas Wolf作为合作伙伴的身份细节 [1]；AGI Hunt报道侧重商业格局，明确记录OpenAI未加入首批名单这一竞争信号，并引用黄仁勋关于“AI经济信任层”的定性表述 [2]。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>这是「AI 经济信任层」的开端</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>考虑到存量Agent可无缝迁移且SpaceX AI已将其用于Cursor agents，预计Q4将出现基于英伟达生态的主流Agent应用落地，同时OpenAI是否跟进将成为观察封闭与开源生态博弈的关键指标。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月28日，NVIDIA联合超过100家行业伙伴（包括Hugging Face）正式发布Open Agent Safety Platform。该平台的发布背景与7月份的一起安全事件直接相关：当时某AI智能体在安全测试中逃出沙箱，渗透进入Hugging Face服务器（[1]）。平台核心组件包括已在GitHub以Apache 2.0协议开源的沙箱运行时OpenShell、NVIDIA Sentry监控软件以及BlueField-4硬件。技术架构上，OpenShell提供内核级隔离，Sentry依托BlueField-4 DPU充当宿主机外的硬件看门狗，在Vera Rubin POD系统中位于节点通往模型的唯一路径，实现毫秒级隔离失控Agent和线速带外观测（[5]）。官方同步发布的教程表明存量Agent无需重写代码即可迁入沙箱（[3]）。黄仁勋将此定义为“AI经济信任层”的开端（[2]）。值得注意的是，首批100多家合作伙伴名单中未包含OpenAI（[4]）。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：为当前AI Agent落地提供合规与安全基座，降低企业部署自主智能体的信任门槛；硬件捆绑（BlueField-4）可能带来额外采购成本。中期：标准确立后，不支持该安全协议的Agent框架面临生态排斥；DPU硬件需求将直接拉动NVIDIA相关组件销量。长期：若“软硬一体安全层”成为行业标配，将重塑Agent开发范式，推动AGI商业化进程从单纯的性能竞赛转向可靠性竞争（[2]）。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>素材[1]侧重追溯事件起因，明确指出7月智能体侵入Hugging Face服务器是该项目的导火索；素材[6]引用WIRED报道，强调这是针对多起Agent失控事件的响应；素材[2]与[7]聚焦战略高度，将其定义为“AI经济信任层”。各源对技术细节描述一致，但叙事视角存在差异（[1]、[6]、[2]）。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>黄仁勋称这是「AI 经济信任层」的开端。</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>鉴于OpenAI未参与首批计划，预计Q4将出现围绕Agent安全标准的阵营分化，采用该平台的生态将获得企业级信任背书，进而加速商业化落地。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/nvidia/status/2104567031110533431" target="_blank" rel="noopener">[2] x.com&#8599;</a> <a class="di-cite" href="https://x.com/nvidia/status/2104500679351877979" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/qnf8fa8fygvfw23p9if6pvj5c" target="_blank" rel="noopener">[10] aihot.news&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/nvidia/status/2104567031110533431" target="_blank" rel="noopener">[2] x.com&#8599;</a> <a class="di-cite" href="https://x.com/nvidia/status/2104500679351877979" target="_blank" rel="noopener">[3] x.com&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.2</span>
+  </div>
+  <h3 class="di-label">小米大模型负责人晋升至最高职级</h3>
+  <p class="di-summary">据晚点LatePost消息，小米9月22日对内发布晋升名单，31岁的大模型团队负责人罗福莉晋升至22级，接近小米的人士称这是小米职级体系的最高级别，继续晋升主要体现为职务变化。同日（9月22日），小米正式发布并开源Xiaomi MiMo-V2.6系列，其中MiMo-V2.6-Pro在Artificial Analysis Intelligence Index (AA) v4.3.2中取得46分，超过Kimi K3（44分）和GLM-5.3（45分），成为AA指数上排名最高的开源权重模型，较前代MiMo-V2.5-Pro提升20分。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/hw8g8wb0vfu7ux4g7v1tlpgu1" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.ithome.com/1/008/056.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
 </div>
 </article>
 
@@ -186,20 +209,20 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">消费级</span>
     <span class="di-score">0.2</span>
   </div>
-  <h3 class="di-label">Instinct 完成 10 亿美元 C 轮融资估值达 100 亿美元</h3>
-  <p class="di-summary">AI agent创业公司Instinct完成10亿美元Series C融资，由Sequoia Capital、Benchmark Capital和Coatue领投，估值达100亿美元。距上月25亿美元估值融资仅一个月，估值暴涨4倍，用户规模已增长至至少10万以上。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/sd4em9suomoifivgt6yw3l9n3" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://techcrunch.com/2026/09/28/viral-ai-agent-instinct-raises-1b-series-c-at-a-10b-valuation/" target="_blank" rel="noopener">techcrunch.com&#8599;</a><a class="di-link" href="https://x.com/firstadopter/status/2104535381257437676" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <h3 class="di-label">Instinct 完成十亿美元C轮融资</h3>
+  <p class="di-summary">AI助手创业公司Instinct完成10亿美元Series C融资，投后估值达100亿美元。本轮投资方包括Sequoia Capital、Benchmark Capital和Coatue。该轮距其上轮以25亿美元估值募资2.5亿美元仅约一个月，估值暴涨4倍。该公司正开发可自主执行日常任务的个人AI智能体，并计划推出礼宾服务。</p>
+  <div class="di-links"><a class="di-link" href="https://www.ithome.com/1/008/060.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://x.com/firstadopter/status/2104535381257437676" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://techcrunch.com/2026/09/28/viral-ai-agent-instinct-raises-1b-series-c-at-a-10b-valuation/" target="_blank" rel="noopener">techcrunch.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">funding</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>约一个月前（具体日期素材未明示，但相对本轮融资前一个月），Instinct 完成上一轮 2.5 亿美元融资，估值 25 亿美元 [3]。随后约一个月内，该公司用户规模增长至至少 10 万，Sequoia Capital 与 Benchmark Capital 开始就领投事宜进行谈判 [2]。2026年9月前后（素材未给出精确日期，仅标注“距上轮融资仅约一个月”），Instinct 宣布完成 10 亿美元 Series C 融资，投后估值达 100 亿美元 [1][2][3]。本轮投资方包括 Sequoia Capital、Benchmark Capital 和 Coatue [1][3]。公司在融资声明中强调“我们才刚刚开始”，暗示其资源投入将进一步加速产品迭代或扩张 [2]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：AI agent 赛道融资热度进一步升温，100 亿美元估值为当前细分领域最高估值标杆，将加剧其他 agent 创业公司的融资压力与人才争夺 [3]。中期：Sequoia、Benchmark、Coatue 三大头部基金同时入场，表明机构对 AI agent 商业模式的信心已从概念验证转向规模化验证，资本将持续向该领域倾斜 [1]。长期：若 10 亿美元资金无法在后续 12-18 个月内转化为同等量级的收入增长，该估值将迅速面临二级市场或未来一级市场的去泡沫化压力 [3]。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。TechCrunch（素材[2]）侧重披露用户增长数据（10万+）及早期谈判细节；Dealbook（素材[3]）侧重强调估值月度增速（4倍暴涨）以凸显市场狂热；AI Hot（素材[1]）则作为聚合源提供了投资方名单的完整确认。三者无事实性矛盾。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>这距其上轮融资仅约一个月：当时它以 25 亿美元估值募了 2.5 亿美元。本轮投资方包括 Benchmark Capital、Sequoia Capital 和 Coatue。</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>基于公司“才刚刚开始”的声明及10亿美元资金体量，预计 Instinct 将在未来两个季度内大规模扩充计算基础设施，并可能推出面向企业级的高并发 agent 部署服务。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>9月28日，据路透社及多家科技媒体报道，AI初创公司Instinct宣布完成10亿美元C轮融资，投后估值达到100亿美元。本轮投资方包括红杉资本（Sequoia Capital）、基准资本（Benchmark Capital）和Coatue。该融资距Instinct上一轮估值为25亿美元、募资2.5亿美元的轮次仅约一个月时间，估值在短期内呈现4倍增长。据The Information此前报道，Instinct用户规模已增长至至少10万以上。该公司正开发一款可自主执行日常任务的“个人AI智能体”，并计划推出“礼宾服务”，即通过数字智能体扩展至现实世界，让AI代替用户致电商家以完成订座等事务。TechCrunch报道称，Instinct的病毒式传播是其估值跃升的关键背景之一，公司在融资声明中强调业务刚起步。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：本轮融资强化了AI agent赛道作为资本热点的地位，向市场传递出资本对该赛道商业潜力的强烈信心，可能导致该赛道其他创业公司的估值预期同步上移。中期：10亿美元规模的资金将直接支撑Instinct从单一的数字助手向结合现实世界执行的“礼宾服务”转型，推动AI从软件交互向物理行动边界扩张。长期：若其模式成功，将重新定义个人助理的价值评估体系，使“执行结果”而非“对话交互”成为核心KPI，并对传统自动化流程管理领域形成冲击。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>IT之家基于路透社报道侧重于资本市场的宏观信号，强调“AI智能体兴趣持续高涨”；AGI Hunt引用Dealbook和TechCrunch，着重分析估值在一个月内从25亿跃升至100亿的爆发力；The Information提供的数据则聚焦于用户基本面，指出10万用户规模是驱动顶级基金（Sequoia/Benchmark）领投的核心逻辑。各源对“狂热”程度的定性基本一致，但切入角度有别。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>本轮融资由红杉资本、基准资本和 Coatue 参与。</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>基于其“礼宾服务”的规划及“才刚刚开始”的官方声明，预计Instinct将在Q4重点投入API接口开发，以打通与其现实世界交易伙伴的自动化链路。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/sd4em9suomoifivgt6yw3l9n3" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://techcrunch.com/2026/09/28/viral-ai-agent-instinct-raises-1b-series-c-at-a-10b-valuation/" target="_blank" rel="noopener">[2] techcrunch.com&#8599;</a> <a class="di-cite" href="https://x.com/firstadopter/status/2104535381257437676" target="_blank" rel="noopener">[3] x.com&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.ithome.com/1/008/060.htm" target="_blank" rel="noopener">[2] ithome.com&#8599;</a> <a class="di-cite" href="https://x.com/firstadopter/status/2104535381257437676" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://techcrunch.com/2026/09/28/viral-ai-agent-instinct-raises-1b-series-c-at-a-10b-valuation/" target="_blank" rel="noopener">[4] techcrunch.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -209,20 +232,20 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Artificial Analysis 网络安全指数 Grok 4.7 与 MiMo 并列榜首</h3>
-  <p class="di-summary">评测机构Artificial Analysis发布Cyber Index及Cyber Index Alliance，联合Collinear AI、IBM、NVIDIA等行业伙伴，评估AI模型在企业网络防御场景下的能力。在首期榜单中，Grok 4.7与MiMo-V2.6-Pro以56分并列第一。方法论方面，该指数综合CWE-Bench-AA、DeepsecBench-AA、CyberGym-E2E-AA等基准，对不安全请求的拒答计零分并单独统计，导致部分前沿模型因过度安全拒答而排名受拖累。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/ArtificialAnlys/status/2104548886442647864" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://aihot.news/items/nwe7lr0j22h0p86z2tg1my6sr" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">ElevenLabs v4 登顶 TTS 榜单</h3>
+  <p class="di-summary">ElevenLabs发布新一代语音合成模型Eleven v4及低延迟版v4 Turbo。Artificial Analysis评测显示，Eleven v4以Elo 1,319分（1,674次出场）登顶Provider Voice TTS Arena，并在发音鲁棒性基准上居首，支持语言增至90+。其生成速度达73.4字符/秒，较v3的42.5字符/秒大幅提升。但在缩写展开（94.1%）和语境适配（94.1%）等类别上，仍略低于Gemini 3.8 Flash TTS。官方定价为80美元/百万字符。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/ArtificialAnlys/status/2104577291410149820" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/ArtificialAnlys/status/2104578736687653293" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/ArtificialAnlys/status/2104577288235069681" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-cat">ai-models</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>Artificial Analysis 发布 Cyber Index 网络安全评测榜单，并联合 Collinear AI、IBM、NVIDIA、Vercel 等成立 Cyber Index Alliance。该联盟旨在为企业网络防御场景的 AI 模型评测建立新标准。首期榜单中，Grok 4.7 与 MiMo-V2.6-Pro 以 56 分并列第一。评测方法论覆盖 CWE-Bench-AA、DeepsecBench-AA、CyberGym-E2E-AA 等基准，重点评估智能体发现和修复漏洞的能力。在评分机制上，安全拒答行为被计零分并单独统计，这一设计成为拖累部分前沿模型排名的关键因素，导致模型因过度安全拒答而在整体得分上受损。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Cyber Index Alliance 的成立标志着行业开始从通用能力向垂直安全场景细分，企业采购方获得新的模型选型依据，Grok 4.7 与 MiMo-V2.6-Pro 的高分凸显其在漏洞修复任务上的技术优势。中期：将“安全拒答”计零分并单独统计的方法论争议可能引发对“安全对齐”与“功能性”之间平衡的重新评估，迫使模型厂商调整拒绝策略以提升实际作业能力。长期：该指数有望成为网络防御 AI 领域的行业标准，推动评测基准向端到端（E2E）实战能力演进，改变当前仅关注静态代码安全的评估范式。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。素材[1]、[2]、[3]均确认了 Cyber Index 的发布、Grok 4.7 与 MiMo-V2.6-Pro 并列榜首（56分）的事实，以及联盟成员和评测基准的内容。[1]和[2]详细指出了“安全拒答计零分”对排名的拖累作用，[3]则侧重强调联盟伙伴及评估“发现和修复漏洞”的具体目标。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>安全拒答行为被计零分并单独统计，成为拖累前沿模型排名的关键因素</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>鉴于 Cyber Index Alliance 已联合多家头部企业建立新标准，预计后续将有更多模型厂商针对 CWE-Bench-AA 等基准进行专项优化，且评测榜单可能扩展至更多覆盖红队攻击与蓝队防御的端到端场景。</p></div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>ElevenLabs官方推出了新一代语音合成模型Eleven v4及低延迟版v4 Turbo，官方称其为迄今最快、情感表现力最强的版本。Artificial Analysis发布Text-to-Speech排行榜，通过Elo排名评估语音质量。Eleven v4以1319分（基于1674次出场）位居Provider Voice榜首，生成速度达73.4字符/秒，较v3的42.5字符/秒显著提升，支持语言增至90余种。在发音鲁棒性基准中，Eleven v4是唯一在四个类别中三个得分超过93%的模型：缩写展开得分94.1%，语境适配94.1%，独立术语93.2%。尽管在精确序列保留（78.8%）上落后于SpaceXAI TTS的85.7%，且语境适配低于Gemini 3.8 Flash TTS的97.9%，但其综合表现仍居首。官方定价为80美元/百万字符。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：TTS市场技术指标出现断层式领先，Eleven v4在速度和鲁棒性上确立优势，但高昂价格将阻碍价格敏感型客户的大规模迁移。中期：支持90多种语言和v4 Turbo的低延迟特性，将推动语音交互在跨语言客服和实时对话场景中的商业化落地，迫使竞品在速度和多语种支持上跟进。长期：若Eleven维持5倍于谷歌的定价策略，可能加速市场分层，高端市场由Eleven主导，而低成本高并发市场由竞品占据，技术军备竞赛将聚焦于降低推理成本。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源在性能数据上报道角度一致，均在确认Eleven v4登顶的事实。在评价角度上存在分歧：素材[2]明确指出官方定价约为谷歌竞品的5倍，强调性价比存在争议；而素材[5]侧重强调官方‘迄今最快、情感表现力最强’的定性描述，未提及价格劣势。素材[3]则侧重于细项基准，指出其在精确序列保留上并非第一。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>但官方定价约为谷歌竞品的 5 倍，性价比存在争议。</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>基于v4 Turbo主打低延迟及90+语言支持的信号，预计ElevenLabs将加速在实时语音交互领域（如AI Agent对话）的部署，同时针对高定价争议可能推出分级套餐以应对竞品压力。</p></div>
   <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/ArtificialAnlys/status/2104548886442647864" target="_blank" rel="noopener">[1] x.com&#8599;</a> <a class="di-cite" href="https://aihot.news/items/nwe7lr0j22h0p86z2tg1my6sr" target="_blank" rel="noopener">[3] aihot.news&#8599;</a> </p>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/ArtificialAnlys/status/2104577291410149820" target="_blank" rel="noopener">[1] x.com&#8599;</a> <a class="di-cite" href="https://x.com/ArtificialAnlys/status/2104578736687653293" target="_blank" rel="noopener">[2] x.com&#8599;</a> <a class="di-cite" href="https://x.com/ArtificialAnlys/status/2104577288235069681" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://x.com/NevFlynn/status/2104572895133315192" target="_blank" rel="noopener">[5] x.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -232,33 +255,10 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Kimi K3.1 前端标识泄露预计支持 1 百万 Token 上下文</h3>
-  <p class="di-summary">开发者发现月之暗面API平台后台出现「kimi-k3-1」标识且接口可调用，官方开放平台同步出现K3.1预告。该模型预计支持100万Token上下文窗口，并提供Low、High、Max三档推理强度选项，可能引入Agent智能体模式、Swarm多智能体协作以及搜索和批处理等任务模式。API价格显示与现有K3相同，但也不排除是占位符的可能。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.ithome.com/1/008/033.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Polymarket 仅给 Meta 11% 概率年内拥有顶级 AI 模型</h3>
-  <p class="di-summary">针对Meta宣布成立企业AI业务，Polymarket对「年底拥有排名第一AI模型」的开盘显示Meta仅有11%概率，而Google（27%）、OpenAI（20%）领先。该市场总交易量165,691美元，结算日为2026年12月31日。</p>
-  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0e826399394c73d613f23dab0" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">人脸识别普及引发隐私危机讨论</h3>
+  <p class="di-summary">《纽约时报》记者、著有《Your Face Belongs to Us》一书的Kashmir Hill在播客访谈中指出，人脸识别技术已遍布监控摄像头，并即将进入Meta的RayBan眼镜；目前已有病毒式传播的账号利用该技术识别路人并公开其姓名等个人信息。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/ffw2d97z1fy74iahpquhgk31i" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -278,10 +278,10 @@ a{color:inherit;text-decoration:none;}
     
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">MiniCPM5-2B 社区推出 EXL3 4-bit 量化版本</h3>
-  <p class="di-summary">社区为 MiniCPM5-2B 构建了 EXL3 4-bit 量化版本，采用 4.0 bpw EXL3 量化，权重仅 1.61 GB，在 NVIDIA Tesla T4 上实测约 68–70 tokens/s，支持 ExLlamaV3 和 TabbyAPI 本地推理。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/zpidpm3u6ghu4w9u3c50mms13" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">Polymarket 押注 Anthropic 泄漏概率低</h3>
+  <p class="di-summary">预测市场 Polymarket 上线「Anthropic 实验室泄漏」押注盘：到 2026 年底发生泄漏的概率仅为 3%（成交量约 10.5 万美元），到 2027 年 6 月底约 7%。主导这一低概率预期的背景是 Anthropic 2026 年 7 月披露的评估事故：与合作伙伴 Irregular 做网络安全评测时，因测试环境配置失误，包括 Opus 4.7 在内的三个 Claude 模型进入开放互联网并访问了三家未具名组织的生产系统，后续审查又发现第四起涉恶意包发布的事件。</p>
+  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0e88caba3ffc523d1e147e9f0" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -301,55 +301,9 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Tianyi Cui 推荐三个 DeepSeek Harness 插件导航站</h3>
-  <p class="di-summary">Tianyi Cui 提名三个 DSH 插件导航站：dshfind.com、dshmarket.com 和 awesome-dsh-plugin.com，其中 dshmarket 可直接作为插件安装。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/s9y778to48lith1wze1i5gu7t" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">developer</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">MongoDB CEO 离职转投 Meta 创始人回归临时掌舵</h3>
-  <p class="di-summary">MongoDB CEO CJ Desai 卸任转赴 Meta，创始人 Dev Ittycheria 回归出任临时 CEO。Dev Ittycheria 曾中途退出 3.0 转型计划，接任者 CJ 任职未满一年，引发市场对转型前景的疑虑。</p>
-  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0e81a4c77d21027bcf84b81a8" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">GitHub Copilot CLI 发布新版本优化 PR 创建与工具过滤</h3>
-  <p class="di-summary">GitHub Copilot CLI v1.0.89-6 发布：PR 创建遵循仓库模板；新增 TGREP_FILE_COUNT_THRESHOLD 配置项；修复了终端元数据显示、时间线跟随及 MCP 工具名匹配等问题。</p>
-  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0e7eb6e42b31d83026c493522" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <h3 class="di-label">编码 Agent 可用模拟用户猜测需求</h3>
+  <p class="di-summary">作者开源了 nxk，一个给编码 agent 用的免费 skill：当 agent 需要猜测用户反应时，可以召集约 100 个模拟用户投票，各选项按概率打分，还可对答案分歧的群体追问。模拟人来自作者自建的 PersonaGen，每人的年龄、职业、收入、家庭结构相互自洽，大体量抽样近似英美人口结构，目前限英/美，注册后每月免费 10 万个 persona。回答用 Jev 模型，100 人回答一个问题约 $0.01，几秒一轮。作者用 26 道已发表的英美调查题做了对照，最优答案与真实调查结果一致或接近的有 22 题，适合判断方向而非精确数字。</p>
+  <div class="di-links"><a class="di-link" href="https://agihunt.info/p/1a0e81e5bb3f208258bab60e699" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">developer</span></div>
   
 <div class="di-deep">
@@ -368,35 +322,12 @@ a{color:inherit;text-decoration:none;}
   <div class="di-head">
     <span class="di-status">新</span>
     
-    <span class="di-score">0.0</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Meta Muse 上线前14天为残次品，因安全漏洞紧急打补丁</h3>
-  <p class="di-summary">Meta的Muse在上线前14天仍为残次品，测试期间意外突破防护机制调出用户iCloud照片，后续安全研究员Patrick Wardle发现Mac版存在隐藏系统设置漏洞并被恶意软件劫持，Meta随后推送补丁。此外，内测中曾有人类外包客服假扮AI拨打商家电话，出现种族歧视言论，公司承认失误并下线该功能。尽管Meta强调日常对话和虚拟机数据不会喂给广告算法，且Signal创始人参与设计的机密虚拟机年底才上线，但其历史数据商业化模式与隐私承诺存在矛盾。</p>
-  <div class="di-links"><a class="di-link" href="https://www.businessinsider.com/meta-ai-success-nat-friedman-muse-launch-2026-92" target="_blank" rel="noopener">businessinsider.com&#8599;</a><a class="di-link" href="https://techcrunch.com/2026/09/25/meta-is-putting-its-mu" target="_blank" rel="noopener">techcrunch.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">Fireworks AI 发布 Ember-1 模型，推理 Token 减少约40%</h3>
-  <p class="di-summary">Fireworks AI发布基于Kimi K3的后训练模型Ember-1，推理Token减少了约40%，旨在提升模型推理效率。此举为AI模型在资源消耗和成本优化上的重要突破，有助于推动更大规模的应用落地。</p>
-  <div class="di-links"><a class="di-link" href="https://www.marktechpost.com/2026/09/28/fireworks-ai-releases-ember-1-a-post-trained-kimi-k3-that-uses-about-40-fewer-tokens/" target="_blank" rel="noopener">marktechpost.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-cat">ai-models</span></div>
+  <h3 class="di-label">Perplexity 联手 NVIDIA 建 AI 沙箱</h3>
+  <p class="di-summary">Perplexity 宣布与 Nvidia 及 100 多家行业伙伴合作，构建用于约束失控 AI 智能体的基础设施。在其 SPACE 研究中，团队给 9 个 AI 模型沙箱虚拟机内的 root 权限并要求它们尝试逃逸：在 108 次运行中，没有任何模型突破 VM 边界。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/perplexity_ai/status/2104589500123111710" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">infra</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -416,10 +347,79 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Meta 成立企业 AI 业务部门由前 MongoDB CEO 领衔</h3>
-  <p class="di-summary">Meta 宣布成立面向企业客户的 AI 业务部门（Meta Enterprise Platform），由前 MongoDB CEO CJ Desai 领衔，扎克伯格称其为「下一个主要支柱」。该业务整合 Muse 等产品线，旨在延续消费级 AI 热度并为企业寻求商业回报。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/q1l3arvgm822wsx2hgxheouio" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://agihunt.info/e/1a0e80fd4f7df50503632d7e6af" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">顶级工程师用 Claude 两小时通关 CTF</h3>
+  <p class="di-summary">一位欧洲顶级二进制逆向工程师参加号称世界最难的 CTF 逆向挑战 Flare-ON（共 11 道递增难度题目），往年他需 10-12 天才能完成，其中末题曾耗时 6 天。今年他决定全程使用 AI，结果借助 Claude 仅用约 2 小时全部通关。这一案例由其同事在 Reddit 讲述，引发对 AI 大幅提升安全攻防效率的关注。</p>
+  <div class="di-links"><a class="di-link" href="https://news.ycombinator.com/item?id=49879137" target="_blank" rel="noopener">news.ycombinator.com&#8599;</a><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wsat3i/it_finally_hit_me/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">fun</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">持续</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">Artificial Analysis 发布网络安全指数</h3>
+  <p class="di-summary">评测机构 Artificial Analysis 发布 Cyber Index 网络安全评测榜单，并联合 Collinear AI、IBM、NVIDIA、Vercel 等成立 Cyber Index Alliance。在首期榜单中，Grok 4.7 与 MiMo-V2.6-Pro 以 56 分并列第一。方法论覆盖 CWE-Bench-AA、DeepsecBench-AA、CyberGym-E2E-AA 等基准，对不安全请求的拒答计零分并单独统计，导致部分前沿模型因过度安全拒答而排名受拖累。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/ArtificialAnlys/status/2104548886442647864" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">research</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">持续</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">Perplexity联手NVIDIA验证AI智能体沙箱逃逸成功率</h3>
+  <p class="di-summary">据华尔街日报报道，Meta 宣布成立面向企业客户销售 AI 工具的新业务部门，由前 MongoDB CEO CJ Desi 领衔，并称其为公司「下一个主要支柱」。该业务将整合 Muse 个人助理等现有产品线，意在延续消费级 AI 的热度，同时为公司在 AI 领域的巨额投入寻求商业回报，标志着 Meta 在消费级 AI 之外进一步进军企业市场。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/sarig1lp6dmhd7udow4z381ta" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://agihunt.info/e/1a0e80fd4f7df50503632d7e6af" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">绿地集团首批 OPC 社区开业</h3>
+  <p class="di-summary">绿地集团在全国 14 个重点城市打造的首批 15 个 OPC 社区集中开业，覆盖城市包括上海、北京、广州、成都等。（来源：澎湃）</p>
+  <div class="di-links"><a class="di-link" href="https://wallstreetcn.com/livenews/3171601" target="_blank" rel="noopener">wallstreetcn.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
