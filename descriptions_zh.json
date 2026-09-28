@@ -514,5 +514,6 @@
  "microsoft/SkillOpt": "SkillOpt 是一个文本空间优化器，通过轨迹驱动的编辑、验证门控更新和可部署的 best_skill.md 工件，为冻结的 LLM 代理训练可重用的自然语言技能。",
  "topoteretes/cognee": "Cognee 是面向代理的开源人工智能记忆平台。免费为您的人工智能代理提供持久的长期记忆和小模型",
  "samugit83/redamon": "一个由人工智能驱动的代理红队框架，可以自动化进攻性安全行动，从侦察到利用再到利用后，零人为干预。",
- "HelpCode-ai/anythingmcp": "将任何 REST、SOAP、GraphQL、OData 或 SQL API 转换为 Claude 和 ChatGPT 的 MCP 工具。自托管。 265 个连接器：SAP S/4HANA 和 Business One、ERP、电子商务。"
+ "HelpCode-ai/anythingmcp": "将任何 REST、SOAP、GraphQL、OData 或 SQL API 转换为 Claude 和 ChatGPT 的 MCP 工具。自托管。 265 个连接器：SAP S/4HANA 和 Business One、ERP、电子商务。",
+ "matank001/clodfarm": "clodfarm（大声说出来）：克劳德·科德特工的农场。制定一个任务，他们将其分解为子代理，展开工作，并根据每个帐户的实际 5 小时和每周使用情况调整自己的进度。从 Claude 应用程序控制它。"
 }
