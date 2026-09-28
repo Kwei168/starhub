@@ -507,5 +507,12 @@
  "microsoft/data-formulator": "🪄 Data Formulator 是一个由人工智能驱动的交互式数据分析系统，可以轻松连接、探索和可视化数据。",
  "feigeCode/navop": "一个用于数据库、SSH、SFTP、终端、远程桌面、监控和 AI 的本机一体化工作区。",
  "mrtinkz/ai-charter": "通用人工智能宪章：简单语言的治理原则和人工智能模型的公共认证注册表，建立在披露而不是发展放缓的基础上。",
- "ufo-ai/ufo-core": "业务代理操作系统"
+ "ufo-ai/ufo-core": "业务代理操作系统",
+ "openai/tart": "Apple Silicon 上的 macOS 和 Linux 虚拟机可用于 CI 和其他自动化",
+ "moeru-ai/airi": "💖🧸 自托管，您拥有的 Grok Companion，一个 waifu 灵魂的容器，网络生物将他们带入我们的世界，希望达到 Neuro-sama 的高度。能够实时语音聊天、玩《我的世界》、《异星工厂》。支持网络/macOS/Windows。",
+ "ashhart/TensorFold": "在 OpenAI 兼容端点后面的 Apple Silicon (MLX) 上进行快速、准确的 LLM 解码",
+ "microsoft/SkillOpt": "SkillOpt 是一个文本空间优化器，通过轨迹驱动的编辑、验证门控更新和可部署的 best_skill.md 工件，为冻结的 LLM 代理训练可重用的自然语言技能。",
+ "topoteretes/cognee": "Cognee 是面向代理的开源人工智能记忆平台。免费为您的人工智能代理提供持久的长期记忆和小模型",
+ "samugit83/redamon": "一个由人工智能驱动的代理红队框架，可以自动化进攻性安全行动，从侦察到利用再到利用后，零人为干预。",
+ "HelpCode-ai/anythingmcp": "将任何 REST、SOAP、GraphQL、OData 或 SQL API 转换为 Claude 和 ChatGPT 的 MCP 工具。自托管。 265 个连接器：SAP S/4HANA 和 Business One、ERP、电子商务。"
 }
