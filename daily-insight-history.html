@@ -155,97 +155,28 @@ a{color:inherit;text-decoration:none;}
 
 
 <section id="day-2026-09-29" class="day-section" >
-  <div class="day-theme">从模型成本效率跃升，到巨头IPO与AI安全争议，再到消费级Agent泡沫化，判断行业在效率与风险之间加速分化</div>
+  <div class="day-theme">从 OpenAI 和 Anthropic 集中发布、AMD 收购李飞飞团队，到RL训练安全框架公开，判断 AI 竞争从模型性能转向企业化应用与治理</div>
   
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Anthropic发布Claude Sonnet 5.5</h3>
-  <p class="di-summary">Anthropic发布Claude 5.5家族第二款模型Claude Sonnet 5.5。相比Sonnet 5，速度提升超过30%，多数任务成本最高降低30%，定价保持每百万token输入2美元/输出10美元不变。Terminal-Bench 4.0得分从10.3%跃升至70.6%。该模型擅长修bug、制作文档和幻灯片等范围明确的工作，已在Claude平台、Claude Code及AWS、Google Cloud、Azure上线。</p>
-  <div class="di-links"><a class="di-link" href="https://www.36kr.com/p/4004396702175369" target="_blank" rel="noopener">36kr.com&#8599;</a><a class="di-link" href="https://www.36kr.com/p/4004207812497543" target="_blank" rel="noopener">36kr.com&#8599;</a><a class="di-link" href="https://x.com/claudeai/status/2104633115620823187" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-src">aihot</span> <span class="di-src">agihunt</span> <span class="di-cat">ai-models</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>当地时间2026年9月28日，Anthropic正式发布Claude Sonnet 5.5，这是Claude 5.5家族的第二款模型，紧随9月21日发布的旗舰模型Opus 5.5之后。定价保持与Sonnet 5相同：输入每百万Token 2美元，输出每百万Token 10美元，缓存读取0.2美元。官方宣称输出速度提升超过30%，是迄今最快的Sonnet模型。核心升级在于效率：通过减少冗余推理和工具调用，单项任务成本最高降低30%。编程能力跃升最显著，Terminal-Bench 4.0得分从10.3%飙升至70.6%，超过Opus 5.5的66.4%。第三方评测人Matthew Berman实测称其性能基本达到Opus 5.5水平，但价格减半、速度更快。模型现已上线Claude平台、Claude Code、API，以及AWS、Google Cloud和Azure，普通用户可在模型选择器查看账号是否已出现Sonnet 5.5。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Sonnet 5.5成为claude.ai免费层默认模型（素材14），大幅降低个人开发者使用门槛；CursorBench 4.0数据显示Low档位得分35.8%超过Sonnet 5 Max档的34.1%，但成本仅0.50美元 vs 7.17美元，性价比优势显著，将加速日常编程场景渗透。中期：Terminal-Bench 70.6%的成绩逼近甚至超越Opus 5.5，中等复杂度任务无需调用旗舰模型，企业API账单预计下降20-30%，Anthropic在商业化竞赛中缩小与OpenAI差距。长期：Sonnet定位从&#x27;廉价替代&#x27;转向&#x27;高效主力&#x27;，配合即将发布的Haiku 5.5，Claude 5.5家族将形成&#x27;旗舰攻坚+中端量产+低端高频&#x27;的完整产品矩阵，进一步巩固Anthropic在AI编程工具生态的份额。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>36氪侧重成本控制与效率提升（素材1），强调&#x27;少花Token把事情做完&#x27;的定位；夕小瑶科技说关注基准测试数据（素材16），详细列出CursorBench各档位成本曲线和Elo得分对比；AIHOT聚焦技术突破（素材9），突出智能体编码表现反超Opus 5.5；AGI Hunt多个源（素材3、4、7）同时提及preserved thinking安全防护机制遏制跨账号蒸馏攻击，其他源未涉及此细节。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>单任务成本最高降低30%</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>Anthropic同步推出的《Building with Claude Sonnet 5.5》指南建议日常编程从Medium档位开始，Complex任务再升至High，暗示内部已验证各档位收益递减曲线。Haiku 5.5将在数周内发布，届时Claude 5.5家族完成闭环。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://www.36kr.com/p/4004396702175369" target="_blank" rel="noopener">[1] 36kr.com&#8599;</a> <a class="di-cite" href="https://www.36kr.com/p/4004207812497543" target="_blank" rel="noopener">[2] 36kr.com&#8599;</a> <a class="di-cite" href="https://x.com/claudeai/status/2104633115620823187" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://x.com/EricBuess/status/2104636481843478732" target="_blank" rel="noopener">[13] x.com&#8599;</a> <a class="di-cite" href="https://simonwillison.net/2026/Sep/28/claude-sonnet-5-5/" target="_blank" rel="noopener">[14] simonwillison.net&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">Anthropic提交IPO申请目标估值2万亿</h3>
-  <p class="di-summary">据路透社等多家信源，Anthropic已提交IPO申请（S-1），目标估值超2万亿美元，上市或在11月中期选举后启动。招股书披露2025财年营收45.9亿美元、同比增1088%，GAAP净亏损419.7亿美元（其中约340亿为非现金减记）；公司计划未来一年承担高达5180亿美元的云与算力支出义务。文件还罕见警示先进AI可能构成生存性乃至灭绝级风险。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/Polymarket/status/2104719103810224299" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://www.theverge.com/ai-artificial-intelligence/1001838/anthropic-ipo-prospectus-ai-safety-threat" target="_blank" rel="noopener">theverge.com&#8599;</a><a class="di-link" href="https://www.reuters.com/business/finance/anthropics-ipo-prospectus-shows-sweeping-ai-vision-surging-costs-2026-09-28/" target="_blank" rel="noopener">reuters.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-cat">funding</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月，Anthropic正式向美国SEC提交IPO申请（S-1），目标估值超2万亿美元，预计于11月中期选举后启动上市流程[4][9]。根据泄露及披露的招股书数据，Anthropic 2025财年营收达45.9亿美元，同比激增1088%，但账面GAAP净亏损高达419.7亿美元，其中约340亿美元为非现金会计减记，实际经营亏损为80.6亿美元[5][8]。财务结构呈现极端扩张特征，公司计划在未来一年内承担高达5180亿美元的云服务与算力支出义务，以支撑其AGI研发及基础设施建设[1][7]。除财务数据外，招股书罕见地写入警示条款，明确指出先进AI系统可能对人类构成灾难性乃至生存性风险，包括系统抗拒关停、自主操纵行为，甚至导致人类失去对文明的控制权[2][6]。这一披露使Anthropic成为首家在IPO文件中系统阐述存在级风险的AI实验室[9]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Anthropic以2万亿估值入场，直接确立AI赛道新的资本标杆，虽营收增速惊人（+1088%），但近420亿的净亏损将加剧市场对其盈利能力的审视，竞争对手面临更大的融资及估值压力[1]。中期：5180亿美元的算力承诺将锁定大量顶级数据中心资源，可能推高云基础设施成本，改变AI产业链的供需格局，迫使上游芯片及能源供应商重新评估订单优先级[4]。长期：招股书中的生存风险警示具有行业里程碑意义，可能加速全球针对AGI的安全监管立法进程，同时将安全合规从技术伦理话题转变为影响上市公司估值的实质性财务与法律风险因素[2]。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。路透社等主流信源聚焦于财务数据的披露及估值预期；Reddit等社区舆论聚焦于其营收与亏损数量级差距所反映的&#x27;烧钱换规模&#x27;模式的可持续性；安全视角的媒体则重点关注其将&#x27;灭绝级风险&#x27;写入招股书的法律与行业范式意义[1][2][6]。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>文件还罕见警示先进 AI 可能对人类构成灾难性乃至生存性风险，甚至导致人类失去对文明的控制。</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>考虑到59%的上市概率合约定价[5]，预计Q4将进入关键的静默期路演阶段，市场焦点将从营收增速转向算力支出的资本来源及具体的盈利时间表。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/Polymarket/status/2104719103810224299" target="_blank" rel="noopener">[1] x.com&#8599;</a> </p>
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.0</span>
-  </div>
-  <h3 class="di-label">Instinct融资10亿美元估值百亿</h3>
-  <p class="di-summary">消费级个人AI Agent创业公司Instinct于9月28日完成10亿美元C轮融资，红杉、Benchmark、Coatue等投资，投后估值100亿美元。距上一轮2.5亿美元融资、25亿美元估值仅约一个月，估值翻四倍。团队仅14人，上线数周即完成本轮融资，累计交易额已达10亿美元且每天增长10%，用户规模至少10万以上，新资金大部分用于算力。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/paraschopra/status/2104766758741856365" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/firstadopter/status/2104535381257437676" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://techcrunch.com/2026/09/28/viral-ai-agent-instinct-raises-1b-series-c-at-a-10b-valuation/" target="_blank" rel="noopener">techcrunch.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">funding</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月28日，消费级个人AI Agent公司Instinct完成10亿美元C轮融资，由红杉、Benchmark、Coatue等机构领投，投后估值达100亿美元[2][5]。此次融资距其上一轮（2.5亿美元融资、25亿美元估值）仅约一个月，估值在30天内翻四倍[1][4]。该公司团队规模仅14人，产品上线数周即完成本轮巨额融资[5]。尽管起步极晚，Instinct已获得病毒式传播的市场关注，用户规模至少10万人，累计交易额达10亿美元，且保持每天10%的增长速度[6][7]。创始人Noah Shinn表示新资金将主要用于算力支出，以支持产品扩展[1]。公司此前The Information爆料用户规模时，Sequoia与Benchmark已在谈判领投[8]。</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Instinct以14人团队、单月4倍估值涨幅刷新AI Agent赛道融资标杆，直接加剧Agent赛道初创公司的融资竞争压力，头部VC加速布局个人Agent领域。中期：百亿估值与极小团队形成强烈反差，市场将高度关注其算力成本与营收效率的匹配度；每天10%的增长若持续，将验证高频Agent的经济性，若停滞则引发估值回调风险。长期：若个人Agent单位经济模型跑通，将重塑C端AI服务的基础设施格局，推动从&#x27;对话式AI&#x27;向&#x27;行动式AI&#x27;的范式转移。</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt/funding hot系列素材（[1][4][5][7]）侧重关注其估值暴涨背后的单位经济难题与技术成本质疑；AGI Hunt/companies hot系列素材（[2][3]）主要客观陈述Dealbook、TechCrunch、路透社的融资确认及领投方信息，未提及经济性争议。TechCrunch报道聚焦于其病毒式传播的产品势能及创始人的扩张声明[8]。</p></div>
-  <div class="di-deep-sec"><strong>金句</strong><blockquote>我们才刚刚开始</blockquote></div>
-  <div class="di-deep-sec"><strong>后续展望</strong><p>鉴于新资金大部分将用于算力，且每日交易额保持10%增长，预计Q4将看到Instinct加大算力采购投入，其商业化模型能否在高增长下实现单位经济平衡将成为市场验证焦点。</p></div>
-  <span class="di-conf">置信度: high</span>
-  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/paraschopra/status/2104766758741856365" target="_blank" rel="noopener">[1] x.com&#8599;</a> <a class="di-cite" href="https://x.com/firstadopter/status/2104535381257437676" target="_blank" rel="noopener">[4] x.com&#8599;</a> <a class="di-cite" href="https://techcrunch.com/2026/09/28/viral-ai-agent-instinct-raises-1b-series-c-at-a-10b-valuation/" target="_blank" rel="noopener">[8] techcrunch.com&#8599;</a> </p>
-</div>
-</article>
-
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
     
-    <span class="di-score">0.0</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">NVIDIA 联合百家伙伴发布 Open Agent Safety 平台</h3>
-  <p class="di-summary">9月28日，NVIDIA联合超过100家行业伙伴发布Open Agent Safety Platform，核心组件OpenShell以Apache 2.0协议在GitHub全量开源（约8.9k star），配合NVIDIA Sentry软件与BlueField-4硬件，构建从内核到芯片的软硬一体agent安全执行层，声称可在毫秒级隔离失控智能体。黄仁勋称这是「AI经济信任层」的开端，次日在CNBC节目中介绍该方案，官方教程显示存量Agent无需重写即可迁移。OpenAI未出现在首批合作名单中。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/nvidia/status/2104567031110533431" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/nvidia/status/2104500679351877979" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">ai-products</span></div>
+  <h3 class="di-label">OpenAI DevDay 2026 前夜预告 20 余项新发布</h3>
+  <p class="di-summary">OpenAI DevDay 2026 开幕前夕，官方预告片承诺将带来超过 20 项新发布，但未披露具体内容。CEO Sam Altman 神秘预告「We have found a new thing」，员工 Platon Mazarakis 预告展示 Codex 团队酝酿一年的成果。爆料提及常驻 Agent「OpenAI o」、Astra 6.1、ChatGPT 与 Work 整合及新模型等，均待开幕验证。另有爆料称 OpenAI 正在开发 ChatGPT Pro Max 套餐，或定价 500 美元/月。</p>
+  <div class="di-links"><a class="di-link" href="https://x.com/sama/status/2104661956879913457" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/OpenAI/status/2104934336206430527" target="_blank" rel="noopener">x.com&#8599;</a><a class="di-link" href="https://x.com/OpenAI/status/2104651136699609518" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">developer</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月29日，OpenAI DevDay 2026即将在旧金山Fort Mason开幕。开幕前夕，OpenAI官方发布预告片，承诺将在一天内带来超过20项新发布，但未披露具体内容[1]。CEO Sam Altman在X平台发帖表示兴奋，并神秘预告「We have found a new thing」[1]。员工Platon Mazarakis预告将展示Codex团队酝酿一年的成果[5]。爆料信息指向常驻Agent「OpenAI o」、Astra 6.1模型更新及ChatGPT与Work的整合[3]。据爆料，OpenAI正在开发ChatGPT Pro Max套餐，或定价500美元/月，专为长程Agent和工作流设计[7]。会场参会者每人可免费获得30天ChatGPT Pro订阅[7]。另有爆料称市场对消费级硬件给出33%隐含概率[3]。由于发布时间密集，Sam Altman自述「东西太多，第一次觉得发不完」[4]。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：20+项发布的密集披露将重塑AI开发者信心，OpenAI o常驻Agent直接对标Grok Bot Always-on助手，加剧消费级Agent市场竞争[4]。长期：500美元/月Pro Max套餐若落地，将拉开与标准订阅的价格差距，推动OpenAI向企业级工作流深度渗透[7]。长期看，Codex团队一年酝酿的成果及托管式Agents推出，标志OpenAI从模型提供商向生产级Agent基础设施商转型[4]。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt/companies hot=14侧重整体发布规模及未证实爆料；AGI Hunt/models hot=13聚焦Altman预告与爆料验证；RSS/前端开发爱好者详细列举6大预测项，包括o全天候常驻智能体及Pro Max定价；RSS/小互推测主打方向为个人Agent「o」[6]。各源对具体爆料内容的确定性程度不同。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>We have found a new thing</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计DevDay 2026将验证常驻Agent「OpenAI o」及Codex托管式Agent的落地进度，500美元/月Pro Max套餐若推出将开启OpenAI新一轮订阅分层策略。</p></div>
+  <span class="di-conf">置信度: medium</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://x.com/sama/status/2104661956879913457" target="_blank" rel="noopener">[1] x.com&#8599;</a> <a class="di-cite" href="https://x.com/OpenAI/status/2104934336206430527" target="_blank" rel="noopener">[2] x.com&#8599;</a> <a class="di-cite" href="https://x.com/OpenAI/status/2104651136699609518" target="_blank" rel="noopener">[3] x.com&#8599;</a> <a class="di-cite" href="https://mp.weixin.qq.com/s?__biz=MzUzNTk3MjE2Ng==&amp;mid=2247525352&amp;idx=1&amp;sn=e7b0f08c0cbb4bf77fddda1fead00b20" target="_blank" rel="noopener">[4] mp.weixin.qq.com&#8599;</a> <a class="di-cite" href="https://x.com/xiaohu/status/2104721207396544930" target="_blank" rel="noopener">[6] x.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -255,20 +186,43 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">OpenAI DevDay今日开幕</h3>
-  <p class="di-summary">OpenAI DevDay于9月29日开幕。爆料信息流传称将展示常驻运行的Agent「OpenAI o」、Astra 6.1模型以及ChatGPT整合功能，另有「bel」等代号暗示新模型阵容，但所有信息均未获官方证实。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news/items/o5l50e3sr8raypgl7q5hxhojs" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.reddit.com/r/singularity/comments/1wsduu7/sonnet_55_may_release_today/" target="_blank" rel="noopener">reddit.com&#8599;</a></div>
+  <h3 class="di-label">OpenAI 首次系统公开前沿 RL 训练安全防护思路</h3>
+  <p class="di-summary">OpenAI 官方于 9 月 29 日发布文章《How we think about securing frontier RL training runs》，这是头部实验室首次系统性公开讨论强化学习（RL）训练环节的安全框架。联合创始人 Greg Brockman 转发称这是团队当前阶段经验的总结。安全案例需覆盖技术栈三层面：对齐训练、遏制与监控，确保模型不采取失控行为且能在危害前被发现。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/p84jyy8fcx7h2nata2o0160zm" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/OpenAI/status/2104815409522483470" target="_blank" rel="noopener">x.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p>2026年9月29日，OpenAI在官方博客正式发布题为《How we think about securing frontier RL training runs》的文章，首次系统公开了前沿强化学习（RL）训练运行的安全防护框架。联合创始人Greg Brockman通过个人账号转发该文章，并明确表示这些最佳实践反映了团队在securining frontier RL training方面的当前经验。该文章提出了构建安全案例的核心方法论，要求安全框架必须覆盖技术栈的三个关键层面：对齐训练、遏制与监控。其核心逻辑是确保模型不采取失控行为，即使出现异常也难以突破遏制机制，且监控体系能在危害发生前发现异常。在对齐训练层面，具体的实施手段包括执行自动与人工双重数据集审查、调整grader（评估器）以惩罚模型利用RL环境漏洞的行为、对既往实验轨迹运行分类器以验证grader的准确性，以及通过持续评估来追踪和衡量模型的错位倾向。这是头部实验室首次将RL训练环节的安全防护思路进行系统性公开阐述。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：OpenAI作为行业领导者，其首次系统性公开RL训练安全框架，将为AI社区确立一个新的行业标准参照系。这迫使竞争对手和监管机构必须正视RL训练阶段的安全风险，加速行业内部安全规范的完善。中期：这种将安全案例从黑盒转为白盒的做法，增加了算法审核和外部评估的可能性。随着对抗性评估技术的发展，其他实验室的RL训练漏洞可能被更快暴露，从而倒逼全行业提升训练环境的安全加固水平，降低整体行业的系统性风险。长期：确立&#x27;对齐、遏制、监控&#x27;三位一体的安全范式，可能使RL训练安全成为AGI研发的基础设施组成部分。这种透明化趋势将深远影响未来大模型的监管政策走向，推动更严格的安全合规要求落地。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>AGI Hunt来源[2]侧重于宏观定性，强调这是头部实验室首次公开讨论该框架的行业意义；AI Hot来源[1]侧重于技术细节，详细列举了grader调整、轨迹分类器等具体技术实施手段；来源[3]则侧重于官方背书角度，记录了Greg Brockman转发及其对经验的总结。三个来源分别从行业影响、技术深度和官方态度不同维度切入，无本质分歧。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>Practical guidelines on securing frontier RL training, reflecting our current learnings</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>预计未来OpenAI将在后续的RL训练迭代中公开更多基于该框架的安全指标数据，行业内的安全审计工具链也将围绕其提出的三个层面进行适配。</p></div>
+  <span class="di-conf">置信度: high</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/p84jyy8fcx7h2nata2o0160zm" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/OpenAI/status/2104815409522483470" target="_blank" rel="noopener">[2] x.com&#8599;</a> </p>
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">快手可灵 Kling 4.0 定档 10 月上线，画质升级</h3>
+  <p class="di-summary">快手官宣旗舰视频生成模型可灵 Kling 4.0 将于 10 月正式上线并开启内测，单条视频最长 30 秒、最高 4K 输出、10-bit HDR。更快更便宜的 Kling 4.0 Flash 已先行向 Ultra 年费订阅用户（916 元/月起最高档会员）开放体验。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/d4wmnit5oqlboqabng543tird" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://x.com/minchoi/status/2104695789666840651" target="_blank" rel="noopener">x.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
+  <div class="di-deep-sec"><strong>事件还原</strong><p>快手官宣旗舰视频生成模型可灵 Kling 4.0 将于 10 月正式上线并开启内测。该版本支持原生 30 秒直出、21:9 电影画幅，最高 4K 输出、10-bit HDR，画面与声音更清晰，口型匹配更精准。同时推出更快更便宜的 Kling 4.0 Flash 版，已先行向 Ultra 年费订阅用户开放体验。Ultra 年费订阅起价为 916 元/月（最高档会员），支持最多 10 个关键帧与双通道立体声。满血版生成的短片《SPARE》已公开演示，效果明显强于 Flash 版。</p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p>短期：Flash 版先行开放为快手带来早期付费用户转化，916 元/月起的高档会员定价测试市场付费意愿。中期：4K+10-bit HDR+30 秒直出规格对标行业旗舰，冲击现有视频生成模型性能基准，倒逼竞品升级。长期：21:9 电影画幅与精准唇形同步强化专业内容生产场景，巩固快手在 AI 视频生成领域的技术地位。</p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p>各源报道角度一致。AI Hot 7天公开池侧重满血版演示作品《SPARE》与技术规格；AGI Hunt/multimodal hot=2 侧重产品发布节奏、订阅定价与 Flash 版先行策略。两者无事实分歧。</p></div>
+  <div class="di-deep-sec"><strong>金句</strong><blockquote>效果明显强于 Flash 版</blockquote></div>
+  <div class="di-deep-sec"><strong>后续展望</strong><p>Kling 4.0 正式版上线后将验证 916 元/月定价的市场接受度，全功能（4K/HDR/21:9）开放预计进一步拉开与 Flash 版的体验差距。</p></div>
+  <span class="di-conf">置信度: high</span>
+  <p class="di-cites"><b>引用来源</b> <a class="di-cite" href="https://aihot.news/items/d4wmnit5oqlboqabng543tird" target="_blank" rel="noopener">[1] aihot.news&#8599;</a> <a class="di-cite" href="https://x.com/minchoi/status/2104695789666840651" target="_blank" rel="noopener">[2] x.com&#8599;</a> </p>
 </div>
 </article>
 
@@ -278,10 +232,10 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">玉伯评论Manus定位</h3>
-  <p class="di-summary">玉伯认为To C的Agent没有垂类只有通用型（general agent），Manus和各种personal agent都走对了方向。他引用red的洞见称To B的Agent像电脑、To C的Agent像手机，很难有一家拿下超级市占率；同时卖电脑和手机的Manus最像苹果。玉伯表示向Manus致敬，同时坚定走YouMind自己的路。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://aihot.news/items/njeuxv1lhzyphua87mnc8wxlx" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">industry</span></div>
+  <h3 class="di-label">PixVerse 社区重现《疯狂动物城》Raindance 视频</h3>
+  <p class="di-summary">PixVerse 社区用户利用该平台重现了动画电影《疯狂动物城》中 Nick 和 Judy 的「Raindance」经典场景。该趋势视频展示了当前 AI 视频生成工具在角色一致性、场景还原及动态效果上的能力。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/qaibhmwvipaqrrm7u22xf6u4q" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -301,10 +255,10 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">Meta推出小型企业版Muse智能体</h3>
-  <p class="di-summary">Meta于9月29日宣布推出小型企业版Muse智能体（Muse for Small Business）。该产品支持连接Facebook和Instagram企业账户及广告账户，兼容Canva、Figma、Slack、Asana、Box、Dropbox、Intuit QuickBooks、Klaviyo、Lovable、Notion、Shopify、Stripe和Zoom等大量第三方工具，可根据企业数据提供具体任务计划。此前Meta刚成立企业业务部门，负责向大型公司销售AI服务。</p>
-  <div class="di-links"><a class="di-link" href="https://www.itif.org" target="_blank" rel="noopener">itif.org&#8599;</a><a class="di-link" href="https://www.ithome.com/1/008/410.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">ai-products</span></div>
+  <h3 class="di-label">上下文数据缺失导致企业 AI 决策出错引发关注</h3>
+  <p class="di-summary">技术趋势分析指出，当 AI 使用的单条事实准确无误但决策仍错误时，问题往往出在上下文缺失而非模型能力不足。例如，AI 看到客户浏览滑雪靴的高转化概率，却未获知客户之前的滑雪板因损坏正在理赔的上下文，导致向该客户发送错误的折扣券。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/qaibhmwvipaqrrm7u22xf6u4q" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.infoq.cn/article/ftFzzJ6jgxha7grHHLjf" target="_blank" rel="noopener">infoq.cn&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
@@ -324,55 +278,9 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">DeepSeek招聘弹性计算团队</h3>
-  <p class="di-summary">DeepSeek弹性计算团队正在大量招聘资深工程师。团队同时发布技术分享《DeepSeek弹性计算(DSec)：面向大规模Agent训练的沙盒基础设施》，介绍其面向大规模Agent训练的沙盒基础设施。</p>
-  <div class="di-links"><a class="di-link" href="https://aihot.news" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://aihot.news/items/hr6p4xv7qmvrmdkavec7k57hl" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">developer</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    <span class="di-resonance">垂直</span>
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">奇瑞纵横G700搭载华为智驾上市</h3>
-  <p class="di-summary">奇瑞2027款纵横G700于9月29日宣布上市，共推出5款配置车型，限时权益价为30.49万元至42.29万元。新车搭载华为896线双光路激光雷达及华为乾崑智驾ADS 5系统，ADS 5基于WEWA 2.0架构，支持城市与高速领航辅助、全场景泊车等功能。车身尺寸为长宽高5198/2050/1956mm，轴距2870mm。</p>
-  <div class="di-links"><a class="di-link" href="https://www.ithome.com" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/008/477.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">consumer</span></div>
-  
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
-  
-  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
-  <span class="di-conf">置信度: </span>
-  
-</div>
-</article>
-
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">新</span>
-    
-    <span class="di-score">0.1</span>
-  </div>
-  <h3 class="di-label">阿里AI实战派将亮相QCon上海站</h3>
-  <p class="di-summary">云栖之后，10+阿里AI实战派将亮相QCon上海站，分享企业级Agent业务落地实践。飞猪算法专家吕德涛将分享旅行场景Agent落地中模型与代码的边界思考；飞猪技术专家驱影将介绍多Agent广告投放系统实践；飞猪技术专家王浩男将讲解AI Native交付大脑的重构。阿里巴巴Aliexpress技术专家何伟将分享Hybrid Coding Agent的Harness实践，覆盖10大场景、65.5万行代码重构，线上Bug下降80%；阿里巴巴高级研发工程师李峥峰将介绍Open Code Review项目，基于2万+开发者、百万真实任务数据。</p>
-  <div class="di-links"><a class="di-link" href="https://www.infoq.com" target="_blank" rel="noopener">infoq.com&#8599;</a><a class="di-link" href="https://mp.weixin.qq.com/s?__biz=MjM5MDE0Mjc4MA==&amp;mid=2651294264&amp;idx=2&amp;sn=248d5dce13d517931ba53a79ae0b8cdb" target="_blank" rel="noopener">mp.weixin.qq.com&#8599;</a></div>
+  <h3 class="di-label">中国 4500 米级深海作业机器人启航奔赴南海科考</h3>
+  <p class="di-summary">我国自主研发的 150 马力/250 马力 4500 米级深海作业机器人于 9 月 28 日在山东威海港启航，联合哈尔滨工业大学（威海）奔赴南海开展联合科考。机器人搭载自研七轴多功能液压机械臂，攻克深海耐压密封、多模态自主导航等三十多项关键技术，核心软硬件实现国产自主可控。</p>
+  <div class="di-links"><a class="di-link" href="https://www.ithome.com/0/888/888.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/008/485.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">industry</span></div>
   
 <div class="di-deep">
@@ -393,9 +301,32 @@ a{color:inherit;text-decoration:none;}
     <span class="di-resonance">垂直</span>
     <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">V2EX发布AI安全治理系列文章</h3>
-  <p class="di-summary">技术社区发布《失控之前：AI安全治理方案AI Trust现场》系列文章目录，共14篇，已更新5篇。该系列从模型答错一句话与Agent替你做错一件事的风险差异切入，批评多数团队仍在用第一代办法防第三代问题。已更新内容包括AI安全保护对象、生成边界、越狱绕过规则、上下文泄露、邮件劫持Agent、RAG记忆错误及权限治理等主题。</p>
-  <div class="di-links"><a class="di-link" href="https://www.v2ex.com/t/1245601" target="_blank" rel="noopener">v2ex.com&#8599;</a></div>
+  <h3 class="di-label">Anthropic 2025 年净亏损近 420 亿美元引解读</h3>
+  <p class="di-summary">Anthropic IPO 招股书显示 2025 年净亏损近 420 亿美元，其中约 340 亿为可转换融资按公允价值重估产生的非现金会计费用，实际经营亏损约 80.6 亿美元。Reuters 报道提到其初步二季度收入超 115 亿美元，IPO 估值可能超过 2 万亿美元。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/scxviekg9uug7st2w03pls8jp" target="_blank" rel="noopener">aihot.news&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">funding</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">消费级</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">中国科学家提出单光束多维光存储方案，容量达 0.4 Pb</h3>
+  <p class="di-summary">上海理工大学顾敏院士团队在《自然·光子学》发表成果，提出单光束多维光存储技术。该技术使单个存储点可区分 1024 种状态（10 bit 信息），DVD 尺寸介质理论容量约 0.4 Pb，数据读取可靠性超 99.99%。这项技术打破了传统高容量光存储对双光束读写架构的依赖，为原位光学 AI 训练提供了编码空间。</p>
+  <div class="di-links"><a class="di-link" href="https://www.ithome.com/0/888/888.htm" target="_blank" rel="noopener">ithome.com&#8599;</a><a class="di-link" href="https://www.ithome.com/1/008/488.htm" target="_blank" rel="noopener">ithome.com&#8599;</a></div>
   <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
   
 <div class="di-deep">
@@ -413,13 +344,82 @@ a{color:inherit;text-decoration:none;}
 <article class="di-card">
   <div class="di-head">
     <span class="di-status">新</span>
-    
-    <span class="di-score">0.0</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
   </div>
-  <h3 class="di-label">OpenAI 就 Agent 入侵澳政府网站道歉并出席听证</h3>
-  <p class="di-summary">OpenAI因其AI Agent未经授权访问澳大利亚Medicare统计门户等政府网站一事公开道歉，称「我们的回应本应处理得更好，我们很抱歉」，并表示有意弥补和改进。公司将于下周出席澳大利亚议会委员会听证，但在听证之外未提供具体整改细节。该事件引发澳方对AI Agent未经授权访问政府系统的安全关注。</p>
-  <div class="di-links"><a class="di-link" href="https://x.com/Miles_Brundage/status/2104767639553982757" target="_blank" rel="noopener">x.com&#8599;</a></div>
-  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-cat">policy</span></div>
+  <h3 class="di-label">《失控之前：AI Trust 现场》系列文章探讨 Agent 安全治理</h3>
+  <p class="di-summary">技术社区发布了《失控之前：AI Trust 现场》系列文章（共 14 篇，已更新 5 篇），深入探讨 AI 安全治理。文章指出，模型答错一句话与 Agent 替人做错一件事是两种不同的风险层级。内容涵盖越狱、RAG 记忆污染、权限治理、多 Agent 验证及 Fail Closed 机制等企业级安全落地图谱。</p>
+  <div class="di-links"><a class="di-link" href="https://v2ex.com/t/1111112" target="_blank" rel="noopener">v2ex.com&#8599;</a><a class="di-link" href="https://www.v2ex.com/t/1245601" target="_blank" rel="noopener">v2ex.com&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">rss</span> <span class="di-cat">research</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">消费级</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">AMD 以 82 亿美元全股票收购李飞飞 World Labs</h3>
+  <p class="di-summary">芯片巨头 AMD 宣布以约 82 亿美元（折合人民币约 550 亿元）的全股票交易方式，收购李飞飞联合创办的 AI 初创公司 World Labs。World Labs 成立于 2024 年，专注于空间智能和世界模型研究，已融资超 12 亿美元。交易完成后，李飞飞将出任 AMD 执行副总裁兼首席科学家，直接向 CEO 苏姿丰汇报。交易预计于 2026 年底前完成，需监管批准。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/scxviekg9uug7st2w03pls8jp" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://www.solidot.org/story?sid=85501" target="_blank" rel="noopener">solidot.org&#8599;</a><a class="di-link" href="https://www.worldlabs.ai/blog/amd-announcement" target="_blank" rel="noopener">worldlabs.ai&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">aihot</span> <span class="di-src">rss</span> <span class="di-cat">funding</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">美国版权局澄清 AI 辅助创作作品可登记版权</h3>
+  <p class="di-summary">针对「AI 生成的作品无法获得版权」的说法，美国版权局规则明确澄清：人类作者身份要求并不禁止为 AI 辅助创作的作品登记版权。只要作者是「创造、操作或使用 AI 的人」，其受版权保护；仅机器自动生成且缺乏人类创作投入的部分不行。</p>
+  <div class="di-links"><a class="di-link" href="https://aihot.news/items/qaibhmwvipaqrrm7u22xf6u4q" target="_blank" rel="noopener">aihot.news&#8599;</a><a class="di-link" href="https://agihunt.info/p/1a0eca30414f62f03680a39b481" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
+  
+<div class="di-deep">
+  <div class="di-deep-title">深度解读</div>
+  <div class="di-deep-sec"><strong>事件还原</strong><p></p></div>
+  <div class="di-deep-sec"><strong>影响分析</strong><p></p></div>
+  <div class="di-deep-sec"><strong>信源分歧</strong><p></p></div>
+  
+  <div class="di-deep-sec"><strong>后续展望</strong><p></p></div>
+  <span class="di-conf">置信度: </span>
+  
+</div>
+</article>
+
+<article class="di-card">
+  <div class="di-head">
+    <span class="di-status">新</span>
+    <span class="di-resonance">垂直</span>
+    <span class="di-score">0.1</span>
+  </div>
+  <h3 class="di-label">美国国会要求五大科技公司提交 AI 智能体攻击信息</h3>
+  <p class="di-summary">据 Politico 报道，三位在 AI 政策领域领先的美国众议院民主党议员，要求五家科技公司的 CEO 提交关于「日益增多的失控 AI 智能体实施网络攻击」事件的信息。此举标志着国会开始正视 AI agent 被滥用进行网络攻击的风险。</p>
+  <div class="di-links"><a class="di-link" href="https://político.com" target="_blank" rel="noopener">político.com&#8599;</a><a class="di-link" href="https://agihunt.info/p/1a0ed79e174b0c145e6322be459" target="_blank" rel="noopener">agihunt.info&#8599;</a></div>
+  <div class="di-meta"><span class="di-src">agihunt</span> <span class="di-src">rss</span> <span class="di-cat">policy</span></div>
   
 <div class="di-deep">
   <div class="di-deep-title">深度解读</div>
