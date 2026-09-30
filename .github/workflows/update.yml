@@ -233,6 +233,10 @@ jobs:
           if [ -f hot_history.json ]; then git add hot_history.json; fi
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
+          if ! python3 tools/size_tripwire.py; then
+            echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
+            exit 1
+          fi
           if git diff --cached --quiet; then
             echo "No changes, skip commit."
           else
@@ -254,6 +258,10 @@ jobs:
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
+              if ! python3 tools/size_tripwire.py; then
+                  echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
+                  exit 1
+              fi
               git commit -m "chore: auto update stars $(TZ=Asia/Shanghai date +%F)" --allow-empty
               git push
             }
