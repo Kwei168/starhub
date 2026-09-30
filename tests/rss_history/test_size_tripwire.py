@@ -24,6 +24,12 @@ TOOL = os.path.join(ROOT, 'tools', 'size_tripwire.py')
 WF = os.path.join(ROOT, '.github', 'workflows', 'update.yml')
 
 
+# CI 的全局 git 配置里没有 user.name/user.email（workflow 只在 Commit 步里现设），
+# 而本地有 —— 夹具若依赖环境身份就会"本地绿、CI 红"（CLAUDE.md 明写这条不许依赖环境）。
+# 所以身份必须由夹具自己显式给，且用 -c 只作用于这一条命令，不碰任何全局配置。
+_ID = ['-c', 'user.name=T', '-c', 'user.email=t@e']
+
+
 def _git(cwd, *a):
     r = subprocess.run(['git'] + list(a), cwd=cwd, capture_output=True, text=True,
                        encoding='utf-8', errors='replace')
@@ -37,7 +43,7 @@ def _repo(tmp_path):
     # 真 CI 永远有 HEAD；`git diff --cached` 在 unborn HEAD 上会失败，
     # 所以夹具必须先有一条基线提交，否则测的是仓库状态而不是判据。
     _stage(d, 'seed.txt', 8)
-    _git(d, 'commit', '-q', '-m', 'seed')
+    _git(d, *_ID, 'commit', '-q', '-m', 'seed')
     return d
 
 
