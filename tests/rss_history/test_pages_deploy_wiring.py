@@ -129,6 +129,26 @@ def test_pages_permissions_granted():
     assert perms.get("id-token") == "write", "缺 id-token 时 deploy-pages 拿不到 OIDC 令牌"
 
 
+def test_staging_cannot_block_vercel():
+    """staging 排在 Vercel 之前（prune 会删产物，没得选），所以它必须不能连坐 Vercel。
+
+    两条一起才成立：staging 设 continue-on-error（失败不阻断后续），
+    同时 upload 依赖 steps.stage.outcome（否则残缺的 _pages 会被照常发布，站点半坏）。
+    """
+    _, steps = _steps()
+    names = [s.get("name", "") for s in steps]
+    i_vercel = names.index("Deploy to Vercel")
+    stage = [s for s in steps if (s.get("name") or "").startswith("Stage Pages site")][0]
+    assert stage.get("continue-on-error") is True, (
+        "staging 排在 Vercel 之前却没有 continue-on-error，它一红就跳过 Vercel 部署")
+    assert stage.get("id"), "staging 没有 id，后面的 if 无法引用它的 outcome"
+    i_stage = names.index(stage.get("name"))
+    assert i_stage < i_vercel, "staging 必须在 prune/Vercel 之前，否则制品里没有大产物"
+    up = [s for s in steps if (s.get("name") or "").startswith("Upload Pages artifact")][0]
+    assert "steps.%s.outcome" % stage["id"] in (up.get("if") or ""), (
+        "upload 不检查 staging 结果，残缺制品会被发布：%s" % up.get("if"))
+
+
 def test_staging_dir_is_hidden_from_vercel():
     """_pages/ 必须在 .vercelignore 里：它是产物的全量副本，且活到 Vercel 部署那一步。
 

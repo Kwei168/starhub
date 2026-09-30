@@ -296,15 +296,20 @@ jobs:
           key: rss-history-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Stage Pages site for Actions deployment
-        # legacy 分支源发布的是 **git 树**，不是工作目录。照工作目录整拷会第一次公开发布
-        # .gitignore 排除、但由 cache restore-keys（上面 emb-cache / rss-history 两步）放回磁盘的
-        # 原始语料：实测本地合计 398M，含 rss_cache.json 110M / rss_history.json 62M /
-        # rss_api_snapshot.json 41M / daily_insight_* 向量 146M。所以清单只取 `git ls-files`，
-        # 再按 Jekyll 规则剔掉 `.`/`_` 开头（今天这些就是 404，实测 /_bra.py 与 /.gitignore 均 404）。
+        # 这一步必须在 prune 之前（prune 会把大产物从工作目录删掉），因此它天然排在 Vercel 之前。
+        # 但它失败时绝不能连坐 Vercel 部署 —— 本仓已经有"A2 blocking + Deploy 无 if"的连坐教训，
+        # 方向不能再反过来加一条。所以 continue-on-error + 让 upload/deploy 依赖它的 outcome：
+        # 暂存失败 = Pages 这场不发布（站点留在上一次 artifact 上），Vercel 照常走。
+        id: stage
+        continue-on-error: true
         run: |
+          # 清单必须来自 `git ls-files` 而不是整拷工作目录：legacy 分支源发的是 git 树，而工作目录里
+          # 躺着 cache restore-keys 放回、被 .gitignore 排除的原始语料（实测本地合计 398M：
+          # rss_cache 110M / rss_history 62M / rss_api_snapshot 41M / daily_insight_* 向量 146M）。
+          # `.`/`_` 前缀照 Jekyll 行为剔掉（实测今天 /_bra.py 与 /.gitignore 都是 404）。
           mkdir -p _pages
           git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/
-          # 空制品发布 = 全站清空，这两条把"必须有内容"钉成硬失败而不是 warning
+          # 空制品发布 = 全站清空，这三条把"必须有内容"钉成硬失败而不是 warning
           test -s _pages/rss-data-0.js
           test -s _pages/rss-aggregator.html
           test -s _pages/index.html
@@ -390,7 +395,9 @@ jobs:
       # 在 legacy 分支源下 deploy-pages 会直接失败。
       - name: Upload Pages artifact
         id: pages_upload
-        if: always() && steps.build.outcome == 'success'
+        # 必须同时要求 stage 成功：staging 是 continue-on-error 的，它失败时 _pages 可能是残缺的，
+        # 残缺制品照样发布 = 站点半坏（feedback-recurrence-metric-must-be-unsuppressible）。
+        if: always() && steps.build.outcome == 'success' && steps.stage.outcome == 'success'
         uses: actions/upload-pages-artifact@v5
         with:
           path: _pages
