@@ -46,6 +46,7 @@ jobs:
 
       - name: 记录基线（体积 / 各族解包 / 逐提交清单 / CAS 锚点）
         run: |
+          set -eo pipefail
           git rev-parse origin/main > .base_sha
           echo "BASE_SHA=$(cat .base_sha)"
           du -sh .git | sed 's/^/重写前 .git = /'
@@ -77,7 +78,10 @@ jobs:
 
       - name: 剔除死数据族（保留 rss-data-0.js，真实分块测试要读已入库副本）
         run: |
-          git filter-repo --force --verbose --invert-paths \
+          # 不要给 filter-repo 加 --verbose：本机与站内实测都不认这个开关，加了整步直接红
+          # （2026-09-30 13:56Z 第二趟就是这么挂的，后面路径守恒/闸零/CAS 全没跑到）。
+          set -eo pipefail
+          git filter-repo --force --invert-paths \
             --path-glob 'rss-data-[1-9]*.js' \
             --path-glob 'rss_history.json' \
             --path-glob 'rss_history_*.json' \
@@ -106,6 +110,7 @@ jobs:
           set -e
           # 闸零：消失的每条提交都得自证是纯数据（或自身不改文件的空合并）。
           python3 tools/trim_commit_guard.py
+          set -o pipefail
           BASE=$(cat .base_sha)
           echo "dry_run='${{ inputs.dry_run }}'  confirm='${{ inputs.confirm }}'  BASE_SHA=$BASE"
           if [ '${{ inputs.dry_run }}' != 'false' ]; then
