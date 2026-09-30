@@ -1,0 +1,106 @@
+name: Repo trim (one-off 历史瘦身)
+
+# 为什么放在 GitHub Actions 里做，而不是本地：
+# 实测本仓 `Checkout`（fetch-depth: 0）拉完整 5.23 GiB 历史只用 259 秒（≈20 MB/s），
+# 而本机线路今天实测 0.21~0.34 MB/s 且 `git clone` 不能续传 —— 站内快约 100 倍。
+#
+# 三道硬闸，任一不过就不推：
+#   ① dry_run 默认 true：只做测量与校验。
+#   ② confirm 必须原样等于 TRIM。
+#   ③ compare-and-swap：远端 main 的 sha 必须仍等于本 job 检出时那个。
+#      不等说明期间有整点构建提交过，强推会把那一场的提交覆盖掉 —— 直接中止，不猜。
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true = 只测量/校验，绝不推送（默认）'
+        type: choice
+        default: 'true'
+        options: ['true', 'false']
+      confirm:
+        description: '真要推必须一字不差填 TRIM'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  # 与主构建同组、不取消：本 job 会排队等当期构建结束，避免与它抢 main。
+  group: starhub-update
+  cancel-in-progress: false
+
+jobs:
+  trim:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 完整历史
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: 记录基线（体积 / 各族解包 / CAS 锚点）
+        run: |
+          git rev-parse origin/main > .base_sha
+          echo "BASE_SHA=$(cat .base_sha)"
+          du -sh .git | sed 's/^/重写前 .git = /'
+          df -h . | tail -1 | sed 's/^/runner 磁盘: /'
+          git rev-list --count HEAD | sed 's/^/提交数 = /'
+          git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectsize) %(rest)' \
+            | awk '$1=="blob"{p=$3; if (p ~ /^rss-data-[1-9][0-9]*\.js$/) k="rss-data-[1-9]*";
+                     else if (p ~ /^rss_history/) k="rss_history*";
+                     else if (p ~ /^rss_api_snapshot/) k="rss_api_snapshot*";
+                     else if (p == "rss_cache.json") k="rss_cache.json";
+                     else next;
+                     s[k]+=$2; n[k]++} END {for (q in s) printf "  待剔 %-16s %4d 版 %6.2f GB\n", q, n[q], s[q]/1073741824}'
+          git ls-tree -r --name-only origin/main | sort > .paths_before
+
+      - name: 安装 git-filter-repo
+        run: pip install --quiet git-filter-repo && git filter-repo --version
+
+      - name: 剔除死数据族（保留 rss-data-0.js，真实分块测试要读已入库副本）
+        run: |
+          git filter-repo --force --invert-paths \
+            --path-glob 'rss-data-[1-9]*.js' \
+            --path-glob 'rss_history.json' \
+            --path-glob 'rss_history_*.json' \
+            --path-glob 'rss_history_index.json' \
+            --path-glob 'rss_api_snapshot*.json' \
+            --path-glob 'rss_cache.json'
+        # filter-repo 会删掉 origin 远端并在结尾重排 refs，下面必须重新接上
+
+      - name: 重写后自测（磁盘 / 提交数 / 当前树是否还该有的都有）
+        run: |
+          du -sh .git | sed 's/^/重写后 .git = /'
+          git rev-list --count HEAD | sed 's/^/提交数（应与重写前一致）= /'
+          git ls-tree -r --name-only HEAD | sort > .paths_after
+          echo "剩余 rss-data 家族:"; git ls-tree -r --name-only HEAD | grep -E '^rss-data' || echo "  (无)"
+          # 只允许"被剔的族"消失；其它任何路径少掉都算事故
+          if comm -23 .paths_before .paths_after | grep -vE '^(rss-data-[1-9][0-9]*\.js|rss_history|rss_api_snapshot|rss_cache\.json$)' | grep .; then
+            echo "::error::有不该消失的路径被剔掉了，见上，绝不推送"; exit 1
+          fi
+          if comm -13 .paths_before .paths_after | grep .; then
+            echo "::error::重写后出现了原树没有的路径"; exit 1
+          fi
+          git remote add origin https://github.com/${{ github.repository }}.git
+
+      - name: 决策与推送（三道闸）
+        run: |
+          set -e
+          BASE=$(cat .base_sha)
+          echo "dry_run='${{ inputs.dry_run }}'  confirm='${{ inputs.confirm }}'  BASE_SHA=$BASE"
+          if [ '${{ inputs.dry_run }}' != 'false' ]; then
+            echo "dry-run：到此为止，绝不推送。看上面两栏体积差即为可回收量（GitHub 侧 GC 有滞后）。"
+            exit 0
+          fi
+          if [ '${{ inputs.confirm }}' != 'TRIM' ]; then
+            echo "::error::confirm 不是 TRIM，拒绝强推"; exit 1
+          fi
+          LIVE=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$LIVE" != "$BASE" ]; then
+            echo "::error::期间 main 已前进（$BASE -> $LIVE），有构建刚提交过；中止，请重跑一次 dry-run=false"; exit 1
+          fi
+          git push --force https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:refs/heads/main
+          echo "已强推。下一步（人工）：本地换成新克隆、旧 .git mv 进隔离区；再等 GitHub GC 后核对 .size"
