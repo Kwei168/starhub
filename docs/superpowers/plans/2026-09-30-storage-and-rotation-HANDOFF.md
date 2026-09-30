@@ -365,3 +365,28 @@ CI 的 git 全局配置没有 `user.name/user.email`（workflow 只在 Commit �
 - 线上 `rss-data-0..9.js` 存在（各约 6.7–6.9 MB），`chunk10/11/12` 全 404 ⇒ 前端按序加载后正常终止；
   四个页面 200 且体积新鲜；
 - 剩下这 18.4 MiB/场是**有上限的跨场状态**（§10.9），不是无界增长。
+
+### 10.12 收口：剩下 2.43 GiB 的**唯一**锚是 `refs/pull/*`，所以删分支是无用功（22:36 实测）
+
+| 引用 | 指向 | 与 main 的关系 |
+|---|---|---|
+| `refs/heads/main` | `e4ad2acc8e` | 重写后血统 |
+| `refs/heads/daily-insight-fix-v2` | `e806aadb7b…` | `compare main…此sha` = **diverged, ahead=895** |
+| `refs/pull/2/head` | **`e806aadb7b…`（同一个）** | 同上 |
+| `refs/pull/1/head` | `a2ea918ea6…` | **diverged, ahead=886** |
+
+- `refs/pull/2/head` 与那条分支是**同一个 commit** ⇒ **删掉 `daily-insight-fix-v2` 一个字节都回收不了**，
+  旧血统仍被 PR 引用钉住。手册 §4 里"可顺手删分支"那条按实测作废（它当时针对的是重写前）。
+- 分支相对 main 那 32 个 `removed` 文件全是 `.qoder/repowiki/**` 旧结构路径，
+  main 在 `f350e8029e 2026-09-13 chore: 更新 qoder wiki 结构…` 里重构过目录名 ⇒ 是被取代的旧路径，
+  不是没合进来的工作。**但这条已无关紧要**，因为删不删都省不出来。
+- 真要回收这 2.43 GiB 只有两条路：**开 GitHub 工单请侧方清理 `refs/pull/*`**，或**重建仓库**。
+  两者都是你的决定级动作（重建会换 remote URL，牵动 Pages/Vercel/cron-job.org 三处配置）。
+  好在 GitHub 已自行回收了 2.8 GiB（5.23 → 2.43 GiB，5.8 小时内），可以继续观察是否还会降。
+
+### 10.13 batch① 的产物级验收（不用"步骤绿"当判据）
+
+线上 `rss-aggregator.html` 的 `BUILD_TS = 1790806080041` = **2026-09-30T22:08:00Z**，
+正是 22:00 那场（`e4ad2acc8e` 22:18 提交）构建时刻；上一轮 17:0x 取样时页面 `BUILD_TS` =
+`2026-09-30T15:10:28Z`，同样等于当时最新一场。⇒ **Pages 发的是每场新鲜产物，
+不是 git 里那份停更的副本** —— 这才算 batch① "退出提交清单但不丢发布"的真正证据。
