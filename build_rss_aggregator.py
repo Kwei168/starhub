@@ -3231,9 +3231,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
           /* fc 兼容两条通道：chunk 通道字段名为 full_content，远程刷新通道为 fc */
-          /* 时间位现算，口径唯一（lib/rel_time.js，与读者已在看的文案逐分支对等）。
-             基准刻意取 BUILD_TS 而不是访客时钟：改造前烘进产物那一串就是按构建时刻算的，
-             改用访客时钟会让同一篇文章在不同人屏幕上显示不同时间 —— 那是改显示，不是稳定性。 */
+          /* a.time 现算，口径唯一（lib/rel_time.js）。
+             注意卡片显示走 _dynTime(a)，a.time 只是它的兜底分支（pub_date 缺失/非法/坏日期）
+             外加书签快照与分享文案的消费者 —— 所以这里基准取 BUILD_TS 而不是访客时钟：
+             它与改造前烘进产物的那一串逐字相等，兜底位才不会漂。 */
           time:STARHUB_REL_TIME.fmtRelTime(it.pub_date, BUILD_TS/1000), date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
           img:it.image||it.img||'', mu:it.mu||'', mt:it.mt||'',
           bad_date:!!it.bad_date, bb:!!s.bb, dfb:!!it.date_fallback, tags:_tagsOf(it)});

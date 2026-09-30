@@ -32,11 +32,19 @@ def _items(n, t0_iso):
 
 
 def _corpus(now_iso="2026-09-30T10:00:00+08:00"):
-    """两源，每源 200 条：确保 chunk0（首屏 360）与 chunk1（其余）两条路都走到。"""
+    """三源：s1/s2 各 200 条新（会一起进首屏 360），s3 全 200 条**陈到出不了首屏**。
+
+    s3 是刻意造的：`_split_data_chunks` 有三条出厂通道 —— 首屏 c0、同源剩余 rest、
+    以及"整源都不在首屏"的 elif 分支。只有两源时第三条永不执行，那条通道的剥离
+    就没被测过（第一版语料正是这个形状）。
+    """
+    old_iso = "2026-09-29T05:00:00+08:00"
     return [{"key": "s1", "name": "S1", "cat": "news", "color": "#111",
              "tier": 2, "url": "https://e/s1", "items": _items(200, now_iso)},
             {"key": "s2", "name": "S2", "cat": "news", "color": "#222",
-             "tier": 3, "url": "https://example.com/s2", "items": _items(200, now_iso)}]
+             "tier": 3, "url": "https://example.com/s2", "items": _items(200, now_iso)},
+            {"key": "s3", "name": "S3", "cat": "news", "color": "#333",
+             "tier": 3, "url": "https://e/s3", "items": _items(200, old_iso)}]
 
 
 def _write(tmp_path, corpus):
@@ -86,11 +94,31 @@ def test_history_objects_are_not_mutated_by_stripping():
             assert "time_str" in it, "入参被就地改写了（历史条目本该保留自己的键）"
 
 
+def test_all_three_factory_channels_are_stripped(tmp_path):
+    """三条出厂通道逐一验到：首屏 c0、同源剩余 rest、整源出不了首屏的 elif。
+
+    为什么按源验而不是数调用点：`count("_strip_derived_items(")` 会把 `def` 行本身
+    算进去（实测 1 def + 3 调用 = 4），所以 `>= 3` 掉一个调用点仍然绿。行为判据才
+    真的咬得住：哪条通道漏剥，那个源的条目就会带着 time_str 出现在产物里。
+    """
+    files = _write(tmp_path, _corpus())
+    seen_keys = set()
+    for text in files.values():
+        i = text.find("{")
+        j = text.rstrip().rstrip(";").rfind("}")
+        for s in json.loads(text[i:j + 1])["sources"]:
+            seen_keys.add(s["key"])
+            for it in s.get("items", []):
+                assert "time_str" not in it, "%s 通道的条目没剥净" % s["key"]
+    assert {"s1", "s2", "s3"} <= seen_keys, "有源没进产物，等于该通道没被测到：%s" % seen_keys
+
+
 def test_strip_helper_is_actually_wired():
-    """`_strip_derived_items` 若没人调用就是空转：拿常量与调用点对峙一次。"""
-    src = _corpus()[0]
-    stripped = B._strip_derived_items(src["items"])
-    assert all("time_str" not in it for it in stripped)
+    """静态兜底：调用点数必须等于"减一条就红"的阈值，且含 def 行本身。"""
+    stripped = B._strip_derived_items([{"link": "x", "time_str": "3小时前", "title": "t"}])
+    assert stripped == [{"link": "x", "title": "t"}], stripped
     assert isinstance(B.ITEM_DERIVED_FIELDS, frozenset) and "time_str" in B.ITEM_DERIVED_FIELDS
     text = open(os.path.join(ROOT, "build_rss_aggregator.py"), encoding="utf-8").read()
-    assert text.count("_strip_derived_items(") >= 3, "剥离函数调用点不足三处 = 有一条出厂通道漏掉"
+    # 1 个 def + 3 条出厂通道；少任一通道即红（审查实测：`>= 3` 会漏掉一种断线形态）
+    assert text.count("_strip_derived_items(") == 4, \
+        "剥离点数量变了（现 %d，应为 1 def + 3 通道）" % text.count("_strip_derived_items(")
