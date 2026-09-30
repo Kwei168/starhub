@@ -61,7 +61,9 @@ jobs:
                      s[k]+=$2; n[k]++} END {for (q in s) printf "  待剔 %-16s %4d 版 %6.2f GB\n", q, n[q], s[q]/1073741824}'
           git ls-tree -r --name-only origin/main | sort > .paths_before
           # 两份逐提交清单必须在重写之前抓：重写后那些退化提交已经不存在，问不到它们改过什么。
-          git log --format='C|%H|%cI|%s' --name-only > .commits_before.txt
+          # --no-renames 是必须的：开重命名检测会把一次 delete+add 并成一条改名、只报目标名，
+          # 于是"带走了源码"的提交能被读成"只改了数据文件"（闸零就此假绿放行）。
+          git log --format='C|%H|%cI|%s' --no-renames --name-only > .commits_before.txt
           git log --format='P|%H|%p' > .commits_parents.txt
           wc -l < .commits_before.txt | sed 's/^/commits_before 行数 = /'
           wc -l < .commits_parents.txt | sed 's/^/commits_parents 行数 = /'
