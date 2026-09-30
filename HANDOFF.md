@@ -940,6 +940,20 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 legacy 源下 `deploy-pages` 直接失败。回滚 = `PUT build_type=legacy` + `source[branch]=main&source[path]=/`。
 判据不许用"步骤绿"：看远端 `rss-data-1.js` 的 blob 是否停止每场变化 + 线上 `rss-aggregator.html` 能否加载新分块。
 
+**cutover 已执行（2026-09-30 10:00Z，北京 18:00 那场）**，读数：
+
+- 推送集落地 `328ea74786`（末行 `内容不同=0`），Pages `build_type=workflow`。
+- `#1517` 起于 10:00:29、止于 10:26:32（**26 分钟**），`conclusion=success`；
+  `Stage Pages site` / `Upload Pages artifact` / `Deploy to GitHub Pages` 三步全 `success`。
+- **分块停止提交的直接证据**：该场的提交 `4ba4c70667`（10:24:56Z）带的文件清单里只有 `rss-data-0.js`，
+  **没有 `rss-data-1.js`**；main 上那个块自此停在旧流程最后一场（`#1516`）的 `2051f899f3dc` / 55,710,750 B。
+- **Pages 由 artifact 供数的直接证据**：同一时刻线上 `rss-data-1.js` = `60a18d6da7a3` / 57,259,873 B，
+  与 main 的 blob **分叉**（线上比 main 新 = 分支源已不再是数据来源）。
+- 每场进 git 的产物从 55.4MB 降到约 0.65MB（chunk0 仍提交）。**存量一分未减**：本地 `.git` 仍 8.7G
+  （loose 7.1G + pack 1.6G），远端可达历史仍 5.23 GiB；那是 N4 与 G2 两次独立动作，需分别批。
+- 我自己引进的连坐（staging 排在 Vercel 之前）已由 `5f213e4` 修掉并于 10:3xZ 推上（`02c53bad47`），11:00Z 那场起生效。
+
+
 **同一天的构建时长恶化（与上面无关，但会影响推送窗口）**：`Fetch stars & build` 从 00:00 的 783s
 涨到 08:00 的 **2966s**（1515 侥幸在 60 分钟内挤过；1513 跑到 51 分钟被 `cancel-in-progress` 顶掉，
 1513/1514 两小时零产出，站点最后一次成功提交是 06:31Z）。实测特征：**RSS 抓取阶段 14→30 分钟，而日志行数

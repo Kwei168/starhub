@@ -128,7 +128,7 @@ $ git push --dry-run origin main    → ! [rejected] … (fetch first)   （审�
 | N2 | 搬独有内容：`git format-patch --stdout origin/main..main > E:/_git-quarantine-20260920/local-commits.patch` + `git log --all --pretty=fuller` + 两条 stash 导 patch；在新克隆里 `git am` 只挑远端没有 twin 的那些 | 低（只读旧仓、只写新仓） | 保住 60 条提交的信息与逐提交 diff | 待批 |
 | N3 | 切目录：两会话都无未提交内容时，旧目录改名保留、改用新目录；此后 `fetch/push` 全程正常 | 中（要同时停手） | 目标 (a) 达成 | 待 N1/N2 |
 | N4 | 旧 `.git` 确认无用后释放（**mv 进隔离区，不 rm**） | 中 | 目标 (b)：本地 −7.8G 量级 | 待 N3 稳定数日 |
-| G1 | **远端增长治理**：`rss-data-1.js` 68MB + `rss-data-2.js` 68MB 每小时重写一次，是远端体积唯一来源（历史版本 81~82 版） | 高（Pages 靠这些 script 取数，落点未定不能动） | 止住增长 | **已定案并接线，待 cutover（见 §13）** |
+| G1 | **远端增长治理**：`rss-data-1.js` 68MB + `rss-data-2.js` 68MB 每小时重写一次，是远端体积唯一来源（历史版本 81~82 版） | 高（Pages 靠这些 script 取数，落点未定不能动） | 止住增长 | **已执行（2026-09-30 10:00Z）：Pages 改 workflow 发布，chunk1 停止提交，每场入仓产物 55.4MB → 0.65MB。读数见 §13 与 HANDOFF §8.15** |
 | G2 | （可选）远端历史重写或换干净仓 | 高 | 4.43G→<300MB | G1 之后才有意义。换仓还有 3 个连带项：`api/refresh.js:42` **把 `repos/Kwei168/starhub/...` 硬编码在代码里**、Pages 是 `legacy/main`（域名要重指）、Vercel 的 `GITHUB_TOKEN` 是按旧仓授权的 PAT（必须重签） |
 
 **任何触碰 `.git` 内部或改指针的动作之前，四条预检全过才动**（审查给的判据）：
