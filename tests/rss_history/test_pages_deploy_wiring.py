@@ -45,6 +45,66 @@ def _add_lines():
     return out
 
 
+def _any_add_text():
+    """所有出现过 `git add` 的行，含 `if [ -f x ]; then git add x; fi` 这种一行的条件式。
+
+    _add_lines() 只认行首，条件式会从指缝里漏掉 —— 把 HTML 塞进 `if ... git add` 同样能
+    把膨胀请回来，所以这条判据必须看见全部 git add。
+    """
+    out = []
+    for _, body in _runs():
+        out += [l for l in body.splitlines() if re.search(r"\bgit add\b", l)]
+    return out
+
+
+# 4 个纯产物页面：同场生成、无人跨场读回，退出 git 后由 staging 按名字从工作目录取。
+_PAGE_HTML = ("index.html", "ai-daily.html", "rss-aggregator.html",
+              "daily-insight-history.html")
+
+
+def test_no_page_html_is_committed():
+    """4 个页面 HTML 不许再进任何 git add（含条件式）。它们在 update.yml 里曾占约 3.8MB/场。"""
+    lines = _any_add_text()
+    assert lines, "没找到任何 git add 行（update.yml 结构变了，本判据失去意义）"
+    for name in _PAGE_HTML:
+        hits = [ln.strip() for ln in lines if re.search(r"(^|\s)%s(\s|$)" % re.escape(name), ln)]
+        assert not hits, "%s 被加回提交清单，每场 %s 会重新攒进 git 历史：%s" % (
+            name, name, hits[0][:160])
+
+
+def test_pages_html_ship_from_workdir_not_from_git():
+    """staging 必须按名字把 4 个页面从工作目录补进制品，不能只靠 `git ls-files`。
+
+    它们已停止提交，main 上那份是过期副本：只按 git 清单取文件 = 把旧页面发上线；
+    而存量清理要把这些过期副本从历史里剔除，届时它们连"被跟踪"都不是。
+    """
+    stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
+    assert stage, "没有 staging 步骤"
+    body = stage[0]
+    loop = [ln for ln in body.splitlines()
+            if re.match(r"\s*for f in .*html.*; do", ln)]
+    assert loop, "staging 不再按名字补页面 HTML，git 里的过期副本会被发上线：%s" % body
+    listed = loop[0]
+    for name in _PAGE_HTML:
+        assert name in listed, "%s 不在页面补入的名单里：%s" % (name, listed.strip())
+    assert 'cp -f "$f" _pages/' in body, "页面补入的那步被改动，_pages 里不会有新鲜页面：%s" % body
+
+
+def test_staging_refuses_empty_artifact():
+    """空制品必须在 staging 就红，而不是发布出一个空站点。
+
+    页面 HTML 出仓之后，这条是"生成器没跑出来 = 不发空站点"的唯一防线：缺哪一个都必须
+    当场红，而不是让 deploy-pages 把缺文件的那一份当成新站点替换上去（= 死链）。
+    """
+    stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
+    assert stage, "没有 staging 步骤"
+    checks = re.findall(r"^\s*test -s (\S+)$", stage[0], re.M)
+    for must in ("_pages/rss-data-0.js", "_pages/rss-data-1.js",
+                 "_pages/rss-aggregator.html", "_pages/index.html",
+                 "_pages/ai-daily.html", "_pages/daily-insight-history.html"):
+        assert must in checks, "staging 缺少 %s 的非空断言，空制品会被当成功发布：%s" % (must, checks)
+
+
 def test_no_big_chunk_is_committed():
     """提交清单里不许出现 chunk1 及以后的分块；chunk 0 必须还在（真实分块用例读它）。
 
@@ -83,14 +143,20 @@ def test_staging_takes_the_git_tree_not_the_worktree():
         assert "--files-from" in ln, "staging 又变成整拷工作目录：%s" % ln
 
 
-def test_staging_refuses_empty_artifact():
-    """空制品必须在 staging 就红，而不是发布出一个空站点。"""
+def test_staging_never_copies_the_worktree_wholesale():
+    """往 _pages 里拷文件只许按名字单拷；出现递归整拷就是把被 ignore 的语料公开发布。
+
+    页面 HTML 出仓之后，staging 里多了两个"按名字补文件"的循环，这正是最容易顺手写成
+    `cp -rf . _pages` 的地方 —— 而 rsync 那条判据看不见 cp。被 .gitignore 排除、由
+    cache restore-keys 放回磁盘的语料（实测本地合计 398M）会第一次进 Pages。
+    """
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 staging 步骤"
-    checks = re.findall(r"^\s*test -s (\S+)$", stage[0], re.M)
-    for must in ("_pages/rss-data-0.js", "_pages/rss-data-1.js",
-                 "_pages/rss-aggregator.html", "_pages/index.html"):
-        assert must in checks, "staging 缺少 %s 的非空断言，空制品会被当成功发布：%s" % (must, checks)
+    bad = [ln.strip() for ln in stage[0].splitlines()
+           if re.search(r"\bcp\s+(-[a-zA-Z]*[ra][a-zA-Z]*\s+|-r\b|-a\b)", ln)
+           and '_pages' in ln and '--files-from' not in ln
+           and not re.search(r'cp\s+-f\s+"\$f"\s+_pages/', ln)]
+    assert not bad, "staging 里有递归整拷进 _pages 的写法，会把被 gitignore 的语料发布出去：%s" % bad
 
 
 def test_chunks_ship_without_being_tracked():

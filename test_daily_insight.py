@@ -200,6 +200,16 @@ print("[PASS] 历史留存 + 页面正确")
 
 # ── 测试 11: AI 日报注入 ──
 print("\n=== 测试 11: AI 日报注入 ===")
+# 2026-09-30 起 ai-daily.html 不再进 git（纯产物，由 Pages artifact 发布），
+# 所以 CI 里 gate B 跑这场测试时磁盘上可能还没有它。旧写法是直接 [SKIP]，
+# 那就等于这条注入断言从此不再执行却没人察觉 —— 宁可现造夹具，也不许静默空转。
+_ai_daily_seed = None
+if not os.path.exists("ai-daily.html"):
+    _ai_daily_seed = "ai-daily.html"
+    with open("ai-daily.html", "w", encoding="utf-8") as f:
+        f.write("<!DOCTYPE html><html><body><h1>fixture</h1>"
+                "<footer>footer</footer></body></html>")
+    print("[SEED] ai-daily.html 不在磁盘上，已造最小夹具（含 <footer>）以保证注入断言真的跑")
 if os.path.exists("ai-daily.html"):
     B._inject_into_ai_daily(events, "测试主题")
     with open("ai-daily.html", "r", encoding="utf-8") as f:
@@ -207,6 +217,8 @@ if os.path.exists("ai-daily.html"):
     assert "daily-insight-start" in html, "应包含注入标记"
     assert "每日深度洞察" in html, "应包含板块标题"
     print("[PASS] AI 日报注入成功")
+    if _ai_daily_seed:
+        os.remove(_ai_daily_seed)
 else:
     print("[SKIP] ai-daily.html 不存在")
 

@@ -6255,7 +6255,7 @@ def _retire_stale_chunks(out_dir, n_chunks, dump):
 
 def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     """写出 rss-data-0.js + rss-data-{1..N}.js（与 OUT 同目录），页面经 script 标签加载。
-    chunk1 按 ~80MB 上限自动拆分，避免超过 GitHub 100MB 单文件限制。"""
+    chunk1+ 按 MAX_CHUNK_BYTES 分片；单块过大 = 慢网络取不到 = 页面只剩首屏。"""
     out_dir = os.path.dirname(os.path.abspath(OUT)) or "."
     chunk0, chunk1 = _split_data_chunks(sources, chunk0_size)
 
@@ -6268,8 +6268,13 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
         f.write("(window.__CHUNKS=window.__CHUNKS||[])[0]=" + _dump({"sources": chunk0}) + ";\n")
     n0 = sum(len(s.get("items", [])) for s in chunk0)
 
-    # chunk1+: 按 ~80MB 上限拆分，避免 GitHub 100MB 限制
-    MAX_CHUNK_BYTES = 80 * 1024 * 1024
+    # chunk1+: 按每块上限拆分。
+    # 2026-09-30 线上实证：这里曾写 80MB，而后台数据实测 50.6MB ⇒ n_chunks 恒为 1，
+    # "分块"退化成一块 60MB 巨石；慢网络取不到时 script 的 onload 照样触发但
+    # __CHUNKS[1] 从未赋值，页面只剩 chunk0 首屏的 61 个源（控制台明写"文件截断"）。
+    # 6MB/块 ≈ 9 块，单块失败只丢尾部一块而不是整块后台数据；上限 24 块防文件数失控。
+    MAX_CHUNK_BYTES = 6 * 1024 * 1024
+    MAX_CHUNKS = 24
     n1_total = sum(len(s.get("items", [])) for s in chunk1)
     if not chunk1:
         # 无剩余数据，写空 chunk1
@@ -6290,6 +6295,7 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
         src_sizes.append(sz)
     total_bytes = sum(src_sizes)
     n_chunks = max(1, (total_bytes + MAX_CHUNK_BYTES - 1) // MAX_CHUNK_BYTES)
+    n_chunks = min(n_chunks, MAX_CHUNKS)
     target_per_chunk = total_bytes / n_chunks
 
     buckets = [[] for _ in range(n_chunks)]

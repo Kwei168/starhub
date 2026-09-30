@@ -226,7 +226,10 @@ jobs:
           # 回滚别人的新提交（09-19 03:37 第8轮洞察代码被 auto-commit 吞掉实证）。
           git fetch origin main --quiet || true
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
-          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+          # 4 个 HTML 页面不再进这张清单：纯产物（同场生成、无人跨场读回），合计约 3.8MB/场。
+          # 发布由下面 Stage Pages site 按名字模式从工作目录取，所以"不提交"不会让页面缺文件；
+          # 但谁把它们加回来，膨胀就静默回来（判据：tests/rss_history/test_pages_deploy_wiring.py）。
+          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
           if [ -f hot_history.json ]; then git add hot_history.json; fi
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -247,7 +250,7 @@ jobs:
               git reset --hard origin/main
               python fetch_and_build.py $MODE
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
-          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -317,11 +320,18 @@ jobs:
           for f in rss-data-*.js; do
             [ -f "$f" ] && cp -f "$f" _pages/
           done
-          # 空制品发布 = 全站清空，这三条把"必须有内容"钉成硬失败而不是 warning
+          # 4 个 HTML 页面同样按名字从工作目录取新鲜的那一份，**不信 git 里那份**：
+          # 它们已停止提交，main 上的副本是过期产物；只按 git 清单取文件 = 把旧页面发上线。
+          for f in index.html ai-daily.html rss-aggregator.html daily-insight-history.html; do
+            [ -f "$f" ] && cp -f "$f" _pages/
+          done
+          # 空制品发布 = 全站清空，这几条把"必须有内容"钉成硬失败而不是 warning
           test -s _pages/rss-data-0.js
           test -s _pages/rss-data-1.js
           test -s _pages/rss-aggregator.html
           test -s _pages/index.html
+          test -s _pages/ai-daily.html
+          test -s _pages/daily-insight-history.html
           echo "Staged site size:"
           du -sh _pages
 
