@@ -9,6 +9,12 @@
 （5,060 条 >168h、12 条 pub_date=0001-01-01）—— 用户看到的"超过 72 小时没出去"就是它。
 
 留着一个空文件才是可提交的"变更"，glob 会把它带上；内容空了，页面合并进来也没有旧条目。
+
+**2026-09-30 之后，"为什么仍然要清空、不能删"换了理由**：Pages 改由本 workflow 的 artifact 发布
+（update.yml 的 Stage Pages site → upload-pages-artifact），大分块不再进 git，上面那条 glob 陷阱
+在提交侧已经不存在。但行为必须保持清空：页面按索引逐个取 `rss-data-N.js`，删文件就是 404；
+而 staging 取的是 `git ls-files` 清单，旧块此刻仍被跟踪，照删等于把它从站点里抹掉。
+别再把"git add glob"当成依据改回 os.remove —— 那是本守卫要防的第一次事故，也是第二次。
 """
 import datetime
 import io

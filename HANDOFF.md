@@ -902,6 +902,57 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 - 踩坑：`_AGNES_KEY_IDX` 等全局变量在函数内使用前必须先 `global` 声明（`1d2a93d` 修复过一处顺序 bug）。
 
 ---
+### 8.15 大产物第二次出仓：Pages 改由 workflow 发布（2026-09-30）
+
+**这是 §8.13「快照出仓」的同一类问题第二次发生**，不是新发明。机制：`rss-data-1.js` 每场 55.4MB 被
+`update.yml` 的 `git add` 提交进 main，git 只在内容变化时新增对象且**永不回收**，于是远端全量历史涨到
+**5.23 GiB**（实测：完整克隆 2028 提交、`size-pack` 5,480,050 KiB）。全仓 15,183 个 blob 解包 105.21 GB，
+按家族：`rss-data-*` 45.71GB / `rss_history.json` 18.15GB / `rss_api_snapshot*` 17.62GB / `rss_cache.json` 7.12GB
+/ `translations.json` 5.72GB / `hot_history.json` 3.75GB / `rss-aggregator.html` 3.37GB；其中约 **50.8GB 是已停产
+仍挂在历史里的死量**（`data-2` 自 09-21 僵尸块修复后是 128B 空壳、每场 blob 恒定）。
+详见 `docs/superpowers/specs/2026-09-20-git-repo-size-and-normal-flow-recovery.md` §7/§13。
+
+**改法**：Pages 源从 `legacy/branch main` 改为 **workflow 发布 artifact**。依据是三个实测事实——
+① 前端取分块是相对路径（`build_rss_aggregator.py:4579` `sc.src='rss-data-'+i+'.js?v='+BUILD_TS`），换通道不改任何 URL；
+② 分块只写不读（`:6266/:6276/:6305` 全是 `"w"`），服务端不读仓库文件（Vercel 由 CI 用 CLI 部署，
+`update.yml` 的 prune 在部署前 `rm -f rss-data-*.js`）；③ Pages 限额里 **10 builds/hour 对 workflow 发布不适用**
+（我们每小时一场，legacy 源下这条软限一直在逼近）。
+
+**范围刻意收窄**（都是实测，不是想当然）：
+- 只有 `rss-data-1.js` 及以后的块退出提交；**`rss-data-0.js` 继续提交**，因为
+  `tests/rss_composite/test_diverse_realdata.py:32` 拿"已入库的真实分块"当数据源。
+- 其余 JSON/HTML **全部留在 git**：`trending_snapshot.json:432`、`known_categories.json:716`、
+  `descriptions_zh.json:722`、`rss_sources.json:310` 都是 `open()` 读回来的**跨场输入**，不提交就等于削功能。
+- `test_stale_chunk_guard.py` 的"旧块清空不删除"**行为保留、依据更换**：原来防的是 `git add` glob 表达不了删除，
+  切换后那条依据不再成立，现在的依据是"页面按索引取块，删文件即 404"。别拿旧理由改回 `os.remove`。
+
+**对抗审查抓出两条由本次改动引进的 P0**（都已修，记录在此以防回退）：
+1. staging 若照**工作目录**整拷，会把 `.gitignore` 排除、却由 cache `restore-keys` 放回磁盘的原始语料第一次公开发布
+   —— 实测本地合计 **398M**（`rss_cache.json` 110M / `rss_history.json` 62M / `rss_api_snapshot.json` 41M /
+   `daily_insight_*` 向量 146M）。legacy 发的是 **git 树**，所以 staging 必须按 `git ls-files` 取清单，
+   并保留 Jekyll 的 `.`/`_` 排除（实测今天 `/_bra.py`、`/.gitignore` 就是 404）。
+2. `upload-pages-artifact` 的 `if-no-files-found` **默认是 warn**，空制品会被"绿发布"= 抹平站点。
+   须显式 `error` + staging 里 `test -s` 三个必须存在的产物 + `deploy-pages` 的 `if` 依赖 upload 结果。
+
+**cutover 顺序（错了就全站红，且窗口极窄）**：① 先按 §8.12 两条判据确认窗口 → ② `PUT /pages {"build_type":"workflow"}`
+（**注意是 PUT，`PATCH /pages` 路由不存在，会回 404**；token scopes `repo/workflow` 够用）→ ③ 按具体路径推
+`update.yml`/`.vercelignore`/两个 tests/spec → ④ 让下一场整点构建当验收载体。**没有先例时不要"先推再切"**：
+legacy 源下 `deploy-pages` 直接失败。回滚 = `PUT build_type=legacy` + `source[branch]=main&source[path]=/`。
+判据不许用"步骤绿"：看远端 `rss-data-1.js` 的 blob 是否停止每场变化 + 线上 `rss-aggregator.html` 能否加载新分块。
+
+**同一天的构建时长恶化（与上面无关，但会影响推送窗口）**：`Fetch stars & build` 从 00:00 的 783s
+涨到 08:00 的 **2966s**（1515 侥幸在 60 分钟内挤过；1513 跑到 51 分钟被 `cancel-in-progress` 顶掉，
+1513/1514 两小时零产出，站点最后一次成功提交是 06:31Z）。实测特征：**RSS 抓取阶段 14→30 分钟，而日志行数
+1110→1109（工作量没变）、错误构成也没变**（Bridge 116、429 各 5、403 各 3、timed out 各 5），GitHub 侧步骤
+（Checkout 259s / Vercel 32s / 缓存）全程稳定 → 是**出网往返变慢**，不是 GitHub 配额、也不是活儿变多。
+叠加翻译侧：15:00 那场 `Google-gtx HTTP 429` ×42、`Agnes TimeoutError` ×42、`Bing 401` —— 但 §8.7 早就记录
+GTX 在出口 IP **长期 429**、Zen 构建期贡献为零，所以这是**慢性故障加重**，不是新缺陷。
+可落地的最小改动有手册依据：**构建期翻译熔断（连续 5 次全失败暂停 5min）目前只在 RSS 侧有，
+`build_ai_daily.py` 的 `_translate_to_zh` 这条五端点链上没有**，所以单条文本最坏要把整条链等满
+（Agnes 20s → gtx 2×10s+退避 → Bing 10s → MyMemory 3×10s+退避 ≈ 60–90s），42 条就是约 28 分钟。
+
+
+
 
 ## 九、技术栈总结
 

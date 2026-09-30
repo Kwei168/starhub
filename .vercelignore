@@ -31,6 +31,10 @@ __pycache__/
 build_logs/
 tests/
 docs/
+# Pages 发布用的暂存目录（update.yml 的 Stage Pages site 生成，内含全量产物副本）。
+# 漏了这一行，Vercel 会把 _pages 整个打进部署包 —— prune 步骤删的那些大文件它在 prune 之前
+# 就已经被复制进来，等于把 prune 存在的意义抵消掉。
+_pages/
 
 # ── Python 脚本（CI 运行，Vercel 不需要）──
 *.py

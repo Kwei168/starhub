@@ -18,6 +18,9 @@ permissions:
   contents: write
   # 缺这一行时 update.yml 的缓存淘汰步会 403，而它是 continue-on-error —— 静默空转
   actions: write
+  # Pages 改由 workflow 发布（deploy-pages 走 OIDC 短时令牌，缺 id-token 它只会报"source is not Actions"）
+  pages: write
+  id-token: write
 
 concurrency:
   group: starhub-update
@@ -182,6 +185,7 @@ jobs:
           fi
 
       - name: Fetch stars & build
+        id: build
         run: python fetch_and_build.py $MODE
 
       - name: Cleanup old build logs
@@ -222,7 +226,7 @@ jobs:
           # 回滚别人的新提交（09-19 03:37 第8轮洞察代码被 auto-commit 吞掉实证）。
           git fetch origin main --quiet || true
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
-          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
           if [ -f hot_history.json ]; then git add hot_history.json; fi
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -243,7 +247,7 @@ jobs:
               git reset --hard origin/main
               python fetch_and_build.py $MODE
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
-          git add index.html ai-daily.html rss-aggregator.html rss-data-*.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
+          git add index.html ai-daily.html rss-aggregator.html rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py daily-insight-history.html
               if [ -f hot_history.json ]; then git add hot_history.json; fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
@@ -290,6 +294,22 @@ jobs:
             rss_history_*.json
             rss_history_index.json
           key: rss-history-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Stage Pages site for Actions deployment
+        # legacy 分支源发布的是 **git 树**，不是工作目录。照工作目录整拷会第一次公开发布
+        # .gitignore 排除、但由 cache restore-keys（上面 emb-cache / rss-history 两步）放回磁盘的
+        # 原始语料：实测本地合计 398M，含 rss_cache.json 110M / rss_history.json 62M /
+        # rss_api_snapshot.json 41M / daily_insight_* 向量 146M。所以清单只取 `git ls-files`，
+        # 再按 Jekyll 规则剔掉 `.`/`_` 开头（今天这些就是 404，实测 /_bra.py 与 /.gitignore 均 404）。
+        run: |
+          mkdir -p _pages
+          git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/
+          # 空制品发布 = 全站清空，这两条把"必须有内容"钉成硬失败而不是 warning
+          test -s _pages/rss-data-0.js
+          test -s _pages/rss-aggregator.html
+          test -s _pages/index.html
+          echo "Staged site size:"
+          du -sh _pages
 
       - name: Prune large build artifacts before Vercel deploy
         run: |
@@ -358,3 +378,25 @@ jobs:
               json.dump(s, f, ensure_ascii=False, indent=2)
           print(f'[日志] 当日摘要已生成: {s[\"builds\"]} 次构建, {s[\"total_items_latest\"]} 篇')
           "
+
+      # ── GitHub Pages 发布：从「分支源」改为「本 workflow 部署 artifact」────────────────
+      # 动机只有一条：每场 55MB 的 rss-data-1.js 提交进 git，历史就永久攒一份，这是仓库无限
+      # 膨胀的唯一主因（实测远端全量历史 5.23 GiB 里 data-* 解包占 45.71 GB）。artifact 不进 git。
+      # 位置刻意在 Deploy to Vercel **之后**：Pages 失败不得连坐 Vercel 部署（本仓已有
+      # "A2 blocking + Deploy 无 if" 的连坐教训，方向不能反过来再加一条）。
+      # always() 是为了保住今天"Pages 靠 commit 更新、与 Vercel 成败无关"的解耦；
+      # 但构建本身失败时不能发布，所以再与 steps.build.outcome 求交。
+      # 前置条件（顺序错了就全站红）：Settings → Pages → Source 必须先切成 "GitHub Actions"，
+      # 在 legacy 分支源下 deploy-pages 会直接失败。
+      - name: Upload Pages artifact
+        id: pages_upload
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _pages
+          # 默认是 warn：空制品会照样发布出去，站点直接被抹平
+          if-no-files-found: error
+
+      - name: Deploy to GitHub Pages
+        if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
+        uses: actions/deploy-pages@v5
