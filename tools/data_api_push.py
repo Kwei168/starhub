@@ -84,10 +84,13 @@ def gate():
         newest["id"], newest["created_at"][11:19])
 
 
-def verify(expect, tag):
+def verify(expect, tag, ref="main"):
+    """复查必须查**刚推的那个 ref**：不带 ref 的 contents 永远读默认分支，
+    推分支时会拿 main 的旧 blob 来比，把一次成功的推送报成"内容不同"。
+    """
     bad = 0
     for p, want in expect.items():
-        got = req("GET", "%s/contents/%s" % (REPO, p))
+        got = req("GET", "%s/contents/%s?ref=%s" % (REPO, p, ref))
         if got["sha"] != want:
             bad += 1
             print("  [NG] %s %s 远端=%s 期望=%s" % (tag, p, got["sha"][:10], want[:10]))
@@ -281,6 +284,8 @@ def main():
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="只做守门+原子性检查并列出将要推的路径，不写远端")
     ap.add_argument("--allow-running", action="store_true")
+    ap.add_argument("--ref", default="",
+                    help="目标分支，默认 main。夜场验证走分支：不占白天构建窗口、不碰线上站点")
     a = ap.parse_args()
     if a.msg_file:
         a.msg = open(a.msg_file, encoding="utf-8").read().strip()
@@ -299,7 +304,15 @@ def main():
             return 1
         print("原子性检查通过：%s 引用的测试路径都已随本次推送，或远端已有且与本地逐文件一致" % wf)
 
-    ok, why = gate()
+    ref_name = (a.ref or "main").strip("/")
+    on_main = ref_name == "main"
+    # 构建窗口那道闸只为 main 存在：update.yml 的 Commit 步骤会 `reset --hard origin/main`
+    # 再按清单 add，中途推 main 会被它回滚。分支不在它的管辖里 —— 夜场验证因此不必再等缝。
+    if on_main:
+        ok, why = gate()
+    else:
+        ok, why = True, ("推送到分支 %s：不守构建窗口（白天场只回滚 main），"
+                         "夜场验证与站点部署因此完全解耦" % ref_name)
     print(why)
     if a.wait_window:
         for _ in range(30):
@@ -321,7 +334,17 @@ def main():
         return 1
 
     push_t = time.time()
-    head = req("GET", REPO + "/git/ref/heads/main")["object"]["sha"]
+
+    def head_of(ref):
+        """分支可能还不存在：那就以 main 为父建 ref，第一次推等于开分支。"""
+        try:
+            return req("GET", "%s/git/ref/heads/%s" % (REPO, ref))["object"]["sha"], False
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+            return req("GET", REPO + "/git/ref/heads/main")["object"]["sha"], True
+
+    head, create_ref = head_of(ref_name)
     items, expect = [], {}
     for p in a.paths:
         with open(_abs(p), "rb") as fh:
@@ -340,13 +363,17 @@ def main():
         # req() 里那 6 次重试是同一份请求重发，对 422 完全无效 —— 必须重读 head、
         # 用新 base_tree 重建 tree+commit 再 PATCH，否则一定 6 次同样失败（今天实撞过）。
         if attempt > 1:
-            head = req("GET", REPO + "/git/ref/heads/main")["object"]["sha"]
+            head, create_ref = head_of(ref_name)
         try:
             tree = req("POST", REPO + "/git/trees", {"base_tree": head, "tree": items})
             commit = req("POST", REPO + "/git/commits",
                          {"message": a.msg, "tree": tree["sha"], "parents": [head]})
-            ref = req("PATCH", REPO + "/git/refs/heads/main",
-                      {"sha": commit["sha"], "force": False})
+            if create_ref:
+                ref = req("POST", REPO + "/git/refs",
+                          {"ref": "refs/heads/" + ref_name, "sha": commit["sha"]})
+            else:
+                ref = req("PATCH", "%s/git/refs/heads/%s" % (REPO, ref_name),
+                          {"sha": commit["sha"], "force": False})
             break
         except urllib.error.HTTPError as e:
             if e.code != 422 or attempt == 4:
@@ -355,24 +382,27 @@ def main():
             time.sleep(2 * attempt)
     print("parent %s -> commit %s -> ref %s" % (head[:10], commit["sha"][:10], ref["object"]["sha"][:10]))
 
-    bad = verify(expect, "即时复查")
-    # Actions 的 run 列表有 10~20s 延迟：守门通过≠真的没有在跑的场，推后必须再看一次
-    # 减 120s 是为了抵消本机与 GitHub 时钟的偏差（判据方向是"更保守"，不会漏判）
-    push_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(push_t - 120))
-    print("等待 90s 让 run 列表落定，再确认没有『检出早于本次推送』的构建…")
-    time.sleep(90)
-    risky = risky_runs(push_ts)
-    if risky:
-        print("  [风险] 有 %d 场在本推送之前检出、尚未提交：%s" % (
-            len(risky), ["%s created=%s %s" % (r["id"], r["created_at"][11:19], r["status"]) for r in risky]))
-        for _ in range(40):
-            if not risky_runs(push_ts):
-                break
-            time.sleep(30)
-        print("那批构建已结束，复查是否被回滚：")
-        bad = verify(expect, "构建后复查")
+    bad = verify(expect, "即时复查", ref_name)
+    if on_main:
+        # Actions 的 run 列表有 10~20s 延迟：守门通过≠真的没有在跑的场，推后必须再看一次
+        # 减 120s 是为了抵消本机与 GitHub 时钟的偏差（判据方向是"更保守"，不会漏判）
+        push_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(push_t - 120))
+        print("等待 90s 让 run 列表落定，再确认没有『检出早于本次推送』的构建…")
+        time.sleep(90)
+        risky = risky_runs(push_ts)
+        if risky:
+            print("  [风险] 有 %d 场在本推送之前检出、尚未提交：%s" % (
+                len(risky), ["%s created=%s %s" % (r["id"], r["created_at"][11:19], r["status"]) for r in risky]))
+            for _ in range(40):
+                if not risky_runs(push_ts):
+                    break
+                time.sleep(30)
+            print("那批构建已结束，复查是否被回滚：")
+            bad = verify(expect, "构建后复查", ref_name)
+        else:
+            print("  [OK] 无早于本次推送且未提交的 run")
     else:
-        print("  [OK] 无早于本次推送且未提交的 run")
+        print("分支推送：跳过『早于本次推送的构建』复查（那条查的是 main 的回滚风险）")
     print("最终：内容不同=%d" % bad)
     return 0 if bad == 0 else 1
 

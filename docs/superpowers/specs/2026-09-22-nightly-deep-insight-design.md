@@ -2847,3 +2847,41 @@ A2 全命令本地 184 passed、0 errors。第 3 条把"模板"和"产物"钉在
 
 **验证**：真实树 A2 `2 passed` / A3 `1 passed`；"模板已修 + 产物未重建" A2 绿（不自锁）、A3 红（只观测）；
 "模板删掉开标签" A2 `2 failed`（牙还在）。变异都在 `_scratch/probe_*` 的副本里做，没就地改真文件。
+### 10.76 手机端下拉"点不开"：是被滚动容器裁掉了，不是没响应（2026-09-26 修复并上线）
+
+**现象**：用户报手机端点不开导航下拉。实际是**点到了但看不见** —— `.open` 类加上了，
+面板 `opacity:1 / visibility:visible`，但面板里的链接 `elementFromPoint` 打不到。
+
+**根因**：`@media (max-width:640px)` 为了窄屏横向滚动给 `.nav-links` 加了 `overflow-x:auto`。
+CSS 规范规定：一个轴不是 `visible` 时，另一个轴的**使用值**会被强制成 `auto` ——
+作者从没写 `overflow-y`，它照样变成 auto。于是导航条成了纵向裁剪容器。
+
+390px 同源 iframe 实测（真点击路径，不是静态推断）：
+`.nav-links` 计算值 `overflow-x:auto / overflow-y:auto`，`clientHeight 31` 而 `scrollHeight 278`；
+面板 `top:132 bottom:375` 而容器底边 144 —— 只有 12px 露在外面；
+在面板内链接中心取点，`elementFromPoint` 返回 `DIV.hd`。唯一非 visible 溢出的祖先就是 `NAV.nav-links`。
+
+**修法**：窄屏分支 `.nav-drop-panel` 改 `position:fixed` 脱离该滚动容器，
+配 `top:auto` 取静态位置（天然贴在自己按钮下方）+ `margin-top:6px` 撑间距，
+`left:12px;right:12px` 让面板铺满窄屏可视宽。
+
+**为什么不用 JS 算坐标**：我先写的是点击时用 `btn.getBoundingClientRect().bottom` 设 inline `top`。
+实测跨断点缩放会留下残值 —— 390px 点开再把窗口拉到 1000px，绝对定位下那个 `top:132px`
+把面板顶偏 105px。纯 CSS 方案没有这个状态，代码也更少。
+
+**候选方案的实测对比**（同一台"手机"上量）：
+- 去掉 `overflow-x:auto` 让导航条换行：能点，但面板右边界 454 超出 387 视口，且整页被撑出横向滚动（body 455/387）；
+- 只把 `overflow` 改 visible：面板右边界同样出界，body 688/387 更糟；
+- `position:fixed` + 视口内缩：能点、面板 12–363 在视口内、body 375/390 不溢出。选它。
+
+**验证**：390px 三个下拉全部 `tappable:true`、间距 6px、无页面溢出；1000px 桌面端全新加载三条仍
+`absolute`/6px/居中于按钮，未受影响；390 点开再拉到 1000 自动回到 `absolute` 无残留。
+新增 `tests/site_nav/test_mobile_nav_panel.py` 两条生成端判据，4 个变异分别杀掉不同判据
+（面板退回 absolute / 丢 top:auto / 丢 margin-top / 去掉 overflow-x 时要求退役重测）。
+线上复测：CDN 12:33:35 起 `fixed` 规则已发布，390px iframe 三条 `tappable:true`。
+
+**顺带记一条工具坑（同一天两次）**：我自己写的辅助脚本用 `subprocess.run(text=True)` 读 `gh` 输出，
+按本地 cp936 解码 runs JSON 里的非 GBK 字节直接 `UnicodeDecodeError` 把等待循环打崩；
+改成镜像子进程输出时 `print()` 又因 GBK 编不出替换符把父进程打崩（推送子进程已把活干完，
+但留下孤儿进程要手动收）。规矩：凡 shell 出去读 `gh`/`curl` 输出、或镜像子进程输出的脚本，
+`subprocess` 与 `sys.stdout` 两端都要显式 `encoding="utf-8"`。
