@@ -88,8 +88,24 @@ def test_staging_refuses_empty_artifact():
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 staging 步骤"
     checks = re.findall(r"^\s*test -s (\S+)$", stage[0], re.M)
-    for must in ("_pages/rss-data-0.js", "_pages/rss-aggregator.html", "_pages/index.html"):
+    for must in ("_pages/rss-data-0.js", "_pages/rss-data-1.js",
+                 "_pages/rss-aggregator.html", "_pages/index.html"):
         assert must in checks, "staging 缺少 %s 的非空断言，空制品会被当成功发布：%s" % (must, checks)
+
+
+def test_chunks_ship_without_being_tracked():
+    """分块必须按名字模式进制品，不能只靠 `git ls-files`。
+
+    chunk1+ 自 2026-09-30 起不再提交，main 上那份是停在旧流程的过期副本：
+    只按 git 清单取文件 = 把过期块发上线；而存量清理要把这些过期副本从历史里剔除，
+    届时它们连"被跟踪"都不是，页面会直接少一块。
+    """
+    stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
+    assert stage, "没有 staging 步骤"
+    body = stage[0]
+    assert re.search(r"for f in rss-data-\*\.js", body), (
+        "staging 不再按模式补分块，剔除历史里的过期副本后页面会缺块：%s" % body)
+    assert 'cp -f "$f" _pages/' in body, "模式补块的那步被改动，_pages 里不会有新鲜 chunk1：%s" % body
 
 
 def test_pages_steps_present_and_cannot_block_vercel():

@@ -309,8 +309,17 @@ jobs:
           # `.`/`_` 前缀照 Jekyll 行为剔掉（实测今天 /_bra.py 与 /.gitignore 都是 404）。
           mkdir -p _pages
           git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/
+          # 分块按名字模式补进来，**不依赖它是否被 git 跟踪**：chunk1+ 已停止提交，main 上那份是
+          # 停在旧流程的过期副本，只取 git 清单就会把过期块发上线；而后面要从历史里剔除这些
+          # 过期副本（存量 45.71GB 的主项），届时它们连"被跟踪"都不是。模式只放行 rss-data-*.js
+          # 一族 —— 被 .gitignore 排除的语料族（rss_cache/rss_history/emb_cache/daily_insight_*）
+          # 都不匹配这个模式，不会因此漏进制品。
+          for f in rss-data-*.js; do
+            [ -f "$f" ] && cp -f "$f" _pages/
+          done
           # 空制品发布 = 全站清空，这三条把"必须有内容"钉成硬失败而不是 warning
           test -s _pages/rss-data-0.js
+          test -s _pages/rss-data-1.js
           test -s _pages/rss-aggregator.html
           test -s _pages/index.html
           echo "Staged site size:"
