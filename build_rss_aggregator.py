@@ -3211,7 +3211,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   var ART = [];
   var now=new Date().toISOString();
   /* 全量数据按日期降序后由构建脚本切成 rss-data-0.js（首屏）与
-     rss-data-1.js（后台合并）两块，页面不再内嵌数据（31MB→约0.15MB）。
+     rss-data-1.js…rss-data-N.js（后台合并，按 MAX_CHUNK_BYTES 分片，不固定块数），
+     页面不再内嵌数据（31MB→约0.15MB）。前端按索引逐块加载、遇到 404 停止，所以块数可以变。
      首屏严格时间排序；chunk1 合并后或刷新时应用 tier 交织。 */
   /* tags 归一化（issue M5）：只接受「非空数组」，其余（undefined / null / [] / 脏值）
      一律归一为 null。两条通道（构建期 chunk、刷新通道）共用同一函数，
@@ -6185,7 +6186,7 @@ def _chrono_key(item):
 
 
 def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
-    """把全量文章拆成两块：首屏 chunk0 按严格时间排序（不交织），
+    """把全量文章切成两段：首屏 chunk0 按严格时间排序（不交织），后台段由调用方再分块；
     后台 chunk1 包含剩余文章；前端合并 chunk1 后再应用 tier 交织。
     两块均保持 sources 富字段结构，前端可原样消费。"""
     flat = []
