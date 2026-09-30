@@ -252,3 +252,39 @@ hot_snapshot.json 0.06MB  daily-insight.json 0.03MB  trending_snapshot.json 0.01
 同理，`insight_tracking_history.jsonl` / `daily_insight_tracking_history.jsonl` 是
 **人工统计要从远端拉**的台账（CLAUDE.md 明写"统计口径数据一律拉远端"），
 它们出仓等于把分析入口拆掉。这两条留在 git。
+
+### 10.5 验收读数（2026-10-01 01:3x 北京时间，全部是实测量，不是推断）
+
+| 要回答的问题 | 实测 | 怎么量的 |
+|---|---|---|
+| 存量清掉了吗 | 重写后 `.git` **368M**（重写前 5.3G）；`rss-data-1.js` 在 main 历史里**零版本** | repo-trim `36746250645` 日志 + `commits?path=rss-data-1.js` 返回空 |
+| 新克隆真的小吗 | `--depth 3` 克隆 `.git` = **9.3 MB**（旧本地库 8.7 GB） | 本机 `du -sk` |
+| CI 检出变快了吗 | `fetch-depth: 0` 全历史 **259s → 135s** | run `36748326046` 步骤时间戳 17:00:39→17:02:54 |
+| 增量止血生效了吗 | 那场提交入仓文件 **18 个 → 12 个**，4 个页面 HTML 全部不再入仓 | `commits/e0c2e4879a` vs `commits/22b29963f7` 的 files[] 逐个对比 |
+| 分块修好了吗 | 线上 `rss-data-1..9.js` 各 **6.6–7.3 MB**，chunk10 起 404（加载器按序停住）；原来是**一块 60,378,325 B** | 逐文件 `HEAD` 取 Content-Length |
+| 前端真合并了吗 | `window.__CHUNKS` 逐槽填充，页面自报 **"已加载全部 7295 篇内容（新增 6935 篇）"**；修复前只有 chunk0 的 61 源 | 浏览器 evaluate + 控制台 |
+| 轮转窗口还在工作吗 | 那场里 `build_logs/2026-09-16.jsonl` 与 `summary_2026-09-16.json` **被删**（14 天清理在提交侧留下删除记录） | 同一 commits files[] 对比 |
+
+### 10.6 新装的体积闸（远端 `efedc7dbfa`）
+
+`tools/size_tripwire.py` 接在 update.yml **两处** add 分支的 `git commit` 之前：
+单文件 >16 MiB 判红（挡住提交与部署），本场入仓合计 >25 MiB 只 `::warning::`。
+它防的是这次的根病：**四族产物没有体积上限，静静长了一年多，没有任何检查会红。**
+
+写它自己抓到两个真 bug，都值得记：
+1. `git cat-file -s ':(path)'` 的路径魔法把括号当字面量，实测 `fatal` —— 改走
+   `ls-files --stage -z` + `cat-file --batch-check`；
+2. git 调用失败被静默当成"本场没文件"= 放行。**这条变异第一版没被打死**，
+   因为测试只断言 main 的退出码；改成直接打在 `staged_blobs()` 边界上（要求抛 RuntimeError）
+   才抓住。⇒ 又一次印证手册 §8.12：判据必须自己可被证伪，否则是装饰。
+
+### 10.7 还剩两个**只有你能决定**的口子（我没动，理由写清楚）
+
+1. **GitHub 网页显示的 `.size` 仍是 5.48 GB**，且不是 GC 滞后：`refs/pull/1/head`、
+   `refs/pull/2/head` 是用户侧无删除 API 的内部引用，仍锚着旧对象 ⇒ 强推只重写了
+   `refs/heads/main`。要让那个数字真降，只能开工单或重建仓库。**"推完了"不等于"降下来了"，
+   这句别在汇报里糊过去。**
+2. **本地那个 8.7 GB 的 `.git` 我没动**。它带着 293 条未推提交，而你说过
+   "如果把 git 历史清了 你更不知道咋回事了"。安全部分已做：新克隆在 `E:/starhub-new`
+   （depth 3，9.3 MB）。要收尾就跑
+   `mv .git /e/_quarantine/starhub-old-git-$(date +%s)` 再用新克隆接手，**不许 rm**。
