@@ -288,3 +288,40 @@ hot_snapshot.json 0.06MB  daily-insight.json 0.03MB  trending_snapshot.json 0.01
    "如果把 git 历史清了 你更不知道咋回事了"。安全部分已做：新克隆在 `E:/starhub-new`
    （depth 3，9.3 MB）。要收尾就跑
    `mv .git /e/_quarantine/starhub-old-git-$(date +%s)` 再用新克隆接手，**不许 rm**。
+
+### 10.8 我自己引进的一次真实事故（A2 blocking 冻结整场构建）与修复读数
+
+**18:00 那场（head `87b3bae53d`）整场零产出**：`Quality gate A2 (blocking)` 红，
+连带 `Fetch stars / Commit / Stage Pages / Deploy Vercel / Deploy Pages` 全部 skipped，
+站点从 18:00 起停止更新约 45 分钟。日志原文：
+`tests/rss_history/test_size_tripwire.py` 6 条 FAILED，
+`AssertionError: ('commit','-q','-m','seed') rc=128 —— Please tell me who you are`。
+
+根因**是我踩了 CLAUDE.md 明写的坑**：新增门禁测试不得依赖环境变量的存在与否。
+CI 的 git 全局配置没有 `user.name/user.email`（workflow 只在 Commit 步里现设），
+而我的夹具要 `git commit` 造基线提交；本机配了身份 ⇒ **本地绿、CI 红**。
+修法：夹具用 `-c user.name=T -c user.email=t@e` 只作用于那一条命令，不碰全局配置。
+
+**验收口径也跟着改了**（这是这次最该记住的一条）：以后凡是自己造 git 仓的门禁测试，
+必须用 `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null` 复现 CI 的无身份环境再跑一遍。
+按这个口径回扫：`tests/rss_history/test_size_tripwire.py` 8 条全绿、
+`tests/trim_guard` 21 条全绿（那批本来就用 `GIT_AUTHOR_*`/`GIT_COMMITTER_*` 显式给身份，未受影响）。
+
+修复后实测（run `36757604994`，18:18 起跑，构建提交 `f1568ca56e`）：
+- `Quality gate A / A2 / A3` 全部 success，站点恢复更新；
+- 体积闸在 CI 的第一份真实读数：**12 个文件合计 17.91 MiB**
+  （hot_history 7.91 / analysis_snapshot 3.56 / translations 3.17 / rss_trend 1.11 /
+  insight 台账 0.76 / daily_insight 台账 0.37 / rss-data-0.js 0.35 / build_logs 0.32 …），
+  离 16 MiB 单文件上限有余量 ⇒ **没有误拦**；
+- 入仓文件数稳定在 12（batch① 前是 16-17），4 个页面 HTML 不再入仓。
+
+### 10.9 剩下的 12 个文件为什么必须留在 git（别再来一遍"迁进 cache"）
+
+每一个都有**跨场读回**且**各自已有轮转窗口**，实测都在工作：
+`hot_history.json` 7 天、`rss_trend_history.json` 14 天、`build_logs/*.jsonl` 14 天
+（18:00 前那场就看见 `build_logs/2026-09-16.jsonl` 与 `summary_2026-09-16.json` 被删并提交了删除记录）、
+两个 `*_tracking_history.jsonl` 台账（日志自报"保留 322 条"，且人工统计要拉远端）、
+`analysis_snapshot.json`（`_load_prev_analysis()` 把上一场字段承接过来）、
+`translations.json`（自带条数上限）、`trending_snapshot.json`（`fetch_and_build.py:432` 读回）。
+所以"持续新增膨胀"的根因从来不是这些有上限的状态，而是**四族没有上限的产物** ——
+它们已经出仓，而体积闸负责在任何人下次不设上限时当场判红。
