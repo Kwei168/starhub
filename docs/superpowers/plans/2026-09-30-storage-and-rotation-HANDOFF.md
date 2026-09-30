@@ -390,3 +390,32 @@ CI 的 git 全局配置没有 `user.name/user.email`（workflow 只在 Commit �
 正是 22:00 那场（`e4ad2acc8e` 22:18 提交）构建时刻；上一轮 17:0x 取样时页面 `BUILD_TS` =
 `2026-09-30T15:10:28Z`，同样等于当时最新一场。⇒ **Pages 发的是每场新鲜产物，
 不是 git 里那份停更的副本** —— 这才算 batch① "退出提交清单但不丢发布"的真正证据。
+
+### 10.14 测量结论：**不要再做第二次历史重写**，剩余膨胀已经不在 git 侧
+
+22:40 逐族实测（重写后的 main 历史里每族版本数 × 当前体积 = 未包体积；`build_logs` 那行按目录统计不准，忽略）：
+
+```
+hot_history.json              606 版   7.96 MiB/版   未包 4821 MiB
+translations.json             868 版   3.17 MiB/版   未包 2753 MiB
+analysis_snapshot.json        632 版   3.57 MiB/版   未包 2258 MiB
+rss-aggregator.html          1036 版   3.05 MiB/版   未包 3159 MiB
+rss_trend_history.json        627 版   1.11 MiB/版   未包  699 MiB
+index.html / ai-daily.html / daily-insight-history.html  合计未包  583 MiB
+其余（台账 / 快照 / chunk0）                              合计未包  ≈ 813 MiB
+                                             16 族合计未包 ≈ 14.7 GiB
+```
+
+而这 14.7 GiB **打包后总共 368 MB**（runner 里 `du -sh .git` 实测）⇒ delta 压缩比约 40:1。
+推论三条，都别再用直觉反驳：
+
+1. **再剔"已停更的 4 个 HTML 的历史版本"没意义**：它未包 3.7 GiB，但打包后只占约 30–40 MB，
+   代价是又一次破坏性重写 + 一次强推窗口。不做。
+2. **剩下的 14.7 GiB 未包主体是跨场状态**，删不得（§10.9：它们全是下一场要读回来的输入）。
+3. **今后的自然增长有界且慢**：按 368 MB / 2047 条 ≈ **0.18 MiB/场** 推，约 4 MiB/天、1.6 GiB/年；
+   而"无上限产物"这一类已经被体积闸当场拦住。真要再降一个量级，只有
+   **收紧窗口口径**（hot_history 7 天 / analysis_snapshot 承接范围 / translations 条数上限）
+   这一条路 —— 那是**产品口径变更**，不是清理动作，必须由你拍板，我不会顺手改。
+
+远端 `refs/heads/main` 已达 368 MB 量级；GitHub 面板还显示的 2.43 GiB 全部来自
+`refs/pull/1|2/head` 钉住的重写前血统（§10.12），**与 main 无关，也不是再剔几个文件能解决的**。
