@@ -243,8 +243,10 @@ hot_snapshot.json 0.06MB  daily-insight.json 0.03MB  trending_snapshot.json 0.01
 `if [ -f x ]; then git add x; fi` 这种条件式；`cp -rf . _pages` 这种递归整拷会把
 被 gitignore 的语料（实测 398M）第一次公开发布。
 
-⚠ **batch② 不能照 §4 原计划把 19.7MB/场 状态迁进 `actions/cache`**：
-`update.yml:260` 自己记着实测 **缓存 9.97 / 10 GB 已用满、79 个键**，
+⚠ **batch② 不迁进 `actions/cache` 的理由已按 22:45 实测更正（见 §10.15）**：
+`update.yml:260` 记的 **9.97 / 10 GB、79 个键** 是 09-20 的读数，现在淘汰工具已把它降到
+**11 个键 / 约 1.24 GiB**——**配额不是障碍了**。不迁的真实理由换成另一条（缓存未命中会让
+7 天热榜轨迹静默变空），见 §10.15。
 而且已经需要 `tools/trim_actions_cache.py --keep emb-cache=4 --keep rss-history=5`
 按族淘汰最旧键才挤得下。再塞 6 族状态进去 = 把 emb-cache / rss-history 的键挤掉 =
 §7.15 那种"静默退化成全量"的事故重演一遍，只是换了个通道。**配额是硬约束，先量它再谈迁通道。**
@@ -419,3 +421,43 @@ index.html / ai-daily.html / daily-insight-history.html  合计未包  583 MiB
 
 远端 `refs/heads/main` 已达 368 MB 量级；GitHub 面板还显示的 2.43 GiB 全部来自
 `refs/pull/1|2/head` 钉住的重写前血统（§10.12），**与 main 无关，也不是再剔几个文件能解决的**。
+
+### 10.15 更正两条 + 状态族是否"在涨"的实测答案（22:4x）
+
+**(a) 缓存配额已不是障碍。** 实测 `actions/caches`：**11 个键、约 1.24 GiB**
+（`emb-cache` 5 × 224 MiB + `rss-history` 6 × 20 MiB）。`trim_actions_cache.py --keep` 生效了。
+所以 §10.9 里"缓存在满负荷所以不能迁"这句依据作废。不迁的理由改为：**per-run 键 + 未命中即静默失忆**
+（hot_history 一旦没恢复回来，7 天轨迹直接变空、要几天才重新攒起来 —— 就是 §7.15 那个事故换通道重演）。
+git 反而是这里更可靠的家。
+
+**(b) 三个状态族的"当前体积"轨迹实测（每族取 5 个历史版本的真实 blob 大小）：**
+
+```
+hot_history.json      09-09 0.00 → 09-14 4.06 → 09-19 9.64 → 09-24 8.92 → 09-30 7.96 MiB   ← 峰值后回落
+translations.json     09-01 0.00 → 09-07 3.54 → 09-14 10.44 → 09-22 4.55 → 09-30 3.17 MiB   ← 被上限裁过
+analysis_snapshot     09-08 0.05 → 09-13 1.14 → 09-18 3.66 → 09-24 3.92 → 09-30 3.57 MiB   ← 平台期
+rss_trend_history     09-08 0.00 → 09-13 0.32 → 09-18 0.78 → 09-24 1.04 → 09-30 1.11 MiB   ← 14 天窗口，趋平
+```
+
+⇒ **轮转是在工作的**，文件本身没有无限叠加。§10.14 那个"未包 4.8 GiB"是
+**版本数 × 体积**（606 / 868 / 632 个版本），不是当前数据在涨。
+
+真正还在累加的只有一件事：**每场都给这些文件存一个新副本进 git**，这三族占每场入仓
+14.7 / 18.4 MiB ≈ **80%**；delta 压缩后 ≈ 0.18 MiB/场 ≈ 1.6 GiB/年 —— 有界但确实非零。
+要再降一个量级只有两条路，且**都改行为，需拍板**：
+- **降频入仓**：三族只在每天 UTC21:00 全量场提交，中间场读上一次已提交版本（最多滞后 24h）
+  ⇒ 每场 18.4 → 约 3.7 MiB，pack 增速降约 5 倍；代价是热榜轨迹/洞察承接的新鲜度。
+- **收紧窗口**：hot_history 7 天→72h、analysis_snapshot 承接字段收口、translations 上限下调
+  ⇒ 直接砍当前 7.96 / 3.57 / 3.17 MiB 的体积；代价是趋势检测视野变短。
+
+### 10.16 `pages-build-deployment` 不再运行是**切换的必然结果**，不是坏了
+
+- `gh api repos/.../pages` → **`build_type=workflow`**（09-30 18:00 北京那场切的，§8.15）。
+  legacy 分支源才会触发内置的 `pages-build-deployment`；改成 workflow 发布后它天然不再运行。
+- 实测它最后一次跑：**2026-09-30T09:19:13Z**（`event=dynamic`，success）—— 正好停在切源那场（10:00Z）之前。
+- 新通道逐场可核：`Stage Pages site` / `Upload Pages artifact` / **`Deploy to GitHub Pages` = success**
+  （19:00 场与最新一场都是），`Deploy to Vercel` 也 success。
+- **产物级证据**：线上 `rss-aggregator.html` 里 `BUILD_TS = 22:08:00Z`，等于 22:00 那场的构建时刻
+  （17:0x 取样时同理等于当时最新场）⇒ 发的是新鲜产物，功能无残缺。
+- 代价说清楚：workflow 发布下，**一场构建失败 = 这场不发布 Pages**（18:00 我那次 A2 假红就是这个形状），
+  站点不会坏、但会停在上一版。这比 legacy 多一层耦合，是当初切源换取"大产物不入 git"的已知对价。
