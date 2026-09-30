@@ -461,3 +461,23 @@ rss_trend_history     09-08 0.00 → 09-13 0.32 → 09-18 0.78 → 09-24 1.04 �
   （17:0x 取样时同理等于当时最新场）⇒ 发的是新鲜产物，功能无残缺。
 - 代价说清楚：workflow 发布下，**一场构建失败 = 这场不发布 Pages**（18:00 我那次 A2 假红就是这个形状），
   站点不会坏、但会停在上一版。这比 legacy 多一层耦合，是当初切源换取"大产物不入 git"的已知对价。
+
+### 10.17 顺手查到一条已存在的死端点：`/api/build_log` 结构上永远读不到数据
+
+三条独立证据（22:49 实测）：
+1. `api/build_log.js:14` 读 `join(process.cwd(), 'build_logs')`，`existsSync` 不命中就返回空
+   —— 线上 `?summary=1` 实测 `{"builds":0,"triggers":0,...,"total_items_latest":0}`；
+2. **两道排除同时生效**：`.vercelignore:31` 写着 `build_logs/`，而 `update.yml` 的 prune 步
+   又 `rm -rf ... build_logs docs`（在 `vercel --prod` 之前）⇒ 就算撤掉一道，另一道仍然拦着；
+3. 全仓搜前端调用：**template.html / build_rss_aggregator.py 里没有任何 `/api/build_log` 引用**，
+   只有写入侧 `build_logger.append()`。`vercel.json:12` 却仍为它声明 `maxDuration: 10`。
+
+后果与口径：`build_logs/*.jsonl` 每场仍占约 0.32 MiB 入 git，但它的运行时读者是空的；
+现在真正消费它的只有 `build-log-summary.yml`（从 checkout 里的 build_logs 生成 summary 提交）
+和人眼看 git。**这不是本次改动造成的回归**，是历史遗留的口径不一致。
+
+三个选项（都算功能变更，等拍板，我不动手）：
+- 让端点真能用：`.vercelignore` 去掉 `build_logs/` **且** prune 步不删它（会把 14 天日志发布上线，含内部错误文本，需先审内容）；
+- 让它读远端：函数改走 GitHub Contents/raw API 读 main 上的 `build_logs/`（不发布数据，但有 API 配额与延迟）；
+- 承认它是死的：删 `api/build_log.js` + `vercel.json` 声明 + 手册 §3 那一行，
+  并考虑 `build_logs/` 是否还需要每场入 git（若只服务 summary，可让 summary 自己生成）。
