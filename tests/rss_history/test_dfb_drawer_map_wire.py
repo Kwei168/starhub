@@ -78,7 +78,7 @@ def _merge(old_items, api_item, tmp_path):
 OLD_FULL = {
     "title": "English Title", "title_zh": "中文标题", "summary": "en summary",
     "summary_zh": "中文摘要", "link": "http://e/1", "pub_date": "2026-09-20T01:00:00+08:00",
-    "time_str": "9月20日 01:00", "image": "http://cdn/cover.jpg",
+    "image": "http://cdn/cover.jpg",
     "media_url": "https://cdn/audio.mp3", "media_type": "audio/mpeg",
     "tags": ["大模型", "开源"], "bad_date": True, "full_content": "长文正文",
 }
@@ -92,15 +92,24 @@ API_LIVE = {"t": "English Title", "u": "http://e/1", "s": "en summary",
 
 @pytest.mark.skipif(not _node(), reason="本机没有 node（CI 上有）")
 def test_live_refresh_keeps_build_time_fields(tmp_path):
-    """刷新之后封面/标签/坏日期标记/中文标题/全文都还在（C1 + C2 主判据）。"""
+    """刷新之后封面/标签/坏日期标记/中文标题/全文都还在（C1 + C2 主判据）。
+
+    契约变更（2026-09-30）：`time_str` 不再进产物（ITEM_DERIVED_FIELDS），所以这里
+    不再断言"它被搬过来了"——改成两条更强的：① `pub_date` 必须原样保住（标签的唯一
+    输入，丢了它等于标签算错）；② 合并结果里**不许出现 time_str**（防止从后门复活，
+    把每场全量重写请回来）。读者实际看到的文案由 goldens/rel_time_labels.json 与
+    test_time_label_parity.py 钉住，且用的是同一个 pub_date，两条判据接起来
+    覆盖的比原来那一句"字段搬对了"更完整。
+    """
     out = _merge([OLD_FULL], API_LIVE, tmp_path)
     assert out.get("link") == "http://e/1", out
     for k, want in (("image", "http://cdn/cover.jpg"), ("bad_date", True),
                     ("title_zh", "中文标题"), ("summary_zh", "中文摘要"),
-                    ("time_str", "9月20日 01:00"), ("fc", "长文正文"),
-                    ("mu", "https://cdn/audio.mp3")):
+                    ("fc", "长文正文"), ("mu", "https://cdn/audio.mp3")):
         assert out.get(k) == want, "刷新把 %s 抹掉了（%r -> %r）" % (k, want, out.get(k))
     assert out.get("tags") == ["大模型", "开源"], "话题标签被抹掉：%s" % out.get("tags")
+    assert out.get("pub_date") == API_LIVE["d"], "发布时间被改写，时间标签会跟着错：%s" % out.get("pub_date")
+    assert "time_str" not in out, "time_str 复活了（派生字段一回来，每场就又全量重写）：%s" % out
 
 
 @pytest.mark.skipif(not _node(), reason="本机没有 node（CI 上有）")

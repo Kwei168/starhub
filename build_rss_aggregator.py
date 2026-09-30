@@ -55,6 +55,40 @@ TRANS_CACHE_MAX = 30000
 RSS_CACHE_FILE = "rss_cache.json"
 RSS_CACHE_TTL = 1800  # RSS 缓存有效期：30 分钟
 
+# 派生显示字段：值能由 pub_date 现算，烘进产物就等于"每场全量重写"。
+# 实测（远端相邻两场 8b45cc9d/7966a25d）：9,115 条共同条目里 51% 只因 time_str
+# 不同而对不上，把它移出条目后相同率 44.5% -> 89.9%。
+# 它是唯一事实源：装配处不再写，出厂处按它剥离 —— 两处必须同时改，只改一处等于没挡。
+ITEM_DERIVED_FIELDS = frozenset({"time_str"})
+
+
+def _read_rel_time_js():
+    """读取页面唯一的时间口径实现（lib/rel_time.js），构建期原样内联进产物。
+
+    为什么读文件而不是写在模板里：这条口径过去有两个执行点（构建期 Python 与页面显示），
+    历史上"两边各写一遍"已经栽过（留存规则、抽屉日期）。写成一处文件 + 一条对等测试，
+    改的人就不需要"记得同步"。判据：tests/rss_history/test_time_label_parity.py
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib", "rel_time.js")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return f.read()
+    except OSError as e:
+        # 不咽：缺这个文件页面时间位会整片空，宁可在构建期当场炸
+        raise RuntimeError("缺少 lib/rel_time.js，页面相对时间无处可算: %s" % e)
+
+
+def _strip_derived_items(items):
+    """出厂条目的派生字段剥离。返回副本列表，历史里那份对象不被改动。"""
+    out = []
+    for it in items:
+        if isinstance(it, dict) and (set(it) & ITEM_DERIVED_FIELDS):
+            out.append({k: v for k, v in it.items() if k not in ITEM_DERIVED_FIELDS})
+        else:
+            out.append(it)
+    return out
+
+
 # 翻译缓存的账本：与历史侧 `_LAST_HISTORY_ACCOUNT` 同一形态。
 # 约定也一致：字段为 None 表示"这一步没跑到"，不许用 0 冒充"跑到了但没丢"。
 _LAST_TRANS_ACCOUNT = {}
@@ -881,7 +915,7 @@ def _accumulate_history(sources_with_items):
             if _fb:
                 entry["pub_date"] = _fb
                 entry["date_fallback"] = True
-            entry["time_str"] = _fmt_rel_time(entry.get("pub_date"))
+            # 不再烘 time_str：相对时间是"看"的函数，不是事实（口径见 lib/rel_time.js）
             # Fix 2: 去重 — 跳过当次抓取已存在的同链接条目
             _link = entry.get("link", "")
             if _link and sk in _fetch_items_by_key and _link in _fetch_items_by_key[sk]:
@@ -1637,7 +1671,6 @@ def _fill_undated_from_capture(item):
         return False
     item["pub_date"] = iso
     item["date_fallback"] = True
-    item["time_str"] = _fmt_rel_time(iso)
     return True
 
 
@@ -1810,41 +1843,12 @@ def _fallback_date_iso(entry):
     return _first_seen_iso(entry)
 
 
-def _fmt_rel_time(dt):
-    if dt is None:
-        return ""
-    # 缓存命中时 pub_date 已是 ISO 字符串（主流程会将其序列化），先反序列化
-    if isinstance(dt, str):
-        try:
-            dt = datetime.datetime.fromisoformat(dt)
-        except ValueError:
-            return ""
-    # Convert to Beijing time, handling both aware and naive datetimes
-    if dt.tzinfo:
-        bj = dt.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
-        bj_naive = bj.replace(tzinfo=None)
-    else:
-        bj_naive = dt
-    now = _now_bj().replace(tzinfo=None)
-    diff = now - bj_naive
-    seconds = int(diff.total_seconds())
-    if seconds < 0:
-        return bj_naive.strftime("%m-%d %H:%M")
-    if seconds < 60:
-        return "%d秒前" % seconds
-    minutes = seconds // 60
-    if minutes < 60:
-        return "%d分钟前" % minutes
-    hours = minutes // 60
-    if hours < 24:
-        return "%d小时前" % hours
-    days = hours // 24
-    if days < 30:
-        return "%d天前" % days
-    return bj_naive.strftime("%Y-%m-%d")
+# 相对时间标签的唯一口径已移到 lib/rel_time.js（构建期不再烘 time_str）。
+# 参照快照见 tests/rss_history/goldens/rel_time_labels.json；
+# 页面与快照的对等判据见 tests/rss_history/test_time_label_parity.py。
 
+# 这里刻意不留 Python 版实现：两条口径并存迟早只被改到一条。
 
-# ──────────────────────────── 翻译 ────────────────────────────
 
 def _detect_lang(text):
     """检测文本主要语言，返回 MyMemory langpair 代码。"""
@@ -2132,11 +2136,11 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
 
 
 def _translate_source_items(items):
-    """翻译单个源的全部条目（在翻译线程池中执行）：仅翻译标题，摘要保留原文。附相对时间与 ISO 日期。"""
+    """翻译单个源的全部条目（在翻译线程池中执行）：仅翻译标题，摘要保留原文。附 ISO 日期。"""
     for it in items:
         it["title_zh"] = _translate_to_zh(it["title"]) if it["title"] else it["title"]
         # 摘要不再构建时翻译，前端按需走浏览器 GTX
-        it["time_str"] = _fmt_rel_time(it.get("pub_date"))
+        # 相对时间不再烘进条目（ITEM_DERIVED_FIELDS）：页面按 pub_date + BUILD_TS 现算
         # 保留 pub_date 用于前端时间线排序（转为 ISO 字符串）
         pd = it.get("pub_date")
         if pd and hasattr(pd, "isoformat"):
@@ -3181,6 +3185,7 @@ def _inline_json(text):
 def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_window_minutes=120):
     """Generate core JS for card wall + drawer reader."""
     cat_labels_json = json.dumps(CATEGORY_LABELS, ensure_ascii=False)
+    rel_time_js = _read_rel_time_js()
     # 内嵌 QR 生成库：国内移动端 jsdelivr/unpkg 常不可达且请求会长时间挂起，
     # 导致分享模态框数十秒不出现甚至永远无反应。构建时直接内嵌 vendor 库。
     qr_lib = ''
@@ -3195,6 +3200,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
 """ + qr_lib + """
 ;(function(){
   var BUILD_TS = """ + str(int(build_ts_ms)) + """;
+""" + rel_time_js + """
   var DIVERSE_WINDOW = """ + str(int(diverse_window_minutes)) + """;
   var SOURCES = [];
   var CAT_LABELS = """ + cat_labels_json + """;
@@ -3225,7 +3231,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         ART.push({t:it.title_zh||it.title, s:it.summary_zh||it.summary||'',
           src:s.name, sk:s.key, c:s.cat, sc:s.color, ti:s.tier||3,
           /* fc 兼容两条通道：chunk 通道字段名为 full_content，远程刷新通道为 fc */
-          time:it.time_str, date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
+          /* 时间位现算，口径唯一（lib/rel_time.js，与读者已在看的文案逐分支对等）。
+             基准刻意取 BUILD_TS 而不是访客时钟：改造前烘进产物那一串就是按构建时刻算的，
+             改用访客时钟会让同一篇文章在不同人屏幕上显示不同时间 —— 那是改显示，不是稳定性。 */
+          time:STARHUB_REL_TIME.fmtRelTime(it.pub_date, BUILD_TS/1000), date:it.pub_date, u:it.link||'#', fc:it.fc||it.full_content||'',
           img:it.image||it.img||'', mu:it.mu||'', mt:it.mt||'',
           bad_date:!!it.bad_date, bb:!!s.bb, dfb:!!it.date_fallback, tags:_tagsOf(it)});
       });
@@ -3657,7 +3666,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       if(!a.mu&&(o.media_url||o.mu)){a.mu=o.media_url||o.mu;a.mt=o.media_type||o.mt||'';}
       if(o.tags) a.tags=o.tags;
       if(o.bad_date) a.bad_date=o.bad_date;
-      if(o.time_str) a.time_str=o.time_str;
+      /* time_str 已不再进产物（ITEM_DERIVED_FIELDS）：标签由 pub_date + BUILD_TS 现算，
+         这里再搬一次等于把"每场全量重写"从后门搬回来。发布时间本身的正确性由下一行管。 */
       if(a.date_fallback&&o.pub_date&&!o.date_fallback){a.pub_date=o.pub_date;a.date_fallback=false;}
       return a;
     };
@@ -6193,16 +6203,19 @@ def _split_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
         # 标记 BestBlogs 源（URL 含 bestblogs.dev）
         _is_bb = 'bestblogs.dev' in (s.get('url') or '')
         if k in c0_items:
-            c0 = dict(s); c0["items"] = c0_items[k]
+            c0 = dict(s); c0["items"] = _strip_derived_items(c0_items[k])
             if _is_bb: c0["bb"] = True
             chunk0.append(c0)
             rest = [it for it in s.get("items", []) if id(it) not in seen]
             if rest:
-                c1 = dict(s); c1["items"] = rest
+                c1 = dict(s); c1["items"] = _strip_derived_items(rest)
                 if _is_bb: c1["bb"] = True
                 chunk1.append(c1)
         elif s.get("items"):
-            if _is_bb: s = dict(s); s["bb"] = True
+            # 不改动入参对象：剥派生字段要生成副本，直接写 s 会污染内存里的历史条目
+            s = dict(s)
+            s["items"] = _strip_derived_items(s.get("items", []))
+            if _is_bb: s["bb"] = True
             chunk1.append(s)
     return chunk0, chunk1
 

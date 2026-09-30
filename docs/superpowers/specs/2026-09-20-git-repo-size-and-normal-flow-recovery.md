@@ -135,7 +135,19 @@ $ git push --dry-run origin main    → ! [rejected] … (fetch first)   （审�
 ① `git status --porcelain` 为空；② `git rev-parse HEAD` 连续 120 秒不变；③ 无 `.git/index.lock` / `.git/gc.lock`；④ Actions 无未完成 run。
 任一不满足就中止——`--prune=now` 没有宽限期，它会删掉并发 `git add`/`stash` 刚写下的对象。
 
+### G1 前置实测（2026-09-30，补记）
+
+G1 挂起这十天里量清了三件事，全部有常驻判据可复跑：
+
+1. **出厂路径可重复。** `tools/build_determinism.py` + `tests/rss_history/test_build_determinism.py`：同输入、钉住时钟、**跨进程换 `PYTHONHASHSEED`** 两遍，`rss-data-0/1.js` 逐字节相同；测试内置一个"块序经由 set 迭代"的变异体并要求探针判红，用来证明这条判据不恒真。结论：G1 不需要先解决随机性。
+2. **产物每场全量重写的机理不是随机，是"把派生值当数据存"。** 取远端相邻两场（`8b45cc9d` 23:20Z 与 `7966a25d` 00:20Z）比对：`rss-data-1.js` 共同 9,115 条里只有 **44.5%** 逐字节相同，其中 **51% 只因 `time_str`**（"3小时前"这类相对时间串，每场重算）；把它移出条目后相同率升到 **89.9%**，再收掉源级字段的逐条副本（`cat`/`color`）与"重抓即整条覆盖"造成的同批 879 条重建，可到 **99.5%**。
+3. **`translations.json` 每场 3.3 MB 整文件重写，但内容几乎没动。** 两边都是 30,000 键（`TRANS_CACHE_MAX` 生效），各 95 键进出，**差别主要是键顺序**——LRU 顺序被当成数据序列化进文件。同法测得另有 8 个入库产物每场全变（`rss-aggregator.html`/`hot_history.json`/`analysis_snapshot.json`/`index.html`/`trending_snapshot.json`/`daily-insight.json`/`daily_insight_history.json` 等），合计约 19 MB/场。
+
+对 G1 落点的修正：**"换一种切块方式"不能单独成立**。实测在 56% 条目每场必变的前提下，块身份无论取 `pub_date` 还是 `first_seen`、槽宽取 6/12/24/48 小时，"逐字节相同的块数"都是 **0**。所以顺序必须是 可重复性(已完成) → 派生值移出条目 → 重抓不覆盖 → 才轮到分块轮转；否则分块只是把同一批抖动切成更小的块，每块照样重写。
+
 **明确不做**：不在旧仓上跑 `git gc --prune=now`；不上 git-lfs（免费额度 1GB 存储 / 1GB 月带宽，对每场 192MB 产物不够）；不再手删 `.git/objects/pack/*`。
+
+
 
 ## 8. 原子推送（用户指令"原子推送修复一下"）
 
