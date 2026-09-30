@@ -472,7 +472,8 @@ rss_trend_history     09-08 0.00 → 09-13 0.32 → 09-18 0.78 → 09-24 1.04 �
 3. 全仓搜前端调用：**template.html / build_rss_aggregator.py 里没有任何 `/api/build_log` 引用**，
    只有写入侧 `build_logger.append()`。`vercel.json:12` 却仍为它声明 `maxDuration: 10`。
 
-后果与口径：`build_logs/*.jsonl` 每场仍占约 0.32 MiB 入 git，但它的运行时读者是空的；
+后果与口径：`build_logs/*.jsonl` 每场仍入 git，但它的运行时读者是空的（**每场的真实代价见
+§10.18 实测：打包后 0.05 MiB/场，不是我先前估的 0.32 MiB**）；
 现在真正消费它的只有 `build-log-summary.yml`（从 checkout 里的 build_logs 生成 summary 提交）
 和人眼看 git。**这不是本次改动造成的回归**，是历史遗留的口径不一致。
 
@@ -481,3 +482,54 @@ rss_trend_history     09-08 0.00 → 09-13 0.32 → 09-18 0.78 → 09-24 1.04 �
 - 让它读远端：函数改走 GitHub Contents/raw API 读 main 上的 `build_logs/`（不发布数据，但有 API 配额与延迟）；
 - 承认它是死的：删 `api/build_log.js` + `vercel.json` 声明 + 手册 §3 那一行，
   并考虑 `build_logs/` 是否还需要每场入 git（若只服务 summary，可让 summary 自己生成）。
+
+### 10.18 外部审查逐条核实（10-01 07:5x 实测）：五条对、一条**被证伪**、两条口径错，另有两条它没查到
+
+逐条用 GitHub API / 线上端点 / 工作树对过，不采信任何"看起来合理"：
+
+| 审查的说法 | 实测 | 判定 |
+|---|---|---|
+| 远端 `build_logs/` = 30 文件 / 44.2 MiB | 46,369,566 B = **44.22 MiB**（15 个 jsonl 41.87 MiB + 15 个 summary 2.35 MiB） | ✅ |
+| 单个最大 4.27 MiB | 最大是 `2026-09-19.jsonl` = 4,372,978 B = **4.17 MiB**（= 4.37 MB），两个口径都不是 4.27 | ⚠️ 单位混用 |
+| `update.yml` 216/232/257/357、`Deploy to Vercel:361`、`.vercelignore:31`、`vercel.json:12` | 逐行对上：216 append、232/257 两条 add 清单都含 `build_logs/`、357 是 prune 步（346 起）里的 `rm -rf … build_logs docs`，361 才是 Vercel | ✅ |
+| 09-30 起 25 次提交碰 `build_logs`，其中 24 次是主构建 | `commits?path=build_logs&since=2026-09-30T00:00:00Z` = 25 条 = 24 × `chore: auto update stars` + 1 × summary | ✅ |
+| `?summary=1` 恒返回 `builds:0` | 线上实测 `{"total":0,"entries":[]}`、`{"date":"2026-09-30","builds":0,…}`；`api/build_log.js:14` 读 `process.cwd()/build_logs`，目录不在就 `[]` | ✅ |
+| **"accumulating forever / 一直在叠加"** | **错。14 天轮转在跑。** 见下面三条硬证据 | ❌ 被证伪 |
+| "~70 MiB/天" | 作为**未包**口径接近事实（实测未包 58 MiB/天），但落到仓库是**打包后 1.9 MiB/天** | ⚠️ 口径 |
+
+`build_logger.cleanup(14)` 不是装饰，三条独立证据：
+1. `update.yml:195` 每场构建都在调 `removed = build_logger.cleanup(14)`；
+2. 远端 tip 最旧文件 = `2026-09-17` = 今天(10-01) − 14，且 `cleanup` 的判据是 `file_date < cutoff`
+   （`cutoff` 按 **BJT** 算）⇒ 删除固定发生在北京零点后的第一场构建；
+3. 删除提交本身可查：`e0c2e487`（2026-09-30T16:38:22Z = 北京 10-01 00:38）的 files 里
+   `removed build_logs/2026-09-16.jsonl`、`removed build_logs/summary_2026-09-16.json`、
+   `added build_logs/2026-10-01.jsonl`。远端 `contents/build_logs/2026-09-16.jsonl` 现在 404。
+
+⇒ **tip 有界（~44 MiB 稳态），无界的只有"每场重写 jsonl 产生的历史 blob 版本"这一项**，
+   而它的真实体积比审查说的小一个量级。
+
+审查没查到的两条（这两条才决定要不要动功能）：
+1. **`summary_*.json` 零读者**：`api/build_log.js` 的摘要模式（60–80 行）是**从 jsonl 现算**的，
+   从不打开 `summary_*.json`；全仓也搜不到任何读取方 ⇒ 每小时写出来的摘要目前无人消费，
+   而 `build-log-summary.yml` 仍为它 `git add build_logs/summary_*.json` + 提交。
+2. **"hourly" 只是声明，实测被 GitHub 限流**：`event=schedule` 的 Build Log Summary 在 09-30 只有
+   01:05 / 08:00 / 15:38 / 20:33 四场，20:33 之后到 23:50 连续三个整点没触发。
+   update.yml 那 24 场全是 `workflow_dispatch`（cron-job.org 主力链在驱动，与已知结论一致）。
+
+**增长率的实测口径**（这次不外推）：`git clone --depth=48` 拿到 48 场 ≈ 31.5 小时的窗口，
+`git rev-list --objects HEAD -- build_logs` ⇒ **54 个 blob 版本 / 未包 76.2 MiB /
+`%(objectsize:disk)` 合计 2.48 MiB** = **0.052 MiB/场 ≈ 1.9 MiB/天 ≈ 57 MiB/月**，delta 压缩比 31:1。
+
+推论：`build_logs` 对"不再持续新增膨胀"的实际贡献比 §10.14 那几张状态族表还小，
+**不值得为它单独改功能**；真要收口，就连"死端点 + 零读者的 summary 工作流"一起处理（选项见 §10.17），
+而且必须一起动 —— 只把 `build_logs/` 从 add 清单摘掉会让 `update.yml:407` 的 `build_logger.summary(today)`
+读不到历史 jsonl，摘要从"近 7 天"静默退化成"仅当场"，那正是我最不该再造的那类静默降级。
+
+两条自我更正：
+- §10.14 表里 `build_logs` 记 0.00 MiB 是我按**目录**路径查体积导致的（目录不是 blob），审查的 44.2 MiB 才对；
+- §10.17 原先写的"每场约 0.32 MiB 入 git"是估的，实测 0.052 MiB/场（打包后），已就地改掉。
+
+测量陷阱备忘：隔离的老 `.git`（`E:\_quarantine\starhub-old-git-20261001-072905`）**本身是浅仓**
+（有 `shallow` 文件，`rev-list --count HEAD` 只有 391），所以从它算出的任何"全历史体积"都是截断下界，
+不能当结论引用 —— 要量历史就用远端 shallow clone 并显式写明窗口。
+
