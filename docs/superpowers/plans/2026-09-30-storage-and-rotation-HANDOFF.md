@@ -1651,3 +1651,61 @@ Pages 侧实测（`Last-Modified: Thu, 01 Oct 2026 08:32:13 GMT`，即这场部�
 gh api "repos/Kwei168/starhub/git/trees/main?recursive=1" \
   --jq '[.tree[]|select(.path|startswith("build_logs/"))] | {files:length, bytes:([.[].size]|add)}'
 ```
+
+### 10.50 我把 A2 冻了一次（09:00 场），根因是"判据读了只在本机存在的文件"
+
+head `f2c1576b99`（③#1 那批）在 09:00 场 **A2 blocking 红**，2 条失败全是
+`FileNotFoundError: /home/runner/work/starhub/starhub/docs/排查记录.md`。
+
+- 直接原因：我为"表项必须有实测出处"写的判据去读 `docs/排查记录.md`，
+  而**那份记录从未进 git**（`git ls-files docs/排查记录.md` 为空、远端 contents API 404）
+  ⇒ 判据在本地永远绿、在 CI 的干净检出里永远红。A2 红 ⇒ 构建与两个部署整场冻住，
+  最后一次成功部署停在 08:32:13Z。
+- 修法：删掉 `DOC` 常量与两处文件读取，改成"表里每个域名必须自带一行实测理由（`#` 注释 ≥8 字）"，
+  证据随代码走。`tools/mut_cover_table.py` 复跑：③#1 的 10 组变异仍全 RED。
+- **可复用的规矩**：写判据前先问"CI 的输入集合里有没有这个东西"。
+  凡是读仓库外/未入库文件（用户本地笔记、`.deploy-tmp/`、被 prune 的产物目录）的判据，
+  要么改成读入库的那份，要么改成读生成端，不能靠"我本地跑过了"。
+
+### 10.51 ③#4 实时链路补抽图（连同渲染层二次过滤一起推：0e8cf5dbf6）
+
+实时那条路（`?source=` / `?batch=`）过去**从不抽图**：`parseFeed` 只取音视频，出口
+`img: it.img || ''` 恒空 ⇒ 构建后新发布的条目从出生就没封面，`_apiMergeTo` 只能保住旧条目的图。
+
+- 新文件 `lib/rss_cover.js`（可 require，沿用 `lib/rss_retention.js` 的做法）：
+  `enclosure > media:content > media:thumbnail > 正文首图 > 描述首图`，与构建期同优先级；
+  单次扫描解码（`&amp;lt;` 这类二次编码不许被提升成标签，与 `html.unescape` 对齐）。
+- `api/rss.js`：两条分支各接一次 `COVER.pickItemImage(...)`；短键映射补
+  `if (it.img) obj.img = it.img;`；require 失败只影响封面且打 `::warning`，不打断响应。
+- **必挂域名表只做一份**：构建时把 `_BAD_COVER_HOSTS` 注入产物的 `_BAD_COVERS`，
+  卡片渲染前统一过 `_dropBadCover`。不在 `api/rss.js` 里再抄一张表 —— 否则 #4 会把 BBC
+  那类必挂封面从实时路径带回首屏，正好抵消 #1；两张表也必然分叉。
+
+**写判据过程中逮到的两个真问题（都已修）**
+1. **转义描述漏抽**：主流 feed 的 `description` 是 `&lt;img ...&gt;` 转义过的 HTML。
+   Python 侧由 ElementTree 解好实体所以命中，JS 侧不命中 ⇒ "实时有封面、刷新后封面消失"。
+   修：`firstImgSrc` 先 `decodeEntities` 再找 `<img>`。
+2. **Py/JS 判空分叉**：`HTTPS://ICHEF.BBCI.CO.UK/A.JPG` 构建侧判空、渲染层因用原样大小写比
+   scheme 而放行。修：`_coverHost` 改 `trim + 整体小写`（与 Python 的 `partition('//')[0].lower()` 同形）。
+   这条是今天上午 `_needs_translation` 分叉的同一种形状，所以新增常驻判据
+   `test_buildtime_and_render_cover_filters_agree`：同一批 URL 两层逐条对。
+
+**判据与变异**
+- `tests/rss_cover/test_realtime_cover_js.py`：node 用例集调用 + 注入名单一致 +
+  出厂/渲染两层同答案 + **真 `parseFeed` vs 真 `_parse_rss_item` 逐条同答案** + 响应形状带 img。
+- `tests/rss_js/test_realtime_cover.js`：14 个用例（含实体、双重编码、音频 enclosure、`m:` 前缀）。
+- 三处既有切片跑法补 `COVER` 注入（`test_parse_parity_js.py`、`test_cleanlink_and_dedup_safety.py`）：
+  `parseFeed` 现在引用 `COVER`，切片跑法没有它 ⇒ ReferenceError，会**红在不存在的问题上**。
+- `tools/mut_realtime_cover.py`：N1-N6 全 RED、0 逃逸（只改副本，靠
+  `STARHUB_API_RSS` / `STARHUB_COVER_LIB` / `RSS_BUILD_SRC` 注入；上一版就地改真实文件
+  并按哈希还原，因换行符归一化自毁校验而中止 —— 已改成绝不碰真源）。
+- 一次事故记录：`test_realtime_cover_is_carried_into_the_response_shape` 里我误删了
+  下一条判据的 `def` 行，把它的方法体接进了上一个函数 ⇒ `NameError: tmp_path`。
+  判据自己坏了也会被自己的 A2 全量跑逮住，这是保留"跑整条 CI 原命令"的价值。
+
+**本地读数**：`tests/rss_cover` 32 passed；CI 的 A2 原命令 **313 passed / 39.3s**
+（唯一红是 `test_gate_wiring::test_no_new_orphan_test_directory` 报 `tests/ai_daily/`，
+那是**本地已 add 未推**的别的工作，远端 404，不在 CI 集合里，我没动它）。
+
+**待 10:00Z 场验收**：① A2 绿；② 日志 `[封面判空]` 的 N>0；③ 产物 `_BAD_COVERS` 与表一致；
+④ `curl 'https://starhub-refresh.vercel.app/api/rss?source=<某英文源>'` 看是否开始出现 `img`。
