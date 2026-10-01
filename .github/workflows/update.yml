@@ -293,10 +293,14 @@ jobs:
           # 4 个 HTML 页面不再进这张清单：纯产物（同场生成、无人跨场读回），合计约 3.8MB/场。
           # 发布由下面 Stage Pages site 按名字模式从工作目录取，所以"不提交"不会让页面缺文件；
           # 但谁把它们加回来，膨胀就静默回来（判据：tests/rss_history/test_pages_deploy_wiring.py）。
-          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
-          if [ -f hot_history.json ]; then git add hot_history.json; fi
+          # 批 2：7 个跨场状态文件不再进这张清单（实测每场给 git 历史永久新增 17.4 MiB，
+          # 而 git 的模型是"内容变一次就永久多一份副本" ⇒ 调保留天数只改斜率，不入库才是压平曲线）。
+          # 它们的跨场传递由上面的 starhub-state 缓存承接；读取端全走 *_FILE 常量指向的同一路径，
+          # 冷启动分支已核：build_daily_insight.py:4274 / insight 侧 if not os.path.exists ⇒ 退化成
+          # 一次冷启动而不是断链。build_logs/ 留到批 4（要与"每日一次闸门 + 退役
+          # build-log-summary.yml"同批，单独摘掉会让那个每小时工作流把摘要覆盖成 0）。
+          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_logs/ build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
-          if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
           if ! python3 tools/size_tripwire.py; then
             echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
             exit 1
@@ -318,10 +322,9 @@ jobs:
               git reset --hard origin/main
               python fetch_and_build.py $MODE
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
-          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json translations.json rss_sources.json hot_snapshot.json analysis_snapshot.json rss_trend_history.json build_logs/ insight_tracking_history.jsonl daily_insight_tracking_history.jsonl build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
-              if [ -f hot_history.json ]; then git add hot_history.json; fi
+          # 重试分支：清单必须与主路径逐字同一份（批 2 起两处同改，只改一条 = 重试时把状态请回库里）
+          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_logs/ build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
-              if [ -f daily_insight_history.json ]; then git add daily_insight_history.json; fi
               if ! python3 tools/size_tripwire.py; then
                   echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
                   exit 1

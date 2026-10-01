@@ -29,6 +29,9 @@ yaml = pytest.importorskip("yaml")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "workflows", "update.yml")
+# 变异注入口：与 STARHUB_UPDATE_YML / RSS_BUILD_SRC 同族约定。没有它，"删一行 .gitignore"
+# 这类变异根本传不进判据，对账判据就成了只能证明自己对的东西（写第一版时就是这个状态）。
+GITIGNORE = os.environ.get("STARHUB_GITIGNORE") or os.path.join(ROOT, ".gitignore")
 
 FAMILY = "starhub-state"
 # 这 7 个是"每场都变、且只有构建脚本自己读回"的跨场状态（实测字节见模块 docstring）
@@ -183,15 +186,56 @@ def _added_names():
     return names
 
 
-def test_state_family_files_are_still_committed_at_this_stage():
-    """批 1 是纯加法：这批之后这些名字**仍然**在 `git add` 的操作数里。
+def _gitignore_names():
+    """只收"单文件名"形式的条目（不含目录、不含通配），用于与状态族名单对账。"""
+    names = set()
+    with open(GITIGNORE, encoding="utf-8") as fh:
+        for ln in fh:
+            s = ln.strip()
+            if not s or s.startswith("#") or "*" in s:
+                continue
+            names.add(s.rstrip("/"))
+    return names
 
-    反向钉住"批次没跑太快"——如果谁在批 2 之前就把名字从 add 清单删了，而缓存还没验证过一轮，
-    就会出现"既没入库也没缓存"的断档。这条判据会在批 2 里被有意替换成相反的断言。
-    """
+
+# ── 批 2：状态文件退役（本文件里这三条是批 1 那条"仍然入库"的反向版本）──
+
+def test_state_family_files_are_not_committed_anymore():
+    """这 7 个跨场状态必须**不再**出现在 `git add` 的操作数里 —— 它们就是 17.4 MiB/场的来源。"""
     names = _added_names()
-    missing = sorted(f for f in STATE_FILES if f not in names)
-    assert not missing, (
-        "这些状态文件已不在 git add 的操作数里：%s —— 批 1 只搭通路，退役要在缓存被真实验证一轮之后（批 2）"
-        % ", ".join(missing))
-    assert LOG_DIR_NAME in names, "build_logs 不在提交清单里：那日志的跨场累积还在靠什么？"
+    still = sorted(f for f in STATE_FILES if f in names)
+    assert not still, (
+        "这些跨场状态仍每场提交（每场给 git 历史永久多一份副本）：%s" % ", ".join(still))
+
+
+def test_state_files_are_in_both_gitignore_and_cache_paths():
+    """双向对账：每个状态文件必须**同时**在 `.gitignore` 与缓存 path 里。
+
+    少 `.gitignore` ⇒ 它以"未跟踪但存在"的形态污染 git status，并可能被下一次 `git add <显式名>`
+    请回库里；少缓存 path ⇒ 它既不在 git 也不在缓存 = 下一场直接冷启动，而这条链路是**静默**的
+    （构建照样绿，只是没人发现译文缓存没了）。所以两个集合都断言非空，禁"两边都空所以相等"。
+    """
+    ign = _gitignore_names()
+    cached = set(_path_lines(_by_name("Save cross-build state cache")))
+    assert ign and cached, "对账输入为空（.gitignore=%d, path=%d）—— 判据在空集合上跑" % (
+        len(ign), len(cached))
+    not_ignored = sorted(f for f in STATE_FILES if f not in ign)
+    not_cached = sorted(f for f in STATE_FILES if f not in cached)
+    assert not not_ignored and not not_cached, (
+        ".gitignore 缺少=%s；缓存 path 缺少=%s" % (", ".join(not_ignored) or "无",
+                                                   ", ".join(not_cached) or "无"))
+
+
+def test_build_logs_dir_is_cache_carried_but_still_committed_for_now():
+    """build_logs 已在缓存 path 里，但**这批还不能**把它从提交清单摘掉。
+
+    原因（实测耦合）：`build-log-summary.yml` 每小时从 git 读 jsonl 再提交 summary。
+    单独把 jsonl 摘掉 ⇒ 它读到空目录 ⇒ 把主构建生成的正确摘要覆盖成 builds=0 并提交。
+    所以 jsonl 的退役必须与"每日一次闸门 + 退役该 workflow"同批（批 4），这条判据就是钉住这个顺序。
+    """
+    cached = set(_path_lines(_by_name("Save cross-build state cache")))
+    assert LOG_DIR_NAME in cached, "build_logs 不在缓存 path：批 4 想切每日提交时没有跨场累积承载体"
+    names = _added_names()
+    assert LOG_DIR_NAME in names, (
+        "build_logs 已被摘出提交清单，但批 4（每日闸门 + 退役 build-log-summary.yml）还没落地 —— "
+        "这个顺序会让每小时摘要工作流把摘要覆盖成 0")
