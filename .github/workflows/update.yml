@@ -102,11 +102,15 @@ jobs:
       - name: Quality gate A2 — RSS history persistence & site nav structure (blocking)
         run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ tests/rss_translate/test_runtime_translate_guards.py tests/rss_translate/test_wall_queue_window.py tests/rss_translate/test_buildtime_skip_guard.py tests/rss_translate/test_agnes_429_backoff.py -q -s
 
-      # ── 质量门禁 A3：产物与生成端漂移（advisory）──
-      # 只观测不拦截：index.html 每场由 template.html 重写，漂移下一场自愈。
-      # 拿它去挡构建会自锁——能修好产物的那场构建恰好被它自己屏掉（2026-09-26 实测：
-      # 模板已修、产物未重建时该条红，而 A2 一红即不部署）。结构配平的正在 A2。
-      - name: Quality gate A3 — artifact drift vs template (advisory)
+      # ── 质量门禁 A3：纯产物页面不许回到 git（advisory）──
+      # 原名"artifact drift vs template"已失效：batch① 之后产物不进提交清单，那条恒等式
+      # 只能拿库里那份**冻结快照**去比模板 —— 谁下次改 template.html 的 header 它就红，
+      # 而且没有正当修法（手改产物再入库 = 把 3.8 MB/场 的历史压力请回来）。详见手册 §10.33/§10.34。
+      # 现在它看的是 git 树：根目录那 4 个每场重写、无人跨场读回的页面 HTML 不许被跟踪。
+      # 仍然只观测不拦截：文件回不回 git 只是历史体积问题，不是站点坏掉；
+      # 拿它挡 blocking 闸 = 一场部署为一笔 3 MiB 滞留陪葬（本仓 10-01 实测过冻两小时的代价）。
+      # header 的结构配平另有人在 A2 挡着：tests/site_nav/test_header_structure.py。
+      - name: Quality gate A3 — generated pages must stay out of git (advisory)
         continue-on-error: true
         run: python -m pytest tests/site_nav_drift/ -q -s
 
@@ -200,7 +204,11 @@ jobs:
         run: |
           python -c "
           import build_logger
-          removed = build_logger.cleanup(14)
+          # 保留 5 天：实测单日 .jsonl 2.58~2.80 MiB，保 14 天时 build_logs/ 一家
+          # 就占远端跟踪内容的 58%（42.52 MiB）。只有写方（本步与 build-log-summary.yml
+          # 各写当天），无人读 5 天前的日志 ⇒ 裁剪不伤功能，历史里旧文件仍可随时回捞。
+          # 上限由 tests/rss_history/test_log_retention_days.py 钉住，别顺手改回 14 或改成 0。
+          removed = build_logger.cleanup(5)
           print('[日志] 已清理 %d 个过期日志文件: %s' % (len(removed), removed) if removed else '[日志] 无过期日志需要清理')
           "
 

@@ -3938,6 +3938,23 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     return e.replace(re,'<mark>$1</mark>');
   }
   function artKey(a){ return a.sk+'|'+(a.u&&a.u!=='#'?a.u:a.t); }
+  /* 封面 referrer 策略。默认仍 `no-referrer`（多数图床靠它避免 Referer 泄露），但**有的图床
+     是"不带 Referer 就不给图"**：2026-10-01 实测 `images1.caifuzhongwen.com` 带 Referer 即 200、
+     不带 403 —— 全局一刀切等于自己把图关掉（用户记录里把这称为"已确认的一处自我伤害"）。
+     名单按**主机名后缀**匹配，绝不做子串匹配，否则 `http://evil.com/?x=caifuzhongwen.com` 会冒充命中。
+     判据：tests/site_nav/test_orphan_requests.py（含那条冒充样本与"改成子串匹配"的变异）。 */
+  var _REF_HOSTS = ['caifuzhongwen.com'];
+  function _coverRefPolicy(u){
+    var s = String(u || '');
+    if (s.lastIndexOf('http://', 0) !== 0 && s.lastIndexOf('https://', 0) !== 0) return 'no-referrer';
+    var rest = s.substring(s.indexOf('//') + 2);
+    var host = ((rest.split('/')[0] || '').split('@').pop().split(':')[0] || '').toLowerCase();
+    for (var i = 0; i < _REF_HOSTS.length; i++) {
+      var d = _REF_HOSTS[i];
+      if (host === d || host.slice(-(d.length + 1)) === '.' + d) return '';
+    }
+    return 'no-referrer';
+  }
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
     if(!list.length){
@@ -3970,7 +3987,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         // 取不到就摘掉自己，露出下面那张 .cover-fallback 首字占位；
         // 线上实测新华网 OSS 是 http=502/https TLS 失败、BBC 图在大陆直接连不通，
         // 没有这一句时卡片上就是一个破图。
-        h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">';
+        h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="'+esc(_coverRefPolicy(a.img))+'" onerror="this.remove()">';
         h+='</a>';
       }
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';

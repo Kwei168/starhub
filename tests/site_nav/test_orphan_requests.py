@@ -53,3 +53,64 @@ def test_cover_img_degrades_when_the_request_fails():
     assert img, "封面图的产出形状变了，本判据读不到那行：%s" % (img and img.group(0))
     assert "onerror" in img.group(0), (
         "封面图没有 onerror：外部图源挂掉时卡片上会留一个破图占位（线上实测新华网 502、BBC 连接失败）")
+
+
+# ── 封面 referrer 策略（#2：修"全局 no-referrer 一票否决部分图床"） ─────────
+COVER_SAMPLES = [
+    ("白名单主机", "http://images1.caifuzhongwen.com/a/b.jpg", ""),
+    ("白名单子域", "https://foo.caifuzhongwen.com/x.jpg", ""),
+    ("普通图床", "https://ichef.bbci.co.uk/1.jpg", "no-referrer"),
+    ("查询串里冒充白名单", "http://evil.com/?x=caifuzhongwen.com", "no-referrer"),
+    ("后缀里冒充白名单", "https://caifuzhongwen.com.evil.net/a.jpg", "no-referrer"),
+    ("相对路径", "/local/img.png", "no-referrer"),
+]
+
+
+def _cover_policy_js():
+    import os as _os
+    import sys as _sys
+    root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    _sys.path.insert(0, _os.path.join(root, "tests", "rss_composite"))
+    _sys.path.insert(0, root)
+    from _loader import load_build
+    html = load_build().build_html([], "2026-10-01 12:20", 0, 0, analysis_data=None,
+                                   diverse_window_minutes=120, diverse_enabled=True)
+
+    def cut(a, b):
+        i = html.find(a)
+        assert i >= 0, "产物里找不到 %r：#2 的实现被删了或改名了" % a
+        j = html.find(b, i)
+        assert j > i, "%r 在产物里没有结束边界" % a
+        return html[i:j + len(b)]
+
+    return cut("var _REF_HOSTS = ", ";"), cut("function _coverRefPolicy(", "\n  }")
+
+
+def test_cover_referrer_policy_is_per_host(tmp_path):
+    """按主机名判：白名单不许空，冒充样本不许命中，普通图床不许被放开。"""
+    import json
+    import re
+    import shutil
+    import subprocess
+
+    decl, fn = _cover_policy_js()
+    hosts = re.findall(r"['\"]([^'\"]+)['\"]", decl)
+    assert hosts, "白名单空了：等于退回全局 no-referrer 的一刀切（财富中文网那类又取不到图）"
+    bad = [h for h in hosts if ("/" in h or ":" in h or " " in h)]
+    assert not bad, "白名单里必须是裸主机名（带协议/路径就是写错了）：%s" % bad
+
+    node = shutil.which("node")
+    if not node:
+        import pytest
+        pytest.skip("本机没有 node，跑不了产物级 JS")
+    script = (decl + "\n" + fn + "\nvar S=" + json.dumps([s for _, s, _ in COVER_SAMPLES], ensure_ascii=False)
+              + ";\nconsole.log(JSON.stringify(S.map(_coverRefPolicy)));\n")
+    p = tmp_path / "_cover_ref.js"
+    p.write_text(script, encoding="utf-8")
+    r = subprocess.run([node, str(p)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    assert r.returncode == 0, "产物 JS 跑崩：\n%s" % (r.stderr or "")[-600:]
+    got = json.loads(r.stdout.strip())
+    assert len(got) == len(COVER_SAMPLES), "返回条数与样本不等，判据没逐条对齐"
+    for (label, _url, want), have in zip(COVER_SAMPLES, got):
+        assert want == have, "%s 的 referrer 策略应为 %r，实为 %r" % (label, want, have)
