@@ -2046,8 +2046,33 @@ insight_tracking_history.jsonl     778,323 →     2,473
    改成必须调那个函数本身才抓到。
 
 **还没做完的**
-- 回灌步的摘除：等它打印一次 `seed 已对 … 做过，跳过`（marker 已在树里）就连同 `test_state_seed.py` 一起删。
-- 计划 §1 要的"连续 3 场 tree-diff 读数"：批 5b 之后目前只有 1 场（db6aba4a09 0.032 MiB）。
-- 等用户点单：`per_source` 降频（批 4b，日志 2.82 MB/天 → ~0.2 MB/天）、`.qoder/repowiki`（每次重建 93 blob）。
+- 摘除回灌步：条件已满足（16:00 修复、16:50 打印「跳过」，ubuntu A2 379 = 本地 379），
+  预演也已做（整体移出后 373 passed、sha256 还原一致）。等 A2 瘦身那次推送被一场构建验证绿之后单独推。
+- 一条没解释清的现象（保守方向，不掩盖）：`mut_cold_start` 跑 K4（改 `build_daily_insight._load_history`
+  缺失分支）时报 "2 failed"，第二条挂在 `test_translation_cache_missing_is_a_noop_not_a_crash` 上；
+  但隔离复现（只改 INS、分别跑两个文件 / 一起跑两个文件）都只有 1 红。方向是"多报失败"而不是"漏报"，
+  所以不影响结论，但下次碰这个电池顺手查是不是 harness 里前后变异之间的模块状态残留。
+- 计划 §1 要的"连续 3 场 tree-diff 读数"：批 5b 之后 parent 相对值 = 15:25 的 0.032 MiB；
+  16:20 是日界日志那次（3.157 MiB，合法）；第三场等 17:00 之后。
+- 等用户点单：`per_source` 降频（批 4b，日志 2.82 MB/天 → ~0.2 MB/天）。
+  `.qoder/repowiki` 已从"每场成本"降级为"重建时才有一次性成本"（实测本窗口 0 个 blob）。
 - 本地索引与远端的对齐只做了白名单内路径（`tools/untrack_state.py --align-remote`），
   另一条工作线（AI 日报）未推的 89 个文件刻意不动。
+
+
+### 10.61 创口贴收口：回灌步连同它的 6 条判据一起摘掉
+
+16:00 场把 7 个状态拉回历史尺寸、16:50 场打印 `seed 已对 8a48fa7878… 做过，跳过` ⇒ 修复完成，
+摘除条件按计划兑现。这次推送的内容：
+- 删 `update.yml` 的 `Seed cross-build state from history (cold-start repair)` 步（611 → 569 行）；
+- 删 `tests/rss_history/test_state_seed.py`、`tools/mut_state_seed.py`（判据钉的就是这一步的存在，步骤没了它就是恒红的孤儿判据）；
+- 删远端的 `build_logs/.state_seed.done`（41 B，它存在的唯一意义是给那一步做幂等）；
+- 顺带把依赖 `build_daily_insight` 的冷启动判据从 blocking 的 A2 挪到 advisory 的 gate B
+  （A2 的重依赖此前只到 `build_rss_aggregator`；把"洞察依赖装不上"接进 blocking 闸就是新的自锁面）。
+
+**两个彩排工具随主体一起删了**（`rehearse_state_seed.py` / `rehearse_seed_removal.py`）：它们的主题没了还留着，
+就是两个"一跑就崩"的死工具。要复现的是**方法**而不是文件本身：
+① 新增 shell 步骤前，把 `run` 正文抽出来在临时空目录按分支真跑（这次跑了缺失/早退/在盘但塌了三条）；
+② 摘除前，把步骤 + 附属判据整体临时移出、跑完整门禁、再 sha256 逐字节还原（这次 A2 摘除后 372 passed，
+   且证明没有别的判据偷偷 index 那个步骤名）。
+本地门禁计数轨迹：379（A2 瘦身前）→ 378（搬走 1 条）→ 372（摘掉 6 条回灌判据）。

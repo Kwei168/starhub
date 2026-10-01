@@ -31,11 +31,6 @@ def _bra():
     return m
 
 
-def _bdi():
-    import build_daily_insight as m
-    return m
-
-
 @pytest.fixture
 def empty_workdir(tmp_path, monkeypatch):
     """把 cwd 挪到一个什么都没有的目录：模块里的 *_FILE 都是相对路径 ⇒ 这就是"缓存没还原"的世界。
@@ -54,14 +49,12 @@ def empty_workdir(tmp_path, monkeypatch):
 
 def test_cache_paths_are_relative_to_workdir_root():
     """缓存 path 名单写的是根目录文件名；读取端必须用同一个形状，否则"缓存命中≠文件在盘上"。"""
-    bra, bdi = _bra(), _bdi()
+    bra = _bra()
     constants = [("bra.TRANS_CACHE_FILE", bra.TRANS_CACHE_FILE),
                  ("bra.HOT_HISTORY_FILE", bra.HOT_HISTORY_FILE),
                  ("bra.ANALYSIS_SNAPSHOT_FILE", bra.ANALYSIS_SNAPSHOT_FILE),
                  ("bra.RSS_TREND_HISTORY_FILE", bra.RSS_TREND_HISTORY_FILE),
-                 ("bra.TRENDING_SNAPSHOT_FILE", bra.TRENDING_SNAPSHOT_FILE),
-                 ("bdi.HISTORY_FILE", bdi.HISTORY_FILE),
-                 ("bdi.TRACKING_FILE", bdi.TRACKING_FILE)]
+                 ("bra.TRENDING_SNAPSHOT_FILE", bra.TRENDING_SNAPSHOT_FILE)]
     bad = [n for n, v in constants if os.path.isabs(v) or "/" in v or "\\" in v]
     assert not bad, (
         "这些状态常量不是工作目录根的相对路径，缓存与读取端会各读各的：%s" % bad)
@@ -108,15 +101,6 @@ def test_analysis_snapshot_missing_and_corrupt_return_none(empty_workdir):
     (empty_workdir / bra.ANALYSIS_SNAPSHOT_FILE).write_text('{"k": 1}', encoding="utf-8")
     assert bra._load_prev_analysis() == {"k": 1}, (
         "有正常文件时必须真读回来，否则上面两条是在空转上判绿")
-
-
-def test_insight_history_missing_and_corrupt_degrade_to_empty_days(empty_workdir):
-    bdi = _bdi()
-    assert bdi._load_history() == {"days": []}, "daily_insight_history.json 缺失应退化成空历史"
-    (empty_workdir / bdi.HISTORY_FILE).write_text("{oops", encoding="utf-8")
-    assert bdi._load_history() == {"days": []}, "损坏的洞察历史必须被吞成空历史而不是抛出"
-    (empty_workdir / bdi.HISTORY_FILE).write_text(json.dumps({"days": [{"d": 1}]}), encoding="utf-8")
-    assert bdi._load_history() == {"days": [{"d": 1}]}, "正常路径必须读回来，否则前两条是假绿"
 
 
 def test_hot_history_accumulator_survives_missing_file(empty_workdir):

@@ -82,6 +82,8 @@ def do_align(dry=False):
     allowed = set(STATE_FILES) | {"build_logs"} | {
         ".github/workflows/build-log-summary.yml",
         "rss-data-0.js", "hot_snapshot.json", "trending_snapshot.json", "descriptions_zh.json",
+        "tests/rss_history/test_state_seed.py", "tools/mut_state_seed.py",
+        "build_logs/.state_seed.done",
     }
     offenders = [p for p in gone if p in allowed or p.startswith("build_logs/")
                  or p.startswith("rss-data-") or p.startswith(".qoder/")]

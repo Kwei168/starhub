@@ -222,48 +222,6 @@ jobs:
           restore-keys: |
             starhub-state-${{ runner.os }}-
 
-      - name: Seed cross-build state from history (cold-start repair)
-        # 批 5a 把 starhub-state 的 path 从 7 条加到 10 条，而 actions/cache 把 path 清单算进缓存
-        # 身份 ⇒ 整族旧缓存瞬间不可达（14:00 场：Cache not found for input keys: starhub-state-Linux-，
-        # 6 个状态文件 MISSING）。伤害形态不是"缺失"而是"都在盘上但塌了"——15:34 场实测：
-        # hot_history 8,278,933→47,073、translations 3,313,241→198,958、analysis_snapshot
-        # 3,645,569→122,213、daily_insight_history 263,570→17,177、rss_trend_history
-        # 1,153,325→1,980、insight_tracking 778,323→2,473。这些是 append-only 历史与"每场只补
-        # 新增"的译文缓存，不会自愈。全尺寸副本仍在 git 历史里（下面钉的 sha = 批 3 删它们之前
-        # 最后一场的树，实测 7 个 raw URL 全 200 且字节数与塌前一致）。
-        # 四条自我约束：① 先问历史副本的 Content-Length，本地比它短才回灌（第一版只判 `[ ! -f ]`，
-        # 对本场的形态一场也不会动 —— 判据绿而问题没修）；② marker 落在 build_logs/ 里 ⇒ 对同一
-        # 个 sha 只修一次，避免每场拿旧副本盖新数据（translations 有 TRANS_CACHE_MAX=30000 的 LRU
-        # 摆动，没 marker 就会反复回灌）；marker 不能靠往缓存名单加新文件来实现 —— 改名单=换族；
-        # ③ 只写工作目录，绝不 git add（否则又把冻结副本请回库里，白做批 3）；
-        # ④ continue-on-error + 位置在 Restore 之后、build 之前。
-        # 两场齐全后这一步连同 tests/rss_history/test_state_seed.py 一起摘掉。
-        continue-on-error: true
-        run: |
-          SEED_SHA=8a48fa78787e45557ede69f69b22c89f49c26609
-          MARKER=build_logs/.state_seed.done
-          RAW=https://raw.githubusercontent.com/Kwei168/starhub/8a48fa78787e45557ede69f69b22c89f49c26609
-          if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$SEED_SHA" ]; then
-            echo "  seed 已对 $SEED_SHA 做过，跳过"
-            exit 0
-          fi
-          mkdir -p build_logs
-          for f in hot_history.json analysis_snapshot.json translations.json rss_trend_history.json insight_tracking_history.jsonl daily_insight_tracking_history.jsonl daily_insight_history.json; do
-            H=$(curl -sI --max-time 60 "$RAW/$f" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}')
-            L=0
-            if [ -f "$f" ]; then L=$(wc -c < "$f"); fi
-            if [ -n "$H" ] && [ "$L" -lt "$H" ]; then
-              echo "  SEED $f 本地 ${L} B < 历史 ${H} B -> 回灌"
-              curl -sSfL --max-time 180 -o "$f" "$RAW/$f" || { echo "::warning title=冷启动回灌失败::$f 取不回来，本场按现状继续"; rm -f "$f"; }
-            else
-              echo "  keep $f (${L} B; 历史 ${H:-未知} B)"
-            fi
-          done
-          echo "$SEED_SHA" > "$MARKER"
-          for f in hot_history.json translations.json analysis_snapshot.json daily_insight_history.json; do
-            if [ -f "$f" ]; then echo "  seeded $f ($(wc -c < "$f") B)"; fi
-          done
-
       - name: Diagnose cross-build state cache restore
         run: |
           # cache-hit/matched-key 在 restore-keys 前缀命中时不可信（同 RSS history 那步的实测教训），
