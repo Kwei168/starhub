@@ -1081,6 +1081,85 @@ A3 是 `continue-on-error` ⇒ 不会冻部署，但会留下一条永久噪声 
 3. 最后用 `--delete` 删掉这 4 个跟踪副本（工具已具备删除与"远端 404 复查"两半）。
 顺序不能反：先删文件会让第 2 步的判据变成"文件不存在"的错误，而不是可读的红。
 
+### 10.34 已备好但**未推**的收口改动：A3 换成"看树的再入库守卫"（本地四向验通）
+
+`tests/site_nav_drift/test_artifact_drift.py` 已整文件重写（工作树里改好、**没有推送**）：
+旧的 `test_index_header_matches_template`（模板 vs 冻结快照的恒等式）删掉，换成
+`test_no_generated_page_html_is_tracked` —— 用 `git ls-files` **看树**，点名根目录那 4 个纯产物页面。
+留在 A3（`continue-on-error`）而**不进 A2**：文件回来只是历史体积变大，不是站点坏掉；
+为 3 MiB 的滞留去冻一次部署，正是本仓 10-01 实测过两小时代价的那种错。
+
+**为什么不单独推**：现在推上去 A3 会当场红（4 个文件确实还在树里），而产物不删它就永远红
+⇒ 变成一条永久噪声。所以必须与 `--delete` **同一个提交**落地，那场构建里它就自然绿。
+
+预演把自己的两个缺陷抓出来了（这就是预演的价值，不是走过场）：
+1. 守卫第一版按"所有 `.html` 不在白名单"判 ⇒ 误把 `docs/x.html`、`lib/y.html` 报成违规。
+   已改成**只按根目录那 4 个文件名精确匹配**（`template.html` 是源码，必须留下）。
+2. 我用 `mv` 模拟删除态跑 A2，`tests/rss_history/test_history_bounds.py:203` 抛
+   `FileNotFoundError: ai-daily.html` —— 它遍历 `git ls-files` 之后逐个 `open`，
+   对"**仍被跟踪但工作树缺失**"这种状态没有抵抗力。CI 的干净检出不存在该状态（跟踪=在场），
+   所以**不是 CI 风险**；但真删之后本地会撞上 ⇒ 收口时必须同步 `git rm --cached` 那 4 条，
+   让本地索引与远端一致（别顺手 `git rm` 掉文件本身：本地 HEAD 比远端旧，索引操作要单独做）。
+
+四向验（全部实测，不是推理）：
+
+```
+真实清单(仍跟踪4个)   -> RED   点名 4 个文件
+删除后清单            -> GREEN
+含 docs/ 与子目录 html -> GREEN  （不误报非根目录、非那 4 个的名字）
+拿不到清单            -> RED    拒绝"静默跳过 = 绿但什么都没查"
+```
+
+复跑 CI 原命令 **277 passed**（工作树已复原，4 个文件放回，`git status` 对 `*.html` 无 D 记录）。
+待批准后的一次性推送。**推送状态分两段记清，别让人猜**：
+
+已在远端（零功能风险，手册本身不被执行；登记串只改字典值，`test_unwired_entries_are_explained`
+要求长度 ≥12 已核，本地 A2 原命令 277 passed）：
+- 本手册 §10.32–§10.35
+- `tests/rss_history/test_gate_wiring.py` —— `UNWIRED["tools"]` 的数字按实测改成 30 条 / 128.7s
+
+**仍在本地、等你批准才动（必须同一提交，缺一就留谎或留永久红）**：
+1. `--delete index.html --delete rss-aggregator.html --delete ai-daily.html --delete daily-insight-history.html`
+2. `tests/site_nav_drift/test_artifact_drift.py` —— 看树的再入库守卫（四向已验）
+3. `.github/workflows/update.yml` —— A3 步骤名 `artifact drift vs template` → `generated pages must stay out of git`，
+   注释同步改写。不改这段，workflow 里就会留着"index.html 每场由 template 重写、漂移下一场自愈"这种**已经不存在**的语义。
+   改名安全：全仓没有任何判据按 A3 步骤名匹配（`grep "Quality gate A3" tests/ tools/ *.py` = 0 命中），
+   而 `_a2_cmd()` 只认 `Quality gate A2` 前缀，A2 那行未动。
+
+校验现状：改完 update.yml 后 `yaml.safe_load` 仍是 28 步、A2 原命令 **277 passed**、
+`tests/site_nav_drift/` **如实际红 1 条**（4 个文件仍在树里）—— 这正是第 1 项必须与第 2、3 项同一提交落地的原因。
+落地后复查：`trees/main?recursive=1` 里这 4 个路径 404、下一场 A3 转绿、
+`git ls-files '*.html'` 只剩 `template.html`（本地索引也要 `git rm --cached` 那 4 条，见上文）。
+
+
+
+### 10.35 接线清点：今天动过的判据里未接线的 6 个，全部落在**已登记**的那两族
+
+用 mtime 捞出今天改过的 `tests/**/test_*.py`，逐个对照 `.github/workflows/*`（目录级与文件级都算命中）：
+
+```
+UNWIRED tests/rss_composite/test_diverse_realdata.py   ← 登记在 UNWIRED["rss_composite"]
+UNWIRED tests/rss_composite/test_refresh_tags_js.py    ← 同上
+UNWIRED tests/rss_composite/test_snapshot_tags.py      ← 同上
+UNWIRED tests/rss_composite/test_tag_semantics.py      ← 同上
+UNWIRED tests/tools/test_data_api_push_atomic.py       ← 登记在 UNWIRED["tools"]
+UNWIRED tests/tools/test_data_api_push_delete.py       ← 同上（今天新增的那条也在这族里）
+```
+
+⇒ **今天没有新增"写着但没人跑"的孤儿**；其余全部 WIRED，含我换掉 A3 之后的
+`tests/site_nav_drift/test_artifact_drift.py`。为什么要按文件再数一遍：
+`test_no_new_orphan_test_directory` 的粒度是**目录**，它挡得住"新增一个没人跑的目录"，
+挡不住"往已登记的目录里再塞一条没人跑的判据"。
+
+顺带核出登记表里一个**旧数字**：`UNWIRED["tools"]` 原写"本机 182s"，
+实测 `pytest tests/tools/ -q` = **30 passed / 128.7s**（墙钟 129s），
+慢在 3 条各 30~62s（都在临时仓里真跑 git，不是外呼）。方向不变（确实不值得每场跑），
+但数字已按实测改过（改在 `test_gate_wiring.py` 的登记串里）。
+该改动与 §10.34 同批推，**当前只在本地** —— 单独推会把 14:00 场看守的 head 锚点换掉，
+那种"自己把自己等的那场换掉"的错本手册已经记过一次。
+
+
+
 
 · 改钉一条可信的：`tests/site_nav/test_artifact_js_parses.py::test_wall_queue_symbols_are_actually_called_in_artifact`
   对窗口队列 12 个符号要求"在产物的代码行里出现 ≥2 次"，只跳过注释行。变异验证：删掉 `renderWall()` 末尾
