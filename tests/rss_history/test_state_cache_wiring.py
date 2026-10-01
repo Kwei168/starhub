@@ -46,6 +46,9 @@ STATE_FILES = {
     "daily_insight_history.json",
 }
 LOG_DIR_NAME = "build_logs"
+# 反空转对照用：批 2 没动它，两条 `git add` 清单里都还有 ⇒ 只要工作流还在跑就一直被跟踪。
+PROBE_TRACKED_CONTROL = "rss_sources.json"
+PROBE_ABSENT_CONTROL = "starhub_probe_control_absent.json"
 
 
 def _steps():
@@ -225,6 +228,29 @@ def test_state_files_are_in_both_gitignore_and_cache_paths():
     assert not not_ignored and not not_cached, (
         ".gitignore 缺少=%s；缓存 path 缺少=%s" % (", ".join(not_ignored) or "无",
                                                    ", ".join(not_cached) or "无"))
+
+
+def test_tracking_probe_works_in_both_directions():
+    """批 3 那条"不再被跟踪"判据的反空转守卫：同一个探针必须在两个方向都能出活。
+
+    `git ls-files --error-unmatch` 返回非 0 有两种完全不同的原因：文件确实没被跟踪，
+    和 git 根本没法问（坏索引、浅检出、换机器、不在仓里）。前者是真退役，后者是**假绿**——
+    而假绿的判据此后永远拦不住"谁把状态文件 add 回来"。
+    所以这里双向都钉：一个必须"看得见"（在 add 清单里、批 2 没动的 rss_sources.json），
+    一个必须"看不见"（仓里压根没有的名字）。任一侧失配 ⇒ 探针失效，批 3 判据不可信。
+    """
+    def code(name):
+        return subprocess.run(["git", "ls-files", "--error-unmatch", name],
+                              capture_output=True, text=True, cwd=ROOT).returncode
+
+    tracked = code(PROBE_TRACKED_CONTROL)
+    assert tracked == 0, (
+        "探针看不见 %s（它仍在两条 git add 清单里，理应被跟踪）—— git 侧出问题了，"
+        "此时 test_state_files_are_not_tracked 的「绿」是假绿：%s" % (PROBE_TRACKED_CONTROL, "探针失效"))
+    absent = code(PROBE_ABSENT_CONTROL)
+    assert absent != 0, (
+        "探针说 %s 被跟踪，而这个名字在仓里根本不存在 ⇒ git 侧对任何名字都返回 0，"
+        "批 3 那条判据会在「全都跟踪」的仓里判绿" % PROBE_ABSENT_CONTROL)
 
 
 def test_state_files_are_not_tracked():
