@@ -925,6 +925,28 @@ if(_wallDirty){ _wallDirty = 0; renderWall(); }
 没有第二个 `_wallDirty` 这种"写了没人读"的形状。**口径提醒**：引用计数只能证明"被读过"，
 不能证明"读的地方会执行到"——恒真标志就是引用计数抓不到、靠读控制流才抓到的。
 
+### 10.31 本地 `.git` 是 15 个 commit 的浅取副本，别在本地读全历史
+
+想把本地 main 对齐到刚推的 `531cdc2b` 时用了 `git fetch --depth=1 origin main`，它带来两个后果，
+第二个是我自己造成的：
+
+1. 目标没达到：新提交的父 `ff425364` 依旧不在本地，`update-ref` 直接拒绝（`nonexistent object`）。
+   ⇒ **本地 `git push`/对齐都指望不上**，推送后"本地与远端两条并行历史"是本仓的常态（§工具 `data_api_push.py`
+   每场都自己重读远端 head，所以不受影响）。
+2. 副作用：`--depth=1` 会把 `390fc0d`、`b2e84fb3` 这些**父对象明明还在本地**的提交也写进 `.git/shallow`，
+   于是 `git rev-list --count refs/heads/main` 从 **14 掉到 2**，此后任何 `git log` 类审计都失真。
+
+处置（已做完并体检）：逐条判断每个边界的父对象能否 `git cat-file -e`，只保留父真缺失的两条
+（`093eec06`←父 `820cce2b` 缺失、`531cdc2b`←父 `ff425364` 缺失），其余 8 条假边界从 `.git/shallow` 移除，
+动前先 `cp .git/shallow .git/shallow.bak-20261001`。恢复后 `rev-list --count main` = **14**，
+`git fsck --connectivity-only` 除 dangling 提示外**无缺失对象**。
+
+由此定下测量口径：`git cat-file --batch-all-objects | awk '$2=="commit"' | wc -l` 本地 = **15**，
+而远端是重写后的 2037 条量级 ⇒ **凡"全库体积/提交数/某路径全部历史"的读数，必须在 CI 里取**
+（`repo-trim.yml` 用 `fetch-depth: 0`，实测 259 秒拉完整历史；本机线路 0.2~0.34 MB/s 且不可续传）。
+本地只做对象级/工作树级核对。参见 §10.20 与手册开头的体积读数，那批数字全部来自 CI。
+
+
 
 
 

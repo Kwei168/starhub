@@ -280,7 +280,7 @@ jobs:
         # rss-history 34 键仅 0.33GB。键里带 run_id ⇒ 每场新增一键从不覆盖，而既有测试又要求
         # 保留 run_attempt（重跑同 run 时"键已存在→静默不保存"），所以只能按族淘汰最旧键。
         # 配额满时 Save 是 continue-on-error ⇒ 会静默不保存。尚未实际观察到失败（29/29 场都有键），
-# 但剩余额度只有约 10 MB 而单个 emb 键均 219 MB ⇒ 这是悬崖前的预防性回收，不是在修已发生的退化。
+        # 但剩余额度只有约 10 MB 而单个 emb 键均 219 MB ⇒ 这是悬崖前的预防性回收，不是在修已发生的退化。
         # 本场键（含 run_id）永不删除；淘汰失败不得连坐 Vercel 部署。
         if: always()
         continue-on-error: true
