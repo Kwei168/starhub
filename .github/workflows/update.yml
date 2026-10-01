@@ -196,6 +196,54 @@ jobs:
             echo "  ✗ 无历史索引：本场按冷启动全量抓取（增量跳过不触发）"
           fi
 
+      # ── 跨场状态缓存族 starhub-state（批 1：只搭通路，7 个文件仍然入库）──
+      # 动机（实测）：一次 bot 提交新增 14 个 blob / 19.83 MiB、消失 0 个，其中 17.4 MiB 是这 7 个
+      # "只有构建脚本自己读回"的状态文件 + build_logs。git 的模型是"内容变一次就永久多一份副本"，
+      # 所以调保留天数只改斜率；要曲线平就得让这些文件不再每场入库。批 1 先把通路搭起来
+      # （缓存只是第二份 ⇒ 零风险），下一批再从提交清单里摘名字。
+      # 读取端零改动：全部走 build_rss_aggregator.py 的 *_FILE 常量指向的同一路径。
+      - name: Restore cross-build state cache
+        id: state-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            hot_history.json
+            analysis_snapshot.json
+            translations.json
+            rss_trend_history.json
+            insight_tracking_history.jsonl
+            daily_insight_tracking_history.jsonl
+            daily_insight_history.json
+            build_logs
+          key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            starhub-state-${{ runner.os }}-
+
+      - name: Diagnose cross-build state cache restore
+        run: |
+          # cache-hit/matched-key 在 restore-keys 前缀命中时不可信（同 RSS history 那步的实测教训），
+          # 唯一可信信号是磁盘上的字节数。冷启动不拦构建，但必须出声：
+          # translations.json 丢了要重译 ~8400 条（真花配额）、analysis_snapshot.json 丢了
+          # 会让 _semantics_missing 恒真 ⇒ 每场重跑 LLM 重分析。
+          echo "=== starhub-state restore diagnostics ==="
+          for f in hot_history.json analysis_snapshot.json translations.json rss_trend_history.json insight_tracking_history.jsonl daily_insight_tracking_history.jsonl daily_insight_history.json; do
+            if [ -f "$f" ]; then
+              echo "  OK $f ($(wc -c < "$f") B)"
+            else
+              echo "  MISSING $f"
+              case "$f" in
+                translations.json|analysis_snapshot.json)
+                  echo "::warning title=跨场状态冷启动::$f 不在盘上，本场按冷启动跑（代价：重译/重跑重分析）"
+                  ;;
+              esac
+            fi
+          done
+          if [ -d build_logs ]; then
+            echo "  OK build_logs/ ($(ls build_logs | wc -l) 个文件, $(du -sb build_logs | cut -f1) B)"
+          else
+            echo "  MISSING build_logs/（当日累积从空开始，摘要计数会偏低）"
+          fi
+
       - name: Fetch stars & build
         id: build
         run: python fetch_and_build.py $MODE
@@ -297,7 +345,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python tools/trim_actions_cache.py --repo "$GITHUB_REPOSITORY" \
-            --keep emb-cache=4 --keep rss-history=5 --run-id "$GITHUB_RUN_ID"
+            --keep emb-cache=4 --keep rss-history=5 --keep starhub-state=3 --run-id "$GITHUB_RUN_ID"
 
       - name: Save embedding cache (before prune deletes .npy)
         # 无 continue-on-error 时这一步会红掉整个作业、连 Commit 与部署一起跳过；
@@ -321,6 +369,23 @@ jobs:
             rss_history_*.json
             rss_history_index.json
           key: rss-history-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # 位置刻意在 Cleanup old build logs 之后、Prune 之前：缓存里就是裁剪后的目录，
+      # 否则 build_logs 会在缓存里无界增长（prune 步会 rm -rf build_logs，必须在保存之后）。
+      - name: Save cross-build state cache (before prune deletes build_logs)
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            hot_history.json
+            analysis_snapshot.json
+            translations.json
+            rss_trend_history.json
+            insight_tracking_history.jsonl
+            daily_insight_tracking_history.jsonl
+            daily_insight_history.json
+            build_logs
+          key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Stage Pages site for Actions deployment
         # 这一步必须在 prune 之前（prune 会把大产物从工作目录删掉），因此它天然排在 Vercel 之前。

@@ -1,0 +1,197 @@
+# -*- coding: utf-8 -*-
+"""批 1 判据：跨场状态缓存族 `starhub-state` 的接线（顺序、键形状、名单、淘汰、冷启动出声）。
+
+为什么做这件事（实测，2026-10-01）：一次 bot 提交新增 **14 个 blob / 19.83 MiB、消失 0 个**，
+其中 17.4 MiB 是下面这 7 个"只有构建脚本自己读回"的跨场状态文件。git 的模型是
+"内容变一次就永久多一份副本"，所以 `cleanup(N)`/保留天数只改斜率；**要让曲线平，
+这些文件必须不再每场入库**，而它们的跨场传递要由 `actions/cache` 承接（`rss_history`、
+`emb-cache` 已经是这个形状）。
+
+本批只搭通路、不动提交清单 ⇒ 7 个文件仍然入库，零风险；下一批才从 `git add` 里摘名字。
+所以这批的判据全部钉"通路是否真的接对了"，而不是"是否已退役"：
+
+  ① Restore 必须在 `git clean -fdq`（`Restore worktree after insight tests`）之后、
+     `Fetch stars & build` 之前 —— 早于 clean 会被当场删掉，等于没还原。
+  ② Save 必须在 `Cleanup old build logs` 之后、`Prune large build artifacts` 之前 ——
+     晚于 prune 就没目录可存（prune 会 `rm -rf build_logs`），早于 cleanup 会把过期日志存进缓存。
+  ③ Restore 与 Save 的 key 必须逐字相同、含 run_id 与 run_attempt、族名前缀与
+     `--keep starhub-state=N` 的 N 边对得上 —— `trim_actions_cache.py` 靠 key 前缀认族，
+     名字写错就是"每场新增一键、永不被淘汰"的新无界点。
+  ④ path 名单必须精确等于 7 个状态文件 + `build_logs`，多一个少一个都算接线错。
+  ⑤ 冷启动必须出声（尤其 translations / analysis_snapshot 这两个"丢了要花钱"的），
+     但不许拦构建 —— 判据要能区分"静默退化"与"出声退化"。
+"""
+import os
+
+import pytest
+
+yaml = pytest.importorskip("yaml")
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "workflows", "update.yml")
+
+FAMILY = "starhub-state"
+# 这 7 个是"每场都变、且只有构建脚本自己读回"的跨场状态（实测字节见模块 docstring）
+STATE_FILES = {
+    "hot_history.json",
+    "analysis_snapshot.json",
+    "translations.json",
+    "rss_trend_history.json",
+    "insight_tracking_history.jsonl",
+    "daily_insight_tracking_history.jsonl",
+    "daily_insight_history.json",
+}
+LOG_DIR_NAME = "build_logs"
+
+
+def _steps():
+    with open(WF, encoding="utf-8") as fh:
+        doc = yaml.safe_load(fh)
+    steps = doc["jobs"]["update"]["steps"]
+    assert isinstance(steps, list) and len(steps) >= 20, (
+        "update.yml 解析出的步骤数异常（%r）—— 判据不能建在一次失败的解析上" % (steps,))
+    return steps
+
+
+def _by_name(frag):
+    hits = [s for s in _steps() if frag in (s.get("name") or "")]
+    assert len(hits) == 1, "步骤名 %r 命中 %d 个（应为 1 个），判据的定位失效" % (frag, len(hits))
+    return hits[0]
+
+
+def _idx(frag):
+    names = [(s.get("name") or "") for s in _steps()]
+    hits = [i for i, n in enumerate(names) if frag in n]
+    assert len(hits) == 1, "%r 在步骤序列里出现 %d 次，顺序判据无法定位：%s" % (frag, len(hits), names)
+    return hits[0]
+
+
+def _path_lines(step):
+    raw = (step.get("with") or {}).get("path") or ""
+    entries = [ln.strip() for ln in str(raw).splitlines() if ln.strip()]
+    assert entries, "步骤 %r 的 path 是空的 —— 等于缓存了个寂寞" % step.get("name")
+    return entries
+
+
+def test_state_restore_step_exists_and_uses_cache_restore():
+    s = _by_name("Restore cross-build state cache")
+    assert s.get("uses", "").startswith("actions/cache/restore@v"), (
+        "还原步必须用 actions/cache/restore（不是 actions/cache@v4，后者会把 Save 也带进还原位置）")
+
+
+def test_state_save_step_exists_and_is_nonblocking():
+    s = _by_name("Save cross-build state cache")
+    assert s.get("uses", "").startswith("actions/cache/save@v"), (
+        "保存步要用 actions/cache/save，且必须与还原步成对，否则每场只读不写、缓存永远是旧的")
+    assert s.get("continue-on-error") is True, (
+        "保存失败不得连坐 Vercel/Pages 部署（本仓有 A2 blocking 连坐冻两小时的前例，方向不能反过来）")
+
+
+def test_state_cache_key_is_identical_on_both_ends_and_run_unique():
+    r = (_by_name("Restore cross-build state cache").get("with") or {})
+    w = (_by_name("Save cross-build state cache").get("with") or {})
+    rk, wk = r.get("key", ""), w.get("key", "")
+    assert rk and rk == wk, (
+        "还原 key %r 与保存 key %r 必须逐字相同；不一致时下一场永远命中不到自己上一场写的键"
+        % (rk, wk))
+    assert rk.startswith(FAMILY + "-"), "key 必须以族名 %s- 开头，否则 trim 认不出这个族" % FAMILY
+    for token in ("github.run_id", "github.run_attempt"):
+        assert token in rk, "key 缺 %s：同 run 重跑会因'键已存在'静默不保存（rss-history 那步的实测教训）" % token
+
+
+def test_state_restore_keys_fall_back_to_family_prefix():
+    r = _by_name("Restore cross-build state cache").get("with") or {}
+    prefix = (r.get("restore-keys") or "").strip()
+    assert prefix.startswith(FAMILY + "-"), (
+        "restore-keys 必须是 %s- 前缀回退，否则缓存被清一次就永久冷启动（每场重跑 LLM 重分析）" % FAMILY)
+
+
+def test_state_restore_runs_after_worktree_clean_and_before_build():
+    a = _idx("Restore worktree after insight tests")
+    b = _idx("Restore cross-build state cache")
+    c = _idx("Fetch stars & build")
+    assert a < b < c, (
+        "还原必须在 git clean -fdq 之后（:143 那步会把未跟踪的还原文件当垃圾删掉）、构建之前")
+
+
+def test_state_save_runs_after_cleanup_and_before_prune():
+    a = _idx("Cleanup old build logs")
+    b = _idx("Save cross-build state cache")
+    c = _idx("Prune large build artifacts")
+    assert a < b < c, (
+        "保存要在 cleanup 之后（否则把过期日志存进缓存）、prune 之前（prune 会 rm -rf build_logs）")
+
+
+@pytest.mark.parametrize("step_name", ["Restore cross-build state cache",
+                                        "Save cross-build state cache"])
+def test_state_path_list_is_exactly_the_seven_files_plus_log_dir(step_name):
+    entries = set(_path_lines(_by_name(step_name)))
+    assert entries == STATE_FILES | {LOG_DIR_NAME}, (
+        "%s 的 path 名单与状态族清单不一致：多出来=%s，少了=%s" % (
+            step_name,
+            sorted(entries - (STATE_FILES | {LOG_DIR_NAME})),
+            sorted((STATE_FILES | {LOG_DIR_NAME}) - entries)))
+
+
+def test_two_path_lists_are_identical():
+    r = set(_path_lines(_by_name("Restore cross-build state cache")))
+    w = set(_path_lines(_by_name("Save cross-build state cache")))
+    assert r == w, "还原与保存的名单必须同一份，否则某族文件会被'保存但不还原'或反之"
+
+
+def test_trim_keeps_starhub_state_family_with_a_real_budget():
+    text = open(WF, encoding="utf-8").read()
+    kv = dict()
+    for m in __import__("re").finditer(r"--keep\s+([A-Za-z0-9_-]+)=(\d+)", text):
+        kv[m.group(1)] = int(m.group(2))
+    assert FAMILY in kv, (
+        "键里含 run_id ⇒ 每场新增一条键从不覆盖；不给这个族配 --keep 就是新造一个无界增长点")
+    assert kv[FAMILY] >= 2, "--keep %s=%d 太少：缓存被清一次以上就没得回退" % (FAMILY, kv[FAMILY])
+    # 族名必须真的是 key 的前缀，否则 trim 按前缀认族时会把它当"不认识的族"跳过
+    key = ((_by_name("Save cross-build state cache").get("with") or {}).get("key") or "")
+    assert key.startswith(kv and FAMILY + "-"), "key 前缀与 --keep 族名不一致：%r" % key
+
+
+def test_diagnose_step_reports_bytes_and_warns_on_the_expensive_two():
+    """冷启动必须出声：这两个文件丢了不是"少点信息"，是真花钱/真重跑 LLM。"""
+    s = _by_name("Diagnose cross-build state cache")
+    body = s.get("run") or ""
+    assert body.startswith("\n") or body, "Diagnose 步没有 run 内容"
+    assert "wc -c" in body, "诊断必须打印真实字节数 —— cache-hit/matched-key 在前缀命中时不可信（实测）"
+    assert "::warning" in body, "冷启动必须出声；静默退化是本仓付过两次代价的形态"
+    for expensive in ("translations.json", "analysis_snapshot.json"):
+        assert expensive in body, "%s 的冷启动代价最贵，诊断必须点名它" % expensive
+    for f in sorted(STATE_FILES):
+        assert f in body, "诊断没覆盖 %s：那它是否在盘上无人知道" % f
+
+
+def _added_names():
+    """解析出所有 `git add <操作数>` 里真正被 add 的路径名。
+
+    不能用"这一行有没有这个名字"来判断：条件式 `if [ -f x ]; then git add y; fi` 里
+    `[ -f ]` 那一半也带着 x，用整行子串会被骗过（S13 变异体实测就是这么逃掉的）。
+    """
+    import re
+    text = open(WF, encoding="utf-8").read()
+    names = set()
+    for m in re.finditer(r"git add ([^\n;|&]+)", text):
+        for tok in m.group(1).split():
+            if tok.startswith("-"):
+                continue
+            names.add(tok.rstrip("/"))
+    assert names, "一个 git add 操作数都没解析到 —— 判据在空集合上跑"
+    return names
+
+
+def test_state_family_files_are_still_committed_at_this_stage():
+    """批 1 是纯加法：这批之后这些名字**仍然**在 `git add` 的操作数里。
+
+    反向钉住"批次没跑太快"——如果谁在批 2 之前就把名字从 add 清单删了，而缓存还没验证过一轮，
+    就会出现"既没入库也没缓存"的断档。这条判据会在批 2 里被有意替换成相反的断言。
+    """
+    names = _added_names()
+    missing = sorted(f for f in STATE_FILES if f not in names)
+    assert not missing, (
+        "这些状态文件已不在 git add 的操作数里：%s —— 批 1 只搭通路，退役要在缓存被真实验证一轮之后（批 2）"
+        % ", ".join(missing))
+    assert LOG_DIR_NAME in names, "build_logs 不在提交清单里：那日志的跨场累积还在靠什么？"
