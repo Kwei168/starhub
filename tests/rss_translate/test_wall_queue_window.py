@@ -218,6 +218,55 @@ setTimeout(function(){
         "只是把窗口加长就打断了在飞批次（扩窗被当成换窗口）：abort=%d" % out["aborted"])
 
 
+def test_request_volume_is_bounded_by_the_window():
+    """一次访问的总量必须被窗口卡住：≤ wallLimit 条标题 + 30 条摘要。
+
+    这条钉的是本次改动的**目的本身**（旧写法无界，会把 9902 条走完 ≈41 分钟）。
+    以后谁把窗口撑大或把摘要上限抬到窗口级别，这里就会红。
+    """
+    body = SETUP + r"""
+_translateWallItems();
+setTimeout(function(){
+  var seen = {};
+  REQ.forEach(function(r){
+    if (r.url.indexOf('translate_a/single') >= 0) {
+      seen[decodeURIComponent(r.url.split('q=').pop())] = 1;
+    } else if (r.body) {
+      JSON.parse(r.body).texts.forEach(function(x){ seen[x] = 1; });
+    }
+  });
+  RESULT.distinct_texts = Object.keys(seen).length;
+}, 1200);
+"""
+    out = _run(body, wait_ms=1500)
+    n = out["distinct_texts"]
+    assert n > 0, "窗口内一条都没发 —— 那是把功能改坏"
+    assert n <= 50 + 30, (
+        "发出的文本数 %d 超出窗口上限（窗口 50 条标题 + 摘要 30 条）：总量必须随浏览而非随全库" % n)
+
+
+def test_browser_gtx_concurrency_stays_capped():
+    """直连并发必须 ≤3。窗口化之后一次要发上百条，若有人把 worker 数调大，
+    这就是把"减负"变成"打爆 Google 端点"的入口。"""
+    body = SETUP + r"""
+var INFLIGHT = 0, PEAK = 0;
+var _orig_fetch = fetch;
+fetch = function(url, opts){
+  if (String(url).indexOf('translate_a/single') >= 0) {
+    INFLIGHT++; if (INFLIGHT > PEAK) PEAK = INFLIGHT;
+    Promise.reject(new TypeError('Failed to fetch')).catch(function(){}).then(function(){ INFLIGHT--; });
+  }
+  return _orig_fetch(url, opts);
+};
+WINDOW = ART.slice(350, 400);   // 50 条，足够让并发达到上限
+_translateWallItems();
+setTimeout(function(){ RESULT.peak = PEAK; }, 1200);
+"""
+    out = _run(body, wait_ms=1500)
+    assert out["peak"] <= 3, (
+        "浏览器直连并发达到 %d（应 ≤3）：窗口化后一次发上百条，并发调大就是打爆端点" % out["peak"])
+
+
 def test_window_titles_still_get_translated():
     """反向护栏：减负不许把首屏标题翻不动（构建期只覆盖 94.5%，剩下的必须补上）。"""
     body = SETUP + r"""
