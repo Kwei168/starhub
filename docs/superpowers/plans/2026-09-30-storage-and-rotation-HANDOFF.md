@@ -969,6 +969,24 @@ A1 语法 → **A2 blocking success**（第 4 个翻译判据文件 `test_agnes_
 键的 created_at 跨度只有 5 小时 ⇒ 与 `--keep emb-cache=4 --keep rss-history=5` 完全吻合
 （"每族保留 N + 本场那一个"），改造前是 79 键 / 9.97 GB。**轮转在生效，不是在原地好看。**
 
+构建时长与外呼（`build_logs/2026-10-01.jsonl` 的 13 条 build 记录，北京时 00:31→12:14）：
+`duration_s` 落在 **298~615s**，12:14 那场（head=`6c7956f`，带 Agnes 退避与新跳过口径）= **349.4s**，
+是当天中位偏下 ⇒ **多 key 退避没有把构建拖长**（用户当时点名关心这一条）。
+`trans_agnes` 在此之前 12 场为 **32~96**（中位 72.5），12:14 场 = **9**；
+`trans_google` 那 12 场为 **10~581**，11:13 场 581 → 12:14 场 149；`trans_fail` 全天 **0**。
+（别把降幅全记在我这两笔改动头上：11:13→12:14 之间同时换了 head，`trans_cache_hit` 也从 8224 涨到 8641，
+命中率上升本身就少发外呼。）
+
+拿真判据函数跑线上 chunk0（360 条首屏标题）做的双向核对，这是 §10.27 那句"几乎是休眠的"的第一次量化：
+· 判"不需要翻译" **109/360**；其中**纯假名标题 0 条**、**含较长拉丁且无汉字 0 条** ⇒ 没有把该翻的误跳掉。
+· 反向：判"要翻"却已含汉字 **18 条（5%）** —— 都是"中文句子里夹两个英文专名"这类
+  （`Google DeepMind 东京再招人…`：汉字 15、拉丁字母 17，`cjk >= other_letters` 差 2 就没跳过）。
+  取回来看结果：**15 条 title_zh 与原文相同或为空（纯白烧、无害），3 条被改写**，
+  且改写质量不差（`Google AI Overviews 冗余翻车` → `谷歌 AI 概览冗余故障：…`）。
+  ⇒ 这不是回归，也不是新造的洞，是**既有阈值的残留**；要收紧就改成"汉字数 ≥ N 且汉字占比 ≥ 阈值即视为中文"，
+  收益是每天少约 5% 的外呼，代价是可能把"中文夹专名但确实想翻"的那些不再翻 ⇒ **属于口径变更，等批准**。
+
+
 死函数审计（本轮新做的两条）：
 · Python 侧用 AST（不是 grep）数"定义后从未被引用"：124 个 def，**0 个死**。
 · 产物侧我先写了个"去注释与字符串再数标识符"的扫描器，报出 7 个死函数 —— **其中 4 个是假阳性**
@@ -978,6 +996,92 @@ A1 语法 → **A2 blocking success**（第 4 个翻译判据文件 `test_agnes_
   否则 `_dedupSeen`/`_dedupCount` 会冒充成调用点），且 `b2e84fb3` 的词边界计数与现在同为 1
   ⇒ **既有孤儿，不是本次改动造成**；要删得单独批准（`_normSignals` 还被 repowiki 的"前端信号规范化"条目引用着）。
   结论：**这套扫描器不可信，没有把它固化成常驻判据。**
+
+### 10.33 仓库里那两份 HTML 是冻结副本；而一条死链判据在真实调用形态上看到的是"空集"
+
+这轮的两条都不是"改动引入的 bug"，而是**判据自身在骗人**，靠"不信自己的读数"才抓出来。
+
+**① git 里的 `rss-aggregator.html` 是滞后的旧运行时。**
+实测：线上 Pages 那份含 `_wallWindow`/`WALL_SUMMARY_LIMIT`/`GTX_ABORT_MS`/`_browserGtx`（各 2 处），
+**仓库那份这 4 个符号全 0**，却仍有 `_wallDirty` 3 处（⇒ 它停在窗口队列改造之前）。
+根因不在 batch①：CI 的提交清单是 `git add rss-data-0.js known_categories.json descriptions_zh.json
+trending_snapshot.json translations.json rss_sources.json hot_snapshot.json …`，**从来不含这几个 HTML**。
+部署用的是当场生成的新 HTML，所以**页面行为没问题**（我 12:0x 的线上实测有效）；
+有问题的是"谁去读仓库副本，谁就读到旧运行时"（raw.githubusercontent / jsDelivr 的 gh 通道都会读到它）。
+
+**② 更要紧：`tests/site_nav/test_dead_api_routes.py` 把那份滞后副本当地面真值。**
+它原先硬编码 5 个页面文件名读磁盘。滞后文件里没有新引用 ⇒ 判据看的是旧世界。
+已改为：`rss-aggregator.html` 用**生成端现跑**的产物（同 §10.30 那两条 `build_html([], …)` 口径），
+其余页面按 `ROOT/*.html` **动态**收集（新增入口不会被名单漏掉）。
+变异验证：只在生成端注入 `fetch('/api/ghost_probe')` ⇒ 判据当场红（MUTATION_RC=1）。
+旧版抓不到有**两层**原因，都得记下来：一是它读的是滞后的仓库 HTML 副本（里面根本没有新代码），
+二是它直接 `open(build_rss_aggregator.py)` 读**未经变异**的真源文件 —— 变异体是按 `RSS_BUILD_SRC`
+放在副本目录里的。新版走 `load_build()`，认这个环境变量，所以变异才能抵达判据
+（本仓产物级判据通用的约定：变异体指向副本目录，靠 `RSS_BUILD_SRC` / `STARHUB_UPDATE_YML` /
+`STARHUB_TOOLS_DIR` 这类覆盖变量生效，绝不改工作树 —— 见 `tests/tools/test_data_api_push_delete.py` 开头那段）。
+
+**③ 顺手抓到一条恒绿判据。**
+旧正则 `['"`(]/api/…` 只认**同源**写法，而站点真调用全是绝对域名
+（`var _API_BASE='https://starhub-refresh.vercel.app/api/rss'`、`fetch('…vercel.app/api/translate')`）
+⇒ `_api_refs_in_pages()` 实测返回 **空集**，也就是"永不红"。
+触发这次怀疑的是**"3 个测试 0.12s 跑完快得不合理"**，不是它红了。
+口径改为"同源写法 或 自有域名写法"（外部 API 如 `aihot.example/api/v1/…` 仍不收，
+否则会红在一堆与本题无关的路径上——这是我第一版犯过的）。改后它看到 **8 个** `/api/` 名字，
+正好等于 `api/` 里的 8 个文件 ⇒ 1:1，既无悬空声明、也无缺失函数。
+
+**④ 补了反方向的守卫**：`test_no_api_function_without_a_caller` —— `api/` 里每个函数都必须有调用方，
+`ALLOWED_UNCALLED` 默认空集。理由就是 `/api/build_log.js`：文件、`vercel.json` 声明、部署产物三处都在，
+全仓零调用方，**只有拿 curl 逐个打才会发现**（本轮就是这么撞见的）。
+变异：把 `API_DIR` 指向临时副本并多塞 `orphan_probe.js` ⇒ 红。
+注意**没有**在真 `api/` 下造文件——当时有构建在跑，真文件会被 Vercel 打包成一条真路由。
+
+**⑤ 我自己的一条错读，记下来防再犯**：第一次查远端产物得到"`_wallDirty` = 0"，是假的：
+`contents` API 对 >1 MB 的文件**不返回 `.content`**，`base64 -d` 解了个空串。
+用 `Accept: application/vnd.github.raw` 重取（3,197,518 B）后真实值是 **3**。
+凡是"读远端大文件"的核对，先打印**解码字节数**再判断言。
+
+**存储侧当时的实测**（与 §10.32 相互印证）：远端 `.size` = 2,554,003 KiB = **2.44 GiB**（此前 2.43 ⇒ 持平）；
+`trees/main?recursive=1` 未截断、440 条，**最大跟踪 blob 是 `hot_history.json` 7.9 MiB**；
+`rss-data-1.js` / `rss-data-2.js` / `rss_history.json` 已不在 main 树里（contents 404）。
+
+**待用户拍板（我没动）**：要不要用 `tools/data_api_push.py --delete` 把仓库里这两份冻结 HTML 删掉。
+留着：任何人读仓库都会拿到旧运行时（今天已经骗过一次判据）；删了：raw/jsDelivr 上那条路径直接 404，
+不再有"看着像站点、其实是旧代码"的入口。部署侧不受影响（Pages/Vercel 用的都是当场生成的产物）。
+
+**⑥ 顺着 ① 往下查，发现 batch① 其实只做了一半（这条重要）。**
+`tests/rss_history/test_pages_deploy_wiring.py::test_no_page_html_is_committed` 明令
+4 个页面 HTML 不许再进任何 `git add`（当时它们在 update.yml 里占约 3.8 MB/场）。
+提交清单确实不含它们了 —— 但 `trees/main?recursive=1` 实测**跟踪副本仍在树里**：
+
+```
+rss-aggregator.html          3.05 MiB
+daily-insight-history.html   0.33 MiB
+index.html                   0.27 MiB
+ai-daily.html                0.08 MiB      合计 3.73 MiB（template.html 是源码，不算）
+```
+
+⇒ 历史不再增长（这点达标），但"退出 git"没做完；而那条守卫**只看 update.yml 的文本、看不见树**，
+所以它一直绿。这就是"用 proxy signal 当完成"的教科书样子。
+
+**⑦ 没做完的那一半把 A3 变成了定时炸弹。**
+`tests/site_nav_drift/test_artifact_drift.py::test_index_header_matches_template`
+读的是**库里那份 index.html**，断言它与 `template.html` 的 `<header>` 恒等。
+它今天绿（我另取实测：库内 280,193 B / md5 8527448558，线上 282,697 B / md5 c1e34b1acc，
+两份本来就不同 —— 绿的只是 header 那一块）。
+问题在于产物已经不再入库 ⇒ 这个等式只能在"冻结快照"上成立：
+谁下一次改 `template.html` 的 header，A3 就当场红，而且**没有任何正当修法**
+（要么手改产物再入库 = 违反 batch① 并把 3.8 MB/场 请回来，要么改判据）。
+A3 是 `continue-on-error` ⇒ 不会冻部署，但会留下一条永久噪声 + 一个诱导别人走回头路的陷阱。
+
+**建议的收口顺序（要批准才动）**：
+1. 先给 `test_no_page_html_is_committed` 补一条**看树**的判据（`git ls-files '*.html'` 减去白名单 `template.html`），
+   让"有没有真退出"这件事变成可证的 —— 这条现在就该红，是好事。
+2. 再处理 A3：把漂移检查的地面真值从"冻结副本"改成生成端现产物，或直接撤掉这一步
+   （结构配平已由 A2 的 `test_header_structure.py` 在 `template.html` 上钉住，撤销不丢防线）。
+3. 最后用 `--delete` 删掉这 4 个跟踪副本（工具已具备删除与"远端 404 复查"两半）。
+顺序不能反：先删文件会让第 2 步的判据变成"文件不存在"的错误，而不是可读的红。
+
+
 · 改钉一条可信的：`tests/site_nav/test_artifact_js_parses.py::test_wall_queue_symbols_are_actually_called_in_artifact`
   对窗口队列 12 个符号要求"在产物的代码行里出现 ≥2 次"，只跳过注释行。变异验证：删掉 `renderWall()` 末尾
   那次 `_scheduleWallTranslate()` 调用 ⇒ 当场红；正常态整跑 CI 原命令 **276 passed**。

@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VERCEL = os.path.join(ROOT, "vercel.json")
@@ -27,10 +28,15 @@ API_DIR = os.path.join(ROOT, "api")
 # 只有当某天真的让端点可用（数据能读到 + 有前端调用方）时，才把它从这里移除。
 DEAD_ROUTES = ["api/build_log.js"]
 
-# 只认**同源**写法：引号/反引号/左括号后紧跟 /api/。
-# 不这么收紧就会把 `https://aihot.example/api/v1/...` 这类外部 API 也算进来
-# （我第一版就是这样，判据红在一堆与本题无关的 v1/s/query 上）。
-API_REF_RE = re.compile(r"""['"`(]/api/([a-z0-9_-]+)""")
+# 允许"没有页面调用方"的 api 函数（当前为空）。要往里加必须先写清谁在调它——
+# 例如只被另一个函数内部调用的话，调用方应写在那个函数里，而不是豁免。
+ALLOWED_UNCALLED = set()
+
+# 认两种写法：同源 `'/api/x'`，以及**我们自己域名**的绝对写法 `'https://starhub-refresh.vercel.app/api/x'`。
+# 只认同源是错的：站点的真调用（`_API_BASE`、translate、article 那几处）全是绝对写法，
+# 2026-10-01 实测这样收紧后判据看到的引用集合是**空集**，等于一条恒绿的判据。
+# 仍然不收外部 API（`https://aihot.example/api/v1/...` 这类），否则会红在一堆与本题无关的路径上。
+API_REF_RE = re.compile(r"""(?:['"`(]|starhub-refresh\.vercel\.app)/api/([a-z0-9_-]+)""")
 
 
 def _vercel_functions():
@@ -57,15 +63,33 @@ def test_no_dangling_vercel_function_declaration():
         "vercel.json 声明了不存在的函数（悬空声明）：%s" % ", ".join(missing))
 
 
+def _generated_rss_html():
+    """现生成的 RSS 页（同 test_artifact_js_parses 的口径：空数据只取静态代码部分）。"""
+    sys.path.insert(0, os.path.join(ROOT, "tests", "rss_composite"))
+    sys.path.insert(0, ROOT)
+    from _loader import load_build
+    return load_build().build_html([], "2026-10-01 12:20", 0, 0, analysis_data=None,
+                                   diverse_window_minutes=120, diverse_enabled=True)
+
+
 def _api_refs_in_pages():
-    """页面与其生成端里出现的 /api/<名字> 引用。"""
+    """页面与其生成端里出现的 /api/<名字> 引用。
+
+    `rss-aggregator.html` 必须用**现生成**的那份，不能读库里的副本：CI 的提交清单
+    （update.yml 的 `git add rss-data-0.js known_categories.json …`）里**没有这些 HTML**
+    ⇒ 仓库那份是某次冻结的旧运行时。2026-10-01 实测：线上产物有 `_wallWindow`/`WALL_SUMMARY_LIMIT`
+    各 2 处，库里副本 0 处 —— 拿它当输入就是让判据读一份会说谎的地面真值。
+    其余 HTML 读磁盘副本，并把 ROOT 下所有 *.html 都纳入，新增页面不会被硬编码名单漏掉。
+    """
     refs = set()
     sources = []
-    for name in ("index.html", "rss-aggregator.html", "ai-daily.html",
-                 "daily-insight-history.html", "template.html"):
-        p = os.path.join(ROOT, name)
-        if os.path.isfile(p):
-            sources.append((name, io.open(p, encoding="utf-8").read()))
+    for fn in sorted(os.listdir(ROOT)):
+        if not fn.endswith(".html"):
+            continue
+        if fn == "rss-aggregator.html":
+            sources.append((fn + "（现生成）", _generated_rss_html()))
+            continue
+        sources.append((fn, io.open(os.path.join(ROOT, fn), encoding="utf-8").read()))
     for name in ("build_rss_aggregator.py", "fetch_and_build.py", "build_ai_daily.py"):
         p = os.path.join(ROOT, name)
         if os.path.isfile(p):
@@ -86,3 +110,17 @@ def test_pages_never_reference_a_missing_api():
                        if r not in have and r not in ("", )})
     assert not dangling, (
         "这些 /api/ 引用找不到对应函数（死链，用户点了才 404）：%s" % dangling[:8])
+
+
+def test_no_api_function_without_a_caller():
+    """③ 反方向：`api/` 里每个函数都必须有人调用，否则就是每次部署都白带的死重量。
+
+    为什么值得钉：`/api/build_log.js` 就是这一类 —— 文件、vercel.json 声明、部署产物三处都在，
+    全仓却没有一个调用方，只有拿 curl 逐个打才会发现。判据把它变成"加进去就红"，
+    而不是靠人记得去数。豁免表要写清原因，空豁免是常态。
+    """
+    callers = {r for r, _ in _api_refs_in_pages()}
+    files = {f[:-3] for f in os.listdir(API_DIR) if f.endswith(".js")} if os.path.isdir(API_DIR) else set()
+    orphans = sorted(files - callers - ALLOWED_UNCALLED)
+    assert not orphans, (
+        "这些 api 函数没有任何调用方（死重量，会被打进每次部署）：%s" % orphans)
