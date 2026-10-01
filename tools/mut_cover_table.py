@@ -43,6 +43,12 @@ MUTS = [
     ("M10 host 解析吃掉端口/userinfo 的写法回退（整串当 host）",
      '    netloc = (s.partition("//")[2].split("/")[0] or "").split("@")[-1].split(":")[0]',
      '    netloc = (s.partition("//")[2].split("/")[0] or "")'),
+    ("M11 渲染点退回未过滤的 a.img（实时封面绕过判空）",
+     "var _cv=_dropBadCover(a.img);\n      var hasImg=!!_cv;",
+     "var _cv=a.img;\n      var hasImg=!!_cv;"),
+    ("M12 src 用未过滤值、但保留 hasImg（只坏一半）",
+     "h+='<img class=\"cover-img\" src=\"'+esc(_cv)+'\"",
+     "h+='<img class=\"cover-img\" src=\"'+esc(a.img)+'\""),
 ]
 
 

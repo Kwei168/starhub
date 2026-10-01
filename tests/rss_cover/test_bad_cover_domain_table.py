@@ -22,6 +22,7 @@
 """
 import ast
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -266,6 +267,30 @@ def test_dropped_count_is_broadcast_to_ci():
                     break
     assert hits >= 2, (
         "期望命中数与 0 命中两条各一处 print（0 命中也要出声，否则表过期无人知），实际 %d 处" % hits)
+
+
+def test_render_site_uses_the_bad_cover_filter():
+    """渲染层必须真的过一遍 `_dropBadCover`，函数存在但没人调 = 表只对构建产物生效。
+
+    为什么单独钉这条：卡片模板里 `<img class="cover-img" src="…">` 用的必须是**过滤后**的那个值。
+    把它接回 `esc(a.img)`（实时链路 `?source=` 的封面就是这样绕过来的）时，
+    本文件其余判据全都照绿 —— 因为它们只检查函数与名单在不在，不检查渲染点用没用。
+    """
+    html = _generated_html()
+    i = html.index("function renderWall(")
+    j = html.index('<img class="cover-img"', i)
+    seg = html[i:j + 220]
+    assert "_dropBadCover(a.img)" in seg, (
+        "卡片渲染点不再调用 _dropBadCover ⇒ 必挂域名表对实时链路条目失效（实时封面会绕过判空）")
+    assert "var hasImg=!!_cv;" in seg, "hasImg 不再由过滤后的值决定，空封面会画出一张空图卡"
+
+    m = re.search(r"""<img class="cover-img" src="'\+esc\((\w+)\)""", seg)
+    assert m, "找不到 cover-img 的 src 拼接式，判据要看的新形态是：src=\"'+esc(_cv)+'\""
+    assert m.group(1) == "_cv", "cover-img 的 src 用的是 %s（未过滤的那个值）" % m.group(1)
+    p = re.search(r"""referrerpolicy="'\+esc\(_coverRefPolicy\((\w+)\)\)""", seg)
+    assert p, "cover-img 上找不到按域名的 referrerpolicy（③#2 被删了）"
+    assert p.group(1) == "_cv", "referrerpolicy 读的是 %s 而不是过滤后的 _cv：同一个 URL 两个副本会分叉"
+    assert "esc(a.img)" not in seg, "渲染点仍在直接用 a.img（未过滤），上面的等式就被绕过了"
 
 
 def test_bad_cover_table_is_referenced_by_the_drop_function():
