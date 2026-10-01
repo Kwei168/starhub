@@ -1829,3 +1829,134 @@ Upload/Deploy to GitHub Pages + Deploy to Vercel 全绿，updated=10:19:41Z）�
 
 **封面这一组（#1/#2/#4）到此闭环。** 仍挂账未动：⑤ 全文译文缓存键（用户决定）、
 #3 weserv 封面代理兜底（用户决定不做）。
+
+### 10.56 增长曲线：从"调保留天数"改成"每场变的不再入库"（批 1-4，TDD）
+
+用户点破我前面几轮的共同问题：**`cleanup(N)`、`--keep N` 都是在改斜率，不是在压平曲线**。
+git 的存储模型是"内容变一次就永久多一份副本"，所以只要一个文件每场都变且被提交，历史就单调增。
+实测（相邻两个 bot 提交的递归 tree 差，`truncated=false`）：
+
+```
+一次构建新增 14 个 blob / 19.83 MiB，消失 0 个
+  hot_history.json                8040 KB   ← 只有构建脚本读回
+  analysis_snapshot.json          3555 KB
+  translations.json               3239 KB
+  build_logs/<今天>.jsonl         2093 KB
+  rss_trend_history.json          1126 KB
+  insight_tracking_history.jsonl   762 KB
+  rss-data-0.js                    506 KB   ← Pages 要发，但 git 不必留副本
+  daily_insight_*                  688 KB
+  文档(HANDOFF)                    144 KB
+```
+⇒ 5.86 GiB/月、约 10 周撞 5 GiB。结论：**要平就必须让这些退出 git**，跨场传递换通路。
+
+**两条既有通路正好够用**（不是新机制）：状态 → `actions/cache`（`rss_history`/`emb-cache` 早就这么走）；
+产物 → `Stage Pages site` 的"按名字从工作目录拷 + `test -s`"（`rss-data-1.js` 与 4 个 HTML 已经这么退出）。
+
+**按 TDD 分成四批，每批先红后绿 + 变异自证**
+
+| 批 | 内容 | 判据 | 变异 |
+|---|---|---|---|
+| 1 | `starhub-state` 缓存族（7 文件 + `build_logs`）：Restore/Save/Diagnose + `--keep starhub-state=3`。**纯加法**，文件仍入库 ⇒ 无中间态 | `tests/rss_history/test_state_cache_wiring.py` 12 条 | `tools/mut_state_cache.py` S1-S12 |
+| 2 | 7 个状态文件从**两条** `git add` 清单摘掉（主路径 + push 被拒的重试分支）+ `.gitignore` 逐名 7 行 | 同上（`test_state_family_files_are_not_committed_anymore` 等） | T1-T3 |
+| 3 | `--delete` 那 7 个路径 + 本地 `git rm --cached` 对齐 | `test_state_files_are_not_tracked`（先红：7 个全部"仍被跟踪"） | 落地后把文件 add 回索引即可证红 |
+| 4 | 日志每天一次：`tools/daily_commit_gate.sh`（读入库 marker，**不用** `git log`）+ 摘要搬到 Commit 之前 + 退役 `build-log-summary.yml` | `tests/rss_history/test_log_daily_commit_gate.py` 9 条（闸门被真跑：open/closed/跨天/坏 marker 必须 exit 0） | `tools/mut_log_gate.py` G1-G5 |
+
+**本地读数**：批 1 后 CI 第一场 `41388122cd` 整场 success，缓存出现
+`starhub-state-Linux-36858947240-1` = **4,489,082 B**，Diagnose 打印 7 个文件字节数 +
+`build_logs/` 16,994,210 B；批 2 在 12:38 那场 A2/A3/B 全绿（head `2fbf8e4524` 含批 2，
+`compare/07526b64f8...` ahead=2/behind=0）。本地 A2 原命令 **339 passed**，唯一红是批 3/4 故意留的
+"仍被跟踪"类判据。
+
+**这一轮我自己造又被变异逮出来的四个坑（下次直接照单查）**
+1. **判据只断言"字符串存在"** ⇒ `Commit` 步里有两处清单，变异删掉其中一处仍然绿。改成**计数断言**
+   （`闸门调用数 == add 次数`、`ls-files -d 次数 == add 次数`、`marker 写入次数 == add 次数`）才有牙。
+2. **全文 `replace` 的变异会打偏**：`" build_logs/"` 在 yml 里最早出现在 Diagnose 的 echo 文案里，
+   命中它之后"越序摘除清单"这个变异其实什么都没改，判据"合理地"绿 ⇒ 变异要按**清单行定位**。
+3. **变异脚本把 SKIP 算成已挡住**：锚点写错就等于没测，却计入"0 逃逸"。改成 INVALID 单独计入未覆盖。
+4. **改完判据留下的死函数/说谎注释**：`state_names`、`add_with`、`edit_add_lines`、`ADD_LOGS` 全部
+   零调用；两条注释（"写方含 build-log-summary.yml"、"build_logs 留到批 4"）在动作落地后立刻变成谎话。
+
+**批 5（下一批，需单独评审）**：`rss-data-0.js` 等 4 个产物退出 git —— 会撞上
+`test_pages_deploy_wiring.py:108-125` 的**正向**断言与 `tools/trim_commit_guard.py:28-30` 的
+`KEEP_ALWAYS=('rss-data-0.js',)`，还要先查出"哪个测试在读库里的 chunk0"并改成自造副本。
+批 1+2+4 落地的预期：每场新增 19.83 → **约 1.7 MiB**（日志再被每日闸门管住后约 0.05 MiB/场 + 每天 2.2 MiB 快照）。
+
+### 10.57 曲线压平的实际落地：批 3 / 批 5a / 批 5b+5c（2026-10-01 13:00–14:10Z）
+
+**读数（相邻 bot 提交的递归 tree 差，`truncated=false` 已验）**
+
+| 场次 | 每场新增字节 | tip | 备注 |
+|---|---|---|---|
+| 12:56 场（批 2 后） | 2.848 MiB / 5 条 | 40.97 MiB | 7 个状态文件已不再重写 |
+| 13:38 场（批 3+批 4 后） | 3.323 MiB / 7 条 | **24.27 MiB** | 其中 build_logs 2.77 MiB = 当天那**一次** |
+| 14:00 场（批 5a） | 见下 | | 每日闸门应当关：不再出现 build_logs/* |
+
+仓库 `.size` 2.44 GiB（当日 10:2x 为 2.45，已开始往下走）；Actions 缓存 0.98 GiB / 11 键
+（emb 0.878 + rss 0.094 + starhub-state 0.008，被 `--keep` 钉在稳态）。
+
+**批 3 的验收不是"URL 404"就完事**，四件事都得到：
+1. 远端 7 个 raw URL 全 404；
+2. Pages 上 4 页 + `rss-data-0.js`(599,472 B) + `hot_snapshot.json` + `rss_sources.json` 全 200；
+3. 下一场 Diagnose 打出 7 个文件**仍在盘上**（8,278,933 / 3,645,569 / 3,313,241 / 1,153,325 /
+   778,323 / 410,065 / 263,570 B）⇒ 缓存接管，不是数据丢了；
+4. A2 在 ubuntu 342 passed、整场 success ⇒ 部署解冻。
+
+**批 5 的关联分析逼出一条硬教训（先通路，后摘名）**：`descriptions_zh.json` / `trending_snapshot.json` /
+`hot_snapshot.json` 也是"读回上一次再写回"的跨场缓存，但它们**今天唯一的传递通道是 git checkout**
+（`fetch_and_build.py:432` 读 trending_snapshot、`:486` 写回 = 星标增量基线；`:722/:813` = 描述译文缓存；
+`build_rss_aggregator.py:8732` 兜底读 hot_snapshot）。若照原计划直接把四个名字一起摘掉，星标增量会永远对着
+一份冻结基线重算、新仓库描述每场重译烧配额，**而构建全程绿、没有任何一处会报错**。
+⇒ 批 5a 先把它们补进缓存 path + `.gitignore` + 诊断三处（纯加法），批 5b 才摘名字。
+判据 `test_carry_files_have_a_cache_home_before_they_leave_git` + 变异 C1/C2/C3 钉住这个顺序。
+
+**两处失实注释（挡住过一次真改动，必须一起修）**：`tools/trim_commit_guard.py:28` 的
+`KEEP_ALWAYS = ('rss-data-0.js',)` 与 `repo-trim.yml:92` 的步名都写着"真实分块测试要读已入库副本"。
+实测没有任何测试用 git 取库内那份 —— `tests/rss_composite/test_diverse_realdata.py:32` 是
+`os.path.join(ROOT, "rss-data-0.js")` 的工作目录读，且 `tests/rss_composite/` 未接进任何门禁步；
+`trim_commit_guard.py` 只做路径名分类、从不打开文件。白名单留着 = 永久挡住这批历史 blob 的回收。
+⇒ 清空 `KEEP_ALWAYS`、订正步名、翻转 `tests/trim_guard/test_trim_commit_guard.py:88` 那条断言
+（trim_guard 本地 22 passed，含真跑 filter-repo 的排练）。
+
+**判据语义翻转的示范**：`test_no_big_chunk_is_committed` 原来**正向**要求 chunk 0 留在 add 清单，
+批 5b 把它翻成"不许在清单、必须在发布名单、必须有 test -s"，并新增反向半句禁止纯跨场态上线
+（`trending_snapshot`/`descriptions_zh` 无任何前端读方，上线只会扩大公开面）。
+发布名单的匹配用 `fnmatch`：shell 的 `for f in rss-data-*.js` 会展开出 `rss-data-0.js`，
+判据若只认字面名会把真实存在的覆盖读成漏项。
+
+**我自己这轮的两个错，都被判据在推送前逮住**
+1. 把 批 3 的 RED 判据提前写进被 A2 收集的文件 ⇒ 13:00 场 A2 一红冻整场部署（1 failed / 340 passed）。
+   修法不是删判据，是把 批 3 做完让它转绿。**写 RED 判据前先确认它所在目录是否被 blocking 闸收集。**
+2. 改诊断步的 `for` 循环时用 `[:-2]` 去尾巴，只切掉 `do` 留下 `;`，成非法 shell；
+   `test_autocommit_no_rollback.py::test_every_run_step_is_shell_valid` 本地判红拦下。
+
+**本地索引对齐**：本仓远端写入走 `tools/data_api_push.py`，本地 `.git` 从不随之前进 ⇒ 远端已删除的路径
+在本地仍"被跟踪"，让 `test_state_files_are_not_tracked` 恒红；而一条恒红的判据会**污染整个变异电池**
+（任何变异都"看起来被挡住"）。`tools/mut_state_cache.py` 的"基线不绿就拒绝自评"守卫正是为此存在。
+对齐脚本 `tools/untrack_state.py`：只动索引（`--cached`）、`--dry-run` 可先看、
+回滚命令自动落 `.deploy-tmp/restore_state_index.sh`（`--restore` 执行它）。
+
+
+### 10.58 批5a 把整族缓存搞丢了（改 path 名单 = 换族），以及本地假红的根治
+
+**现象**（14:00 场 run 36872974114，head=20193e4c17=批 5a）：Diagnose 打出 6 个 `MISSING`，日志原文
+
+```
+Cache not found for input keys: starhub-state-Linux-36872974114-1, starhub-state-Linux-
+```
+
+连前缀回退都没命中，而库里还躺着 12:20 / 12:56 / 13:38 三份同族 4.48 MB 缓存，且 13:38 那场前缀回退是成功的（7 个文件全 OK）。唯一变量就是 path 从 7 条变 10 条。
+
+**机制**：`actions/cache` 把 path 清单算进缓存身份。改名单 = 换族 = 旧缓存瞬间不可达。
+
+**当场代价**：那场把 `translations` 从零重建到 30,000 条上限（日志 `[缓存] 保存翻译缓存: 30000 条`）、撞 34 次 429；`analysis_snapshot` 缺失 ⇒ 重跑 LLM 重分析。`::warning title=跨场状态冷启动` 按设计出声了 1 次。append-only 的 `hot_history` / `insight_tracking` 重建不出来 ⇒ 7 天窗口要从头积（是否回捞等用户裁决）。
+
+**制度化**：`test_state_path_list_has_a_frozen_record_copy` 把名单钉成登记副本，改名单必须同批 bump 并安排播种或写明接受冷启动；变异体 C6 自证能红。批 5 因此拆成 5a（补通路）/ 5b（摘名）/ 5c（退树）——以后往缓存里加成员都按这个形状走。
+
+**本地假红的根治**：本仓远端写入走 Data API，本地 `.git` 从不随之前进 ⇒ 远端删除的路径在本地仍被跟踪，于是 `test_state_files_are_not_tracked`、`test_hourly_summary_workflow_is_not_tracked` 恒红；而恒红的判据会污染变异电池（任何变异都「看起来被挡住」）。所有电池都带「基线不绿就拒绝自评」的守卫，代价就是每次得先对齐索引。`tools/untrack_state.py --align-remote` 把它做成一次性：按远端递归 tree 求差、只 `git rm --cached`（不动磁盘）、先确认 HEAD 里取回得了、回滚命令自动落 `.deploy-tmp/restore_index_align.sh`。白名单只覆盖本工作主动退役的路径 —— 本地 HEAD 还带着另一条工作线（AI 日报）未推的提交，全量对齐会把别人在制品从索引里摘掉（实测跳过 89 个）。对齐后本地 A2 = **358 passed / 0 failed**，第一次做到完全干净。
+
+**批 6 落地**：`tools/history_growth.py`（只读；口径 = 相邻两个提交的递归 tree 差里「新 (path,sha)」的字节和）+ advisory 步 `Monitor per-build git growth (advisory)`（必须 `continue-on-error`、必须排在 Commit 之后，否则量到上一场）。阈值 6 MiB 的理由写进判据：每天那一次日志合法带来 ~2.6 MiB，阈值低于它天天误报 = 没有告警；要抓的回退形态是 17–20 MiB/场。判据 7 条 + 变异 H1–H7 全抓，0 逃逸。
+
+**计划 §3 的冷启动演练换了做法**：原写「本地跑一次 `fetch_and_build.py incremental`」，但本地裸跑会挂住烧翻译配额并写脏跟踪产物（见 gate-b-no-local-run）。改成 `tests/rss_history/test_cold_start_readers.py` 直接调真实读取函数（cwd 换空临时目录），6 条覆盖 `_load_caches` / `_load_prev_analysis` / `_load_history` / `_accumulate_hot_history` 的缺失与损坏分支，每条都带「正常文件必须真读回来」的反向半句防空转；配套 `tools/mut_cold_start.py` 用 K1–K4 破坏生产读取端自证能红， finally 里逐字节还原并校验 sha256。踩到的一条工程细节：锚点必须按目标文件自己的行尾拼（`build_rss_aggregator.py` 是 CRLF、`build_daily_insight.py` 是 LF），否则多行锚点一处也命中不了 = 静默 INVALID。
+
+**另一处实测契约（写下来免得下次又按直觉写错判据）**：`_load_caches()` 在文件缺失时是「什么都不做」，不抛也不清空 —— 所以「冷启动 = 空缓存」成立的前提是 `_trans_cache` 的**模块初始值**必须是空 dict。第一版判据把它写成「缺失 ⇒ 清空」当场红给自己看了，随后补了 `test_module_initial_cache_is_empty`（AST 顶层赋值）钉住真正的前提。

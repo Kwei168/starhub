@@ -1,0 +1,127 @@
+# -*- coding: utf-8 -*-
+"""Per-build git growth monitor (read-only).
+
+Why this exists: the growth curve was flattened on 2026-10-01 by stopping per-build
+commits of cross-build state (measured ladder: 19.83 -> 2.85 -> ~0.05 MiB per build).
+The remaining risk is a silent regression back to "rewrite everything every build",
+which is unrecoverable in git history. So this prints the number once per day in CI
+and emits a warning above a threshold.
+
+Measurement basis (do not change casually): recursive tree diff between two commits,
+summing the blob size of every (path, sha) that is new or changed. Tip size cannot
+reveal this -- a replaced blob stays in history forever.
+
+It never mutates the repository: no writes, no history operations.
+"""
+import argparse
+import os
+import subprocess
+import sys
+
+# Once per day the log commit legitimately adds ~2.6 MiB (jsonl + summary), so a lower
+# bound would fire daily and a warning that fires daily is a warning nobody reads.
+# The regression shape we are actually watching for is 17-20 MiB per build.
+DEFAULT_THRESHOLD = 6 * 1024 * 1024
+
+
+def threshold():
+    return DEFAULT_THRESHOLD
+
+
+def verdict(new_bytes):
+    return "warn" if new_bytes >= threshold() else "ok"
+
+
+def parse_ls_tree(text):
+    """`git ls-tree -rl` lines -> {path: (sha, size)}. Non-tree lines yield {}."""
+    out = {}
+    for line in text.splitlines():
+        if "\t" not in line:
+            continue
+        meta, path = line.split("\t", 1)
+        cols = meta.split()
+        if len(cols) != 4 or cols[1] != "blob":
+            continue
+        size = 0 if cols[3] == "-" else int(cols[3])
+        out[path] = (cols[2], size)
+    return out
+
+
+def new_blob_bytes(prev, cur):
+    """Paths added or whose blob sha changed, with the NEW copy's byte size."""
+    hits = []
+    for path, (sha, size) in cur.items():
+        if prev.get(path, (None,))[0] != sha:
+            hits.append((path, size))
+    return hits
+
+
+def ls_tree(rev):
+    r = subprocess.run(["git", "ls-tree", "-rl", rev], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        return None
+    return parse_ls_tree(r.stdout)
+
+
+_SELF = {
+    "a.js": ("1", 100),
+    "b.js": ("2", 200),
+    "gone.js": ("3", 50),
+}
+_SELF2 = {"a.js": ("1", 100), "b.js": ("9", 300), "new.js": ("4", 70)}
+
+
+def self_test():
+    parsed = parse_ls_tree("100644 blob aaa1111 1234\thot_snapshot.json\n"
+                           "100644 blob ddd4444 -\tempty.json\n")
+    assert len(parsed) == 2 and parsed["empty.json"][1] == 0
+    assert parse_ls_tree("not a tree line\n") == {}
+    got = dict(new_blob_bytes(_SELF, _SELF2))
+    assert sorted(got) == ["b.js", "new.js"], got
+    assert got["b.js"] == 300
+    assert new_blob_bytes(_SELF, _SELF) == []
+    assert verdict(0) == "ok" and verdict(DEFAULT_THRESHOLD) != "ok"
+    print("[self-test] ok (threshold=%d bytes)" % DEFAULT_THRESHOLD)
+    return 0
+
+
+def report(new_bytes, hits, top=6):
+    """播报正文。判据直接喂字节数进这一层，验的是真会被读到的那段文本，不是 grep 源码。"""
+    out = ["[growth] new blobs=%d  %.3f MiB  threshold=%.2f MiB  verdict=%s"
+           % (len(hits), new_bytes / 1048576.0, threshold() / 1048576.0, verdict(new_bytes))]
+    for path, size in sorted(hits, key=lambda x: -x[1])[:top]:
+        out.append("   %10d B  %s" % (size, path))
+    if verdict(new_bytes) != "ok":
+        out.append("::warning title=每场新增字节超阈值::本场给 git 历史永久新增 %.2f MiB（阈值 %.2f MiB）"
+                   "—— 查一下是不是有人把每场重写的文件加回了提交清单"
+                   % (new_bytes / 1048576.0, threshold() / 1048576.0))
+    return "\n".join(out)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--cur", default="HEAD")
+    ap.add_argument("--prev", default="HEAD^1")
+    ap.add_argument("--top", type=int, default=6, help="print the N biggest new paths")
+    a = ap.parse_args()
+    if a.self_test:
+        return self_test()
+
+    cur, prev = ls_tree(a.cur), ls_tree(a.prev)
+    if cur is None or prev is None:
+        print("[growth] skipped: cannot read both trees (%s vs %s)" % (a.prev, a.cur))
+        return 0
+    hits = new_blob_bytes(prev, cur)
+    print(report(sum(sz for _, sz in hits), hits, a.top), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        # 树里有 CJK 路径（.qoder/repowiki/...），Windows 默认 GBK 控制台会在 print 处崩，
+        # 而这条是 advisory 步——崩了也等于给"没人看"的告警又添一条噪声。
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    os.chdir(os.environ.get("BUILD_WORKDIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    sys.exit(main())

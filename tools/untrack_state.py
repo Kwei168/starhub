@@ -31,6 +31,7 @@ STATE_FILES = (
     "daily_insight_history.json",
 )
 ROLLBACK = os.path.join(ROOT, ".deploy-tmp", "restore_state_index.sh")
+ROLLBACK_ALIGN = os.path.join(ROOT, ".deploy-tmp", "restore_index_align.sh")
 
 
 def git(*args):
@@ -40,6 +41,80 @@ def git(*args):
 def tracked():
     r = git("ls-files", "--", *STATE_FILES)
     return [l.strip() for l in r.stdout.splitlines() if l.strip()]
+
+
+def remote_paths():
+    """远端 main 的递归树路径集合（走 gh api，本仓的远端真相只有这里能查）。"""
+    import json
+    import subprocess as sp
+    head = sp.run(["gh", "api", "repos/Kwei168/starhub/commits?per_page=1",
+                   "-H", "Accept: application/vnd.github+json"],
+                  cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if head.returncode:
+        raise SystemExit("gh 取 HEAD 失败：" + (head.stderr or "")[:200])
+    sha = json.loads(head.stdout)[0]["sha"]
+    tree = sp.run(["gh", "api", "repos/Kwei168/starhub/git/trees/%s?recursive=1" % sha,
+                   "-H", "Accept: application/vnd.github+json"],
+                  cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if tree.returncode:
+        raise SystemExit("gh 取 tree 失败：" + (tree.stderr or "")[:200])
+    doc = json.loads(tree.stdout)
+    if doc.get("truncated"):
+        raise SystemExit("远端 tree 被截断：路径集合不完整，绝不能据此对齐索引")
+    return sha, {e["path"] for e in doc["tree"]}
+
+
+def do_align(dry=False):
+    """把"远端已删除、本地索引还在跟踪"的路径摘掉 —— 这是本地假红的唯一根源。
+
+    为什么需要：本仓远端写入走 Data API，本地 `.git` 从不随之前进。一条恒红的判据会污染
+    整个变异电池（任何变异都"看起来被挡住"），所以电池都带"基线不绿就拒绝自评"的守卫；
+    守卫生效的代价就是每次都得先把索引对齐。
+    只动索引、不动磁盘，且先在 HEAD 里确认该路径可取回（撤销 = `git restore --staged`）。
+    """
+    sha, rem = remote_paths()
+    local = git("ls-files")
+    assert local.returncode == 0, "git ls-files 失败：探针本身不可信，不对齐"
+    loc = [l.strip() for l in local.stdout.splitlines() if l.strip()]
+    gone = [p for p in loc if p not in rem]
+    # 白名单：只对齐这批存储工作**主动退役**的路径。本地 HEAD 还带着另一条工作线（AI 日报）的提交，
+    # 他们的文件天然"本地跟踪 / 远端还没有"，全量对齐会把别人的在制品从索引里摘掉。
+    allowed = set(STATE_FILES) | {"build_logs"} | {
+        ".github/workflows/build-log-summary.yml",
+        "rss-data-0.js", "hot_snapshot.json", "trending_snapshot.json", "descriptions_zh.json",
+    }
+    offenders = [p for p in gone if p in allowed or p.startswith("build_logs/")
+                 or p.startswith("rss-data-") or p.startswith(".qoder/")]
+    skipped = [p for p in gone if p not in offenders]
+    print("远端 %s：本地跟踪 %d 个；远端已不存在 %d 个，其中本工具允许对齐 %d 个"
+          % (sha[:10], len(loc), len(gone), len(offenders)))
+    if skipped:
+        print("  不动（可能是另一条工作线的在制品）：%s" % ", ".join(skipped[:12]))
+    for p in offenders:
+        print("   -", p)
+    if not offenders:
+        return 0
+    if dry:
+        print("dry-run：不写索引")
+        return 0
+    # 可逆性前置检查：HEAD 里必须还留着这些条目，否则 `git restore --staged`（它的来源就是 HEAD）救不回来。
+    head_paths = set(x.strip() for x in git("ls-tree", "-r", "--name-only", "HEAD").stdout.splitlines()
+                     if x.strip())
+    unrestoreable = [p for p in offenders if p not in head_paths]
+    if unrestoreable:
+        print("[NG] 这些路径无法从索引快照还原，跳过不动：%s" % unrestoreable)
+    offenders = [p for p in offenders if p in head_paths]
+    with open(ROLLBACK_ALIGN, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("#!/bin/sh\n# 撤销 tools/untrack_state.py --align-remote（把 %d 个路径放回索引）\n"
+                  "git restore --staged -- %s\n" % (len(offenders), " ".join(offenders)))
+    print("回滚命令已写入：%s" % ROLLBACK_ALIGN)
+    r = git("rm", "--cached", "--quiet", "--", *offenders)
+    if r.returncode != 0:
+        print("[NG] git rm --cached 失败：%s" % (r.stderr or r.stdout).strip()[:200])
+        return 1
+    still = [p for p in offenders if p in set(x.strip() for x in git("ls-files").stdout.splitlines())]
+    print("对齐后仍被跟踪：%s" % (still or "无"))
+    return 0 if not still else 1
 
 
 def do_restore():
@@ -58,9 +133,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--restore", action="store_true")
+    ap.add_argument("--align-remote", action="store_true",
+                    help="按远端 main 的递归树对齐：远端已删除但本地索引仍跟踪的路径一律摘掉（只动索引）")
     a = ap.parse_args()
     if a.restore:
         return do_restore()
+    if a.align_remote:
+        return do_align(dry=a.dry_run)
 
     before = tracked()
     print("本地索引里被跟踪的状态文件：%d / %d" % (len(before), len(STATE_FILES)))
