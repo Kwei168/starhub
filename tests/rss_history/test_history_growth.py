@@ -19,6 +19,7 @@ import importlib.util
 import os
 import re
 import subprocess
+from datetime import datetime
 
 import yaml
 
@@ -104,6 +105,43 @@ def test_growth_step_is_advisory_and_after_commit():
     idx = [s.get("name") for s in steps]
     assert idx.index("Commit & push if changed") < idx.index(STEP_NAME), (
         "测量必须在 Commit 之后：否则量到的是上一场，本场的膨胀恰好看不见")
+
+
+def test_growth_event_does_not_disturb_the_daily_summary(tmp_path, monkeypatch):
+    """我往 `build_logs/<今天>.jsonl` 里塞了新事件类型，就必须证明它不动既有读数。
+
+    `build_logger.summary()` 是按 `e["type"]` 分桶计数的，理论上"growth"会被忽略 ——
+    但"理论上"不是证据：真要写错（比如把 type 写成 build），摘要里的 `builds`
+    就会把每场的监测当成一次构建，而那个数字是用户每天看构建日志时唯一在意的东西。
+    这里喂真文件、调真 `summary()`，同时断言两件事：既有计数不变、growth 事件可查。
+    """
+    import json as _json
+
+    import build_logger
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("build_logs", exist_ok=True)
+    today = datetime.now(build_logger.BJT).strftime("%Y-%m-%d")
+    day = os.path.join("build_logs", "%s.jsonl" % today)
+    with open(day, "a", encoding="utf-8") as fh:
+        for i, ev in enumerate((("build", 1200), ("trigger", None), ("build", 1300), ("deploy", None))):
+            rec = {"ts": "2026-10-02T0%d:00:00+08:00" % i, "type": ev[0]}
+            if ev[0] == "build":
+                rec["items_snapshot"] = ev[1]
+            fh.write(_json.dumps(rec, ensure_ascii=False) + "\n")
+    before = build_logger.summary(today)
+    m = _load()
+    for i in range(3):
+        m.log_line(1000 + i, [("a.js", 1000 + i)], day, commit="c%d" % i)
+    after = build_logger.summary(today)
+    for key in ("builds", "triggers", "deploys", "total_items_latest", "items_delta"):
+        assert after[key] == before[key], "混入 growth 事件后 %s 从 %r 变成 %r" % (
+            key, before[key], after[key])
+    assert after["builds"] == 2, "样本本身就该有 2 条 build，实测 %r —— 这条判据在空样本上跑" % after["builds"]
+    lines = [_json.loads(l) for l in open(day, encoding="utf-8").read().splitlines() if l.strip()]
+    growth = [r for r in lines if r.get("type") == "growth"]
+    assert len(growth) == 3, "growth 事件应各占一行，实测 %d" % len(growth)
+    assert [r["new_bytes"] for r in growth] == [1000, 1001, 1002], (
+        "监测读数必须可按写入顺序回查：%s" % growth)
 
 
 def test_report_warns_only_above_threshold():

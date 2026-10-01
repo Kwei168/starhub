@@ -46,6 +46,10 @@ def main():
          (tool.replace('with open(path, "a", encoding="utf-8"', 'with open(path, "w", encoding="utf-8"'), wf)),
         ("H10 growth 事件换个 type 名（下游按 type 取数就取不到了）",
          (tool.replace('"type": "growth"', '"type": "gzz"', 1), wf)),
+        ("H11 growth 事件的 type 写成 build（每日摘要的 builds 计数被污染）",
+         (tool.replace('"type": "growth"', '"type": "build"', 1), wf)),
+        ("H12 log_line 不再写 new_bytes（有事件但没读数）",
+         (tool.replace('"new_bytes": int(new_bytes), ', ""), wf)),
     ]
 
     def run(mut_tool, mut_wf, label):
