@@ -84,9 +84,12 @@ def gate():
         newest["id"], newest["created_at"][11:19])
 
 
-def verify(expect, tag, ref="main"):
+def verify(expect, tag, ref="main", gone=()):
     """复查必须查**刚推的那个 ref**：不带 ref 的 contents 永远读默认分支，
     推分支时会拿 main 的旧 blob 来比，把一次成功的推送报成"内容不同"。
+
+    `gone` 是本次声明要删的路径：**删除也必须复查**，否则 `sha: null` 没生效时
+    工具会报"内容不同=0"，而远端那个文件其实还在（半拉子状态比不删更难发现）。
     """
     bad = 0
     for p, want in expect.items():
@@ -96,6 +99,17 @@ def verify(expect, tag, ref="main"):
             print("  [NG] %s %s 远端=%s 期望=%s" % (tag, p, got["sha"][:10], want[:10]))
         else:
             print("  [OK] %s %s %s" % (tag, p, want[:10]))
+    for p in gone:
+        try:
+            got = req("GET", "%s/contents/%s?ref=%s" % (REPO, p, ref))
+            bad += 1
+            print("  [NG] %s 删除未生效：%s 远端仍存在 sha=%s" % (tag, p, got["sha"][:10]))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                print("  [OK] %s 删除 %s（远端已 404）" % (tag, p))
+            else:
+                bad += 1
+                print("  [NG] %s 删除 %s 复查失败：HTTP %d（问不出来 ≠ 已删）" % (tag, p, e.code))
     return bad
 
 
@@ -284,6 +298,8 @@ def main():
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="只做守门+原子性检查并列出将要推的路径，不写远端")
     ap.add_argument("--allow-running", action="store_true")
+    ap.add_argument("--delete", action="append", default=[],
+                    help="从远端删除这些路径（tree 项 sha:null，走 Git Data API 的唯一删除方式）")
     ap.add_argument("--ref", default="",
                     help="目标分支，默认 main。夜场验证走分支：不占白天构建窗口、不碰线上站点")
     a = ap.parse_args()
@@ -325,11 +341,17 @@ def main():
         return 0 if ok else 1
     if a.dry_run:
         print("dry-run：将推 %d 个路径：%s" % (len(a.paths), ", ".join(a.paths)))
+        if a.delete:
+            print("dry-run：将删 %d 个路径：%s" % (len(a.delete), ", ".join(a.delete)))
         return 0
     if not ok and not a.allow_running:
         print("拒绝推送（加 --allow-running 可强行推，但大概率几分钟后被回滚）")
         return 1
-    if not a.paths or not a.msg:
+    both = sorted(set(a.paths) & set(a.delete))
+    if both:
+        print("同一个路径既要推又要删（未定义行为），拒绝：%s" % ", ".join(both))
+        return 1
+    if not (a.paths or a.delete) or not a.msg:
         print("缺参数：需要 --msg 与至少一个文件路径")
         return 1
 
@@ -345,7 +367,7 @@ def main():
             return req("GET", REPO + "/git/ref/heads/main")["object"]["sha"], True
 
     head, create_ref = head_of(ref_name)
-    items, expect = [], {}
+    items, expect, gone = [], {}, []
     for p in a.paths:
         with open(_abs(p), "rb") as fh:
             raw = fh.read()
@@ -357,6 +379,13 @@ def main():
         expect[p] = blob["sha"]
         print("blob  %-56s %7d -> %s" % (p, len(raw), blob["sha"][:10]))
         items.append({"path": p, "mode": "100644", "type": "blob", "sha": blob["sha"]})
+    # 删除：Git Data API 的表示法是同一个 tree 项里 `sha: null`。
+    # 为什么要工具支持删除而不是"本地删了就算了"：本地 git rm 后远端文件仍在，
+    # 只推配置文件就会留下"声明已删、文件还在线"的半拉子状态（比不删更难查）。
+    for p in a.delete:
+        gone.append(p)
+        print("del   %-56s （远端将不存在）" % p)
+        items.append({"path": p, "mode": "100644", "type": "blob", "sha": None})
     tree_sha = None
     for attempt in range(1, 5):
         # 422 的意思是"父提交已落后"：白天那场随时可能把 main 往前推。
@@ -382,7 +411,7 @@ def main():
             time.sleep(2 * attempt)
     print("parent %s -> commit %s -> ref %s" % (head[:10], commit["sha"][:10], ref["object"]["sha"][:10]))
 
-    bad = verify(expect, "即时复查", ref_name)
+    bad = verify(expect, "即时复查", ref_name, gone)
     if on_main:
         # Actions 的 run 列表有 10~20s 延迟：守门通过≠真的没有在跑的场，推后必须再看一次
         # 减 120s 是为了抵消本机与 GitHub 时钟的偏差（判据方向是"更保守"，不会漏判）
@@ -398,7 +427,7 @@ def main():
                     break
                 time.sleep(30)
             print("那批构建已结束，复查是否被回滚：")
-            bad = verify(expect, "构建后复查", ref_name)
+            bad = verify(expect, "构建后复查", ref_name, gone)
         else:
             print("  [OK] 无早于本次推送且未提交的 run")
     else:

@@ -214,6 +214,10 @@ _AGNES_KEY_IDX = 0
 _AGNES_BLOCK_UNTIL = 0.0
 _AGNES_OFFENSES = 0
 _AGNES_EMPTY_STREAK = 0
+# 多 key 轮转时的"这一圈是不是全吃了 429"连击计数：轮完一整圈仍全 429 才记罚期。
+# 实现方式是"之后不再发请求"（调用方与本函数入口都查 BLOCK_UNTIL），**不是 sleep** ——
+# 构建期等待会拉长整场构建，而少打几次网关只会让构建变快。
+_AGNES_429_STREAK = 0
 _AGNES_EMPTY_LIMIT = 3  # 连续空响应阈值（模型偶发拒绝 vs 端点异常的分界）
 # OpenCode Zen 免费模型（https://opencode.ai/docs/zen/）：OpenAI 兼容端点，免费档需 OpenCode 客户端会话头。
 # 实测（2026-09-13）：ling 2.4s / big-pickle 5.6s / mimo 13.1s 可用；muse-spark 稳定 500、nemotron 两款 88s+，不入轮询。
@@ -1874,7 +1878,11 @@ def _detect_lang(text):
 
 def _agnes_translate(text, timeout=20):
     """Agnes AI 翻译（OpenAI 兼容接口，agnes-2.5-flash）。失败返回 None。"""
-    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES, _AGNES_EMPTY_STREAK, _AGNES_KEY_IDX
+    global _AGNES_BLOCK_UNTIL, _AGNES_OFFENSES, _AGNES_EMPTY_STREAK, _AGNES_KEY_IDX, _AGNES_429_STREAK
+    # 罚期闸放在入口：以前只有调用方 _translate_to_zh 记得查，函数自己照发请求
+    # ⇒ 任何新调用点都会绕过退避。停手必须是函数的默认行为，不是调用者的自觉。
+    if _AGNES_BLOCK_UNTIL > time.time():
+        return None
     payload = json.dumps({
         "model": "agnes-2.5-flash",
         "messages": [
@@ -1903,6 +1911,7 @@ def _agnes_translate(text, timeout=20):
             if out:
                 _AGNES_OFFENSES = 0
                 _AGNES_EMPTY_STREAK = 0
+                _AGNES_429_STREAK = 0      # 任一 key 成功就不该把早先的 429 攒成退避
             else:
                 # 200 但空 content（模型对特定输入的拒绝/截断）：连续 3 次视为端点异常入罚期
                 _AGNES_EMPTY_STREAK += 1
@@ -1915,11 +1924,23 @@ def _agnes_translate(text, timeout=20):
                     print("[翻译] Agnes 连续 %d 次空响应，暂停直连 %d 分钟" % (_AGNES_EMPTY_LIMIT, block_s // 60), file=sys.stderr)
         return out
     except urllib.error.HTTPError as e:
-        # 429 限流：先轮转到下一个 key，如果全部 key 都试过则入账本罚期
+        # 429 限流：先轮转到下一个 key；**轮完一整圈仍全 429** 才记一次罚期
+        # （旧写法只轮转、从不记账 ⇒ 所有 key 一起被限流时，每条待翻文本都再撞一圈墙）
         if e.code == 429 and len(_AGNES_KEYS) > 1:
             with _TRANS_LOCK:
                 _AGNES_KEY_IDX = (_AGNES_KEY_IDX + 1) % len(_AGNES_KEYS)
-            print("[翻译] Agnes 429，轮转到 key[%d]" % _AGNES_KEY_IDX, file=sys.stderr)
+                _AGNES_429_STREAK += 1
+                cycled = _AGNES_429_STREAK >= len(_AGNES_KEYS)
+                if cycled:
+                    _AGNES_429_STREAK = 0
+                    if _AGNES_BLOCK_UNTIL <= time.time():
+                        block_s = min(300 * (2 ** _AGNES_OFFENSES), 3600)
+                        _AGNES_BLOCK_UNTIL = time.time() + block_s
+                        _AGNES_OFFENSES += 1
+                        print("[翻译] Agnes %d 个 key 全限流，暂停直连 %d 分钟"
+                              % (len(_AGNES_KEYS), block_s // 60), file=sys.stderr)
+            if not cycled:
+                print("[翻译] Agnes 429，轮转到 key[%d]" % _AGNES_KEY_IDX, file=sys.stderr)
             return None
         # 其他 HTTP 错误 / 全部 key 已轮转完：入账本罚期
         with _TRANS_LOCK:

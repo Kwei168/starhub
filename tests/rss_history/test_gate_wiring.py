@@ -41,19 +41,14 @@ UNWIRED = {
     "tools": "本地推送工具判据（CI 不调用 data_api_push），本机 182s —— 不值得每场构建都跑",
 }
 
-# 已在闸内、但**形状仍是脚本风格**的既有文件：模块级（或模块级 if 里）有 sys.exit。
-# 它们今天不炸只是因为正在通过；一旦某条判据红，CI 得到的是 INTERNALERROR + 整场部署被冻，
-# 而不是可读的红（2026-10-01 用 AST 全量扫出来的，见 test_gate_wiring 的 KNOWN_FRAGILE 说明）。
-# 这份名单只许缩短，不许变长：新接进闸的文件必须走 test_wired_paths_are_pytest_collectible。
-KNOWN_FRAGILE = {
-    "tests/rss_history/test_api_dfb_wire.py",
-    "tests/rss_history/test_autocommit_no_rollback.py",
-    "tests/rss_history/test_build_determinism.py",
-    "tests/rss_history/test_dfb_drawer_map_wire.py",
-    "tests/rss_history/test_inline_json_escape.py",
-    "tests/rss_history/test_translate_cache_rotation.py",
-    "tests/rss_source_coverage/test_dateless_source_guard.py",
-}
+# 闸内"真会在收集期退出"的文件：登记后允许存在，但新接进来的必须可收集。
+# 空集是**当前实测**（2026-10-01 重扫，排除 `if __name__ == '__main__'` 守卫后）：
+# rss_history / rss_source_coverage / site_nav / site_nav_drift / daily_insight 全为 0，
+# 仅有的 2 个（tests/rss_translate/test_translate_cache.py、test_translate_engines.py）
+# 在 A2 里没被收集 —— 因为 A2 对 rss_translate 是按文件点名的。
+# 我第一版把 `__main__` 守卫里的 exit 也算成地雷，报了"闸内 7 个地雷"，是误判：
+# `if __name__ == "__main__": sys.exit(...)` 在 pytest 导入时根本不执行，是标准写法。
+KNOWN_FRAGILE = set()
 
 
 def _a2_cmd():
@@ -121,30 +116,41 @@ def _a2_paths():
 def _module_level_exits(path):
     """返回"被 pytest 当模块导入时就会执行到的 sys.exit"行号。
 
-    只看模块级语句（含模块级 if/try/for 的体），函数与类体内的 exit 不算 ——
-    那是测试自己控制的控制流。09:00 那场 A2 的 INTERNALERROR 正是 `if failures: sys.exit(1)`
-    藏在模块级 if 里，按行首缩进 grep 完全抓不到。
+    只看模块级语句（含模块级 if/try/for 的体），两类不算：
+      · 函数与类体内的 exit —— 那是测试自己控制的控制流；
+      · `if __name__ == "__main__": sys.exit(...)` —— pytest 导入时不执行，是标准写法。
+        我第一版没排除这一类，把 5 个健康的 pytest 文件误判成"地雷"并写进了手册与
+        KNOWN_FRAGILE，等于用一条假事实去指导别人的判断。
     """
     import ast
     tree = ast.parse(io.open(path, encoding="utf-8").read(), filename=path)
     found = []
 
-    def walk(body):
+    def is_main_guard(node):
+        if not isinstance(node, ast.If):
+            return False
+        t = node.test
+        return (isinstance(t, ast.Compare) and isinstance(t.left, ast.Name)
+                and t.left.id == "__name__"
+                and ast.unparse(t.comparators[0]) in ("'__main__'", '"__main__"'))
+
+    def walk(body, in_main):
         for node in body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 continue
+            mine = in_main or is_main_guard(node)
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
                 call = ast.unparse(node.value.func)
-                if call in ("sys.exit", "os._exit", "exit", "quit"):
+                if call in ("sys.exit", "os._exit", "exit", "quit") and not mine:
                     found.append(node.lineno)
             for field in ("body", "orelse", "finalbody"):
                 sub = getattr(node, field, None)
                 if isinstance(sub, list):
-                    walk(sub)
+                    walk(sub, mine)
             for h in getattr(node, "handlers", []) or []:
-                walk(h.body)
+                walk(h.body, mine)
 
-    walk(tree.body)
+    walk(tree.body, False)
     return found
 
 

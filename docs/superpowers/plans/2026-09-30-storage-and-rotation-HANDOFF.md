@@ -679,31 +679,69 @@ trim_guard            2                → <none>  ← 本次接进 repo-trim.ym
   已被历史重写销毁（`git cat-file -t bcc385c` → Not a valid object），推上去就是一个永远只能报错的
   死工具，正是这次目标要清的"空转"。引用它的 `2026-09-20-rss-coverage-fix-pending-push.md` 是历史计划，不动。
 
-### 10.24 blocking 闸里有 7 个"一红就冻整场部署"的地雷（AST 扫出来的，不是猜的）
+### 10.24 【已更正】"闸内 7 个地雷"是我的误判：`__main__` 守卫里的 exit 是无害的
 
-排查 09:00 那场 A2 的 INTERNALERROR 时，顺手用 AST（不是 `grep '^sys.exit('`，那抓不到藏在模块级
-`if` 里的出口）把整个 `tests/` 扫了一遍"被 pytest 当模块导入就会执行到的 exit"：**全仓 25 个文件**
-是这种形状，其中 **7 个已经在 blocking 闸的收集范围内**：
+排查 09:00 那场 A2 的 INTERNALERROR 时，我用 AST 扫了一遍"被 pytest 当模块导入就会执行到的 exit"，
+写下"全仓 25 个文件是这种形状，其中 7 个已在 blocking 闸的收集范围内"。**这个结论错了**：
+扫描没排除 `if __name__ == "__main__": sys.exit(...)`，而那是标准写法 —— pytest 导入时**不执行**守卫体。
+反例正是 `tests/rss_history/test_build_determinism.py`：它是正常的函数式判据，exit 只在直接运行时走。
+
+排除该守卫后重扫（`.deploy-tmp/_rescan_real_landmines.py`，10-01 03:2x 实测）：
 
 ```
-tests/rss_history/test_api_dfb_wire.py:224              tests/rss_history/test_inline_json_escape.py:105
-tests/rss_history/test_autocommit_no_rollback.py:134    tests/rss_history/test_translate_cache_rotation.py:164
-tests/rss_history/test_build_determinism.py:55          tests/rss_source_coverage/test_dateless_source_guard.py:266
-tests/rss_history/test_dfb_drawer_map_wire.py:220
+tests/rss_history        真地雷 0 个       tests/rss_source_coverage  真地雷 0 个
+tests/site_nav           真地雷 0 个       tests/site_nav_drift       真地雷 0 个
+tests/daily_insight      真地雷 0 个       tests/rss_translate        真地雷 2 个
+                                                    ↑ test_translate_cache.py:64 / test_translate_engines.py:190
 ```
 
-它们今天不炸，**唯一原因是它们正在通过**。任何一条判据转红，CI 拿到的不是可读的红，而是
-`INTERNALERROR` + 整场 A2 失败 ⇒ 后续构建、提交、Vercel/Pages 部署全部跳过
-（09:00 那场就是这个形状：数据从 08:19 停更，直到我修完才恢复）。
+而 `rss_translate` 那 2 个**不在收集范围内** —— A2 对它是按文件点名的（§10.22 的教训）。
+真实结论：**当前闸内没有"一红就冻部署"的地雷**；唯一真实存在过的就是 09:00 炸掉的
+`test_translate_engines.py`，而它已经在闸外。
 
-处置方式不放宽检查，而是**显式登记 + 双向判据**：`test_gate_wiring.py` 新增
-`test_wired_paths_are_pytest_collectible`（AST 判模块级出口），名单外的新文件一律判红；
-这 7 个进 `KNOWN_FRAGILE`，并配一条反向判据——谁已被改成真正的 test 函数却还赖在名单里也判红
-（防假登记）。变异验证：把 A2 改回 `tests/rss_translate/`（我真实犯的那个错）⇒ 这条当场红
-（`.deploy-tmp/_mut_a2_dir_check.py`，MUTATION_RC=1）。
+教训写死在这里：**扫描器的分类学错误会直接变成我的结论**。判据报"7 个"我就照着报，
+没有先问"它们今天为什么没炸"——我给的解释（"因为正在通过"）其实是编出来圆场的，
+真实原因简单得多：那种写法根本不在导入时执行。
 
-**待办（属于改测试代码，需单独批准）**：把这 7 个文件改造成真 pytest 判据，让闸红了能报出
-"哪条失败"而不是崩掉收集。
+判据本身保留、而且更严：`test_wired_paths_are_pytest_collectible` 对所有被 A2 点名的路径做
+AST 检查（排除 `__main__` 守卫），名单外一律判红；`KNOWN_FRAGILE` 改成**空集**（不是删判据），
+并保留"赖着不划掉也判红"的反向检查。变异验证：把 A2 改回接整个 `tests/rss_translate/`
+⇒ 这条当场红（`.deploy-tmp/_mut_a2_dir_check.py`）。
+
+留一条真实待办（无部署风险）：把 `tests/rss_translate/` 那两个脚本风格文件改成函数式判据，
+之后 A2 可按目录收集，不必逐个点名。
+
+### 10.28 多 key 退避 + 删死端点 + 线上复核实测（10-01 11:00 场之后）
+
+**① Agnes 多 key 429 退避**（`_agnes_translate`）：轮完一整圈（`_AGNES_429_STREAK >= len(keys)`）
+仍全 429 才记一次罚期，罚期内**函数入口自己返回 None**（旧写法只有调用方
+`_translate_to_zh:2099` 记得查闸，函数照发请求）。任一 key 成功即清零连击。
+判据 `tests/rss_translate/test_agnes_429_backoff.py` 4 条（含"单次 429 必须继续试下一个 key"、
+"成功清零"、"全程不许 sleep"三条反向/方向护栏）；四路变异全杀
+（`.deploy-tmp/_mut_429.py`）。**M4 第一次存活**：我"成功清零"那条只喂了 2 次 429，
+3 个 key 时不清零也够不到阈值 ⇒ 补成"429/成功 交替 3 轮"才杀掉。
+用户关心的"会不会拉长构建"：不会 —— 罚期是**少发请求**，代码里没有任何 sleep（判据专门钉了这点）。
+
+**③ 死端点 `/api/build_log` 已删**：`api/build_log.js` 文件 + `vercel.json` 里的那条声明。
+删之前先确认引用面：全仓只有 `vercel.json:12` 一处（其余命中是自动生成的 repowiki 元数据），
+前端零调用。判据 `tests/site_nav/test_dead_api_routes.py` 钉三条：死路由登记（**禁止复活**，
+删完清空名单就等于自我注销）、vercel.json 声明必须都有对应文件、页面引用的 `/api/*` 必须存在。
+第二条 regex 第一版把 `https://aihot…/api/v1` 这类**外部** API 也算成本站引用，收紧为
+"引号/反引号/左括号后紧跟 `/api/`"才对。
+
+**线上复核（`36808494591`，head=`b2e84f`，11:00 场 completed/success 之后的真页面）**：
+
+| 指标 | 改动前 | 现在（实测） |
+|---|---|---|
+| 控制台 error | 16 条必败 + `rss-data-10.js` 404 + preload 告警 | **0 条** |
+| 一次访问的服务端翻译请求 | 12 秒内 8 次且仍在续跑（全库遍历 ≈41 分钟） | **14 次后停止**：最后一次在 t=28.0s，采样时 t=184.7s ⇒ 之后 **156 秒零请求** |
+| 切排序（diverse→oldest）后 | 新首屏排在旧队列后面 | +3 次请求即收口（14→17，之后静默 30s），**新首屏 80/80 标题中文、摘要 70/70 中文**（切前是 85/102） |
+| 浏览器直连 googleapis | 16 次全败 | **0 次**（当日熔断已跨访问记住） |
+
+首屏 120 张卡标题 **120/120 含中文**（`_total=10`、6 个 chunk 正常合并）。
+
+**②"改 7 个脚本风格文件"取消** —— 那是 §10.24 里我的误判，实际闸内 0 个，没有可改的东西。
+
 
 ### 10.25 运行时翻译队列的真实负担（减负设计的量化依据）
 
