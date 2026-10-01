@@ -4006,16 +4006,33 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
      名单按**主机名后缀**匹配，绝不做子串匹配，否则 `http://evil.com/?x=caifuzhongwen.com` 会冒充命中。
      判据：tests/site_nav/test_orphan_requests.py（含那条冒充样本与"改成子串匹配"的变异）。 */
   var _REF_HOSTS = ['caifuzhongwen.com'];
-  function _coverRefPolicy(u){
-    var s = String(u || '');
-    if (s.lastIndexOf('http://', 0) !== 0 && s.lastIndexOf('https://', 0) !== 0) return 'no-referrer';
+  var _BAD_COVERS = """ + json.dumps(sorted(_BAD_COVER_HOSTS), ensure_ascii=False) + """;
+  function _coverHost(u){
+    /* 必须 trim + 整体小写：Python 侧 _cover_host 是 `partition('//')[0].lower()` 判 scheme
+       再把 host 小写，大写 scheme（HTTPS://…）在两边都该算同一个 host。
+       少这一步就是"构建期判空、渲染层放行"的分叉，与今天上午修掉的翻译判据同一种形状。 */
+    var s = String(u || '').trim().toLowerCase();
+    if (s.lastIndexOf('http://', 0) !== 0 && s.lastIndexOf('https://', 0) !== 0) return '';
     var rest = s.substring(s.indexOf('//') + 2);
-    var host = ((rest.split('/')[0] || '').split('@').pop().split(':')[0] || '').toLowerCase();
-    for (var i = 0; i < _REF_HOSTS.length; i++) {
-      var d = _REF_HOSTS[i];
-      if (host === d || host.slice(-(d.length + 1)) === '.' + d) return '';
+    return ((rest.split('/')[0] || '').split('@').pop().split(':')[0] || '');
+  }
+  /* 精确或作为子域命中；空 host 不命中。与构建期 Python 侧 _host_matched 同一条规则。 */
+  function _hostInTable(host, table){
+    if (!host) return false;
+    for (var i = 0; i < table.length; i++) {
+      var d = table[i];
+      if (host === d || host.slice(-(d.length + 1)) === '.' + d) return true;
     }
-    return 'no-referrer';
+    return false;
+  }
+  /* 渲染层再过滤一次必挂域名：构建期已把封面写空，这里兜的是实时链路
+     (?source= / ?batch=) 现抓回来的条目。表只有一份，住在 _BAD_COVER_HOSTS，
+     由 _BAD_COVERS 注入 —— 实时侧再抄一份就是第二个会分叉的事实来源。 */
+  function _dropBadCover(u){
+    return _hostInTable(_coverHost(u), _BAD_COVERS) ? '' : (u || '');
+  }
+  function _coverRefPolicy(u){
+    return _hostInTable(_coverHost(u), _REF_HOSTS) ? '' : 'no-referrer';
   }
   function renderWall(){
     var list=visibleArts(), wall=document.getElementById('wall');
@@ -4039,8 +4056,9 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     for(var i=0;i<end;i++){
       var a=list[i], k=artKey(a), isVis=!!visited[k];
       var isOpen=curArt&&artKey(curArt)===k;
-      var hasImg=!!a.img;
-      /* 有封面图才走封面卡；无图回退纯文字紧凑卡，避免渐变占位浪费空间 */
+      var _cv=_dropBadCover(a.img);
+      var hasImg=!!_cv;
+      /* 有可用封面图才走封面卡；无图（或被必挂域名表过滤掉）回退纯文字紧凑卡，避免渐变占位浪费空间 */
       /* A1 修复：卡片加 tabindex 使键盘可达 */
       h+='<article class="card'+(hasImg?' cover-card':'')+(isVis?' visited':'')+(isOpen?' open':'')+'" data-k="'+esc(k)+'" tabindex="0" style="--cc:var(--cat-'+a.c+')">';
       if(hasImg){
@@ -4049,7 +4067,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         // 取不到就摘掉自己，露出下面那张 .cover-fallback 首字占位；
         // 线上实测新华网 OSS 是 http=502/https TLS 失败、BBC 图在大陆直接连不通，
         // 没有这一句时卡片上就是一个破图。
-        h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="'+esc(_coverRefPolicy(a.img))+'" onerror="this.remove()">';
+        h+='<img class="cover-img" src="'+esc(_cv)+'" alt="" loading="lazy" decoding="async" referrerpolicy="'+esc(_coverRefPolicy(_cv))+'" onerror="this.remove()">';
         h+='</a>';
       }
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';

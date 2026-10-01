@@ -28,6 +28,20 @@ try {
   console.log('::warning title=RSS 运行时留存闸门不可用::' + (e && e.message));
 }
 
+// ── 实时封面抽取 ──
+// 规则在 lib/rss_cover.js，与构建期 build_rss_aggregator._pick_item_image 同一优先级
+// （enclosure > media:content > media:thumbnail > 正文首图 > 描述首图）。
+// 缺这一段时 ?source= / ?batch= 现抓的条目从出生就没有封面（模板注释自己写明过），
+// 而页面 _apiMergeTo 只能保住旧条目的图 ⇒ 新文章永远比历史条目少一张封面卡。
+// 加载失败只影响封面（非致命），但必须出声：静默退化是本项目付过两次代价的形态。
+let COVER = null;
+try {
+  COVER = require('../lib/rss_cover.js');
+} catch (e) {
+  console.error('[rss] 封面抽取模块加载失败:', e && e.message);
+  console.log('::warning title=RSS 实时封面抽取不可用::' + (e && e.message));
+}
+
 /** 响应头口径：装载失败或计算异常都必须显式露出来，不许静默当成"已过滤"。 */
 function retentionHeader() {
   return (RETENTION && !RETENTION_FAILED) ? 'on' : 'unavailable';
@@ -452,6 +466,10 @@ function parseFeed(xml, sourceKey, maxItems) {
         if (_dt.date_fallback) item.date_fallback = true;
         const media = extractMediaFromEntry(entry);
         if (media.media_url) { item.media_url = media.media_url; item.media_type = media.media_type; }
+        if (COVER) {
+          const _cv = COVER.pickItemImage(entry, extractTag(entry, 'content'), extractTag(entry, 'summary'));
+          if (_cv) item.img = _cv;
+        }
         items.push(item);
       }
     }
@@ -489,6 +507,10 @@ function parseFeed(xml, sourceKey, maxItems) {
             result.media_url = cleanLink(urlM[1]); result.media_type = t;
           }
         }
+      }
+      if (COVER) {
+        const _cv = COVER.pickItemImage(item, contentEncoded, desc);
+        if (_cv) result.img = _cv;
       }
       items.push(result);
     }
@@ -619,6 +641,8 @@ async function fetchOne(source) {
         if (it.date_fallback) obj.date_fallback = 1;
         if (it.fullContent) obj.fc = it.fullContent;
         if (it.media_url) { obj.mu = it.media_url; obj.mt = it.media_type; }
+        // 封面同样只在真值时写（与 mu/mt 一致）；出口那行 `img: it.img || ''` 靠它才有内容
+        if (it.img) obj.img = it.img;
         return obj;
       }),
       lastModified: new Date().toUTCString(),

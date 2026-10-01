@@ -57,7 +57,10 @@ def _js_pipeline_src():
 
 
 def _run_js(node, body):
-    script = "const s=%r;\neval(s);\n%s" % (_js_pipeline_src(), body)
+    # COVER 必须先注进同一作用域：parseFeed 现在会调 COVER.pickItemImage，
+    # 切片跑法没有它 ⇒ ReferenceError，判据会红在不存在的问题上。
+    script = ("const COVER=require(%r);\n" % os.path.join(ROOT, "lib", "rss_cover.js")
+              + "const s=%r;\neval(s);\n%s" % (_js_pipeline_src(), body))
     out = subprocess.run([node, "-e", script], capture_output=True)
     assert out.returncode == 0, out.stderr.decode("utf-8", "replace")[:400]
     return json.loads(out.stdout.decode("utf-8"))

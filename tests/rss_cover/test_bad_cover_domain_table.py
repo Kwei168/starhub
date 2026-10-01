@@ -28,7 +28,6 @@ import xml.etree.ElementTree as ET
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DOC = os.path.join(ROOT, "docs", "排查记录.md")
 
 # 表内容与排查记录逐条对应；要改表必须先在那里补实测。别把它清空——清空后判据①就永不检查。
 EXPECTED_TABLE = {
@@ -82,11 +81,31 @@ def test_table_is_exactly_the_measured_hosts():
         "删除要说明该域名为何已恢复；两边都不许静默改。")
 
 
-def test_every_entry_is_documented():
-    """表里每个域名都必须在用户自己的排查记录里有原文 —— 防"凭印象加域名"。"""
-    text = open(DOC, encoding="utf-8").read()
-    missing = [h for h in sorted(EXPECTED_TABLE) if h not in text]
-    assert not missing, "这些域名在 docs/排查记录.md 里查不到实测：%s" % ", ".join(missing)
+def _table_source_block():
+    """取 `_BAD_COVER_HOSTS = frozenset({...})` 那一段源码（域名与它的实测理由必须同行出现）。"""
+    src = _module_source()
+    i = src.index("_BAD_COVER_HOSTS = frozenset({")
+    j = src.index("})", i)
+    return src[i:j]
+
+
+def test_every_entry_carries_its_measurement_comment():
+    """每个域名后面必须跟一句实测理由。
+
+    原来这条是去读 `docs/排查记录.md` 的，CI 里直接 FileNotFoundError —— 那份记录**没有进 git**，
+    于是判据在本地绿、在 ubuntu 红（09:00 场 A2 blocking 就是被它冻住的）。
+    证据要么跟着代码走，要么就别声称"有证据链"：这里改成要求行尾注释。
+    """
+    block = _table_source_block()
+    no_reason = []
+    for host in sorted(EXPECTED_TABLE):
+        lines = [l for l in block.splitlines() if '"%s"' % host in l]
+        assert len(lines) == 1, "表里 %s 出现 %d 次，判据的行定位失效" % (host, len(lines))
+        reason = lines[0].split("#", 1)[1].strip() if "#" in lines[0] else ""
+        if len(reason) < 8:
+            no_reason.append(host)
+    assert not no_reason, (
+        "这些域名没有行尾实测理由（写清几条封面、什么错误码），不许凭印象进表：%s" % ", ".join(no_reason))
 
 
 @pytest.mark.parametrize("host", sorted(EXPECTED_TABLE))
@@ -122,13 +141,10 @@ def _js_ref_hosts():
 
 
 def test_referer_hosts_are_the_measured_ones():
-    """放行名单只许是"带 Referer 即 200"实测过的那个域名，且必须在排查记录里有原文。"""
+    """放行名单只许是"带 Referer 即 200"实测过的那个域名（证据见本文件 docstring §防盗链反向）。"""
     hosts = _js_ref_hosts()
     assert hosts == {"caifuzhongwen.com"}, (
         "referrerpolicy 放行名单变了：%s（新增要实测证据，删除要确认没人再依赖它）" % sorted(hosts))
-    text = open(DOC, encoding="utf-8").read()
-    missing = [h for h in sorted(hosts) if h not in text]
-    assert not missing, "docs/排查记录.md 里查不到这些域名的实测：%s" % ", ".join(missing)
 
 
 def test_referer_hosts_survive_the_bad_table():

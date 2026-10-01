@@ -83,7 +83,17 @@ def _cover_policy_js():
         assert j > i, "%r 在产物里没有结束边界" % a
         return html[i:j + len(b)]
 
-    return cut("var _REF_HOSTS = ", ";"), cut("function _coverRefPolicy(", "\n  }")
+    def cut_block(a, b):
+        i = html.find(a)
+        assert i >= 0, "产物里找不到 %r：#2 的实现被删了或改名了" % a
+        j = html.find(b, i)
+        assert j > i, "%r 在产物里没有结束边界" % a
+        return html[i:j]
+
+    # `_coverRefPolicy` 现在与 `_coverHost`/`_hostInTable`/两张表连成一段，
+    # 只抠函数体会在 node 里 ReferenceError —— 那是判据读错了范围，不是实现的错。
+    # 所以白名单的静态检查读**声明行**，执行时喂**整段**。
+    return cut("var _REF_HOSTS = ", ";"), cut_block("var _REF_HOSTS = ", "function renderWall")
 
 
 def test_cover_referrer_policy_is_per_host(tmp_path):
@@ -93,7 +103,7 @@ def test_cover_referrer_policy_is_per_host(tmp_path):
     import shutil
     import subprocess
 
-    decl, fn = _cover_policy_js()
+    decl, block = _cover_policy_js()
     hosts = re.findall(r"['\"]([^'\"]+)['\"]", decl)
     assert hosts, "白名单空了：等于退回全局 no-referrer 的一刀切（财富中文网那类又取不到图）"
     bad = [h for h in hosts if ("/" in h or ":" in h or " " in h)]
@@ -103,7 +113,7 @@ def test_cover_referrer_policy_is_per_host(tmp_path):
     if not node:
         import pytest
         pytest.skip("本机没有 node，跑不了产物级 JS")
-    script = (decl + "\n" + fn + "\nvar S=" + json.dumps([s for _, s, _ in COVER_SAMPLES], ensure_ascii=False)
+    script = (block + "\nvar S=" + json.dumps([s for _, s, _ in COVER_SAMPLES], ensure_ascii=False)
               + ";\nconsole.log(JSON.stringify(S.map(_coverRefPolicy)));\n")
     p = tmp_path / "_cover_ref.js"
     p.write_text(script, encoding="utf-8")

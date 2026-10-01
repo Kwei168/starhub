@@ -27,6 +27,16 @@ from _loader import load_build  # noqa: E402
 
 mod = load_build()
 API_RSS = os.path.join(ROOT, "api", "rss.js")
+LIB_COVER = os.path.join(ROOT, "lib", "rss_cover.js")
+
+
+def _cover_prelude():
+    """parseFeed 现在会调 COVER.pickItemImage ⇒ 切片跑法必须先把 COVER 注进同一作用域。
+
+    少这一句就是 ReferenceError 让判据"红得没有道理"，与 `_js_media_src` 注释里
+    "只切 helper 会让 cleanLink 未定义"是同一条教训的第二个实例。
+    """
+    return "const COVER=require(%r);\n" % LIB_COVER
 
 FIXTURES = [
     # (名字, RSS2 item 片段, 期望：link 是否取到 guid)
@@ -267,7 +277,7 @@ def test_rss_enclosure_media_url_matches_python_end_to_end():
     assert py_url, "Python 侧没取到 enclosure：%s" % py_out[0].keys()
 
     xml = '<?xml version="1.0"?><rss><channel>%s</channel></rss>' % item
-    script = ("const s=%r;\neval(s);\nconst its=parseFeed(%s,'s_1',50);\n"
+    script = (_cover_prelude() + "const s=%r;\neval(s);\nconst its=parseFeed(%s,'s_1',50);\n"
               "process.stdout.write(JSON.stringify(its[0]&&its[0].media_url||''));\n"
               % (_js_pipeline_src_for_media(), json.dumps(xml)))
     out = subprocess.run([node, "-e", script], capture_output=True)
