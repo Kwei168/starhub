@@ -1153,6 +1153,75 @@ def _pick_item_image(it, desc_raw, content_raw):
         return ""
 
 
+# ── 封面"必挂域名"判空表（③#1）───────────────────────────────
+# 证据：docs/排查记录.md 2026-10-01 逐源实测。只收录**浏览器(带系统代理)与 Node 直连
+# 两条通道都取不到**的域名 —— 只有代理侧挂、直连侧通的（pbs.twimg.com / cdn.hk01.com 等）
+# 不进这张表，否则会把能显示的封面一起清掉。按域名而非按 URL 是因为已明确不做构建期探活。
+_BAD_COVER_HOSTS = frozenset({
+    "ichef.bbci.co.uk",          # BBC 全系 305/305 挂：DNS 投毒 + schannel 握手失败
+    "i.guim.co.uk",              # 卫报 92 张 401，换 UA/Referer 四种组合同挂
+    "npr.brightspotcdn.com",     # NPR 54 张 403
+    "external-preview.redd.it",  # Reddit 预览图 24 张 ECONNRESET
+    "ops.xhyun.news.cn",         # 新华社内网 OSS，公网 NXDOMAIN
+})
+
+_bad_cover_hits = {}
+_bad_cover_lock = threading.Lock()
+
+
+def _cover_host(url):
+    """封面 URL 的 host（小写、去 userinfo 与端口）；非 http(s) 返回空串。"""
+    s = str(url or "").strip()
+    if s.partition("//")[0].lower() not in ("http:", "https:"):
+        return ""
+    netloc = (s.partition("//")[2].split("/")[0] or "").split("@")[-1].split(":")[0]
+    return netloc.lower()
+
+
+def _host_matched(host, table):
+    """host 命中表内某域名（精确或作为子域）；空 host 不命中，避免误伤相对路径。"""
+    if not host:
+        return False
+    for d in table:
+        if host == d or host.endswith("." + d):
+            return True
+    return False
+
+
+def _drop_unloadable_cover(url):
+    """必挂域名的封面出厂写空（卡片退化为纯文字紧凑卡），其余原样返回。
+
+    这里**不设**"带 Referer 才放行"的例外分支：那种域名（实测只有财富中文网）靠页面侧
+    `referrerpolicy` 就能出图，本表不该收它；一旦有人把它加进来，判空会静默吞掉 ③#2，
+    所以由判据 `test_referer_hosts_survive_the_bad_table` 直接红，而不是在运行时分优先级。
+    """
+    if not url:
+        return url
+    host = _cover_host(url)
+    if not _host_matched(host, _BAD_COVER_HOSTS):
+        return url
+    with _bad_cover_lock:
+        _bad_cover_hits[host] = _bad_cover_hits.get(host, 0) + 1
+    return ""
+
+
+def _purge_bad_covers_in_history(history):
+    """清掉历史缓存里必挂域名的封面，返回清理条数。
+
+    不清的话，未被再次抓取的旧条目每一场都会被重新判空一次，播报数字会钉在一个
+    与"本场新增坏封面"无关的常量上；缓存本身也白占体积。
+    """
+    n = 0
+    for _hit in history.values():
+        _cached = _hit.get("image") or ""
+        if _cached:
+            _new = _drop_unloadable_cover(_cached)
+            if _new != _cached:
+                _hit["image"] = _new
+                n += 1
+    return n
+
+
 # ── XGO (Twitter/X) 信源内容清洗 ──────────────────────────────
 _XGO_TWEET_TEXT_RE = re.compile(
     r"<div[^>]*\bwhite-space:\s*pre-wrap[^>]*>([\s\S]*?)</div>",
@@ -1218,21 +1287,11 @@ def _extract_tweet_media(text):
 _IMG_UPGRADE_RULES = [
     # Phys.org CDN: /tmb/ 是 90×90 缩略图，/800/ 是 800px 高清图
     ("scx1.b-cdn.net",     r"/tmb/",                              r"/800/"),
-    # BBC ichef CDN: /240/ (6KB) → /624/ (30KB)，路径中数字即像素宽度
-    ("ichef.bbci.co.uk",   r"/240/",                              r"/624/"),
     # Twitter/X 头像: _normal (48×48) → _400x400
     ("pbs.twimg.com",      r"_normal\.(jpg|png|gif)$",             r"_400x400.\1"),
 ]
 
 # 需要回调函数的特殊规则（简单字符串替换无法正确处理）
-def _bbc_aspect_upgrade(url):
-    """BBC NxM → 624xH，保持原始宽高比"""
-    def _replace(m):
-        old_w, old_h = int(m.group(1)), int(m.group(2))
-        new_h = round(old_h * 624 / old_w)
-        return f"/{624}x{new_h}/"
-    return re.sub(r"/(\d{2,4})x(\d{2,4})/", _replace, url)
-
 def _query_width_upgrade(url):
     """保留原始查询参数分隔符（? 或 &），避免产生双 ?"""
     def _replace(m):
@@ -1241,11 +1300,9 @@ def _query_width_upgrade(url):
     return re.sub(r"([?&])width=\d+", _replace, url)
 
 _IMG_UPGRADE_SPECIAL = [
-    # BBC ichef: NxM 尺寸保持宽高比
-    ("ichef.bbci.co.uk", _bbc_aspect_upgrade),
-    # Reddit / Guardian: width=N 查询参数升级
+    # Reddit 预览图: width=N 查询参数升级（external-preview.redd.it 已被封面判空表清掉，
+    # 这里剩下的真实目标是 preview.redd.it）
     ("redd.it",          _query_width_upgrade),
-    ("i.guim.co.uk",    _query_width_upgrade),
 ]
 
 # 升级追踪（线程安全，供构建审计使用）
@@ -1254,9 +1311,12 @@ _img_upgrade_lock = threading.Lock()
 
 
 def _upgrade_img_url(url):
-    """升级已知低分辨率图片 URL 到高清版本，并记录升级事件"""
+    """必挂域名先判空，再把已知低分辨率图片 URL 升级到高清版本并记录事件"""
     if not url:
         return url
+    url = _drop_unloadable_cover(url)
+    if not url:
+        return ""
     original = url
     # 简单规则：正则替换
     for domain_match, pattern, replacement in _IMG_UPGRADE_RULES:
@@ -2515,6 +2575,8 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
         cleaned = _clean_xgo_content(desc_raw)
         desc = cleaned or _strip_html(desc_raw)
         full_content = ""  # 推文正文已在 desc 中，无需全文加载
+        # 不套封面判空：_extract_tweet_media 只认 /media/ 与 tweet_video_thumb 两种形态，
+        # 产出的 host 恒为 pbs.twimg.com（不在必挂表里，且它只在"无代理直连"口径下挂）。
         img = _extract_tweet_media(desc_raw)
     else:
         desc = _strip_html(desc_raw)
@@ -8587,9 +8649,22 @@ def main(mode="full"):
                 _new_img = _upgrade_img_url(_old_img)
                 if _new_img != _old_img:
                     _it["image"] = _new_img
-                    _hist_upgraded += 1
+                    # 判空（→ 空串）不算"升级"，它由下面的封面计数单独播报
+                    if _new_img:
+                        _hist_upgraded += 1
     if _hist_upgraded:
         print("[图片升级] 历史缓存补升级 %d 张" % _hist_upgraded)
+    # 历史缓存里躺着的必挂封面同样清掉，免得每一场都重新命中一次
+    _hist_purged = _purge_bad_covers_in_history(_rss_history)
+    # 判空必须可观测：0 命中说明上游换了域名或这张表已经过期，两种都需要有人知道
+    if _bad_cover_hits:
+        _bc_top = sorted(_bad_cover_hits.items(), key=lambda kv: -kv[1])
+        print("[封面判空] 丢弃 %d 张必挂封面（其中历史缓存清理 %d 张）：%s" % (
+            sum(_bad_cover_hits.values()), _hist_purged,
+            "、".join("%s×%d" % (_h, _n) for _h, _n in _bc_top)))
+    else:
+        print("[封面判空] 0 张命中（表内 %d 个域名本场均未出现）"
+              % len(_BAD_COVER_HOSTS), file=sys.stderr)
 
     # ── 剥离云存储签名参数（防止 GitHub Push Protection 拦截推送）──
     # 在快照/历史/数据分块写入前统一清洗，一处覆盖全部输出路径

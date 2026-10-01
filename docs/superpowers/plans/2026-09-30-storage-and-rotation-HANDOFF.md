@@ -1567,3 +1567,87 @@ UNWIRED tests/tools/test_data_api_push_delete.py       ← 同上（今天新增
 4. 本手册（§10.46/§10.47 状态改写成"已落地"）。
 
 **还没做**：#1 出厂判空（用域名表，不做构建期探活 —— 探活会拉长构建）、#4 `api/rss.js` 补抽图、⑤ 挂账。
+
+### 10.48 ③#1 封面"必挂域名"判空表已做完（本地验通，待推）
+
+按用户拍板的顺序接 **#1（出厂判空，用域名表，不做构建期探活）**。
+
+**实现（`build_rss_aggregator.py`）**
+- `_BAD_COVER_HOSTS` 5 项，逐条对应 `docs/排查记录.md` 的实测：`ichef.bbci.co.uk`、`i.guim.co.uk`、
+  `npr.brightspotcdn.com`、`external-preview.redd.it`、`ops.xhyun.news.cn`。
+  只收**浏览器(带系统代理)与 Node 直连两条通道都取不到**的域名。
+- `_cover_host()` 去 scheme/ userinfo /端口并小写；`_host_matched()` 精确或 `.子域`，**不是子串**。
+- 接入点是 `_upgrade_img_url()` 的第一件事（三处产封面路径全走它），XGO 推文图那条路径**故意不接**：
+  `_extract_tweet_media` 只认 `/media/` 与 `tweet_video_thumb`，host 恒为 `pbs.twimg.com`（不在表里），
+  套上去就是永不触发的空转。
+- `_purge_bad_covers_in_history()` 清历史缓存里已有的坏封面并返回条数。不清的话，未被再次抓取的旧条目
+  **每一场**都被重新判空一次，播报数字会钉在与"本场新增"无关的常量上。
+- 播报：命中 `[封面判空] 丢弃 N 张…（其中历史缓存清理 M 张）：host×n`；**0 命中也出声**（stderr），
+  因为"表恒为 0"要么是上游换了域名要么是表已过期，两种都需要有人知道。
+
+**顺带删掉的死配置/死函数**（判空先跑 ⇒ 这些规则永不触发）
+`_IMG_UPGRADE_RULES` 的 `ichef.bbci.co.uk /240/→/624/`、`_IMG_UPGRADE_SPECIAL` 的
+`("ichef.bbci.co.uk", _bbc_aspect_upgrade)` 与 `("i.guim.co.uk", _query_width_upgrade)`，以及
+`_bbc_aspect_upgrade` 整个函数。`("redd.it", ...)` 保留 —— `preview.redd.it` 不在表里，规则仍有真目标。
+
+**明确不收的域名**（误收即红，判据里逐条写了理由）
+`pbs.twimg.com`/`cdn.hk01.com`/`cdn.prod.www.spiegel.de`/`static01.nyt.com`/`wechat2rss.xlab.app`
+只在无代理直连口径挂；`preview.redd.it` 记录里没有它的实测；`vpsbbc.com`/`files.seeusercontent.com`
+各 1 张且两条通道结论矛盾；`www.appinn.com` 是单张图过期不是域名不可达；
+`images1.caifuzhongwen.com` 带 Referer 即 200 ⇒ 走 #2。
+
+**判据与变异**：新增 `tests/rss_cover/test_bad_cover_domain_table.py`（27 条），已接进 **A2 blocking**
+（`.github/workflows/update.yml` 步骤改名 "…site nav & cover domain table (blocking)" + 命令加目录 +
+`MUST_BLOCK` 同步）。`tools/mut_cover_table.py` 10 组变异**全 RED**，无逃逸：
+判空没接进 `_upgrade_img_url`／误收 twimg／表清空／把 Referer 域名也判空／卫报升级规则没删／
+0 命中不出声／只判精确 host／改成子串匹配／历史清理调用点被删／host 解析不吃端口与 userinfo。
+其中"表清空"杀出 10 条红，"误收 twimg"杀出 5 条。
+
+**一处设计回退（对抗审查发现的）**：第一版在 `_drop_unloadable_cover` 里写了"Referer 白名单优先"的
+运行时例外分支，并配了 Python 侧 `_REF_COVER_HOSTS`。变异 M8（删掉该分支）跑出 **GREEN** ——
+两张表不相交时那个分支永不触发，是死代码；而名单存两份正是今天刚修过的 Py/JS 分叉形状。
+⇒ 改成：Python 不再存副本，放行名单**只从现生成产物的 JS** 里读（`_js_ref_hosts()`），
+两表相撞由 `test_referer_hosts_survive_the_bad_table` 直接红，不在运行时分优先级。
+
+**读数**：新鲜首屏 chunk0（10-01，360 条 / 133 张封面）里 `ichef` 11 + `i.guim` 2 = **13 张（9.8%）**
+会被写成空 ⇒ 首屏少 13 张"必挂的封面卡 + 首字母占位"。含 09-18 旧块的本地全量：368+108+62+61+12=611 张。
+
+**本地状态**：`git rm --cached` 那 4 个页面 HTML 已做（远端 7c08d02cea 早没了，本地索引一直滞后），
+`tests/site_nav_drift/` 由假红转 **1 passed**；CI 的 A2 原命令本地整跑 **309 passed / 38.7s**（原 282 + 27）。
+
+**待线上复核**（推完后下一场）：日志里 `[封面判空]` 的 N 是否 >0；
+产物 `rss-data-0.js` 里 `ichef.bbci.co.uk` 的封面数应从 11 变 0
+（取样命令见 `docs/排查记录.md` §10 的"图片命中率基线对照"，把 SHA 换成新 head 即可）。
+
+
+### 10.49 batch① 已线上验收（08:11 场，head 7c08d02cea）
+
+`36834780866` 整场 **success**（29 步全绿，无 skipped）：A2 blocking、A3"产物页面不许进 git"、
+`Stage Pages site for Actions deployment`、`Upload Pages artifact`、`Deploy to GitHub Pages`、`Deploy to Vercel` 全绿。
+⇒ **删掉 git 里那 4 个页面 HTML 没有造成站点清空**：发布路径靠"按名从工作目录取现生成的那一份"，
+与 git 跟踪状态无关，`test -s` 硬断言在场。
+
+Pages 侧实测（`Last-Modified: Thu, 01 Oct 2026 08:32:13 GMT`，即这场部署）：
+
+```
+200 285192  index.html
+200  81634  ai-daily.html
+200 3163365 rss-aggregator.html
+200 349509  daily-insight-history.html
+200 599205  rss-data-0.js      200 6273522 rss-data-1.js
+```
+
+远端树 `trees/main?recursive=1` 里 `.html` 只剩 `template.html`（4 个产物页面已 404）。
+本地索引同步动作：`git rm --cached` 那 4 个路径（只动索引、不动工作树文件），
+`tests/site_nav_drift/` 从假红转 **1 passed**。
+
+**⑥ 的体积收益已经吃到（08:11 场就清了，不用等两场）**：`build_logs/` 从 **42.52 MiB → 15.88 MiB**
+（12 个文件、合计 16,655,828 字节）。现存跨度 `2026-09-26 … 2026-10-01`，即 **含今天共 6 天** ——
+`build_logger.cleanup(n)` 删的是 `date < today - n`，所以 `cleanup(5)` = 留 6 天，不是留 5 天；
+判据 `test_log_retention_days.py` 的上界因此钉的是 ≤7（给这个 off-by-one 留余地），别看名字理解错。
+复测命令（一次给出条数与字节和）：
+
+```bash
+gh api "repos/Kwei168/starhub/git/trees/main?recursive=1" \
+  --jq '[.tree[]|select(.path|startswith("build_logs/"))] | {files:length, bytes:([.[].size]|add)}'
+```
