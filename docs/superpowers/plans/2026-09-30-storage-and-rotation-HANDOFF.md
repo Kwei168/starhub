@@ -1131,6 +1131,376 @@ A3 是 `continue-on-error` ⇒ 不会冻部署，但会留下一条永久噪声 
 落地后复查：`trees/main?recursive=1` 里这 4 个路径 404、下一场 A3 转绿、
 `git ls-files '*.html'` 只剩 `template.html`（本地索引也要 `git rm --cached` 那 4 条，见上文）。
 
+**落地记录（10-01 05:5xZ，用户批准 ①）**：`--delete` 那 4 个路径 + 本手册 +
+`tests/site_nav_drift/test_artifact_drift.py` + `update.yml` 的 A3 名与注释，同一提交推上；
+本地随后 `git rm --cached` 并删工作树副本，使 `git ls-files`/动态 glob 与远端一致。
+
+> 实际状态更新（10-01 06:2xZ）：这条删除被权限层拦下，要求用户对"执行删除"本身给一次明确确认，
+> **未绕过、未重试**。下面是被拦之前跑完的预排，批准后可直接执行，不必重新调查。
+
+**预排结论：删这 4 个跟踪副本对上线是安全的，三条都是现取的证据**
+
+1. `Stage Pages site`（update.yml:333-347）先按 `git ls-files` 拷，再**按名字从工作目录覆盖**这 4 个
+   HTML，注释就写着"不信 git 里那份 / 它们已停止提交，main 上的副本是过期产物"
+   ⇒ 发布用的是当场生成的新鲜副本，与"是否被跟踪"无关。
+2. 同一步 349-354 行有 6 条 `test -s _pages/<文件>` 硬断言（含这 4 个 HTML + chunk0/1）
+   ⇒ "生成器没跑出东西"会硬失败，不会把空站点发上线；这一步本身 `continue-on-error`，
+   失败也只是 Pages 这场不发，Vercel 照常。
+3. 全仓扫"断言这 4 个文件存在于磁盘/git"的位置：命中 3 处，**都在根级 `test_daily_insight.py`（advisory 的 B 闸）**，
+   且都不依赖库里的副本：`daily-insight-history.html` 由测试自己调 `B._build_history_html()` 现生成（:194-196），
+   `ai-daily.html` 不在磁盘时它**自造最小夹具并在断言后删掉**（:203-221，注释明确"宁可现造夹具，也不许静默空转"）。
+   A2/A3 没有任何判据依赖它们存在 ⇒ 删除不会让 blocking 闸红。
+
+**顺带一条体量实测（不是本轮改动造成，供你决定是否收紧）**：远端树未截断、383 个跟踪文件、
+工作树内容合计 **72.99 MiB**，其中 `build_logs/` 一家就 **42.52 MiB = 58%**
+（`build_logger.cleanup(14)` 保 14 天，实测 15 个 `.jsonl`，单日 2.6~2.8 MiB）；
+其次是根目录 23.44 MiB（最大单项 `hot_history.json` 7.91 MiB）。
+跨场状态族已确认全部不在树里：`rss_history.json` / `rss_cache.json` / `rss_api_snapshot.json` /
+`rss-data-1.js` / `daily_insight_faiss.index` / `daily_insight_vectors.npy` / `emb_cache.json` 均 absent，
+只有 `rss_trend_history.json` 还跟踪着（1.12 MiB）。另：`.qoder/` 有 91 个文件 2.27 MiB 被跟踪，
+是工具生成的 wiki，改一次就多一份历史 —— 要不要一并出仓由你定，我没动。
+
+### 10.37 两边翻译判据**并不"同规则"**：14 条语料实测分叉 5 条（假名/谚文/西里尔/阿拉伯）
+
+起因是一句注释自己露的矛盾：构建期 Python `_needs_translation` 的 docstring 写着
+"与运行时 JS 的 `_needsTranslation` 同规则"，可它紧接着又写
+"门槛刻意不是'有没有拉丁词'：谚文/西里尔/阿拉伯文一个拉丁字母都没有，用拉丁词做门槛会把它们
+一起跳过（我第一版就是这样，被 `test_korean_still_sent` 当场打死）"。
+而运行时 JS 的门槛恰恰就是 `_LAT_WORD`（拉丁词）。于是把两边拉到同一批语料上实测
+（`.deploy-tmp/_probe_parity_needs_translation.py`，JS **从生成的产物里取**，避开"源码对、产物被吃转义"的老坑）：
+
+```
+语料              PY    JS     判定
+纯中文             skip  skip   ok
+中英混(专名多)       send  send   ok
+英文              send  send   ok
+纯假名             send  skip   DIVERGE
+假名夹汉字          send  skip   DIVERGE
+纯谚文             send  skip   DIVERGE
+西里尔             send  skip   DIVERGE
+阿拉伯             send  skip   DIVERGE
+纯URL/ANSI垃圾/HN样板/空/纯数字标点  skip skip ok
+```
+（14 条里分叉 **5** 条，全部是"非拉丁文字"这一类；"日文汉字夹假名短"两边都 skip，属中文占多数的正确判定。）
+
+**责任归属先说清**：这段 JS 与 `b2e84fb3` 逐字相同 ⇒ **不是我这两跳改出来的**；
+是**我把"同规则"写进 Python docstring 时没去核对 JS** —— 注释里一句未经证实的断言，
+本手册第 N 次栽在同一类事上。
+
+**影响面按路径拆，别夸大成"全站不翻"**：
+· 标题多数在构建期已被 Python 判走并翻好 ⇒ 运行时这次跳过通常看不出来；
+· **摘要是运行时专属**（09-16 起移出构建期，见 `_transDiag` 注释）⇒
+  **日文/韩文/俄文/阿拉伯文的摘要在浏览器里永远不翻**，这是真实可感的缺口；
+· 实时链路（`?source=` 与 `/api/rss` 合并进来的新条目）同样走运行时 ⇒ 这些非拉丁新条目也不翻。
+
+**三个选项（未实施，等点单）**：
+1. **改 JS 向 Python 对齐**（推荐）：含假名一律翻；字母门槛从 `_LAT_WORD` 换成
+   `clean.match(/\\p{L}/gu)`（`clean` 已剥掉 CJK，所以它等价于 Python 的 `c.isalpha()`）。
+   同时把这 14 条语料做成 A2 常驻**双向 parity 判据**（两边 verdict 逐条相等），
+   让"同规则"这句话从此由机器证明而不是由注释声称。代价：非拉丁文本会真的开始发请求（正是该翻的那些）。
+2. 反向把 Python 也收窄成拉丁门槛：更省，但等于宣布韩/俄/阿/日永不翻，与既有 `test_korean_still_sent` 的意图冲突。
+3. 只把 docstring 那句"同规则"改成实话：零行为变化，缺口留着。
+
+**为什么不能只加判据不改代码**：parity 判据装上就是红的（5 条分叉），
+而它要在 `tests/rss_translate/` 里按文件被 A2 点名 ⇒ **红一场就冻结部署**（§10.24 实测冻两小时）。
+所以必须"改 JS + 加判据"同一提交落地：先本地跑到绿，再推。
+
+### 10.38 选项 1 已在本地做完并验通（**未推**）：同规则判据常驻 + 代价实测 +0/300
+
+按"注释不该继续空头支票"的方向，本地实现并验证了 §10.37 的选项 1，**一个字节都没推**：
+
+- JS 侧改动：`_LAT_WORD`/`_LAT_CH`（拉丁词门槛）整体换成剥 CJK 后的 `\\p{L}` 字母门槛，
+  并补上"含假名一律翻"。**两个旧符号在全仓出现次数已归 0** —— 不留"定义了没人用"的尾巴，
+  新常量 `_CJK_R/_KANA_R/_LETTER_R` 各自 ≥2 次引用（声明 + 使用）。
+- 常驻判据：`tests/rss_translate/test_buildtime_skip_guard.py::test_runtime_and_buildtime_predicates_agree`
+  —— 14 条语料两边逐条比 verdict；JS 从**生成的产物**里切（不是 .py 源码，避开吃转义的老坑）；
+  带三条反向防空跑：该送的类不许少送、垃圾类不许被送、非拉丁类不许被跳过。
+- 实测结果：**分叉 0/14**（改前 5/14）。
+- 变异验证两个方向都杀得掉，且红因都是"分叉"这句：
+  `M2_js_drop_kana RC=1`（纯假名/假名夹汉字 PY=True JS=False）、
+  `M3_py_drop_kana RC=1`（同两条 PY=False JS=True）⇒ 判据是真双向，不是单向贴标签。
+- **代价实测（用线上 chunk0 的真数据，360 标题 + 300 摘要）**：
+  标题要翻数 176 → 176（**+0**），摘要 90 → 91（**+1 条 / +0.3%**）。
+  ⇒ 这不是"加负担"的改动：之前担心它会多翻一批，数据说几乎不多。
+- 整跑 CI 原命令 **278 passed**（原 277 + 新判据 1 条）。
+
+**过程里我自己撞的一次（值得记，因为它本来会冻部署）**：
+第一次整跑 **16 条红**。原因不是逻辑错，而是
+`tests/rss_translate/test_runtime_translate_guards.py` 与 `test_wall_queue_window.py`
+用 `START = "var _LAT_WORD = "` 当**切片锚点**去产物里取 JS ——
+我改了符号名，锚点就断了，判据集体崩在"找不到锚点"。已把两个文件的锚点改成 `var _CJK_R = `。
+教训：**用字面量锚点耦合符号名，等于把"改名"变成跨文件破坏性操作**。
+所以新判据自己带了一句可诊断的断言消息
+（"产物里找不到 %r（运行时判据被改名或删掉，同规则判据失去对象）"），
+下次再断会直接说是哪一段没了，而不是抛 16 条莫名其妙的红。
+更彻底的做法（锚点改用函数名 + 显式带上依赖声明）留作后续，本轮不扩大改动面。
+
+推送注意：这条必须**自己一个提交**（或与 §10.34 那批合并），且不能在构建进行中推。
+待推文件：`build_rss_aggregator.py`、`tests/rss_translate/test_buildtime_skip_guard.py`、
+`tests/rss_translate/test_runtime_translate_guards.py`、`tests/rss_translate/test_wall_queue_window.py`（后两个只是改锚点）。
+
+**§10.34 那批删除的预检已经做完（四条，全部非破坏式取证）**：
+1. Pages 发布不受影响：`Stage Pages site` 在 `git ls-files` 之后**按名字从工作目录覆盖**这 4 个 HTML
+   （update.yml:343-347，注释原话"不信 git 里那份"），且 349-354 行有 `test -s _pages/<文件>` 硬断言。
+2. blocking 闸不依赖它们存在：全仓扫"断言文件存在"的位置只有 3 处，都在根级 `test_daily_insight.py`（advisory 的 B 闸），
+   且它自己生成正文（`B._build_history_html()`）或缺失时自造夹具；A2/A3 无一处依赖。
+3. `test_history_bounds.py:203` 的脆弱点是"**跟踪但工作树缺失**"这个只可能出现在本地的状态；
+   真删之后跟踪与在场同时消失 ⇒ CI 干净检出不受影响（本地要同步 `git rm --cached` 对齐）。
+4. 判据覆盖不缩水（本次内存内模拟，未动索引/文件）：把输入面换成"template.html + 现生成 rss 页 + 三个生成脚本"
+   后，引用到的 `/api/` 名字仍是那 **8 个**（agihunt/article/events/news/refresh/rss/search/translate），
+   与删除前**逐字相同、无损失**（`api/` 8 个文件、1:1 那条判据照样成立）。
+⇒ 结论：批准后即可一次原子推送，不需要再补调查。
+、
+`tests/rss_translate/test_runtime_translate_guards.py`、`tests/rss_translate/test_wall_queue_window.py`（后两个只是改锚点）。
+
+### 10.39 Agnes 多 key 退避在**真实限流日**的生产读数（这条终于不用靠单测）
+
+14:00 场（run `36822533044`，head `6c0ec5f19b`）正好赶上 Agnes 被限流，job 日志里原文是：
+
+```
+[翻译] Agnes 429，轮转到 key[0]   ×3      key[1] ×6      key[2] ×4      key[3] ×2   （共 14 次轮转）
+[翻译] Agnes 3 个 key 全限流，暂停直连 5 分钟   ×2
+[翻译] Agnes 4 个 key 全限流，暂停直连 5 分钟   ×1
+```
+⇒ 我加的那条"**轮完一整圈才记罚期**"分支确实按设计触发了（3 次罚期、每次 300s），
+且罚期内不再各条文本都去撞墙。
+
+**关键对照（回答"会不会把构建拖长"这个点名问题）**：本场 `duration_s = 285.6s`，
+是当天 **15 场构建里最短的一场**（当天区间 285.6~614.6s）。
+`trans_fail=0`，`trans_agnes=13 / google=76 / mymemory=18 / cache_hit=8732`。
+⇒ 退避不是"多等一会儿"，而是**少撞墙所以更快**——这与单测的预测一致，但这次是生产数据。
+
+两句自我更正，别当成惯例相信：
+1. 我一度写下"日志里出现 13 处 429"——**假的**，那是信源 key `ai_at_meta_blog_429`；
+   另一次我用 `unzip` 解 `actions/jobs/<id>/logs` 的返回并据"没有 Agnes 行"下结论，
+   实际那个 endpoint 返回的是**明文日志**（带 UTF-8 BOM），解压失败被我误读成"没有内容"。
+   ⇒ 取 CI 日志请直接 `gh api … > file` 后 `sed 's/\x1b\[[0-9;]*m//g'` 再 grep，不要按 zip 处理。
+2. 我说过"进罚期不留痕（观测缺口）"——**说重了**：罚期分支本来就有 stderr 播报，
+   只是不进 `_TRANS_STATS` 结构化字段。因此**没有**为它新增计数器（避免造多余改动）。
+
+顺带一条 CI 侧读数：本场 A2 = **277 passed / 24.43s**（与本地同命令同数，说明 ubuntu 上跑的确实是同一批判据），
+A3 = `1 passed`，B 闸 = `391 passed`，全日志 `no tests ran` = 0 行（没有空套件冒充成绿）。
+Pages 的 `upload-pages-artifact@v5` 内部有一条 `id=pages_upload.__run_2;outcome=skipped;duration_ms=0`，
+而步骤结论是 success、线上产物也已带上新代码（`_wallDirty` 归 0、`_wallWindow` 存在）
+⇒ 我没有把这条内部 skipped 当成故障，但记在这里，日后 Pages 真出问题时先来回查它。
+
+### 10.40 "负担真的减了"终于有页面自证的口径：`tried=26 / untried=4906`
+
+14:00 场部署后，在 Pages 域直接调产物自带的诊断函数（`transDiag()`，无需 `?transdiag=1`），
+它跑在**整库已加载条目**上（4932 条）：
+
+```
+at 2026-10-01T06:58:03Z   total=4932
+tried=26        untried=4906          ← 只对这 26 条发过翻译请求
+title_cjk=4869  title_english=63
+summary_cjk=2439 summary_english=1543
+```
+
+**读法很重要，别把全库口径误读成窗口口径**：
+· `tried=26` 才是这次改造的成果 —— 队列**只碰了 26 条**（首屏窗口内的标题 + 前 30 条摘要里还需要翻的那些），
+  改造前这里会是 4932 量级（41 分钟全库队列）；
+· `summary_english=1543` / `title_english=63` 是**全库**里没翻的存量，绝大多数根本不在窗口内，
+  这是"没在首屏就不加载"的设计结果，不是缺陷；
+· 与运行时实测对得上：boot 后 22 个 translate POST、切排序新增 4 个（§10.32）。
+
+**为什么先量错了一次（写下来防再犯）**：我原本想用"卡片顺序 × chunk0 原文"直接验
+"摘要只翻窗口前 30 条"这条边界，结果 `matched=0` —— 卡片的链接不是裸 `a[href]`，
+我的 join 压根没成立。那串 0 是**没有数据**，不是"规则被违反"；
+如果按它下结论就会写出一条假发现。改用页面自带的诊断函数才是可信口径。
+另外提醒：`sCJK` 这类"含汉字"判据分不清**译文**与**原本就是中文的源**（36氪/IT之家等中文源占大头），
+所以拿它算"翻译覆盖率"会系统性高估，只能当上界看。
+
+**边界规则（前 30 条摘要）目前的证据链**：单元判据 `test_wall_queue_window.py`
+（量 ≤ 窗口+30、峰值并发 ≤3，各配过变异）+ 本节的 `tried=26` 实测。
+DOM 侧的直接验证在这套自动化里不可靠（导航 30s 上限、卡片无稳定 link 锚点），别再拿它当证据。
+
+### 10.41 全文翻译那条路径审过了：是按需的、有界；但它的缓存键在原理上不健全
+
+`_clientTranslate`（build_rss_aggregator.py:4308 起，"翻译全文/摘要"按钮用）读数与判断：
+
+- **不是后台负担**：只在点击时发；450 字/块、每请求 ≤20 块、批间**串行**、25s `AbortController` 中止；
+  `isMostlyZh` 先跳过中文；某一批失败就 `_agiBatch(bi+1)` 保留原文继续（不整篇丢）。
+  ⇒ 与 §10.40 的窗口队列是两条路，不冲突、不叠加后台量。
+- **一个原理性缺陷**：缓存键是 `text.substring(0,100)` —— 前 100 字相同即命中，
+  所以两篇**开头相同、后文不同**的文章会拿到别人的译文（静默串台）。
+- **但在真数据上没发生**：拿线上 chunk0 的 235 条"非中文、会走该缓存"文本实测，
+  按 `(link, field, 前100字)` 去重后**有害碰撞 0 组**。
+  我第一次数出"15 组碰撞"是**误报** —— 那 15 组其实是同一 `link`+同一字段的**重复条目**
+  （chunk0 360 条里只有 336 个唯一 link，24 条重复），全文本来就一模一样，谈不上串台。
+  ⇒ 教训与 §10.33/§10.34 同类：计数之前先问"这个键唯一吗"，否则会把重复行读成碰撞。
+- 顺带两个读数：首屏 120 张卡的 `data-k` **120 个全唯一**（数据里的重复行没被画成两张卡）；
+  标题层面有 1 组"同一标题两条"（`推出 Gemini 3.8 实时版…`）但 link 不同 ——
+  那是跨源转载，卡片带来源署名，**我不把它算作缺陷**，只记为可讨论项。
+
+要不要把缓存键改成全量文本哈希（或长度+前缀+后缀组合），属于口径变更：
+收益是消掉那个"原理上不健全"的串台面，代价是每次点击都要重算键、跨条目命中率下降。
+本轮**没动**，等你定。
+
+### 10.42 最大跟踪家族的逐日体积：是平的，不是在长（附我自己两次读数错法）
+
+用远端历史提交的 `contents/<file>?ref=<sha>` 只取 `size` 字段（不下载内容，所以与文件大小无关），
+对当天最大那几个跟踪家族取样：
+
+| 家族 | 09-29 | 09-30 | main（07:13Z 复测） |
+|---|---|---|---|
+| `hot_history.json` | 7.98 MiB | 7.91 / 7.96 MiB | **7.90 MiB** |
+| `translations.json` | 3.18 | 3.17–3.18 | **3.16 MiB** |
+| `analysis_snapshot.json` | 3.61 | 3.55–3.56 | **3.53 MiB** |
+| `rss_trend_history.json` | 1.12 | 1.11 | **1.11 MiB** |
+| `trending_snapshot.json` / `known_categories.json` | ≈0.01 | ≈0.01 | ≈0.01 |
+
+⇒ 这几族**两天里持平或微降**，与 §10.35 的 tip 合计 72.99 MiB、`.size` 2.44 GiB 稳定互相印证；
+真正的量在 `build_logs/`（42.52 MiB = 58%，`cleanup(14)` 保 14 天），那是**唯一还值得压的**膨胀点，
+压法就是缩保留天数（14 → 3~5），不动历史、不动站点行为。
+
+**我在这次测量里犯的两个错法，写下来防再犯**（都已回读纠正）：
+1. 脚本里写了 `(j or {}).get("size", 0)` —— 一次 API 失败就被默认值冒充成 `hot_history=0.00 MiB`，
+   差点得出"+7.98 MiB/天 在暴涨"的假结论。⇒ 数值读数不许有默认值，取不到要报错，并**单独回读那一项**
+   （复测：main 7.90 MiB、14:00 那次 auto-commit 7.91 MiB ⇒ 平的）。
+2. `gh api …/commits` 返回是**新→旧**，我拿 `rows[0]` 当"首日"，增量号与跨度都会错（那次算出"跨度 1 天"）。
+   ⇒ 用日期显式换算并打印跨度。
+该场 A 语法、**A2 blocking**、A3、B 闸均已 success。
+（链路备注：15:00 场 run `36827860970` 的 head 是 `8ff5cd3b60`，那是 **14:00 场 bot 自己的
+auto-commit**、父就是我推的 `6c0ec5f19b`、只含数据文件 —— 不是有人并行改仓；
+看到 head 变了先查作者与父，别以为丢提交。）
+
+### 10.43 待决清单（一眼可批；每项都给"批准后我做什么"和代价，不需要你再翻前文）
+
+| # | 事项 | 证据位置 | 批准后动作 | 代价 / 风险 |
+|---|---|---|---|---|
+| ① | 4 个页面 HTML 真正退出 git（3.73 MiB）+ A3 换看树守卫 + update.yml 名与注释 | §10.33–10.34（预检四条已齐） | 一次原子推送：`--delete` ×4 + 2 个本地文件；随后复查 `trees/main` 404、下一场 A3 绿、本地 `git rm --cached` 对齐 | Pages 发布不受影响（按名从工作目录取 + `test -s` 硬断言）；不批准则 A3 那颗雷留着（下次改模板 header 即成无法修复的红） |
+| ② | Vercel 域 RSS 页空壳 | §10.32 | **已定案不动**（你平时用 Pages） | 无 |
+| ③ | 封面图：按域名开关 `no-referrer` / 出厂判空 / weserv 兜底 / 实时链路补抽图 | 你的 `docs/排查记录.md` §9；我在 §10.36 更正过归因 | 按你点的编号做，配判据+变异 | #2 修的是"已证实的自我伤害"（财富中文网带 Referer 即 200）；#3 引入第三方公共实例配额与隐私依赖；#4 要改 `api/rss.js` |
+| ④ | 两边翻译判据同规则对齐 + 常驻 parity 判据 | §10.37–10.38：本地分叉 0/14、双向变异可杀、代价实测标题 +0 / 摘要 +1/300、整跑 278 passed | 一次推送 4 个文件（含两处只改锚点） | 非拉丁文本开始被翻（正是该翻的）；不改则日韩俄阿摘要继续永不翻 |
+| ⑤ | `_clientTranslate` 缓存键由"前 100 字"改全文哈希 | §10.41：原理不健全但真样本 217 组里有害碰撞 **0** | 换键 + 配一条"同前缀不同全文不许共用缓存"的判据 | 收益是消掉理论串台面；代价是跨条目命中率下降。可不做 |
+| ⑥ | `build_logs` 保留 14 天 → 3~5 天 | §10.42：42.52 MiB = 跟踪内容 58%，且家族体积两天持平 | 改 `build_logger.cleanup(N)` 的 N + 一条钉住保留天数的判据；tip 直接瘦 ~28~34 MiB | 只影响诊断可回溯天数（历史里旧文件仍在，可随时回捞）；不动站点行为 |
+
+我的建议顺序：**④ → ① → ⑥ → ③(#2→#1) → ⑤**。④①都已本地验通，推一场就能收口；⑥最便宜的体积收益；⑤可长期挂账。
+
+**推送分组（组内拆开就会红，2026-10-01 按 blob 清点，未推共 7 个文件）**：
+- **A 组（④，4 个文件，必须同批）**：`build_rss_aggregator.py`、
+  `tests/rss_translate/test_buildtime_skip_guard.py`（新增 parity 判据）、
+  `tests/rss_translate/test_runtime_translate_guards.py`、`tests/rss_translate/test_wall_queue_window.py`（仅改锚点）。
+  ⇒ 只推构建脚本会**当场红 A2**：那两个 harness 用 `var _CJK_R = ` 作切片锚点，旧产物里只有 `_LAT_WORD`。
+  A2 是 blocking 且后续步骤无 `if:` ⇒ 红了就是构建+Vercel+Pages 全部跳过（§10.24 实测冻两小时）。
+- **B 组（①，2 个文件 + 4 个 `--delete`，必须同批）**：`.github/workflows/update.yml`（A3 名与注释）、
+  `tests/site_nav_drift/test_artifact_drift.py`（看树守卫）。
+  ⇒ 只推守卫不删文件 = A3 永久红（advisory，不冻部署，但是长期噪声）；只删文件不推守卫 =
+  `test_index_header_matches_template` 读不到文件而报"文件不存在"，也不是可读的红。
+- **C 组（手册）**：`docs/…/HANDOFF.md` 可随任一组走。
+- 已一致、无需再推：`tests/rss_history/test_gate_wiring.py`（登记数字已在 `6c0ec5f19b`）。
+
+### 10.44 第二次独立线上观测（15:00 场部署后）+ 一条关于 GTX 的口径更正
+
+15:00 场（run `36827860970`，head 是 14:00 bot 的 auto-commit `8ff5cd3b60`）Commit/Prune/
+**Deploy to Vercel**/**Deploy to GitHub Pages** 全 success。对新部署产物重取一次：
+
+```
+cards=120  titleCJK=0.992  translate POST=11   文档内含 `_wallDirty`？false
+transDiag: total=7739  tried=35  untried=7704
+           title_cjk=7617 / title_english=122   summary_cjk=2842 / summary_english=3340
+控制台：1 条，且是 transDiag 自己的 log —— 0 error、0 warning
+```
+⇒ 与 06:58 那次（total 4932 / tried 26 / POST 22）构成两个独立观测点：**载入的库更大（7739）而发出去的翻译仍只碰 35 条**，
+窗口队列的量不随库增长，`_wallDirty` 确实从线上产物消失了。
+
+**该更正的一句**：`transDiag` 的通道探针这次报
+`gtx_direct ok=true status=200 ms=801`、`vercel_bulk ok=true engine="gtx"` ——
+也就是说**这台机器的浏览器（走系统代理、出口在境外）能直连浏览器端 GTX**。
+所以"我这次加的 GTX 不可达分类 + 熔断"在今天的线上路径里**并没有被真正触发过**，
+不能拿"今天站点翻译正常"当作那套分类已受检验的证据；它目前只有单测与变异证据
+（[[browser-gtx-unreachable-in-cn]] 说的是**大陆直连**口径 0 成功，两者不矛盾，但引用时必须分清是哪条通道）。
+
+### 10.45 补上 GTX 熔断"隔日复位"这一支的独占覆盖（本地，未推）
+
+`_gtxDead` 是**按天**存的，代码写法没问题：
+`_gtxDeadToday(){ var d=_gtxDayKey(); return !!d && d===new Date().toISOString().slice(0,10); }`。
+但原有判据 `test_dead_verdict_survives_the_next_visit` 的**docstring 说"昨天"、代码写的是今天**，
+所以它只钉住"同日不再重发"，**"隔日必须重新尝试"这一支无人覆盖**。
+风险不是想象出来的：把它改成 `return !!_gtxDayKey()`（有值就算熔断）是一次极其自然的"简化"，
+改完所有旧判据照样绿，而用户侧后果是**一次网络抖动 ⇒ 该浏览器永久不再试直连**，
+全部量压到限量兜底 Agnes（代码注释明确 Agnes 不是主力）。
+
+新增 `test_yesterdays_breaker_expires_and_gtx_is_tried_again`，写进
+`tests/rss_translate/test_runtime_translate_guards.py` —— 该文件本来就在 §10.43 的 A 组里，
+**推送分组不变、不新增文件**。变异验证证明它是**独占覆盖**而不是重复上锁：
+
+```
+把 _gtxDeadToday 改成 presence 判法后：
+  yesterdays_breaker        -> RED    "昨天的熔断今天仍在拦直连（实发 0 次）"
+  survives_the_next_visit   -> GREEN  （同日那条照常绿 ⇒ 它看不见这一支）
+```
+
+复跑：A2 原命令 **279 passed**；`test_artifact_js_parses.py + tests/trim_guard/` **26 passed**。
+遗留同类小项（本轮**没**顺手改，避免扩大改动面）：那条旧判据的 docstring 与它实际写的日期不符
+（测的是"同日"不是"次日"），下次动这个文件时把措辞对齐即可。
+
+### 10.46 落地状态快照（2026-10-01 07:43Z，接手照此继续即可）
+
+**已上远端**
+- `d6b042d782`（A 组 / ④）：`build_rss_aggregator.py` 运行时判据与构建期对齐 +
+  `tests/rss_translate/test_buildtime_skip_guard.py` 的 14 语料双向 parity 判据 +
+  `test_runtime_translate_guards.py`（锚点 `_LAT_WORD→_CJK_R`、新增熔断隔日复位判据）+
+  `test_wall_queue_window.py`（同锚点）。推送时工具复查 4 个 blob 一致。
+  ⇒ 待 16:00 场（看守 `bcpwb3u8n`）看 A2 blocking 与部署，并在部署后用 `transDiag` 复核
+  "非拉丁文本开始被翻"且窗口量仍有界（`tried` 应仍是几十条量级）。
+
+**本地已验通、等 B 组一起推**（因为都动 `update.yml`）
+- ⑥：`cleanup(14) → cleanup(5)` + 新判据 `tests/rss_history/test_log_retention_days.py`
+  （上界 ≤7 天、下界 ≥1 天；变异 `14/0/删掉清理` 三组全 RED、正常 GREEN；YAML 28 步；A2 原命令 **281 passed**）。
+
+**B 组待推（16:00 场绿之后）**
+1. `--delete index.html --delete rss-aggregator.html --delete ai-daily.html --delete daily-insight-history.html`
+2. `tests/site_nav_drift/test_artifact_drift.py`（看树守卫，四向已验）
+3. `.github/workflows/update.yml`（A3 步骤名与注释 + ⑥ 的 cleanup 行）
+4. `tests/rss_history/test_log_retention_days.py`（⑥ 的新判据，随 B 同批）
+5. 本手册（把本节改写成"已落地"）
+落完的复查清单：`trees/main?recursive=1` 里那 4 个路径消失、下一场 A3 绿、
+`git ls-files '*.html'` 只剩 `template.html`、`git rm --cached` 那 4 条对齐本地索引、
+两场构建后再量 `build_logs/` 的 tip 体积（预期从 42.52 MiB 降到约 16 MiB）。
+
+**仍未点单**：③ 封面图（建议 `#2 → #1(域名表) → #4`；#3 需接受第三方或自建）；
+⑤ 全文译文缓存键换全文哈希（可长期挂账）。
+要拿生产证据，得在真实无代理的大陆浏览器会话里看 `gtx_direct` 是否 `ok=false` 且熔断是否落 localStorage。
+
+
+
+
+
+
+
+
+
+### 10.36 封面图那件事：**以 `docs/排查记录.md` 为准，我那两条说法有一条半是错的**
+
+用户让我看 `docs/排查记录.md` 再谈图。对照结果：
+
+1. **我说"14 条 Mixed Content 全来自阅读器 `innerHTML` 注入远端正文"——不成立。**
+   记录 §3 实测：新华社那 98 张封面里就有 **38 条 `http://` 明文**（`www.news.cn`），
+   也就是说**卡片数据本身就带 http 封面**。我那次"`chunk0` 里 http 图 = 0"是对**当时那一份 chunk0**
+   的取样，不是普遍结论 —— 把一次取样当成"数据里没有"，是我这轮第二次犯的老毛病
+   （§10.35 才写过"引用计数只能证明被读过，不能证明会执行到"，同理：抽样只能证明这一份）。
+2. **我说"归一 `http://→https://` 行为中性"——机制上没错，但优先级排错了。**
+   记录已经给出更值钱的四条：出厂判空/已知坏域名表、`no-referrer` 改按域名开关
+   （**财富中文网带 Referer 即 200，而卡片硬写 `referrerpolicy="no-referrer"` 等于一票否决**，
+   记录 §3 末尾自己标的"已确认的一处自我伤害"）、`onerror` 回退 `images.weserv.nl`（BBC 原图实测能取回，
+   但引入第三方配额与隐私依赖 ⇒ 要用户拍板是否自建）、实时链路 `api/rss.js` **0 抽图**的长期缺口。
+   ⇒ 消警告只是化妆，前四条才是病。**没有实施任何一条，等用户点单。**
+3. **记录还纠正了我另一处口径**：`take_screenshot` 在这套自动化会话里拿不到可见 surface
+   （`visibilityState=hidden`），且隐藏页里 `loading=lazy` 的图可能根本不发请求
+   ⇒ 我之前那句"滚动稳定性我没法测"是对的，但更准确的说法是：**视觉侧只能靠 DOM 读数，
+   不要把"没观察到 display:none"读成"加载成功"**。
+4. 记录 §2 的"昨天今天 10 条改动里含 `img/image/cover/_upgrade` 的行数 = 0"与我今天的实测并存：
+   我确实在 10-01 给封面标签加过 `onerror="this.remove()"` 与 `referrerpolicy`，
+   那是 `main@555bdaad`（00:49Z）那次；记录 §7 也已写明"部署版与 main 的封面差异，视觉结果相同"。
+   ⇒ 两边的时间窗不同，别当成互相打脸；**接手时先比 blob 再比文件名**（记录 §6 第二条误判就是踩这个）。
+
+**②的决定（用户 10-01："平时都用 github"）**：入口是 GitHub Pages 域，
+Vercel 只当 API 主机 ⇒ **Vercel 域那份 `rss-aggregator.html` 空壳保持不动（选项 A）**，
+不加 `/api/rss` boot 兜底、也不放行 chunk0。它仍会在有人直接访问 Vercel 根域时报
+"内容加载失败"——这是**已知且被接受**的状态，别再当回归去修。
+
+
 
 
 ### 10.35 接线清点：今天动过的判据里未接线的 6 个，全部落在**已登记**的那两族
@@ -1172,3 +1542,28 @@ UNWIRED tests/tools/test_data_api_push_delete.py       ← 同上（今天新增
 
 
 
+
+
+### 10.47 ③#2 已做完（本地验通，待与 B/⑥ 同批推）
+
+用户拍板"按建议顺序做"，先落 **#2（封面 referrer 改按域名开关）**：
+
+- 实现：`build_rss_aggregator.py` 新增 JS `_REF_HOSTS = ['caifuzhongwen.com']` 与 `_coverRefPolicy(url)`，
+  卡片模板从硬写 `referrerpolicy="no-referrer"` 改成按主机名判。**后缀匹配，不是子串匹配**；
+  非 http(s) / 相对路径一律保持 `no-referrer`。
+- 判据 `tests/site_nav/test_orphan_requests.py::test_cover_referrer_policy_is_per_host`：6 样本逐条对
+  （含两条冒充样本 `evil.com/?x=caifuzhongwen.com`、`caifuzhongwen.com.evil.net`），
+  外加两条防空跑断言：白名单不许为空、条目必须是裸主机名。
+- 变异两向可杀：后缀匹配换成 `indexOf` ⇒ RED；`_REF_HOSTS` 清空 ⇒ RED。
+  `py_compile` OK；整跑 CI 原命令 **282 passed**。
+
+**下一批要推（构建空闲时；组内不可拆）**
+1. **B 组（①）**：`--delete` 那 4 个页面 HTML + `tests/site_nav_drift/test_artifact_drift.py`
+   + `.github/workflows/update.yml`（A3 名与注释）。
+2. **⑥**：同一个 `update.yml` 的 `cleanup(14) -> cleanup(5)` + 新判据
+   `tests/rss_history/test_log_retention_days.py`（上界 ≤7、下界 ≥1；`14/0/删掉清理` 三组变异全 RED）
+   ⇒ 与 B 共用一个文件，**必须一起推**。
+3. **③#2**：`build_rss_aggregator.py` + `tests/site_nav/test_orphan_requests.py`（实现与判据同提交，单独推也不会红）。
+4. 本手册（§10.46/§10.47 状态改写成"已落地"）。
+
+**还没做**：#1 出厂判空（用域名表，不做构建期探活 —— 探活会拉长构建）、#4 `api/rss.js` 补抽图、⑤ 挂账。
