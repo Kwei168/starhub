@@ -1741,3 +1741,28 @@ head `f2c1576b99`（③#1 那批）在 09:00 场 **A2 blocking 红**，2 条失�
 硬编码 `no-referrer"` 形式 **0 次**、`this.remove()` 在场。
 同一份产物里 `_BAD_COVERS` / `_dropBadCover` 均为 0 次 ⇒ ③#1/#4 确实还没上线，
 必须等 10:00Z 那场部署，别把"已推"当"已生效"。
+
+### 10.53 实时封面的键名链：两处接缝已钉住（别再靠读码确认）
+
+`③#4` 的封面要经过**四次键名变换**，每一处都可能把值丢掉，而"API 有没有发 img"这条判据管不到下游：
+
+```
+api/rss.js parseFeed  -> result.img          （短名，实时抓取侧）
+   ↓ dedupSourceItems / applyRetention        （原地改对象、不重建 ⇒ 字段不会掉，读码确认过）
+api/rss.js 出口映射   -> obj.img（只在真值时写）
+   ↓ HTTP JSON
+页面 _apiMergeTo      -> image: it.img||''    （长名，与构建期快照对齐）
+   ↓ src.items
+页面 buildArt         -> img: it.image||it.img||''   （长名与短名都要认）
+   ↓ ART
+卡片渲染              -> _cv = _dropBadCover(a.img)  （必挂域名在这一步写空）
+```
+
+常驻判据 `tests/rss_cover/test_realtime_cover_js.py::test_realtime_cover_key_chain_is_complete`
+按函数边界切出 `_apiMergeTo` 与 `buildArt` 两段，分别钉
+`image:it.img||''` 与 `img:it.image||it.img||''`。
+变异 N8（合并处写死 `image:''`）与 N9（`buildArt` 只认短名）都由它杀掉 —— 这两条在加判据之前**全绿**。
+
+仍未端到端验证的部分（下一场部署后补）：
+真 HTTP 调 `https://starhub-refresh.vercel.app/api/rss?source=<英文源>`，看响应里是否出现非空 `img`；
+以及 `rss-data-0.js` 里 `ichef.bbci.co.uk` 的封面数是否归零（取样命令见 `docs/排查记录.md` §10）。
