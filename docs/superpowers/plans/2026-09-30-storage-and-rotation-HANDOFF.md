@@ -859,6 +859,73 @@ M3 门槛改回拉丁词、M4 去掉假名早返回。**M4 第一次是存活的
 ⇒ Prune success ⇒ **Deploy to Vercel success** ⇒ Upload Pages success ⇒ **Deploy to GitHub Pages success**。
 站点数据停更区间为 08:19→10:2x（约 2 小时），此后接上每小时。
 
+### 10.29 我给 repo-trim.yml 加的"判据自测"那一步，把 repo-trim 自己的排练判据弄红了
+
+排查新孤儿时顺手跑了 `tests/trim_guard/test_repo_trim_workflow_rehearsal.py`（本地 `py -3.11`，
+**单文件 4 条，红 2**），两条都是我 390fc0d 那次提交造成的：
+
+```
+FAILED test_rehearsal_runs_every_step_green
+FAILED test_rehearsal_catches_unknown_filter_repo_option
+```
+
+机理不是判据太严，是我撞上了自己写的规则：**排练判据会把 workflow 里每一个 shell 步骤真跑一遍，
+并断言每步 rc==0**。我在 destructive 步骤前面插了"判据自测（trim_guard…）"，它的脚本是
+`pytest tests/trim_guard/`；而排练用的合成仓里**根本没有 tests/ 目录**（它只搬了
+`tools/trim_commit_guard.py` 进去），于是这一步必然以
+`ERROR: file or directory not found: tests/trim_guard/` 收场。第二红是连带：那条变异判据
+"把 --verbose 塞回去，排练必须当场红"是**遇到第一个非零退出就断言原因**，我新加的那步排在最前面，
+于是它抓到的是"我的步骤红"而不是"filter-repo 不认开关"⇒ **它不再能证明变异被抓住**（假红掩盖真盲）。
+
+影响面：站点**零影响**（repo-trim 是 workflow_dispatch-only，且这一步在任何写操作之前，
+红 = 什么都不做）。但"下次点 repo-trim 会在第一道纸面检查上失败"是我推上去的真实回归。
+
+处置：把它加进 `SKIP_STEP_NAMES`（与 `安装 git-filter-repo` 同类——沙箱里跑不了的步骤），
+并补一条反向判据 `test_skip_list_cannot_absorb_a_real_step`，钉两件事：
+排除表里每一项必须仍指向真实存在的步骤（步骤改名后不许留僵尸条目），
+且被排除的步骤脚本里不许出现 `filter-repo --force` / `git push` / `update-ref` / `force-with-lease`
+—— 否则"每步都绿"这句话可以靠把真步骤塞进排除表来伪造（这正是我这次差点踩的形状）。
+变异验证：把 `剔除死数据族…`（真会动仓的那步）塞进排除表 ⇒ 新判据当场红，`MUTATION_RC=1`。
+最终 `tests/trim_guard/` **22 passed / 17.6s**。
+
+顺带更正我自己的一条误判：我一度以为 `tests/tools/test_data_api_push_delete.py` 是"新增孤儿"，
+准备把它接进 repo-trim。实际不是——`test_gate_wiring.py` 的 `UNWIRED` 里
+**早就按目录登记了 `tools` 并写了原因**（"本地推送工具判据，CI 不调用 data_api_push"）。
+接它进任何 workflow 会让那条登记变成假登记，而"要不要改这条策略"属于用户的决定，不属于我顺手改。
+已把 repo-trim.yml 的改动**回退**（`git status` 里该文件已无 diff），这次只留排练判据那一处修复。
+
+待用户拍板（不擅自动）：`tests/tools/` 三个文件全都被 `monkeypatch(D.req, …)` 挡住了真实外呼，
+AST 亦无模块级 exit ⇒ 技术上可以按**文件**粒度接进 repo-trim（dispatch-only，冻不了线上）；
+代价是 `UNWIRED["tools"]` 那条登记要同步改成"仅 atomic/branch 两条未接"。
+
+### 10.30 窗口队列里有一个恒真标志（`_wallDirty`）——审"空转"时扫出来的
+
+`_translateWallItems` 一轮结束后的三行是：
+
+```js
+_wallDirty = 1;
+_wallTrBusy = 0;
+if(_wallDirty){ _wallDirty = 0; renderWall(); }
+```
+
+`_wallDirty` 全仓只有三处引用：**写 1 的下一行就把它读掉**，中间没有任何别的写者 ⇒ 那个 `if` 恒真，
+变量纯属装饰。这类东西的危害不是跑错，而是**读代码的人以为"渲染是被脏标志调度的"**，
+以后改调度时按这个假象下手。已删（行为等价）：`var _wallTrBusy=0,_wallDirty=0;` → `var _wallTrBusy=0;`，
+末两行 → `_wallTrBusy = 0; renderWall();`。删后本地整跑 CI 原命令 **275 passed**，`py_compile` 通过。
+
+顺手把两件事查清楚了，都是"看着像空转但其实接通了"的那类，记下来免得下次重新怀疑：
+
+1. **扩窗确实会触发翻译**：`_scheduleWallTranslate()` 挂在 `renderWall()` 末尾，
+   而 scroll → `loadMore()` → `renderWall()` ⇒ 新露出的条目会进队，不存在"窗口逻辑写了但不跑"。
+2. **timer 链不会失控**：一轮成功结束会排下 120ms（来自 renderWall）与 2000ms 两个唤醒，
+   但 `_wallTrBusy` 的早返回发生在**排新 timer 之前** ⇒ 忙时那一跳不产生后代；
+   候选耗尽时 `if(!cands.length) return;` 同样不排 ⇒ 队列排空后只剩一次空唤醒，不会指数增长。
+
+另外对今天新增的 20 个符号做了引用计数（定义 + 使用 ≥2 才算活着），最低 2、最高 9，
+没有第二个 `_wallDirty` 这种"写了没人读"的形状。**口径提醒**：引用计数只能证明"被读过"，
+不能证明"读的地方会执行到"——恒真标志就是引用计数抓不到、靠读控制流才抓到的。
+
+
 
 
 

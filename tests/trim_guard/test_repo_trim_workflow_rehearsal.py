@@ -26,7 +26,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 YML = os.path.join(ROOT, '.github', 'workflows', 'repo-trim.yml')
 GUARD = os.path.join(ROOT, 'tools', 'trim_commit_guard.py')
 
-SKIP_STEP_NAMES = ('安装 git-filter-repo',)   # pip/network bound; the local binary stands in
+# '安装 git-filter-repo'：pip/network bound，本地二进制顶上。
+# '判据自测…'：这一步的内容就是"跑判据"，合成仓里根本没有 tests/ 目录，
+#   排练它必然以 "file or directory not found" 收场 —— 而且它排在最前面，会把
+#   "变异体必须被 filter-repo 那步抓住"那条反向判据的注意力引到错误的步骤上（2026-10-01 实测双红）。
+SKIP_STEP_NAMES = ('安装 git-filter-repo',
+                   '判据自测（trim_guard，destructive 步骤之前的最后一道纸面检查）')
 
 
 def _bash():
@@ -189,3 +194,27 @@ def test_workflow_does_not_reintroduce_banned_option():
             continue
         if '--verbose' in raw.split('#', 1)[0]:
             pytest.fail('命令行（非注释）里出现 --verbose：' + raw.strip())
+
+
+def test_skip_list_cannot_absorb_a_real_step():
+    """反向判据：SKIP 只能装"碰不到仓"的步骤，且每一项必须仍指向真实存在的步骤。
+
+    上一跳我把"跑判据"那步塞进排练，双红（合成仓没有 tests/，而它排在最前会把变异体的
+    注意力从 filter-repo 那步引开）。把它排除是对的；但排除表本身是个后门 ——
+    谁哪天把 `filter-repo`/`git push` 那两步塞进来，排练就"全绿"了却什么都没验。
+    所以这里钉两条：跳过项的内容不许涉及重写/推送；写错名字（步骤改名后残留）当场红。
+    """
+    real = {(s.get('name') or '').strip()
+            for s in yaml.safe_load(io.open(YML, encoding='utf-8').read())
+            ['jobs']['trim']['steps'] if s.get('run')}
+    stale = [n for n in SKIP_STEP_NAMES if n not in real]
+    assert not stale, 'SKIP_STEP_NAMES 里有已不存在的步骤名（步骤被改名/删除）：%s' % stale
+    by_name = {(s.get('name') or '').strip(): s['run']
+               for s in yaml.safe_load(io.open(YML, encoding='utf-8').read())
+               ['jobs']['trim']['steps'] if s.get('run')}
+    for n in SKIP_STEP_NAMES:
+        body = by_name[n]
+        for banned in ('filter-repo --force', 'git push', 'update-ref', 'force-with-lease'):
+            assert banned not in body, (
+                '被跳过的步骤 [%s] 其实会动仓（命中 %s）=> 它必须在排练里真跑，'
+                '否则"每步都绿"这句话是假的' % (n, banned))

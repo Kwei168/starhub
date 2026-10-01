@@ -5425,7 +5425,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
      打断语义（用户 2026-10-01 选定）：窗口指纹一变（切排序 / 改筛选 / 滚动扩窗）就换代、
      abort 在飞请求，并且**旧批次回来的结果一律丢弃** —— 否则会把上一个窗口的译文
      写进用户此刻正看着的条目（串台）。 */
-  var _wallTrBusy=0,_wallDirty=0;
+  var _wallTrBusy=0;
   var _wallGen=0, _wallFp='', _wallCtrls=[];
   var WALL_SUMMARY_LIMIT = 30;      // 摘要只翻窗口前 30 条：长文本才是任务量的大头
   function _wallWindow(){
@@ -5509,9 +5509,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
           if(myGen !== _wallGen) return;
         }
       }
-      _wallDirty = 1;
       _wallTrBusy = 0;
-      if(_wallDirty){ _wallDirty = 0; renderWall(); }
+      renderWall();
       setTimeout(_translateWallItems, 2000);
     })();
   }

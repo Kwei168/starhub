@@ -30,7 +30,9 @@ WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "work
 MUST_BLOCK = ["tests/rss_history/", "tests/rss_source_coverage/", "tests/site_nav/",
               "tests/rss_translate/test_runtime_translate_guards.py",
               "tests/rss_translate/test_wall_queue_window.py",
-              "tests/rss_translate/test_buildtime_skip_guard.py"]
+              "tests/rss_translate/test_buildtime_skip_guard.py",
+              # 接进 A2 却不在这里点名 = 谁把它从命令里删掉都没人报警（"已接线"这件事本身也要钉住）。
+              "tests/rss_translate/test_agnes_429_backoff.py"]
 
 # 已知未接线的目录 + 原因。别顺手往里加：每一条都意味着一类无人监督的判据。
 # 原因必须自立——写"同上"的人（我）过不了 test_unwired_entries_are_explained。
