@@ -1544,7 +1544,7 @@ UNWIRED tests/tools/test_data_api_push_delete.py       ← 同上（今天新增
 
 
 
-### 10.47 ③#2 已做完（本地验通，待与 B/⑥ 同批推）
+### 10.47 ③#2 已上线（08:11 场部署，线上读数见 §10.49）
 
 用户拍板"按建议顺序做"，先落 **#2（封面 referrer 改按域名开关）**：
 
@@ -1566,7 +1566,10 @@ UNWIRED tests/tools/test_data_api_push_delete.py       ← 同上（今天新增
 3. **③#2**：`build_rss_aggregator.py` + `tests/site_nav/test_orphan_requests.py`（实现与判据同提交，单独推也不会红）。
 4. 本手册（§10.46/§10.47 状态改写成"已落地"）。
 
-**还没做**：#1 出厂判空（用域名表，不做构建期探活 —— 探活会拉长构建）、#4 `api/rss.js` 补抽图、⑤ 挂账。
+**~~还没做~~（本节写法已过期，照下面这三条看现状）**：
+#1 出厂判空已做（§10.48，判空表 + 死规则清理）；#4 实时补抽图已做（§10.51/§10.53，
+`lib/rss_cover.js` + 渲染层二次过滤 + 键名链判据）；⑤ 全文译文缓存键仍是挂账（用户决定不动）。
+上面那份"下一批要推"的清单也已全部落地：B 组 + ⑥ + ③#2 = `7c08d02cea`（08:11 场线上验收，§10.49）。
 
 ### 10.48 ③#1 封面"必挂域名"判空表已做完（本地验通，待推）
 
@@ -1766,3 +1769,63 @@ api/rss.js 出口映射   -> obj.img（只在真值时写）
 仍未端到端验证的部分（下一场部署后补）：
 真 HTTP 调 `https://starhub-refresh.vercel.app/api/rss?source=<英文源>`，看响应里是否出现非空 `img`；
 以及 `rss-data-0.js` 里 `ichef.bbci.co.uk` 的封面数是否归零（取样命令见 `docs/排查记录.md` §10）。
+
+### 10.54 ③#1/#4 的部署前基线（红线留档，部署后同一脚本必须转绿）
+
+**取证脚本**：`.deploy-tmp/_verify_cover_shipped.py`（只读；任一项不达标就非零退出）。
+它现在报红，这是刻意的 —— 判据必须先在线上真数据上失败一次，之后变绿才算证明，
+否则就是"恒绿空转"。
+
+10:04–10:06Z 实测（Pages 与 Vercel 现取，走系统代理）：
+
+| 观测点 | 部署前读数 | 部署后期望 |
+|---|---|---|
+| 页面 `rss-aggregator.html` | 3,163,365 字节，`_BAD_COVERS` / `_dropBadCover` / `_dropBadCover(a.img)` **各 0 次** | 三者都在场，且名单与 `_BAD_COVER_HOSTS` 完全一致（差集为空） |
+| `rss-data-0.js` | items=360，covers=128，**必挂域名封面 21 张**（ichef 15 + i.guim 6） | 必挂域名封面 **0 张** |
+| `rss-data-1..5.js` | 23 / 1 / 91 / 114 / 32 ⇒ 六块合计 **282 张 = 占封面 7.4%**（covers 共 3,795，items 共 6,663） | 归零；封面总数按同口径下降 |
+| `/api/rss?source=arstechnica_60` | 20 条，键集合 `[d,fc,s,t,u]`，**非空 img = 0**；`X-Rss-Retention: on` | 键集合出现 `img`，非空条数 > 0 |
+
+三点值得记下来的旁证：
+- `X-Rss-Retention: on` 说明 Vercel 侧 `require('../lib/*.js')` 在生产是通的（`.vercelignore` 排了
+  `tests/ docs/ *.py .deploy-tmp/`，**没排 `lib/`**）⇒ ③#4 新模块上线后不会静默降级。
+- 7.4% 与用户 `docs/排查记录.md` 独立测得的 7.6%（9 个坏域名 / 494 张）同量级；
+  我的表只有 5 个域名却覆盖到同样的比例，说明剩下的差距集中在 BBC（表内已含）。
+- 猜 source key 会得到 404（我第一次用了 `bbc_top_stories`，真 key 是 `bbc_top_stories_592`）
+  —— 端点没坏，**取证必须从 `rss_sources.json` 取真实 key**。
+
+**残留引用与死配置自检（10:18Z）**：`grep` 全仓 `bbc_aspect|_REF_COVER_HOSTS|/240/` 为空；
+`_IMG_UPGRADE_RULES=[scx1.b-cdn.net, pbs.twimg.com]`、`_IMG_UPGRADE_SPECIAL=[redd.it]`，
+与判空表交集为空 ⇒ 删掉 BBC/卫报规则后没有留下永不触发的死配置，也没有引用已删符号。
+
+### 10.55 ③#1/#4 已线上生效（10:00Z 场 run 36846375925，head 6963482515）
+
+那场 14:00… 不，**10:00Z 场整场 success**（A/A2/A3/B + Fetch stars & build + Stage Pages +
+Upload/Deploy to GitHub Pages + Deploy to Vercel 全绿，updated=10:19:41Z）。
+`compare/2791c079a9...6963482515` = ahead 3 / behind 0，且该 ref 上三个关键 blob
+（`tests/rss_cover/test_realtime_cover_js.py=23843baa16`、`lib/rss_cover.js=661bd83124`、
+`update.yml=cfac922c44`）与我推的逐一同 ⇒ 绿的是**含改动的检出**。
+
+**CI 侧**
+- A2 **317 passed**（含新接进的 `tests/rss_cover/` 35 条）、A3 1 passed、B 闸 391 passed。
+- 构建日志第 2464 行：
+  `[封面判空] 丢弃 1047 张必挂封面（其中历史缓存清理 363 张）：ichef.bbci.co.uk×600、i.guim.co.uk×195、npr.brightspotcdn.com×158、external-preview.redd.it×50、bucket-cb-…ops.xhyun.news.cn×44`
+  ⇒ 表真的在命中（不是恒 0 的空防线），且历史清理那 363 张确认 `ops.xhyun.news.cn` 这类
+  旧 URL 已从缓存里被写空，下一场不会重复计数。
+- 另有 9 行 `[封面判空] 0 张命中` 落在 10:02:51-52 的 **A2 步骤输出**里
+  （前一行是 `[留存] 出口闸门：进 2 条…`，是合成 2 条语料的单测）
+  ⇒ 这些是测试驱动同一段代码时打的，不是第二处调用点；也顺带证明播报确实在被跑。
+
+**线上侧（`.deploy-tmp/_verify_cover_shipped.py` → 结论"全部达标"，rc=0）**
+
+| 观测点 | 部署前（10:04Z） | 部署后（10:20Z） |
+|---|---|---|
+| 页面 `_BAD_COVERS` / `_dropBadCover` / `_dropBadCover(a.img)` | 各 0 次 | **三者都在场**，注入名单与 `_BAD_COVER_HOSTS` 差集为空 |
+| `rss-data-0.js` 必挂域名封面 | 21 张（ichef 15 + i.guim 6，共 128 张封面） | **0 张**（封面总数 128 → 141，没把健康封面一起清掉） |
+| `/api/rss?source=arstechnica_60` | 键集合 `[d,fc,s,t,u]`，非空 img **0** | 键集合含 `img`，非空 img **20/20** |
+| 页面字节数 | 3,163,365 | 3,158,768（-4.6 KB，无体积回归） |
+
+**死代码/悬空引用自检**：`grep -n "bbc_aspect|_REF_COVER_HOSTS|/240/"` 全仓为空；
+升级规则现存 `[scx1.b-cdn.net, pbs.twimg.com]` + `[redd.it]`，与判空表交集为空。
+
+**封面这一组（#1/#2/#4）到此闭环。** 仍挂账未动：⑤ 全文译文缓存键（用户决定）、
+#3 weserv 封面代理兜底（用户决定不做）。
