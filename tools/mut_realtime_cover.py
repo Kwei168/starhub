@@ -28,6 +28,9 @@ MUTS = [
      "          const _cv = COVER.pickItemImage(entry, extractTag(entry, 'content'), "
      "extractTag(entry, 'summary'));",
      "          const _cv = '';"),
+    ("N7 多导一个没人用的名字（公共 API 空壳）", LIB,
+     "module.exports = { pickItemImage, firstImgSrc };",
+     "module.exports = { pickItemImage, firstImgSrc, decodeEntities };"),
     ("N6 渲染层丢掉 scheme 大小写归一（Py/JS 分叉）", BRA,
      "    var s = String(u || '').trim().toLowerCase();", "    var s = String(u || '');"),
 ]

@@ -15,6 +15,7 @@
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -174,6 +175,26 @@ def test_parse_feed_cover_matches_buildtime_parser(tmp_path):
             idx + 1, want, py_img)
     assert any(w for _, w in REALTIME_ITEMS) and any(not w for _, w in REALTIME_ITEMS), \
         "fixture 退化：必须同时含「有封面」和「无封面」两类，否则上面那串等式恒真"
+
+
+def test_lib_rss_cover_exports_all_have_callers():
+    """反向守卫：`lib/rss_cover.js` 的每个导出都必须真有调用方（同 `test_no_api_function_without_a_caller` 的形状）。
+
+    第一版我把 `decodeBasic` 与两个正则也导出了，理由是"以后也许用得上"—— 那是死出口，
+    会让下一个人误以为它们是公共 API。现在只导真被调的两个，并用这条判据钉住。
+    """
+    src = open(LIB_COVER, encoding="utf-8").read()
+    m = re.search(r"module\.exports\s*=\s*\{([^}]*)\}", src)
+    assert m, "lib/rss_cover.js 没有 module.exports —— 抽取逻辑不再可复用，判据也就没东西可跑"
+    names = [x.strip() for x in m.group(1).split(",") if x.strip()]
+    assert names, "导出表为空：这条判据会退化成恒绿"
+
+    callers = (open(API_RSS, encoding="utf-8").read()
+               + open(JS_TEST, encoding="utf-8").read())
+    orphans = [n for n in names if not re.search(r"\b(?:C|COVER)\." + re.escape(n) + r"\b", callers)]
+    assert not orphans, (
+        "这些导出没有任何调用方：%s（要么删掉导出，要么在调用点用上它；不许留公共 API 的空壳）"
+        % ", ".join(sorted(orphans)))
 
 
 def test_realtime_cover_is_carried_into_the_response_shape():
