@@ -673,9 +673,59 @@ trim_guard            2                → <none>  ← 本次接进 repo-trim.ym
 - `docs/insight-pipeline-flow.md` 被 `2026-09-22-nightly-deep-insight-design.md:111` 引用为
   "已知挂起：里面误画的 Trending 输入节点，**用户明示"不要动"**" ⇒ 处置是**内容一字不改、仅入库补链**
   （远端 sha 2cf6e620a1 = 本地字节，`git diff` 为空）。"不要动"约束的是那张图画错了也不许我改，
-  不是禁止它进仓库；那处误画的 Trending 输入节点**仍然错着**，等用户发话。
+  不是禁止它进仓库；那处误画的 Trending 输入节点已于 10:01 09:5x 经用户确认"本来就是画错"后删除
+  （见 §10.23 与 `23bbb017bb`）。
 - `tools/rss_coverage_prepush_check.py` **故意不入库**：它硬编码 `BASE = "bcc385c~1"`，而那个提交
   已被历史重写销毁（`git cat-file -t bcc385c` → Not a valid object），推上去就是一个永远只能报错的
   死工具，正是这次目标要清的"空转"。引用它的 `2026-09-20-rss-coverage-fix-pending-push.md` 是历史计划，不动。
+
+### 10.24 blocking 闸里有 7 个"一红就冻整场部署"的地雷（AST 扫出来的，不是猜的）
+
+排查 09:00 那场 A2 的 INTERNALERROR 时，顺手用 AST（不是 `grep '^sys.exit('`，那抓不到藏在模块级
+`if` 里的出口）把整个 `tests/` 扫了一遍"被 pytest 当模块导入就会执行到的 exit"：**全仓 25 个文件**
+是这种形状，其中 **7 个已经在 blocking 闸的收集范围内**：
+
+```
+tests/rss_history/test_api_dfb_wire.py:224              tests/rss_history/test_inline_json_escape.py:105
+tests/rss_history/test_autocommit_no_rollback.py:134    tests/rss_history/test_translate_cache_rotation.py:164
+tests/rss_history/test_build_determinism.py:55          tests/rss_source_coverage/test_dateless_source_guard.py:266
+tests/rss_history/test_dfb_drawer_map_wire.py:220
+```
+
+它们今天不炸，**唯一原因是它们正在通过**。任何一条判据转红，CI 拿到的不是可读的红，而是
+`INTERNALERROR` + 整场 A2 失败 ⇒ 后续构建、提交、Vercel/Pages 部署全部跳过
+（09:00 那场就是这个形状：数据从 08:19 停更，直到我修完才恢复）。
+
+处置方式不放宽检查，而是**显式登记 + 双向判据**：`test_gate_wiring.py` 新增
+`test_wired_paths_are_pytest_collectible`（AST 判模块级出口），名单外的新文件一律判红；
+这 7 个进 `KNOWN_FRAGILE`，并配一条反向判据——谁已被改成真正的 test 函数却还赖在名单里也判红
+（防假登记）。变异验证：把 A2 改回 `tests/rss_translate/`（我真实犯的那个错）⇒ 这条当场红
+（`.deploy-tmp/_mut_a2_dir_check.py`，MUTATION_RC=1）。
+
+**待办（属于改测试代码，需单独批准）**：把这 7 个文件改造成真 pytest 判据，让闸红了能报出
+"哪条失败"而不是崩掉收集。
+
+### 10.25 运行时翻译队列的真实负担（减负设计的量化依据）
+
+产物侧统计（`.deploy-tmp/_runtime_load.txt`，按 CJK/拉丁字母占比判"还需不需要翻"）：
+
+```
+rss-data-0.js   条目   360  title_zh 全覆盖  标题仍需翻  16 ( 4.4%)  摘要需翻 133 (36.9%)
+rss-data-1.js   条目 15103  title_zh 全覆盖  标题仍需翻 750 ( 5.0%)  摘要需翻 4471 (29.6%)
+rss-data-2.js   条目 10303  title_zh 全覆盖  标题仍需翻 644 ( 6.3%)  摘要需翻 3888 (37.7%)
+合计            条目 25766                   标题仍需翻 1410 (5.5%)  摘要需翻 8492 (33.0%)
+```
+
+**构建期预翻没有被取消，也不该取消**：08:33 那场 `trans_cache_hit=8542`，真实外呼只有
+`agnes 33 + google 10 + mymemory 1 = 44`，另有 `trans_skip=7714`（中文直接跳过）。
+
+负担全在运行期的**队列形状**：`_translateWallItems` 遍历整条 `ART`（2.5 万条）而不是渲染窗口
+（`visibleArts()[0..wallLimit]`，首屏 120 / 滚动 +80），每批 10 条、批间 2.5s
+⇒ 走完 9902 条待翻文本要 ≈ **41 分钟不间断请求**；而 GTX 在大陆不可达时整批转 `/api/translate`
+——**等于每个访客都在替全库消耗服务端翻译配额**。
+
+按已批准的 ①窗口优先队列 ②摘要只翻窗口前 30 ③切排序打断在飞批次 ④不动构建期，
+一次首屏降到 **≈6 条标题 + ≤30 条摘要 ≈ 36 个文本**，总量随浏览增长而非随全库增长。
+
 
 

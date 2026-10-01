@@ -11,6 +11,7 @@ rss_sort / tools / trim_guard，共 6 个目录。
   ② 其余含 `test_*.py` 的目录必须在 UNWIRED 里点名并写原因 ——
      新增目录却忘了接线时，这条会红，而不是又多一个静默孤儿。
 """
+import io
 import os
 import re
 
@@ -21,11 +22,13 @@ yaml = pytest.importorskip("yaml")
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "workflows", "update.yml")
 
-# 必须进 blocking 闸的目录（都是"回归会静默上线"的那类）。
+# 必须进 blocking 闸的判据路径（都是"回归会静默上线"的那类）。
+# rss_translate 只到**文件**粒度：同目录的 test_translate_engines.py 是脚本风格，接整个目录
+# 会在 09:00 那场把 A2 变成 INTERNALERROR（详见 update.yml 的注释）。
 # 不含 trim_guard：它排练的是 repo-trim.yml（真跑 git-filter-repo），ubuntu 行为未验证，
 # 放进每场构建的 blocking 闸就是我上次"自己把整场冻掉"的形状 —— 它已挂到 repo-trim.yml 里。
 MUST_BLOCK = ["tests/rss_history/", "tests/rss_source_coverage/", "tests/site_nav/",
-              "tests/rss_translate/"]
+              "tests/rss_translate/test_runtime_translate_guards.py"]
 
 # 已知未接线的目录 + 原因。别顺手往里加：每一条都意味着一类无人监督的判据。
 # 原因必须自立——写"同上"的人（我）过不了 test_unwired_entries_are_explained。
@@ -34,6 +37,20 @@ UNWIRED = {
     "rss_date": "脚本风格：文件末尾 sys.exit(0)，被 pytest 当测试模块导入会打崩整场收集",
     "rss_sort": "单文件脚本风格，同样是 import 期执行 + sys.exit；改造前不进闸",
     "tools": "本地推送工具判据（CI 不调用 data_api_push），本机 182s —— 不值得每场构建都跑",
+}
+
+# 已在闸内、但**形状仍是脚本风格**的既有文件：模块级（或模块级 if 里）有 sys.exit。
+# 它们今天不炸只是因为正在通过；一旦某条判据红，CI 得到的是 INTERNALERROR + 整场部署被冻，
+# 而不是可读的红（2026-10-01 用 AST 全量扫出来的，见 test_gate_wiring 的 KNOWN_FRAGILE 说明）。
+# 这份名单只许缩短，不许变长：新接进闸的文件必须走 test_wired_paths_are_pytest_collectible。
+KNOWN_FRAGILE = {
+    "tests/rss_history/test_api_dfb_wire.py",
+    "tests/rss_history/test_autocommit_no_rollback.py",
+    "tests/rss_history/test_build_determinism.py",
+    "tests/rss_history/test_dfb_drawer_map_wire.py",
+    "tests/rss_history/test_inline_json_escape.py",
+    "tests/rss_history/test_translate_cache_rotation.py",
+    "tests/rss_source_coverage/test_dateless_source_guard.py",
 }
 
 
@@ -87,3 +104,74 @@ def test_no_new_orphan_test_directory():
 def test_unwired_entries_are_explained():
     bad = [d for d, why in UNWIRED.items() if len(why) < 12]
     assert not bad, "UNWIRED 里这些条目没有像样的原因：%s" % bad
+
+
+def _a2_paths():
+    """A2 命令行里的 pytest 路径（用来把"接了什么"落实到文件清单）。"""
+    cmd = _a2_cmd()
+    i = cmd.find("pytest")
+    assert i >= 0, "A2 里没有 pytest 命令：%s" % cmd
+    toks = [t for t in cmd[i:].split() if t.startswith("tests/")]
+    assert toks, "A2 的 pytest 没有测试路径：%s" % cmd
+    return toks
+
+
+def _module_level_exits(path):
+    """返回"被 pytest 当模块导入时就会执行到的 sys.exit"行号。
+
+    只看模块级语句（含模块级 if/try/for 的体），函数与类体内的 exit 不算 ——
+    那是测试自己控制的控制流。09:00 那场 A2 的 INTERNALERROR 正是 `if failures: sys.exit(1)`
+    藏在模块级 if 里，按行首缩进 grep 完全抓不到。
+    """
+    import ast
+    tree = ast.parse(io.open(path, encoding="utf-8").read(), filename=path)
+    found = []
+
+    def walk(body):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                call = ast.unparse(node.value.func)
+                if call in ("sys.exit", "os._exit", "exit", "quit"):
+                    found.append(node.lineno)
+            for field in ("body", "orelse", "finalbody"):
+                sub = getattr(node, field, None)
+                if isinstance(sub, list):
+                    walk(sub)
+            for h in getattr(node, "handlers", []) or []:
+                walk(h.body)
+
+    walk(tree.body)
+    return found
+
+
+def _collected_files():
+    out = []
+    for tok in _a2_paths():
+        p = os.path.join(ROOT, tok.replace("/", os.sep))
+        assert os.path.exists(p), "A2 里的路径不存在（打错一个字母 = 该闸静默不收任何东西）：%s" % tok
+        if os.path.isdir(p):
+            out += [os.path.join(p, f) for f in sorted(os.listdir(p))
+                    if f.startswith("test_") and f.endswith(".py")]
+        else:
+            out.append(p)
+    return out
+
+
+def test_wired_paths_are_pytest_collectible():
+    """接进 blocking 闸的文件不许在 import 期 exit：红了要的是可读的红，不是 INTERNALERROR。
+
+    INTERNALERROR 会让整个 A2 步骤失败 ⇒ 后续构建与部署全部跳过（2026-10-01 09:00 实测：
+    一场部署都没落地，站点数据从 08:19 起停更）。名单外的新文件一律判红。
+    """
+    rel = lambda p: os.path.relpath(p, ROOT).replace(os.sep, "/")
+    risky = [rel(p) for p in _collected_files() if _module_level_exits(p)]
+    fresh = sorted(set(risky) - KNOWN_FRAGILE)
+    assert not fresh, (
+        "这些文件被接进了 blocking 闸，却在模块级 sys.exit ⇒ 判据一红就是 INTERNALERROR + 冻部署：%s"
+        % ", ".join(fresh))
+    stale = sorted(KNOWN_FRAGILE - set(risky))
+    assert not stale, (
+        "KNOWN_FRAGILE 里这些已经不再有风险（改成 test 函数了？把名单划掉，别留假登记）：%s"
+        % ", ".join(stale))
