@@ -53,19 +53,56 @@ def test_seed_step_exists_and_is_advisory():
     assert body.strip(), "回灌步没有正文"
 
 
-def test_seed_fetches_all_seven_only_when_missing():
-    """7 个都要覆盖，且每个都得包在"缺失才取"的守卫里（否则每场白拉 17 MB）。"""
+def test_seed_fetches_all_seven_only_when_they_are_shorter():
+    """7 个都要覆盖，且必须"够长就不动"。
+
+    实测教训：第一版守卫写成 `[ ! -f ]`（只在缺失时取），可 14:00 场的伤害形态不是"缺失"而是
+    "都在盘上但塌了"（`hot_history` 8,278,933→47,073、`translations` 3,313,241→198,958）。
+    那种守卫下一场也不会动 ⇒ 判据绿而问题没修，正是"代理信号绿≠事情做了"。
+    所以现在的条件是本地字节数 < 历史副本的 Content-Length 才回灌。
+    """
     body = _step().get("run") or ""
     missing = [f for f in SEED_FILES if f not in body]
     assert not missing, "回灌名单少了：%s" % missing
-    guards = re.findall(r"if\s+\[\s*!\s+-f\s+\"?\$?\{?([A-Za-z_]+)\}?", body)
-    assert guards, "没有任何 `[ ! -f $var ]` 式守卫 ⇒ 这步会每场无条件重拉全部副本"
     looped = re.search(r"for f in ([^;]+); do", body)
-    assert looped, "回灌应按名单循环，实测没有 for 循环 ⇒ 逐个硬写会让名单与状态族清单漂移"
+    assert looped, "回灌应按名单循环，逐个硬写会让名单与状态族清单漂移"
     listed = looped.group(1).split()
     assert set(listed) == set(SEED_FILES), (
         "回灌名单与 7 个跨场状态不一致：多=%s 少=%s"
         % (sorted(set(listed) - set(SEED_FILES)), sorted(set(SEED_FILES) - set(listed))))
+    assert re.search(r"content-length", body, re.I), (
+        "必须先问历史副本有多大（HEAD/Content-Length），否则没法判断「本地是不是塌了」")
+    assert re.search(r"-lt\b", body), (
+        "必须有「本地字节 < 历史字节」的比较；只判存在性的守卫对本场的伤害形态一动不动")
+
+
+def test_seed_is_one_shot_per_pinned_sha():
+    """一次性的东西必须留下"已经做过"的凭据，否则每场都会拿旧副本盖住新数据。
+
+    具体风险：`translations.json` 有 `TRANS_CACHE_MAX=30000` 的 LRU 裁剪，尺寸会在上限附近摆动；
+    没有 marker 的话，"本地比历史小"会反复成立 ⇒ 每场把 12:58 那份旧译文请回来，
+    译文缓存永远降不下去、也永远学不到新条目。marker 落在 `build_logs/` 里 ——
+    那个目录已经在缓存 path 里，所以能跨场存活；
+    **不能**为此往缓存名单里加新文件，改名单等于换族（批 5a 的学费）。
+    """
+    body = _step().get("run") or ""
+    m = re.search(r"^\s*(\w+)\s*=\s*(\S*build_logs/\S*seed\S*)\s*$", body, re.M)
+    assert m, (
+        "没找到形如 `X=build_logs/<...>seed<...>` 的 marker 变量 —— 没有它这步就是每场重跑的常驻机制")
+    var, path = m.group(1), m.group(2)
+    assert body.count(var) >= 3, (
+        "marker 变量 %s 只出现 %d 次：应当是「读取比较 / 早退 / 完成后写入」三处都用它"
+        % (var, body.count(var)))
+    assert path.startswith("build_logs/"), (
+        "marker 落在 %s：它必须待在已经在缓存 path 里的目录里，否则跨不了场；"
+        "而为此往缓存名单加新文件 = 换族（批 5a 的学费）" % path)
+    assert re.search(r"cat[^\n]*" + re.escape("$" + var), body), "早退前没把 marker 读出来"
+    assert re.search(r"\]\s*&&\s*\[\s*\"\$\(cat", body) or re.search(r"=\s*\"?\$SEED_SHA", body), (
+        "读出来的 marker 必须与钉住的 sha 比较（`= \"$SEED_SHA\"`），否则早退分支不看内容")
+    assert re.search(r"\"?\$SEED_SHA\"?\s*\]", body), "早退分支没跟钉住的 sha 比较"
+    assert re.search(r"echo\s+\"?\$SEED_SHA\"?[^\n]*>\s*\"?\$" + var, body), (
+        "回灌结束后没写 marker ⇒ 下一场还会再盖一次")
+    assert "exit 0" in body, "早退要 exit 0（advisory 步也不该在已完成时白跑 7 次 HEAD）"
 
 
 def test_seed_never_touches_git():
