@@ -78,6 +78,17 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           git filter-repo --version
 
+      - name: 判据自测（trim_guard，destructive 步骤之前的最后一道纸面检查）
+        # 这 21 条里有一条会把本 workflow 的 shell 步骤**真跑一遍**（合成仓 + 真 filter-repo），
+        # 还有一条钉 `set -eo pipefail` 是承重墙。2026-09-30 第二趟就是栽在"读着没问题、跑着红"
+        # 的开关上（--verbose 被 tail 吞掉退出码），所以这一步必须在动手之前绿。
+        # 依赖自带：本 job 没有 setup-python（见上面 filter-repo 那步的注释），
+        # 直接 pytest 会因 runner 系统 python 没有 pytest/pyyaml 而红 —— 那是这一步的缺陷，不是判据的。
+        run: |
+          python3 -m pip install --quiet pytest pyyaml \
+            || python3 -m pip install --quiet --user --break-system-packages pytest pyyaml
+          python3 -m pytest tests/trim_guard/ -q -s
+
       - name: 剔除死数据族（保留 rss-data-0.js，真实分块测试要读已入库副本）
         run: |
           # 不要给 filter-repo 加 --verbose：本机与站内实测都不认这个开关，加了整步直接红

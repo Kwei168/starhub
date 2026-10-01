@@ -91,8 +91,12 @@ jobs:
       # 去重把 datetime 当字符串、域名熔断把"合法空 feed"计为失败、异常被静默吞成 0 条。
       # site_nav 锁住首页 header 的 div 配平：2026-09-25 删入口时连带删掉一个开标签，
       # 多出的 </div> 提前闭合了 flex 行容器，页面在次日构建后整条导航纵向堆叠。
+      # rss_translate 是 2026-10-01 才接进来的：这个目录里有运行时翻译守卫与翻译引擎判据，
+      # 但历史上没有任何 workflow 引用过它（grep 全 workflows = 0 命中）⇒ 翻译链的回归可以静默落地。
+      # 刻意不接 tests/trim_guard/：那条排练判据会在临时仓里真跑 git-filter-repo，
+      # ubuntu 上的行为未验证；拿它挡每场构建 = 我上次"自己把整场冻掉"的形状。改挂 repo-trim.yml。
       - name: Quality gate A2 — RSS history persistence & site nav structure (blocking)
-        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ -q -s
+        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ tests/rss_translate/ -q -s
 
       # ── 质量门禁 A3：产物与生成端漂移（advisory）──
       # 只观测不拦截：index.html 每场由 template.html 重写，漂移下一场自愈。

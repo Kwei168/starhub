@@ -526,10 +526,85 @@ rss_trend_history     09-08 0.00 → 09-13 0.32 → 09-18 0.78 → 09-24 1.04 �
 读不到历史 jsonl，摘要从"近 7 天"静默退化成"仅当场"，那正是我最不该再造的那类静默降级。
 
 两条自我更正：
-- §10.14 表里 `build_logs` 记 0.00 MiB 是我按**目录**路径查体积导致的（目录不是 blob），审查的 44.2 MiB 才对；
+- §10.14 只留了一句"`build_logs` 那行按目录统计不准，忽略"，**具体数字没写进表**（全文搜不到）；
+  根因是当时按**目录**路径查体积（目录不是 blob，查出来必然是 0）。审查给的 44.2 MiB 才是远端 tip 真实值。
+- 我这次先写的"§10.14 表里 build_logs 记 0.00 MiB"是**没核对就下的引用**，实际表里没有那一行 ——
+  已改成上面这句。教训：引用自己旧文档的具体数字之前必须 grep 到原文，不能凭"我大概是这么写的"。
 - §10.17 原先写的"每场约 0.32 MiB 入 git"是估的，实测 0.052 MiB/场（打包后），已就地改掉。
 
 测量陷阱备忘：隔离的老 `.git`（`E:\_quarantine\starhub-old-git-20261001-072905`）**本身是浅仓**
 （有 `shallow` 文件，`rev-list --count HEAD` 只有 391），所以从它算出的任何"全历史体积"都是截断下界，
 不能当结论引用 —— 要量历史就用远端 shallow clone 并显式写明窗口。
+
+### 10.19 RSS 页控制台的三类错误与四处孤儿（10-01 08:0x 取证并修）
+
+控制台上（Pages 版，一轮加载）：**16 次 `translate.googleapis.com` 请求 / 8 条不同文本 / 0 次成功**，
+Chrome 报成 CORS + `net::ERR_FAILED`；另有 `rss-data-10.js` 必 404、`hot_snapshot.json` 预载未被使用、
+新华网 OSS 图 Mixed Content、BBC 图 `ERR_CONNECTION_CLOSED`。
+
+修了四条，每条都是"判据先红→改→再绿→变异自证能红"：
+
+1. **`_needsTranslation` 会被符号骗**。旧口径 `cjk < t.replace(/[\s\d\p{P}]/gu,'').length*0.3`
+   没排 `\p{S}`（`+ = < ~`），ANSI 残片 `[1m` 也不算标点 ⇒ 线上那条**中文**垃圾文本
+   （`💻基本信息` + 78 个 `+`）被判成"需要翻译"。新口径：剥 ANSI/URL/标点/符号后**必须有拉丁词**、
+   中文不占多数、且不是 HN 元数据样板（`Article URL:/Points:/# Comments:`）。
+2. **断路器阈值按"失败性质"分两条**，不是简单调小：连接层不可达（TypeError/Failed to fetch，
+   本环境实测成功率 0）第一批就熔断并**按日期存 localStorage**；HTTP 4xx/5xx 仍要连续 2 批
+   —— 否则一次抖动就把能连通的用户掐到 Agnes（用户定版：Agnes 是限量兜底，不是批量主力）。
+   超时 8s→3.5s（`GTX_ABORT_MS` 提成常量，判据才读得到真实值）。
+3. **`rss-data-N.js` 的 404 是设计出来的孤儿**：加载器写成"成功就 idx+1，失败才收口"，
+   块之间没有终点 ⇒ 每个访客发一次注定 404 的请求，而且 toast 挂在错误分支上。
+   现在 chunk0 的 payload 里带 `_total`（**写进 JSON，不追加语句** —— `test_chunk_budget._payload()`
+   按"整文件=一个 JSON"解析），加载器按声明收口；**读不到 `_total`（用户还是旧 chunk0 缓存）
+   必须退回探测式**，否则老缓存用户被砍成只剩首屏，那正是 09-30 "只有 61 个源"的形状。
+4. **preload 与 `cache:'no-cache'` 不能同时存在**：热榜消费方写死 `fetch('hot_snapshot.json',{cache:'no-cache'})`
+   ⇒ 预载那份**永远不会被复用**（且 preload 带 `crossorigin`、fetch 不带 credentials，键也对不上）。
+   删预载、留 no-cache（那是数据新鲜度）。封面图补 `onerror="this.remove()"`，露出已有的
+   `.cover-fallback` 首字占位，不再留破图。
+
+一条**新的 bug 类别**（值得单独记）：`build_rss_aggregator.py` 里的 JS 活在**非 raw** 的 Python 三引号串中，
+`var _META_STUB = /...\b/i` 里的 `\b` 会被 Python 变成**退格符**，词边界整个失效 —— 源码看着完全正常。
+同族雷：`split(/\r?\n/)` 会变成真换行（正则里是语法错误）、`'\n'` 会变真换行。
+判据落在**产物层**：`tests/site_nav/test_artifact_js_parses.py` 取生成页的内联脚本跑 `node --check`，
+并断言 `_META_STUB` 那行里有 `\b` 且没有 `chr(8)`。
+
+### 10.20 孤儿测试目录审计：六个目录写着判据但没有任何 workflow 跑过
+
+`grep -rl "tests/<dir>" .github/workflows/` 全量对照（10-01 实测）：
+
+```
+daily_insight        34 个 test_*.py   → update.yml（B 闸）        已接
+rss_history          25                → update.yml（A2）          已接
+rss_source_coverage   5                → update.yml（A2）          已接
+site_nav              5                → update.yml（A2）          已接
+site_nav_drift        1                → update.yml（A3 advisory） 已接
+rss_translate         3                → <none>  ← 本次接进 A2
+rss_composite        10                → <none>  ← 未接，见原因
+rss_date              4                → <none>  ← 未接
+rss_sort              1                → <none>  ← 未接
+tools                 2                → <none>  ← 未接
+trim_guard            2                → <none>  ← 本次接进 repo-trim.yml
+```
+
+`rss_translate` 里躺着的正是运行时翻译与翻译引擎判据 —— **翻译链的回归本来可以完全静默落地**，
+而我此前一直以为"有测试挡着"。已加 `tests/rss_history/test_gate_wiring.py`：
+含 `test_*.py` 的目录要么被某个 workflow 引用、要么在 `UNWIRED` 里点名并写原因（新增目录忘了接线就红）。
+接线本身也做了变异验证（把 A2 里的 `tests/rss_translate/` 摘掉 → 判据当场红）。
+
+刻意**没接**的四条，原因写进 `UNWIRED`（判据要求每条理由自立，不许写"同上"—— 我自己被这条打死过一次）：
+- `rss_composite` / `rss_date` / `rss_sort`：脚本风格，文件末尾 `sys.exit(0)`，被 pytest 当模块导入即
+  `INTERNALERROR`（实测 `pytest tests/rss_date` 就是这个），要接得先改造成 test 函数；
+- `tools`：判据对应的是本地推送工具（CI 不调用 `data_api_push`），本机 182s，不值得每场跑；
+- `trim_guard` 没进 A2 而是进 `repo-trim.yml`：它那条排练判据会在合成仓里**真跑 `git-filter-repo`**，
+  ubuntu 行为未验证 —— 放进每场构建的 blocking 闸，就是我上次"自己把整场冻掉"的形状。
+  该步自带 `pip install pytest pyyaml`（这个 job 没有 setup-python，缺依赖会假红）。
+
+两处"断链"的处置都**不是**我单方面补链：
+- `docs/insight-pipeline-flow.md` 被 `2026-09-22-nightly-deep-insight-design.md:111` 引用为
+  "已知挂起：里面误画的 Trending 输入节点，**用户明示"不要动"**" ⇒ 因此**既不推也不改**，
+  远端那条引用维持"已知挂起"的原状（我一度打算"补链"就推，核对引用上下文后作废）。
+- `tools/rss_coverage_prepush_check.py` **故意不入库**：它硬编码 `BASE = "bcc385c~1"`，而那个提交
+  已被历史重写销毁（`git cat-file -t bcc385c` → Not a valid object），推上去就是一个永远只能报错的
+  死工具，正是这次目标要清的"空转"。引用它的 `2026-09-20-rss-coverage-fix-pending-push.md` 是历史计划，不动。
+
 

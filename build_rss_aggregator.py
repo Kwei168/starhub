@@ -3906,7 +3906,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       if(hasImg){
         h+='<a class="cover" href="'+esc(a.u)+'" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true" onclick="event.stopPropagation()">';
         h+='<span class="cover-fallback">'+esc((a.t||'#').charAt(0).toUpperCase())+'</span>';
-        h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">';
+        // 取不到就摘掉自己，露出下面那张 .cover-fallback 首字占位；
+        // 线上实测新华网 OSS 是 http=502/https TLS 失败、BBC 图在大陆直接连不通，
+        // 没有这一句时卡片上就是一个破图。
+        h+='<img class="cover-img" src="'+esc(a.img)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">';
         h+='</a>';
       }
       h+='<div class="card-top"><span class="cat-tag" style="color:var(--cat-'+a.c+')">'+(CAT_LABELS[a.c]||a.c)+'</span>';
@@ -4448,13 +4451,18 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     /* 让首屏先稳定可交互，再在空闲时依次加载后台分块 chunk1/2/3...，避免一次性加载阻塞主线程 */
     var _loadRest=function(){
       var _loaded=0;
+      /* 终点由 chunk0 的 payload 声明（_total = 本次构建写出的块数，含 chunk0 自己）。
+         读不到声明 = 用户手里还是旧 chunk0 缓存 ⇒ 退回"探到失败为止"，绝不停在第一块：
+         那正是 2026-09-30 "页面只剩 61 个源"的形状，比一次 404 严重得多。 */
+      var _total=(window.__CHUNKS&&window.__CHUNKS[0]&&window.__CHUNKS[0]._total)||0;
+      function _finish(){ if(_loaded>0){ toast('已加载全部 '+ART.length+' 篇内容（新增 '+_loaded+' 篇）'); } }
       var _loadNext=function(idx){
         loadChunk(idx).then(function(){
           if(window.__CHUNKS&&window.__CHUNKS[idx]){
             var n=_mergeChunk(window.__CHUNKS[idx]);
             _loaded+=n;
           }
-          // 尝试加载下一个 chunk
+          if(_total && idx+1>=_total){ _finish(); return; }   // 按声明收口：不再请求注定 404 的下一块
           _loadNext(idx+1);
         }).catch(function(e){
           // chunk 不存在或加载失败
@@ -5188,16 +5196,52 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
 
   function _escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function _normT(s){ return (s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,''); }
-  // \u68c0\u6d4b\u6807\u9898\u662f\u5426\u4e3b\u8981\u4e3a\u975e\u4e2d\u6587\uff08\u9700\u8981\u7ffb\u8bd1\uff09
-  function _needsTranslation(t){ if(!t) return false; var cjk=(t.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)||[]).length; return cjk < t.replace(/[\s\d\p{P}]/gu,'').length * 0.3; }
+  // 是否需要翻译 = 剥掉 ANSI/URL/标点/符号之后**真有拉丁词**，且中文不占多数，且不是 HN 元数据样板。
+  // 旧口径 `cjk < t.replace(/[\s\d\p{P}]/gu,'').length*0.3` 把 + = < ~ 这类数学符号（属于 \p{S}，
+  // 不在旧的排除集里）和 ANSI 残片 [1m 一起算进"非中文长度"：线上实测一条中文垃圾文本
+  // （💻基本信息 + 78 个 `+` + [1m硬件质量体检报告…）被稀释成"需要翻译"，直连与兜底各发一次。
+  var _LAT_WORD = /[A-Za-zÀ-ÖØ-öø-ÿ]{2,}/g;
+  var _LAT_CH = /[A-Za-zÀ-ÖØ-öø-ÿ]/g;
+  // 注意 `\\b`：这段 JS 活在非 raw 的三引号串里，单写 \b 会被 Python 变成退格符，
+  // 词边界整个失效（判据 test_hn_metadata_stub_is_not_translated 就是这么抓到的）。
+  var _META_STUB = /^(article url|comments url|points|submitted by|# comments|permalink|story link)\\b/i;
+  function _needsTranslation(t){
+    if(!t) return false;
+    var raw=String(t), cjk=(raw.match(/[\\u4e00-\\u9fff\\u3400-\\u4dbf]/g)||[]).length;
+    var clean=raw.replace(/\\u001b?\[[0-9;]{1,4}m/g,' ')
+                 .replace(/https?:\\/\\S+/gi,' ')
+                 .replace(/[\s\d\p{P}\p{S}]/gu,' ');
+    var words=(clean.match(_LAT_WORD)||[]).length, letters=(clean.match(_LAT_CH)||[]).length;
+    if(!words) return false;
+    if(cjk>=letters) return false;
+    var lines=raw.split(/\\r?\\n/).filter(function(l){ return l.trim(); });
+    if(lines.length>=3 && lines.filter(function(l){ return _META_STUB.test(l.trim()); }).length*2>=lines.length)
+      return false;   // HN 链接投稿的"正文"就是 URL/点数：翻出来只有 URL 和数字，没有信息量
+    return true;
+  }
   // 批量翻译 AI 动态流英文标题：主力 = 浏览器端 GTX 直连（用户本地 IP，端点响应带 ACAO:* 实证开放；
   // 服务端共享 DC 出口反而会被 Google 频率限流——线上实测 gtx 429）；失败条目再走服务端 API 兜底
   // （api/translate mode:'bulk'：GTX 尽力 → Agnes 限量）。引擎分流策略（用户定版）：Agnes 仅留
   // 给全文/摘要按钮（mode:'full'）与兜底，绝不作为批量主力。
   var TR_API = 'https://starhub-refresh.vercel.app/api/translate';
-  // 浏览器 GTX 断路器：连续 2 批全败 → 判定 CORS 完全不可用，后续批次跳过直连，
-  // 全部由调用方走服务端 API 兜底（避免每批 8s 超时无意义等待）
+  // 浏览器 GTX 断路器。两条独立判据，方向相反，不能合成一条：
+  //   · 连接层不可达（TypeError / Failed to fetch）= 直连对这个客户端不存在
+  //     —— 本仓实测大陆浏览器 8 条文本 / 16 次请求 / 0 成功 ⇒ 第一批就熔断。
+  //   · HTTP 4xx/5xx（限流、临时故障）= 能连通 ⇒ 仍要"连续 2 批全败"才熔断，
+  //     否则一次抖动就把可用用户的直连掐了，全压到服务端 Agnes（Agnes 是限量兜底，不是主力）。
+  // 熔断状态按"今天"存 localStorage：失败条目进不了 _trCache（那里只存成功译文），
+  // 不跨访问记住就会每次重访都重发同一批必败请求（线上控制台正是这样刷屏的）。
+  var GTX_ABORT_MS = 3500;   // 8s 是给"连通但慢"设的；连不通时等满 8s 只是白等
   var _bgtxDead=false, _bgtxFailStreak=0;
+  function _gtxDayKey(){ try{ return localStorage.getItem('_gtxDead'); }catch(e){ return null; } }
+  function _gtxDeadToday(){ var d=_gtxDayKey(); return !!d && d===new Date().toISOString().slice(0,10); }
+  function _markGtxDead(){ try{ localStorage.setItem('_gtxDead', new Date().toISOString().slice(0,10)); }catch(e){} }
+  if(_gtxDeadToday()) _bgtxDead=true;
+  function _gtxUnreachable(e){
+    var n=String((e&&e.name)||''), m=String((e&&e.message)||e||'');
+    if(n==='AbortError'||/abort/i.test(m)) return false;   // 超时不算"不可达"，否则慢网络会被永久误判
+    return n==='TypeError'||/failed to fetch|networkerror|cors/i.test(m);
+  }
   // 客户端翻译缓存：localStorage 持久化，回访用户直接命中，不再发任何翻译请求
   var _trCache=(function(){
     try{return JSON.parse(localStorage.getItem('_trCache')||'{}');}catch(e){return {};}
@@ -5207,16 +5251,27 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   }
   /* 浏览器端 GTX 批量直译：并发 3，返回与 texts 等长的译文数组（失败为 ''，由调用方决定服务端兜底）
      + 客户端缓存命中直接返回 + 断路器触发后跳过直连 */
+  var _bgtxUnreachable=false;
+  /* 截断落在词边界：500 字符硬切会把 "developed" 切成 "develop"，
+     线上实测发出过 "...Hundreds of trekkers on the " 这种半句。 */
+  function _cutW(s,n){
+    s=String(s); if(s.length<=n) return s;
+    var c=s.slice(0,n), i=Math.max(c.lastIndexOf(' '), c.lastIndexOf('\\n'));
+    return i>40 ? c.slice(0,i) : c;
+  }
   function _browserGtx(texts){
-    var out=[],uncached=[],uncachedIdx=[];
+    var out=[],uncached=[],uncachedIdx=[],_seen={},_dup={};
     // ① 客户端缓存命中：直接填入，不发请求
     for(var k=0;k<texts.length;k++){
       var key=String(texts[k]).slice(0,200),hit=_trCache[key];
-      if(hit){out[k]=hit;}else{out[k]='';uncached.push(texts[k]);uncachedIdx.push(k);}
+      if(hit){out[k]=hit;}
+      else if(Object.prototype.hasOwnProperty.call(_seen,key)){ _dup[k]=_seen[k]; out[k]=''; }
+      else{_seen[key]=k; out[k]=''; uncached.push(texts[k]); uncachedIdx.push(k);}
     }
     if(!uncached.length) return Promise.resolve(out);
-    // ② 断路器已触发：直接返回空串，由调用方走服务端兜底
-    if(_bgtxDead) return Promise.resolve(out);
+    // ② 断路器已触发（本会话熔断，或今天已经判过不可达）：直接返回空串，由调用方走服务端兜底。
+    // 判据放在函数入口而不是只放在加载时：加载时那次读 localStorage 早于任何写入，会漏判。
+    if(_bgtxDead || _gtxDeadToday()){ _bgtxDead=true; return Promise.resolve(out); }
 
     var i=0,done=0,batchFail=true;
     return new Promise(function(resolve){
@@ -5224,16 +5279,19 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         if(i>=uncached.length) return;
         var idx=i++;
         var ctrl=(typeof AbortController==='function')?new AbortController():null;
-        var tmr=ctrl?setTimeout(function(){ctrl.abort();},8000):null;
-        fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(String(uncached[idx]).slice(0,500)),{signal:ctrl?ctrl.signal:undefined})
+        var tmr=ctrl?setTimeout(function(){ctrl.abort();},GTX_ABORT_MS):null;
+        fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(_cutW(uncached[idx],500)),{signal:ctrl?ctrl.signal:undefined})
         .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('gtx '+r.status)); })
         .then(function(j){
           var tr=((j[0]||[]).map(function(x){ return (x&&x[0])||''; }).join('')||'').trim();
-          if(tr){ out[uncachedIdx[idx]]=tr; _trCache[String(uncached[idx]).slice(0,200)]=tr; batchFail=false; }
-        }).catch(function(){ if(tmr)clearTimeout(tmr); })
+          if(tr){ out[uncachedIdx[idx]]=tr; _trCache[String(uncached[idx]).slice(0,200)]=tr; batchFail=false; _bgtxUnreachable=false; }
+        }).catch(function(e){ if(tmr)clearTimeout(tmr); if(_gtxUnreachable(e)) _bgtxUnreachable=true; })
         .then(function(){ done++; if(done>=uncached.length){
-          if(batchFail){ _bgtxFailStreak++; if(_bgtxFailStreak>=2) _bgtxDead=true; }
-          else{ _bgtxFailStreak=0; }
+          for(var q=0;q<texts.length;q++){ if(_dup[q]!==undefined) out[q]=out[_dup[q]]; }
+          if(batchFail){ _bgtxFailStreak++; } else { _bgtxFailStreak=0; }
+          // 不可达：一批就熔断并跨访问记住；限流：仍要连续 2 批，别把能连通的用户掐了
+          if(_bgtxUnreachable){ _bgtxDead=true; _markGtxDead(); }
+          else if(_bgtxFailStreak>=2){ _bgtxDead=true; }
           _saveTrCache();
           resolve(out);
         } else { one(); } });
@@ -6263,11 +6321,16 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     def _dump(obj):
         return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
-    # chunk0: 首屏
-    with open(os.path.join(out_dir, "rss-data-0.js"), "w", encoding="utf-8") as f:
-        f.write("/* StarHub data chunk 0 (first screen) - auto generated, do not edit */\n")
-        f.write("(window.__CHUNKS=window.__CHUNKS||[])[0]=" + _dump({"sources": chunk0}) + ";\n")
+    # chunk0 最后写：它要在 payload 里声明总块数，而总数只有等 chunk1 的分桶数定了才知道。
+    # 声明写在 JSON 里而不是追加一条 `window.__CHUNKS[0]._total=..` 语句 ——
+    # tests/rss_history/test_chunk_budget.py 的 _payload() 按"整个文件是一个 JSON"解析，追加会打爆它。
     n0 = sum(len(s.get("items", [])) for s in chunk0)
+
+    def _write_chunk0(total):
+        with open(os.path.join(out_dir, "rss-data-0.js"), "w", encoding="utf-8") as f:
+            f.write("/* StarHub data chunk 0 (first screen) - auto generated, do not edit */\n")
+            f.write("(window.__CHUNKS=window.__CHUNKS||[])[0]="
+                    + _dump({"sources": chunk0, "_total": total}) + ";\n")
 
     # chunk1+: 按每块上限拆分。
     # 2026-09-30 线上实证：这里曾写 80MB，而后台数据实测 50.6MB ⇒ n_chunks 恒为 1，
@@ -6283,6 +6346,7 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
             f.write("/* StarHub data chunk 1 - auto generated, do not edit */\n")
             f.write("(window.__CHUNKS=window.__CHUNKS||[])[1]={sources:[]};\n")
         _retire_stale_chunks(out_dir, 1, _dump)
+        _write_chunk0(2)      # 文件仍是两个（0 和空的 1），声明必须跟实际文件数一致
         print("[数据分块] chunk0 %d 篇 / chunk1 0 篇（共 %d）" % (n0, n0))
         return
 
@@ -6297,6 +6361,7 @@ def write_data_chunks(sources, chunk0_size=CHUNK0_SIZE):
     total_bytes = sum(src_sizes)
     n_chunks = max(1, (total_bytes + MAX_CHUNK_BYTES - 1) // MAX_CHUNK_BYTES)
     n_chunks = min(n_chunks, MAX_CHUNKS)
+    _write_chunk0(1 + n_chunks)
     target_per_chunk = total_bytes / n_chunks
 
     buckets = [[] for _ in range(n_chunks)]
@@ -6360,7 +6425,9 @@ def build_html(sources_with_items, build_time, total_items, build_ts_ms=0, analy
         '<title>RSS 聚合阅读器 · StarHub</title>\n'
         '<style>' + _build_css() + '</style>\n'
         + '<link rel="preload" href="rss-data-0.js?v=' + str(int(build_ts_ms)) + '" as="script">\n'
-        + '<link rel="preload" href="hot_snapshot.json" as="fetch" crossorigin>\n'
+        # 这里原本还有一行 preload hot_snapshot.json：消费方是 `fetch(…,{cache:'no-cache'})`，
+        # no-cache 明确绕过预载那份（且 preload 带 crossorigin、fetch 不带 credentials，键也对不上）
+        # ⇒ 每次加载白下 63KB，控制台每次都报 "preloaded but not used"。删预载，不删 no-cache（那是数据新鲜度）。
         '</head>\n<body>\n'
         + _build_header() +
         '<div class="toolbar">\n'
