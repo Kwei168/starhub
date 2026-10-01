@@ -197,6 +197,31 @@ def test_lib_rss_cover_exports_all_have_callers():
         % ", ".join(sorted(orphans)))
 
 
+def test_realtime_cover_key_chain_is_complete():
+    """#4 的链路必须从头通到尾：API 短键 img → 合并成长键 image → buildArt 再回短键 img。
+
+    这条链有两处"名字换来换去"的接缝，任一处被简化掉都会让实时封面静默消失：
+      `_apiMergeTo` 里必须把 API 的 `it.img` 写成 `image`；
+      `buildArt` 里必须同时认 `it.image`（合并后的长名）与 `it.img`（batch 路径的短名）。
+    只验"API 有没有发 img"是不够的 —— 发了但没人接，等于没发。
+    """
+    html = _generated_html()
+
+    def _fn(name):
+        """按同缩进的下一个 `function ` 收边界，避免把整页当一段来 grep。"""
+        i = html.index("function " + name + "(")
+        j = html.find("\n  function ", i + 1)
+        assert j > i, "找不到 %s 的结束边界，判据的范围失效" % name
+        return html[i:j]
+
+    merge = _fn("_apiMergeTo")
+    art = _fn("buildArt")
+    assert "image:it.img||''" in merge, (
+        "`_apiMergeTo` 不再把 API 的 img 落成 image ⇒ 实时条目到页面就没有封面（#4 白做）")
+    assert "img:it.image||it.img||''" in art, (
+        "`buildArt` 不再同时认长名 image 与短名 img ⇒ 实时封面在映射处被丢掉")
+
+
 def test_realtime_cover_is_carried_into_the_response_shape():
     """抽到图还要带得出去：两条分支写 img，短键映射把 img 放进 cached item。
 

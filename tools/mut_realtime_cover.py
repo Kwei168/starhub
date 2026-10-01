@@ -31,6 +31,10 @@ MUTS = [
     ("N7 多导一个没人用的名字（公共 API 空壳）", LIB,
      "module.exports = { pickItemImage, firstImgSrc };",
      "module.exports = { pickItemImage, firstImgSrc, decodeEntities };"),
+    ("N8 合并处不接 API 的 img（实时封面落不了地）", BRA,
+     "image:it.img||''", "image:''"),
+    ("N9 buildArt 只认短名（合并后的长名 image 被丢）", BRA,
+     "img:it.image||it.img||''", "img:it.img||''"),
     ("N6 渲染层丢掉 scheme 大小写归一（Py/JS 分叉）", BRA,
      "    var s = String(u || '').trim().toLowerCase();", "    var s = String(u || '');"),
 ]
