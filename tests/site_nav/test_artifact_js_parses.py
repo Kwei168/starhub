@@ -93,3 +93,32 @@ def test_translated_stub_rule_arrives_as_a_word_boundary():
     line = html[i:html.find("\n", i)]
     assert "\\b" in line, "产物里词边界不是 \\b（Python 把它吃成退格符了）：%r" % line
     assert chr(8) not in line, "产物正则里混进了退格符：词边界整个失效：%r" % line[:120]
+
+
+# 2026-10-01 运行时窗口队列引入的符号。逐条钉"在产物里被真调用"，因为这一类回归是静默的：
+# 删掉一个调用点，页面只是少翻几屏，控制台不会报错，判据也不红。
+# 计数只看代码行（跳过注释行），否则"名字出现在注释里"会冒充成"有人调用"。
+WALL_QUEUE_SYMBOLS = [
+    "_wallWindow", "_wallFingerprint", "_abortWallInflight", "_applyWallTr",
+    "_translateWallItems", "_scheduleWallTranslate",
+    "_browserGtx", "_gtxUnreachable", "_markGtxDead", "_cutW",
+    "GTX_ABORT_MS", "WALL_SUMMARY_LIMIT",
+]
+
+
+def _code_only(body):
+    keep = []
+    for line in body.split("\n"):
+        t = line.strip()
+        if t.startswith("//") or t.startswith("/*") or t.startswith("*"):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
+
+
+def test_wall_queue_symbols_are_actually_called_in_artifact():
+    assert WALL_QUEUE_SYMBOLS, "名单空了：这条判据就成了恒绿的装饰"
+    body = _code_only("".join(b for b in _inline_scripts(_artifact()) if "_needsTranslation" in b))
+    dead = [n for n in WALL_QUEUE_SYMBOLS if len(re.findall(r"\b" + n + r"\b", body)) < 2]
+    assert not dead, (
+        "这些符号在产物里只有定义、没有调用点（= 窗口队列被改成了写了不跑的孤儿）：%s" % ", ".join(dead))
