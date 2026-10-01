@@ -1709,3 +1709,35 @@ head `f2c1576b99`（③#1 那批）在 09:00 场 **A2 blocking 红**，2 条失�
 
 **待 10:00Z 场验收**：① A2 绿；② 日志 `[封面判空]` 的 N>0；③ 产物 `_BAD_COVERS` 与表一致；
 ④ `curl 'https://starhub-refresh.vercel.app/api/rss?source=<某英文源>'` 看是否开始出现 `img`。
+
+### 10.52 两条"绿着但没在管事"的判据补上了（73b1a3371a / 2791c079a9）
+
+对抗审查时自查出来的两个覆盖缺口，都不是"实现坏了"，而是**判据恒绿**：
+
+1. **渲染层过滤没人验**。`_dropBadCover` 与 `_BAD_COVERS` 在产物里存在 ≠ 卡片真的用它。
+   把模板改回 `src="'+esc(a.img)+'"`（即绕过判空、让实时封面重新上屏）时，
+   当时所有判据照绿 —— 我只有一次性探针 `.deploy-tmp/_probe_cover_page.py` 验过行为。
+   ⇒ 新增 `test_render_site_uses_the_bad_cover_filter`：从产物里定位 `function renderWall(` 到
+   `<img class="cover-img"` 那一段，要求 `_dropBadCover(a.img)`、`hasImg=!!_cv`、
+   `src` 与 `referrerpolicy` 都取自 `_cv`，并且该段里**不许再出现** `esc(a.img)`。
+   变异 M11（`_cv=a.img`）与 M12（只把 src 换回 a.img）各自被杀 ⇒ 这条不是摆设。
+2. **`lib/rss_cover.js` 有死出口**。第一版导出了 `decodeBasic` 与两个正则，"以后也许用得上"，
+   实际没有任何调用方 —— 与本项目反复清掉的"公共 API 空壳"同形状。
+   ⇒ 只留 `{ pickItemImage, firstImgSrc }`，并加反向判据
+   `test_lib_rss_cover_exports_all_have_callers`（每个导出都要在 `api/rss.js` 或 node 用例集里
+   出现 `C.X` / `COVER.X`）。变异 N7（多导一个 `decodeEntities`）被杀。
+
+**变异汇总（现在都是常驻脚本，可重跑）**
+- `tools/mut_cover_table.py`：M1-M12，全 RED，0 逃逸。
+- `tools/mut_realtime_cover.py`：N1-N7，全 RED，0 逃逸。只改副本，注入点
+  `STARHUB_API_RSS` / `STARHUB_COVER_LIB` / `RSS_BUILD_SRC`（绝不就地改真源；
+  早先那版就地改 + 按 sha256 还原，因换行归一化自毁校验而中止，已废弃该写法）。
+
+**本地读数**：`tests/rss_cover` 34 passed；CI 的 A2 原命令 **314 passed / 41.1s**
+（唯一红仍是本地未推的 `tests/ai_daily/` 孤儿目录，远端 404，不在 CI 集合里）。
+
+**③#2 已线上生效的实证**（`curl` 08:32:13Z 那份产物，3,163,365 字节）：
+`_coverRefPolicy` 出现 2 次、卡片上是 `referrerpolicy="'+esc(_coverRefPolicy` 的按域名写法、
+硬编码 `no-referrer"` 形式 **0 次**、`this.remove()` 在场。
+同一份产物里 `_BAD_COVERS` / `_dropBadCover` 均为 0 次 ⇒ ③#1/#4 确实还没上线，
+必须等 10:00Z 那场部署，别把"已推"当"已生效"。
