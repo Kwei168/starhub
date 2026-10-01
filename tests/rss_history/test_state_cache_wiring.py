@@ -22,6 +22,7 @@
      但不许拦构建 —— 判据要能区分"静默退化"与"出声退化"。
 """
 import os
+import subprocess
 
 import pytest
 
@@ -226,16 +227,32 @@ def test_state_files_are_in_both_gitignore_and_cache_paths():
                                                    ", ".join(not_cached) or "无"))
 
 
-def test_build_logs_dir_is_cache_carried_but_still_committed_for_now():
-    """build_logs 已在缓存 path 里，但**这批还不能**把它从提交清单摘掉。
+def test_state_files_are_not_tracked():
+    """批 3：这 7 个状态文件必须**不再被 git 跟踪**。
 
-    原因（实测耦合）：`build-log-summary.yml` 每小时从 git 读 jsonl 再提交 summary。
-    单独把 jsonl 摘掉 ⇒ 它读到空目录 ⇒ 把主构建生成的正确摘要覆盖成 builds=0 并提交。
-    所以 jsonl 的退役必须与"每日一次闸门 + 退役该 workflow"同批（批 4），这条判据就是钉住这个顺序。
+    与 `test_state_family_files_are_not_committed_anymore` 是两道不同的闸：
+      · 不 commit（批 2）挡的是"工作流再把它们写进提交"；
+      · 不 tracked（批 3）挡的是"库里那份旧副本被谁 git add 一下又活过来"——
+        只要它们还在树里，每场重写就仍然给不可回收的历史加 17.4 MiB。
+    CI 跑干净检出 ⇒ 本地与 CI 都等价于"树里没有这些路径"。
+    """
+    offenders = []
+    for f in sorted(STATE_FILES):
+        r = subprocess.run(["git", "ls-files", "--error-unmatch", f],
+                           capture_output=True, text=True, cwd=ROOT)
+        if r.returncode == 0:
+            offenders.append(f)
+    assert not offenders, (
+        "这些跨场状态仍被 git 跟踪（每场重写 = 永久多一份副本）：%s；退役方式："
+        "data_api_push.py --delete 逐个列名，再本地 git rm --cached 对齐索引" % ", ".join(offenders))
+
+
+def test_build_logs_dir_is_cache_carried():
+    """build_logs 必须在缓存 path 里 —— 它是摘要"每天一次"能成立的前提。
+
+    批 4 之后 jsonl 不再每场入库（每天一次快照），所以跨场累积**只能**由缓存承担；
+    缓存里少这一项的话，`build_logger.summary(today)` 每场都会看到空目录，摘要恒成 builds=1。
     """
     cached = set(_path_lines(_by_name("Save cross-build state cache")))
-    assert LOG_DIR_NAME in cached, "build_logs 不在缓存 path：批 4 想切每日提交时没有跨场累积承载体"
-    names = _added_names()
-    assert LOG_DIR_NAME in names, (
-        "build_logs 已被摘出提交清单，但批 4（每日闸门 + 退役 build-log-summary.yml）还没落地 —— "
-        "这个顺序会让每小时摘要工作流把摘要覆盖成 0")
+    assert LOG_DIR_NAME in cached, (
+        "build_logs 不在缓存 path：批 4 的每日闸门让 jsonl 退出每场提交后，就没有任何东西承载累积了")

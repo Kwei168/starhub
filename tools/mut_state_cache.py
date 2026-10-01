@@ -37,30 +37,6 @@ def add_lines(src):
             for m in re.finditer(r"^" + re.escape(ADD_PREFIX) + r".*$", src, re.M)]
 
 
-def state_names(src):
-    """从缓存 path 名单里取回 7 个状态文件名（保证变异体用的是同一份真相）。"""
-    seg = block(src, SAVE_MARK, STAGE_MARK)
-    return [ln.strip() for ln in seg.splitlines()
-            if ln.strip().endswith((".json", ".jsonl")) and ln.strip() != "build_logs"]
-
-
-def edit_add_lines(src, fn):
-    """只对每一处 `git add rss-data-0.js ...` 清单行做变换。
-
-    为什么要按行定位而不是全文 replace：`" build_logs/"` 这个串在文件里更早还出现在
-    Diagnose 步的 echo 文案里，全文替换会先命中那里 ⇒ 变异打在无关文本上、判据"合理地"绿
-    （S/T5 第一版就是这么假阴的）。
-    """
-    out = []
-    for ln in src.split("\n"):
-        out.append(fn(ln) if ln.lstrip().startswith(ADD_PREFIX.strip()) else ln)
-    return "\n".join(out)
-
-
-def cut_build_logs(line):
-    return line.replace(" build_logs/", " ", 1)
-
-
 def main():
     src = open(WF, encoding="utf-8").read()
     gi = open(GI, encoding="utf-8").read()
@@ -69,13 +45,6 @@ def main():
     save_blk = block(src, SAVE_MARK, STAGE_MARK)
     al = add_lines(src)
     assert len(al) == 2, "git add 清单行应有 2 处（主路径 + 重试分支），实测 %d" % len(al)
-
-    def add_with(names):
-        """把清单行重写成"原来的项 + 这些状态名"。"""
-        out = src
-        for start, end in reversed(al):
-            out = out[:start] + out[start:end] + " " + " ".join(names) + out[end:]
-        return out
 
     MUTS = [
         ("S1 删掉 Restore 步", src.replace(restore_blk, "", 1), None),
@@ -107,13 +76,17 @@ def main():
          src.replace(block(src, SAVE_MARK, STAGE_MARK),
                      block(src, SAVE_MARK, STAGE_MARK).replace(
                          "            daily_insight_history.json\n", "", 1), 1), None),
-        ("T5 越序：批 2 就把 build_logs 从两处清单摘掉", edit_add_lines(src, cut_build_logs), None),
+        ("T5 缓存 path 里去掉 build_logs（每日闸门失去累积承载）",
+         src.replace(block(src, SAVE_MARK, STAGE_MARK),
+                     block(src, SAVE_MARK, STAGE_MARK).replace(
+                         "\n            build_logs", "", 1), 1), None),
     ]
     assert " hot_history.json" not in src.split("\n")[al[0][1] - 1:], "锚点自检失败"
 
     def run(mut_wf, mut_gi, label):
         if (mut_wf is None or mut_wf == src) and (mut_gi is None or mut_gi == gi):
-            return "%-52s SKIP（变异无效/锚点没找到）" % label, True
+            # 无效变异绝不能算"已挡住"：那样只要锚点写错，整个脚本就会自称 0 逃逸。
+            return "%-52s INVALID（变异没落到任何字节上 = 这条判据没被证明过）" % label, False
         wfp = os.path.join(TMP, "_mut_update.yml")
         with open(wfp, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(mut_wf)

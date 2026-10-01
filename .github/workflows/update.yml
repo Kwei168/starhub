@@ -253,8 +253,9 @@ jobs:
           python -c "
           import build_logger
           # 保留 5 天：实测单日 .jsonl 2.58~2.80 MiB，保 14 天时 build_logs/ 一家
-          # 就占远端跟踪内容的 58%（42.52 MiB）。只有写方（本步与 build-log-summary.yml
-          # 各写当天），无人读 5 天前的日志 ⇒ 裁剪不伤功能，历史里旧文件仍可随时回捞。
+          # 就占远端跟踪内容的 58%（42.52 MiB）。写方只有本步与 Log deploy result（都在主构建里），
+          # 跨场累积由 starhub-state 缓存承担、git 里每天只留一次快照（见下面的每日闸门）
+          # ⇒ 裁剪不伤功能，历史里旧文件仍可随时回捞。
           # 上限由 tests/rss_history/test_log_retention_days.py 钉住，别顺手改回 14 或改成 0。
           removed = build_logger.cleanup(5)
           print('[日志] 已清理 %d 个过期日志文件: %s' % (len(removed), removed) if removed else '[日志] 无过期日志需要清理')
@@ -282,6 +283,20 @@ jobs:
           print(f'[日志] trigger 事件已记录: {trigger} / {os.environ.get(\"MODE\", \"?\")}')
           "
 
+      - name: Generate daily summary
+        run: |
+          python -c "
+          import build_logger
+          from datetime import datetime, timezone, timedelta
+          BJT = timezone(timedelta(hours=8))
+          today = datetime.now(BJT).strftime('%Y-%m-%d')
+          s = build_logger.summary(today)
+          import json
+          with open(f'build_logs/summary_{today}.json', 'w') as f:
+              json.dump(s, f, ensure_ascii=False, indent=2)
+          print(f'[日志] 当日摘要已生成: {s[\"builds\"]} 次构建, {s[\"total_items_latest\"]} 篇')
+          "
+
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
@@ -297,9 +312,22 @@ jobs:
           # 而 git 的模型是"内容变一次就永久多一份副本" ⇒ 调保留天数只改斜率，不入库才是压平曲线）。
           # 它们的跨场传递由上面的 starhub-state 缓存承接；读取端全走 *_FILE 常量指向的同一路径，
           # 冷启动分支已核：build_daily_insight.py:4274 / insight 侧 if not os.path.exists ⇒ 退化成
-          # 一次冷启动而不是断链。build_logs/ 留到批 4（要与"每日一次闸门 + 退役
-          # build-log-summary.yml"同批，单独摘掉会让那个每小时工作流把摘要覆盖成 0）。
-          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_logs/ build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
+          # 一次冷启动而不是断链。build_logs 由下面的每日闸门管（批 4）：每场都写工作树与缓存，
+          # 但每天只有一次把 jsonl/summary 快照提交进 git —— 每小时刷摘要的 build-log-summary.yml
+          # 已同步退役，否则它会从旧 jsonl 生成摘要并覆盖掉主构建生成的正确摘要。
+          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
+          # 构建日志：每天只提交一次（其余场次靠 starhub-state 缓存累积，实测 1.7-2.1 MiB/场）。
+          # 判据读自己入库的标记文件，不用 `git log` —— 后者依赖 fetch-depth:0 这个偶然条件，
+          # 一旦改成 1 就查不到历史、被读成"到期了"，于是静默退回每场提交。
+          # 判据：tests/rss_history/test_log_daily_commit_gate.py（闸门脚本被真跑，不是 grep 文本）
+          TODAY_BJ=$(TZ=Asia/Shanghai date +%F)
+          if [ "$(bash tools/daily_commit_gate.sh build_logs/.committed_date "$TODAY_BJ")" = open ]; then
+            echo "$TODAY_BJ" > build_logs/.committed_date
+            git add build_logs/
+            # 目录式 add 不 stage 删除：cleanup(5) 删掉的旧 jsonl/summary 要显式从索引摘掉，
+            # 否则它们永远留在树里（每天 +180 KB 的新无界点）
+            git ls-files -d -z build_logs | xargs -0 -r git rm --cached --quiet
+          fi
           if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if ! python3 tools/size_tripwire.py; then
             echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
@@ -323,7 +351,19 @@ jobs:
               python fetch_and_build.py $MODE
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
           # 重试分支：清单必须与主路径逐字同一份（批 2 起两处同改，只改一条 = 重试时把状态请回库里）
-          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_logs/ build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
+          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
+          # 构建日志：每天只提交一次（其余场次靠 starhub-state 缓存累积，实测 1.7-2.1 MiB/场）。
+          # 判据读自己入库的标记文件，不用 `git log` —— 后者依赖 fetch-depth:0 这个偶然条件，
+          # 一旦改成 1 就查不到历史、被读成"到期了"，于是静默退回每场提交。
+          # 判据：tests/rss_history/test_log_daily_commit_gate.py（闸门脚本被真跑，不是 grep 文本）
+          TODAY_BJ=$(TZ=Asia/Shanghai date +%F)
+          if [ "$(bash tools/daily_commit_gate.sh build_logs/.committed_date "$TODAY_BJ")" = open ]; then
+            echo "$TODAY_BJ" > build_logs/.committed_date
+            git add build_logs/
+            # 目录式 add 不 stage 删除：cleanup(5) 删掉的旧 jsonl/summary 要显式从索引摘掉，
+            # 否则它们永远留在树里（每天 +180 KB 的新无界点）
+            git ls-files -d -z build_logs | xargs -0 -r git rm --cached --quiet
+          fi
               if [ -f daily-insight.json ]; then git add daily-insight.json; fi
               if ! python3 tools/size_tripwire.py; then
                   echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
@@ -481,19 +521,6 @@ jobs:
           print(f'[日志] deploy 事件已记录: {entry[\"status\"]}')
           "
 
-      - name: Generate daily summary
-        run: |
-          python -c "
-          import build_logger
-          from datetime import datetime, timezone, timedelta
-          BJT = timezone(timedelta(hours=8))
-          today = datetime.now(BJT).strftime('%Y-%m-%d')
-          s = build_logger.summary(today)
-          import json
-          with open(f'build_logs/summary_{today}.json', 'w') as f:
-              json.dump(s, f, ensure_ascii=False, indent=2)
-          print(f'[日志] 当日摘要已生成: {s[\"builds\"]} 次构建, {s[\"total_items_latest\"]} 篇')
-          "
 
       # ── GitHub Pages 发布：从「分支源」改为「本 workflow 部署 artifact」────────────────
       # 动机只有一条：每场 55MB 的 rss-data-1.js 提交进 git，历史就永久攒一份，这是仓库无限
