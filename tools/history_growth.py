@@ -14,9 +14,13 @@ reveal this -- a replaced blob stays in history forever.
 It never mutates the repository: no writes, no history operations.
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
+
+_BJT = timezone(timedelta(hours=8))
 
 # Once per day the log commit legitimately adds ~2.6 MiB (jsonl + summary), so a lower
 # bound would fire daily and a warning that fires daily is a warning nobody reads.
@@ -99,12 +103,28 @@ def report(new_bytes, hits, top=6):
     return "\n".join(out)
 
 
+def log_line(new_bytes, hits, path, commit=""):
+    """把读数作为 `growth` 事件追加进当日构建日志。
+
+    Actions 的输出只活 90 天，而 `build_logs/<今天>.jsonl` 每天一次进 git —— 写在这里才回答得了
+    "哪一场开始又长回去了"。附带行为：路径不可写时静默跳过，绝不能把监测本身弄红。
+    """
+    rec = {"ts": datetime.now(_BJT).isoformat(), "type": "growth",
+           "new_blobs": len(hits), "new_bytes": int(new_bytes), "commit": (commit or "")[:40]}
+    try:
+        with open(path, "a", encoding="utf-8", errors="replace") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
+    except Exception as e:
+        print("[growth] 写日志失败（不影响测量本身）: %s" % e)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--self-test", action="store_true")
     ap.add_argument("--cur", default="HEAD")
     ap.add_argument("--prev", default="HEAD^1")
     ap.add_argument("--top", type=int, default=6, help="print the N biggest new paths")
+    ap.add_argument("--log", default="", help="把读数作为 growth 事件追加进这个 jsonl")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
@@ -114,7 +134,10 @@ def main():
         print("[growth] skipped: cannot read both trees (%s vs %s)" % (a.prev, a.cur))
         return 0
     hits = new_blob_bytes(prev, cur)
-    print(report(sum(sz for _, sz in hits), hits, a.top), flush=True)
+    total = sum(sz for _, sz in hits)
+    print(report(total, hits, a.top), flush=True)
+    if a.log:
+        log_line(total, hits, a.log, os.environ.get("GITHUB_SHA", ""))
     return 0
 
 

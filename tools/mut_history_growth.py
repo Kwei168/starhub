@@ -40,17 +40,23 @@ def main():
         ("H7 把测量步挪到 Commit 之前（量到上一场，本场膨胀恰好看不见）",
          (tool, wf.replace(STEP_MARK, "", 1).replace(
              "      - name: Commit & push if changed", STEP_MARK + "      - name: Commit & push if changed", 1))),
+        ("H8 监测步不再 --log（读数只活在 Actions 的一次性输出里）",
+         (tool, wf.replace(' --log "build_logs/$(TZ=Asia/Shanghai date +%F).jsonl"', ""))),
+        ("H9 log_line 改成覆盖写（每场把前一场的读数抹掉）",
+         (tool.replace('with open(path, "a", encoding="utf-8"', 'with open(path, "w", encoding="utf-8"'), wf)),
+        ("H10 growth 事件换个 type 名（下游按 type 取数就取不到了）",
+         (tool.replace('"type": "growth"', '"type": "gzz"', 1), wf)),
     ]
 
     def run(mut_tool, mut_wf, label):
         if (mut_tool == tool) and (mut_wf == wf):
             return "%-56s INVALID（变异没落到任何字节上）" % label, False
         os.makedirs(TMP, exist_ok=True)
-        tp = os.path.join(TMP, "_mut_history_growth.py")
+        tp = os.path.join(TMP, "_mut_hg_%d.py" % (abs(hash(label)) % 100000))
         wp = os.path.join(TMP, "_mut_hg_update.yml")
         open(tp, "w", encoding="utf-8", newline="\n").write(mut_tool)
         open(wp, "w", encoding="utf-8", newline="\n").write(mut_wf)
-        env = dict(os.environ, STARHUB_GROWTH_TOOL=tp, STARHUB_UPDATE_YML=wp, PYTHONIOENCODING="utf-8")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", STARHUB_GROWTH_TOOL=tp, STARHUB_UPDATE_YML=wp, PYTHONIOENCODING="utf-8")
         p = subprocess.run([sys.executable, "-m", "pytest", TEST, "-q", "--no-header",
                             "-p", "no:cacheprovider"], cwd=ROOT, env=env,
                            capture_output=True, text=True, encoding="utf-8",

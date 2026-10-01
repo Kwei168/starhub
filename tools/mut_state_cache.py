@@ -103,7 +103,7 @@ def main():
         wfp = os.path.join(TMP, "_mut_update.yml")
         with open(wfp, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(mut_wf)
-        env = dict(os.environ, STARHUB_UPDATE_YML=wfp, PYTHONIOENCODING="utf-8")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", STARHUB_UPDATE_YML=wfp, PYTHONIOENCODING="utf-8")
         if mut_gi is not None:
             gip = os.path.join(TMP, "_mut_gitignore")
             with open(gip, "w", encoding="utf-8", newline="\n") as fh:

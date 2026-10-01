@@ -126,3 +126,36 @@ def test_tool_never_writes_to_the_repository():
     assert re.search(r"git ls-tree", src), "工具必须用 `git ls-tree -rl` 取字节，而不是猜"
     r = subprocess.run(["python", TOOL, "--self-test"], capture_output=True, text=True, cwd=ROOT)
     assert r.returncode == 0, "--self-test 必须可跑（合成树，不碰仓库）：%s%s" % (r.stdout, r.stderr)
+
+
+def test_log_line_is_appended_as_structured_event(tmp_path):
+    """批 6 的后半：读数必须落到 `build_logs/<今天>.jsonl`，不然"持续状态"只活在一次性日志里。
+
+    现在只有 Actions 日志里有这一行，过 90 天就查不到了；写进构建日志（每天一次进 git）后，
+    `growth` 事件就和 trigger/deploy 事件同表，能直接回答"哪一场开始又长回去了"。
+    这里喂真实函数，验的是落盘形状，不是 grep 源码。
+    """
+    import json as _json
+    m = _load()
+    path = tmp_path / "g.jsonl"
+    m.log_line(1234, [("a.js", 1234)], str(path), commit="deadbeefdead")
+    m.log_line(5, [("b.js", 5)], str(path), commit="beadfeedbead")
+    lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 2, "append 语义没生效，实测 %d 行" % len(lines)
+    rec = [_json.loads(l) for l in lines]
+    assert all(r["type"] == "growth" for r in rec), "事件类型必须是 growth：%s" % rec
+    assert rec[0]["new_bytes"] == 1234 and rec[0]["new_blobs"] == 1
+    assert rec[1]["new_bytes"] == 5, "第二次必须写自己的数，不能复用上一条"
+    assert rec[0]["commit"] == "deadbeefdead"
+
+
+def test_log_line_survives_a_bad_path():
+    """写日志是附带行为，绝不能把监测本身弄红（这一步是 advisory，但红在工具里也没意义）。"""
+    m = _load()
+    m.log_line(1, [("a", 1)], os.path.join(os.path.sep.join(["__no_such_dir__", "x.jsonl"])))
+
+
+def test_growth_step_logs_into_today_build_log():
+    body = next(s for s in _steps() if (s.get("name") or "").startswith(STEP_NAME)).get("run") or ""
+    assert "--log" in body, "监测步没把读数写进日志：那这些数只存在于 Actions 的一次性输出里"
+    assert "build_logs/" in body, "--log 的目标必须在 build_logs/ 下（它每天一次进 git，也在缓存里）"

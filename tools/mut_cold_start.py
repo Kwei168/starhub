@@ -9,6 +9,9 @@ import os
 import subprocess
 import sys
 
+# 变异体改的是生产模块本体；pyc 按 (mtime, 大小) 命中，同长度改动可能沿用旧字节码 = 假绿
+os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST = os.path.join("tests", "rss_history", "test_cold_start_readers.py")
 AGG = os.path.join(ROOT, "build_rss_aggregator.py")

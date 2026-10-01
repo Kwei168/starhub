@@ -427,7 +427,7 @@ jobs:
         # 必须 continue-on-error：本仓已两次"自己把自己的部署冻掉"。工具只读，绝不改仓库状态。
         continue-on-error: true
         run: |
-          python tools/history_growth.py --cur HEAD --prev HEAD^1
+          python tools/history_growth.py --cur HEAD --prev HEAD^1 --log "build_logs/$(TZ=Asia/Shanghai date +%F).jsonl"
 
       - name: Trim Actions cache keys (keep newest per family)
         # 实测 09-20：缓存 9.97 / 10 GB 已用满、79 个键 —— emb-cache 45 键 9.64GB 是元凶，

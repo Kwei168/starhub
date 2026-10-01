@@ -64,7 +64,7 @@ def main():
         wfp = os.path.join(TMP, "_mut_site_update.yml")
         with open(wfp, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(mut)
-        env = dict(os.environ, STARHUB_UPDATE_YML=wfp, PYTHONIOENCODING="utf-8")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", STARHUB_UPDATE_YML=wfp, PYTHONIOENCODING="utf-8")
         p = subprocess.run([sys.executable, "-m", "pytest", TEST, "-q", "--no-header",
                             "-p", "no:cacheprovider"], cwd=ROOT, env=env,
                            capture_output=True, text=True, encoding="utf-8",

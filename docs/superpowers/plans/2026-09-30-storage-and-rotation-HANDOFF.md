@@ -1960,3 +1960,58 @@ Cache not found for input keys: starhub-state-Linux-36872974114-1, starhub-state
 **计划 §3 的冷启动演练换了做法**：原写「本地跑一次 `fetch_and_build.py incremental`」，但本地裸跑会挂住烧翻译配额并写脏跟踪产物（见 gate-b-no-local-run）。改成 `tests/rss_history/test_cold_start_readers.py` 直接调真实读取函数（cwd 换空临时目录），6 条覆盖 `_load_caches` / `_load_prev_analysis` / `_load_history` / `_accumulate_hot_history` 的缺失与损坏分支，每条都带「正常文件必须真读回来」的反向半句防空转；配套 `tools/mut_cold_start.py` 用 K1–K4 破坏生产读取端自证能红， finally 里逐字节还原并校验 sha256。踩到的一条工程细节：锚点必须按目标文件自己的行尾拼（`build_rss_aggregator.py` 是 CRLF、`build_daily_insight.py` 是 LF），否则多行锚点一处也命中不了 = 静默 INVALID。
 
 **另一处实测契约（写下来免得下次又按直觉写错判据）**：`_load_caches()` 在文件缺失时是「什么都不做」，不抛也不清空 —— 所以「冷启动 = 空缓存」成立的前提是 `_trans_cache` 的**模块初始值**必须是空 dict。第一版判据把它写成「缺失 ⇒ 清空」当场红给自己看了，随后补了 `test_module_initial_cache_is_empty`（AST 顶层赋值）钉住真正的前提。
+
+
+### 10.59 播种回灌（修 批5a 的伤害）：v1 判据绿而问题没修，v2 靠三遍彩排才敢说覆盖到位
+
+**伤害形态不是"缺失"**。批 5a 把 path 从 7 条加到 10 条 ⇒ 整族缓存不可达（`actions/cache` 把 path
+清单算进缓存身份）。14:00 场是 6 个 `MISSING`，但 15:34 场文件**都回来了、内容却是塌的**：
+
+```
+hot_history.json                 8,278,933 →    47,073
+translations.json                3,313,241 →   198,958
+analysis_snapshot.json           3,645,569 →   122,213
+daily_insight_history.json         263,570 →    17,177
+rss_trend_history.json           1,153,325 →     1,980
+insight_tracking_history.jsonl     778,323 →     2,473
+```
+
+**所以 v1（守卫写 `[ ! -f ]`，只在缺失时取）一场也不会动手** —— 判据全绿、问题原样留着。
+这是"代理信号绿≠事情做了"的最新一例，而且这次是我自己造的判据抓不到自己造的形态。
+
+**v2 的形状**（`621e88c7e5`）：① 先 `curl -sI` 取历史副本的 `Content-Length`，**本地字节 < 历史字节才回灌**；
+② 一次性 marker `build_logs/.state_seed.done` 记录做过的 sha ⇒ 同一个 sha 只修一次。marker 必须落在
+**已经在缓存 path 里**的目录（`build_logs/`）才能跨场；**不能为此往缓存名单加新文件**——改名单=换族，
+那就把同一个错误再犯一遍。为什么需要 marker：`translations.json` 有 `TRANS_CACHE_MAX=30000` 的 LRU
+摆动，"比历史小"会反复成立 ⇒ 没有 marker 就会每场拿 12:58 的旧译文盖掉新积累。
+③ 只写工作目录，绝不 `git add`（否则把冻结副本请回库里，白做批 3）；④ `continue-on-error`，
+位置在 Restore 之后、`Fetch stars & build` 之前。
+
+**判据与电池**：`tests/rss_history/test_state_seed.py` 6 条（含"必须有 Content-Length 与 -lt 比较"
+"marker 变量出现 ≥3 次且落在 build_logs/ 下"），`tools/mut_state_seed.py` N1–N10 全抓、0 逃逸。
+
+**`tools/rehearse_state_seed.py` 是这一节真正想留的方法**：把 workflow 里那步的 run 正文原样抽出来，
+在临时空目录**真跑三遍**，分别对应三个分支——
+
+```
+第一遍 都不存在        -> 7 个全部回灌，字节数与历史副本逐一对上
+第二遍 marker 已写     -> "seed 已对 8a48fa7878… 做过，跳过"，rc=0，无重复下载
+第三遍 在盘但塌了      -> SEED hot_history/analysis_snapshot/translations（本地 47073/122213/198958 < 历史）
+                          keep rss_trend_history(1156862) 等 4 个（不该动的没动）
+```
+
+前两遍只验"缺失"和"早退"；**第三遍才是 CI 现场要走的分支**。shell 的形状判据看不见（`-lt` 写错、
+`Content-Length` 解析带 `\r`、`mkdir` 早退顺序错都会静默失效），所以这类步骤应当先本地彩排再推。
+判据/电池能钉住"结构"，钉不住"shell 语义"——缺这一环，v1 那种错误还会再来。
+
+**事故的用户可见后果**（比"历史窗口要重积"更直观）：
+
+```
+/rss-aggregator.html         3,143,054 B → 376,112 B
+/daily-insight-history.html    269,593 B →  29,149 B   ← 直接由 daily_insight_history.json 塌了导致
+```
+
+页面里的升温/共振/rising/falling 计数仍在（版式与功能没坏），掉的是内嵌的历史与趋势语料。
+同时 `/trending_snapshot.json`、`/descriptions_zh.json`、`/translations.json` 变 404 —— 这三个是
+批 5c 故意不再公开的（实测前端零引用），属于公开面缩小，不是回归。
+16:00 场之后的页面尺寸是"回灌是否真起作用"的硬指标：若没回到塌前量级，说明归因错了，要重新查。
