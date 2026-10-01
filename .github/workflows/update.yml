@@ -222,6 +222,31 @@ jobs:
           restore-keys: |
             starhub-state-${{ runner.os }}-
 
+      - name: Seed cross-build state from history (cold-start repair)
+        # 批 5a 把 starhub-state 的 path 从 7 条加到 10 条，而 actions/cache 把 path 清单算进缓存
+        # 身份 ⇒ 整族旧缓存瞬间不可达（14:00 场：Cache not found for input keys: starhub-state-Linux-，
+        # 6 个状态文件 MISSING）。到 15:34 场虽然文件都在盘上，但尺寸塌了：hot_history 8,278,933→47,073、
+        # translations 3,313,241→198,958、analysis_snapshot 3,645,569→122,213、daily_insight_history
+        # 263,570→17,177、rss_trend_history 1,153,325→1,980、insight_tracking 778,323→2,473。
+        # 这些是 append-only 历史与「每场只补新增」的译文缓存，不会自愈：趋势窗口要重新积 7 天，
+        # 新到的英文标题/描述会被反复重译烧配额。全尺寸副本仍在 git 历史里 —— 下面钉的 sha 就是
+        # 批 3 删它们之前最后一场（8a48fa7878）的树，实测 7 个 raw URL 全 200 且字节数与塌前一致。
+        # 三条自我约束：只在缺失时取（缓存正常时每场零开销）；只写工作目录（绝不 git add，
+        # 否则又把冻结副本请回库里，白做批 3）；advisory（取不到不许冻部署）。
+        # 缓存连续两场齐全后，这一步连同 tests/rss_history/test_state_seed.py 一起摘掉 ——
+        # 判据专门钉着它，就是为了别忘了这是临时创口贴而不是常设机制。
+        continue-on-error: true
+        run: |
+          for f in hot_history.json analysis_snapshot.json translations.json rss_trend_history.json insight_tracking_history.jsonl daily_insight_tracking_history.jsonl daily_insight_history.json; do
+            if [ ! -f "$f" ]; then
+              echo "  SEED $f 缺失 -> 从 8a48fa7878 的副本回灌"
+              curl -sSfL --max-time 180 -o "$f" "https://raw.githubusercontent.com/Kwei168/starhub/8a48fa78787e45557ede69f69b22c89f49c26609/$f" || { echo "::warning title=冷启动回灌失败::$f 取不回来，本场按冷启动跑"; rm -f "$f"; }
+            fi
+          done
+          for f in hot_history.json translations.json analysis_snapshot.json daily_insight_history.json; do
+            if [ -f "$f" ]; then echo "  seeded $f ($(wc -c < "$f") B)"; fi
+          done
+
       - name: Diagnose cross-build state cache restore
         run: |
           # cache-hit/matched-key 在 restore-keys 前缀命中时不可信（同 RSS history 那步的实测教训），
