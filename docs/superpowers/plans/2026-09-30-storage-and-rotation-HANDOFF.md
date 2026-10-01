@@ -601,8 +601,9 @@ trim_guard            2                → <none>  ← 本次接进 repo-trim.ym
 
 两处"断链"的处置都**不是**我单方面补链：
 - `docs/insight-pipeline-flow.md` 被 `2026-09-22-nightly-deep-insight-design.md:111` 引用为
-  "已知挂起：里面误画的 Trending 输入节点，**用户明示"不要动"**" ⇒ 因此**既不推也不改**，
-  远端那条引用维持"已知挂起"的原状（我一度打算"补链"就推，核对引用上下文后作废）。
+  "已知挂起：里面误画的 Trending 输入节点，**用户明示"不要动"**" ⇒ 处置是**内容一字不改、仅入库补链**
+  （远端 sha 2cf6e620a1 = 本地字节，`git diff` 为空）。"不要动"约束的是那张图画错了也不许我改，
+  不是禁止它进仓库；那处误画的 Trending 输入节点**仍然错着**，等用户发话。
 - `tools/rss_coverage_prepush_check.py` **故意不入库**：它硬编码 `BASE = "bcc385c~1"`，而那个提交
   已被历史重写销毁（`git cat-file -t bcc385c` → Not a valid object），推上去就是一个永远只能报错的
   死工具，正是这次目标要清的"空转"。引用它的 `2026-09-20-rss-coverage-fix-pending-push.md` 是历史计划，不动。
