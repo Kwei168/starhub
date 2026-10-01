@@ -27,9 +27,9 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("RSS_BUILD_SRC") or os.path.join(ROOT, "build_rss_aggregator.py")
 
-# 起点必须落在 `var _LAT_WORD`：_needsTranslation 依赖它上面那三行 var 声明，
+# 起点必须落在 `var _CJK_R`：_needsTranslation 依赖它上面那三行 var 声明，
 # 从 `function _needsTranslation(` 起抽会得到一个 ReferenceError（我踩过，别把锚点改回去）。
-START = "var _LAT_WORD = "
+START = "var _CJK_R = "
 END = "/* 运行时翻译诊断"
 
 # 线上真实取样（控制台 msgid=8/4/12），中文垃圾 + HN 样板 + 正常英文长句
@@ -246,3 +246,27 @@ def test_gtx_abort_window_is_shortened_for_unreachable_network():
     out = _drive(body, wait_ms=0)
     assert out["ms"] != -1, "没有 GTX_ABORT_MS 常量，超时是硬编码的字面量（无法验证真实值）"
     assert out["ms"] <= 4000, "直连超时仍是 %sms：连不通的网络上等于每批白等" % out["ms"]
+
+
+def test_yesterdays_breaker_expires_and_gtx_is_tried_again():
+    """熔断是**按天**存的：昨天那条不许今天继续掐直连。
+
+    同日那一侧已有判据（`test_dead_verdict_survives_the_next_visit` 写的是今天的日期），
+    但没人钉"隔日复位"这一支。代码里 `_gtxDeadToday()` 比的是日期相等，所以现在是好的；
+    坏在一个看起来很无害的改法上：把 `_gtxDeadToday` 写成 `return !!_gtxDayKey()`（有值就算熔断），
+    全部判据照样绿，而用户侧后果是"一次网络抖动 ⇒ 永久不再试浏览器直连"，
+    所有量压到限量兜底 Agnes（注释里写明它不是主力）。
+    """
+    body = """
+var _y = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+localStorage.setItem('_gtxDead', _y);
+_browserGtx([%s]);
+var RESULT = { google: REQ.filter(function(r){
+    return r.url.indexOf('translate_a/single') >= 0; }).length,
+  day: _y, today: new Date().toISOString().slice(0,10) };
+""" % json.dumps(EN_TITLE)
+    out = _drive(body, mode="reject", wait_ms=600)
+    assert out["day"] != out["today"], "夹具没造出昨天的日期，这条判据是假测"
+    assert out["google"] >= 1, (
+        "昨天的熔断今天仍在拦直连（实发 %d 次）：按天存的全部意义就是隔日自动复位"
+        % out["google"])

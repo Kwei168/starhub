@@ -5261,19 +5261,29 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   // 旧口径 `cjk < t.replace(/[\s\d\p{P}]/gu,'').length*0.3` 把 + = < ~ 这类数学符号（属于 \p{S}，
   // 不在旧的排除集里）和 ANSI 残片 [1m 一起算进"非中文长度"：线上实测一条中文垃圾文本
   // （💻基本信息 + 78 个 `+` + [1m硬件质量体检报告…）被稀释成"需要翻译"，直连与兜底各发一次。
-  var _LAT_WORD = /[A-Za-zÀ-ÖØ-öø-ÿ]{2,}/g;
-  var _LAT_CH = /[A-Za-zÀ-ÖØ-öø-ÿ]/g;
+  var _CJK_R = /[\\u4e00-\\u9fff\\u3400-\\u4dbf]/g;
+  var _KANA_R = /[\\u3040-\\u309f\\u30a0-\\u30ff]/;
+  var _LETTER_R = /\\p{L}/gu;
   // 注意 `\\b`：这段 JS 活在非 raw 的三引号串里，单写 \b 会被 Python 变成退格符，
   // 词边界整个失效（判据 test_hn_metadata_stub_is_not_translated 就是这么抓到的）。
   var _META_STUB = /^(article url|comments url|points|submitted by|# comments|permalink|story link)\\b/i;
   function _needsTranslation(t){
     if(!t) return false;
-    var raw=String(t), cjk=(raw.match(/[\\u4e00-\\u9fff\\u3400-\\u4dbf]/g)||[]).length;
+    var raw=String(t);
+    /* 与构建期 _needs_translation 同一条规则（双向对照判据见
+       tests/rss_translate/test_buildtime_skip_guard.py::test_runtime_and_buildtime_predicates_agree）。
+       旧版这里用"有没有 ≥2 字母的拉丁词"当门槛 ⇒ 谚文/西里尔/阿拉伯文一个拉丁字母都没有，
+       整类被跳过；而摘要是运行时专属（09-16 起移出构建期），等于日韩俄阿的摘要永不翻。
+       门槛改成"剥掉 CJK 之后是否还剩任何字母"（\\p{L}，等价于 Python 的 str.isalpha），
+       并把"含假名一律翻"这条构建期规则补齐。 */
+    if(_KANA_R.test(raw)) return true;
+    var cjk=(raw.match(_CJK_R)||[]).length;
     var clean=raw.replace(/\\u001b?\[[0-9;]{1,4}m/g,' ')
                  .replace(/https?:\\/\\S+/gi,' ')
+                 .replace(_CJK_R,' ')
                  .replace(/[\s\d\p{P}\p{S}]/gu,' ');
-    var words=(clean.match(_LAT_WORD)||[]).length, letters=(clean.match(_LAT_CH)||[]).length;
-    if(!words) return false;
+    var letters=(clean.match(_LETTER_R)||[]).length;
+    if(!letters) return false;
     if(cjk>=letters) return false;
     var lines=raw.split(/\\r?\\n/).filter(function(l){ return l.trim(); });
     if(lines.length>=3 && lines.filter(function(l){ return _META_STUB.test(l.trim()); }).length*2>=lines.length)

@@ -25,7 +25,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("RSS_BUILD_SRC") or os.path.join(ROOT, "build_rss_aggregator.py")
 
-START = "var _LAT_WORD = "
+START = "var _CJK_R = "
 END = "/* 运行时翻译诊断"
 
 
@@ -35,7 +35,7 @@ def _runtime_js():
     with open(BUILD, encoding="utf-8") as fh:
         text = fh.read()
     i = text.find(START)
-    assert i >= 0, "找不到 _LAT_WORD 锚点（_needsTranslation 上方的常量声明），判据失去意义"
+    assert i >= 0, "找不到 _CJK_R 锚点（_needsTranslation 上方的常量声明），判据失去意义"
     j = text.find(END, i)
     assert j > i, "找不到运行时翻译诊断的结束锚点"
     with warnings.catch_warnings():

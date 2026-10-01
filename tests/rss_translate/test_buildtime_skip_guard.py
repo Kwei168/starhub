@@ -145,3 +145,91 @@ def test_cyrillic_still_sent(net):
 def test_plain_chinese_still_skipped(net):
     """反向护栏 3：正常中文今天就是跳过的，改动不许把它变成发送。"""
     assert not _sent(net, ZH_TITLE), "正常中文标题开始被送出（跳过口径被改坏了）"
+
+
+# ── 运行时 JS 与构建期 Python 的同规则判据 ─────────────────────────────────
+# 为什么单独钉：docstring 一直声称两边"同规则"，但 2026-10-01 实测 14 条语料分叉 5 条
+# （纯假名 / 假名夹汉字 / 纯谚文 / 西里尔 / 阿拉伯：PY=send，JS=skip）。
+# 摘要是运行时专属（09-16 起移出构建期），所以这类分叉不是"少发一次请求"，
+# 而是**日韩俄阿的摘要在浏览器里永不翻**。注释会过时，判据不会。
+PARITY_CORPUS = [
+    ("纯中文", "人工智能新规发布"),
+    ("中英混(专名多)", "Google DeepMind 东京再招人：语音对话与多语言 LLM 方向"),
+    ("英文", "OpenAI releases a new reasoning model"),
+    ("纯假名", "当社の新技術発表会のご案内です"),
+    ("假名夹汉字", "東京の新製品発表会について"),
+    ("纯谚文", "새로운 공개 프레임워크가 오늘 출시되었습니다"),
+    ("西里尔", "Новая модель машинного обучения"),
+    ("阿拉伯", "إصدار جديد للذكاء الاصطناعي"),
+    ("纯URL", "https://example.com/a/b?x=1"),
+    ("ANSI垃圾", "发布 [1m[36m新版[0m"),
+    ("HN样板", "Article URL: https://x.com\nComments URL: https://y.com\nPoints: 12\nSubmitted by bob"),
+    ("空串", ""),
+    ("纯数字标点", "2026-10-01 (12:00)"),
+    ("日汉夹假名短", "新技術発表会"),
+]
+# 期望值两边都得满足：非拉丁文字必须送（旧 JS 就是把这类整类跳过的），垃圾必须跳。
+PARITY_SEND = {"纯假名", "假名夹汉字", "纯谚文", "西里尔", "阿拉伯", "英文", "中英混(专名多)"}
+PARITY_SKIP = {"纯中文", "纯URL", "ANSI垃圾", "HN样板", "空串", "纯数字标点", "日汉夹假名短"}
+
+
+def _runtime_js_predicate():
+    """从**生成的产物**里取 `_needsTranslation` 及其三个正则依赖。
+
+    取产物而不是取 .py 源码：Python 三引号会吃掉 `\b`、`\r?\n` 这类转义，
+    历史上正是"源码看着对、产物是坏的"（见 [[js-in-python-string-escapes]]）。
+    """
+    import json as _json  # 局部即可，别污染上面的导入面
+    html = load_build().build_html([], "2026-10-01 12:20", 0, 0, analysis_data=None,
+                                   diverse_window_minutes=120, diverse_enabled=True)
+
+    def cut(a, b):
+        i = html.find(a)
+        assert i >= 0, "产物里找不到 %r（运行时判据被改名或删掉，同规则判据失去对象）" % a
+        j = html.find(b, i)
+        assert j > i, "%r 在产物里没有结束边界" % a
+        return html[i:j + len(b)]
+
+    return "\n".join([
+        cut("var _CJK_R = ", ";"),
+        cut("var _KANA_R = ", ";"),
+        cut("var _LETTER_R = ", ";"),
+        cut("var _META_STUB = ", ";"),
+        cut("function _needsTranslation(", "\n  }"),
+    ])
+
+
+def test_runtime_and_buildtime_predicates_agree(tmp_path):
+    """同规则必须是机器证明的：两边对同一批语料的 verdict 逐条相等。"""
+    import json
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("本机没有 node，运行时判据跑不了")
+    B = load_build()
+    texts = [t for _, t in PARITY_CORPUS]
+    js = ("%s\nvar C=%s;\nconsole.log(JSON.stringify(C.map(_needsTranslation)));\n"
+          % (_runtime_js_predicate(), json.dumps(texts, ensure_ascii=False)))
+    p = tmp_path / "_parity_corpus.js"
+    p.write_text(js, encoding="utf-8")
+    r = subprocess.run([node, str(p)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    assert r.returncode == 0, "运行时判据在 node 里跑崩（产物里的正则坏了）：\n%s" % (r.stderr or "")[-900:]
+    got = json.loads(r.stdout.strip())
+    assert len(got) == len(PARITY_CORPUS), "语料与返回条数不等，判据没逐条对齐"
+
+    Bv = {label: bool(B._needs_translation(text)) for label, text in PARITY_CORPUS}
+    Jv = {label: bool(v) for (label, _), v in zip(PARITY_CORPUS, got)}
+    diverge = ["%s: PY=%s JS=%s" % (k, Bv[k], Jv[k]) for k in Bv if Bv[k] != Jv[k]]
+    assert not diverge, (
+        "构建期与运行时判据分叉（分叉的那类文本在某一条路径上永不翻译）：%s" % "; ".join(diverge))
+    # 反向防空跑：语料不许塌成"两边都 skip"或"两边都 send"，那会让上面那条永远成立
+    assert sum(Bv.values()) >= len(PARITY_SEND), (
+        "语料里该送的那类没送够（%d 条），同规则判据可能已经空转" % sum(Bv.values()))
+    wrong_send = [k for k in PARITY_SKIP if Bv[k] or Jv[k]]
+    assert not wrong_send, "这些垃圾类文本被两边送进翻译了（跳过口径失守）：%s" % wrong_send
+    wrong_skip = [k for k in PARITY_SEND if not Bv[k] or not Jv[k]]
+    assert not wrong_skip, (
+        "这些非拉丁/外语文本被跳过（正是旧 JS 用拉丁词当门槛的错法，摘要是运行时专属 ⇒ 永不翻）：%s"
+        % wrong_skip)
