@@ -7,6 +7,7 @@
 被测文件路径可用 STARHUB_UPDATE_YML / STARHUB_VERCELIGNORE 覆盖，供变异体在副本上自证能红
 （就地改 update.yml 会与推送互斥，见 feedback-mutation-push-mutex）。
 """
+import fnmatch
 import os
 import re
 
@@ -18,6 +19,16 @@ IGN = os.environ.get("STARHUB_VERCELIGNORE") or os.path.join(ROOT, ".vercelignor
 
 # 分块里除 chunk 0 以外的任何一个：rss-data-1.js / rss-data-2.js / …
 _CHUNK_GT0 = re.compile(r"rss-data-([1-9]\d*)\.js")
+# 批 5b 的两组，按"前端是否真取用"分（实测：rss-aggregator.html:680/781 preload+script 取
+# rss-data-0.js，:681/3407 preload+fetch 取 hot_snapshot.json；另两个名字在 48 个可发布文件里零命中）
+SITE_ARTIFACTS = (          # 退出 git，但必须按名发布且各有 test -s
+    "rss-data-0.js",        # 599,472 B/场
+    "hot_snapshot.json",    #  62,936 B/场（首页侧栏 fetch 的数据源）
+)
+STATE_ONLY_ARTIFACTS = (    # 纯跨场态：退出 git、进缓存，且**不许**被发布
+    "trending_snapshot.json",   # 14,399 B/场，星标增量基线（fetch_and_build.py:432/486）
+    "descriptions_zh.json",     # 77,007 B，描述译文缓存（fetch_and_build.py:722/813）
+)
 
 
 def _doc():
@@ -106,10 +117,16 @@ def test_staging_refuses_empty_artifact():
 
 
 def test_no_big_chunk_is_committed():
-    """提交清单里不许出现 chunk1 及以后的分块；chunk 0 必须还在（真实分块用例读它）。
+    """提交清单里不许出现任何 `rss-data-*.js` 分块（含 chunk 0）——发布走按名拷贝名单。
 
     只禁字面 `rss-data-*.js` 是不够的：显式写 `rss-data-1.js` 同样把 55MB 塞回历史，
     而按文件名过滤行会让 `git add -A` 整条绕过判据 —— 两个洞都在这条里堵掉。
+
+    批 5b 翻转了这里最后那条：原判据"chunk 0 必须还在清单，否则 tests/rss_composite 读不到已入库数据"
+    的理由**经实测是失真的 —— 没有任何测试读库里那份**：`tests/rss_composite/test_diverse_realdata.py:32`
+    是 `os.path.join(ROOT, "rss-data-0.js")` 的普通工作目录读，而那个目录并未接进任何门禁步；
+    `tools/trim_commit_guard.py:28` 的 `KEEP_ALWAYS` 只做路径名分类，从不打开文件。
+    保留那条正向钉 = 每场把 0.6 MB 产物继续写进不可回收的历史，而它换不到任何测试覆盖。
     """
     lines = _add_lines()
     assert lines, "没找到任何 git add 行（update.yml 结构变了，本判据失去意义）"
@@ -121,8 +138,53 @@ def test_no_big_chunk_is_committed():
         "分块通配被加回提交清单，每场 55MB 会重新攒进 git 历史")
     hits = _CHUNK_GT0.findall(joined)
     assert not hits, "分块 chunk%s 被加回提交清单，每场 55MB 会重新攒进 git 历史" % ",".join(hits)
-    assert any("rss-data-0.js" in ln for ln in lines), (
-        "chunk 0 也不提交了，tests/rss_composite 的真实分块用例就读不到已入库数据")
+    assert not any("rss-data-0.js" in ln for ln in lines), (
+        "chunk 0 仍在提交清单：它每场重写（实测 599,472 B/场），而它的发布已由 Stage 的 "
+        "`for f in rss-data-*.js` 按名从工作目录取，进 git 换不到任何读方")
+
+
+def test_site_artifacts_are_published_not_committed():
+    """批 5b：四个每场重写的站点产物必须"不在 add 清单、在发布名单、各有 test -s"三者同时成立。
+
+    三个方向各挡一类事故：
+      · 回到 add 清单 ⇒ 每场 0.72 MiB 的最后一处无界增长复活；
+      · 发布名单漏名 ⇒ `git ls-files` 那批文件不再包含它们（已退出 git），Pages 上直接 404，
+        其中 `hot_snapshot.json` 是首页侧栏 fetch 的数据源（rss-aggregator.html:3407），漏了就是空数据；
+      · 少 `test -s` ⇒ 生成器某场没产出时，空制品会被当成功站点发布（= 全站空文件）。
+    名单与 add 行都先断非空，禁止"两边都空所以判绿"。
+    """
+    lines = _add_lines()
+    assert lines, "没解析到 git add 行"
+    add_names = set()
+    for ln in lines:
+        for tok in ln.split()[2:]:
+            if not tok.startswith("-"):
+                add_names.add(tok.rstrip("/"))
+    stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
+    assert stage, "没有 Stage Pages site 步骤"
+    body = stage[0]
+    published = set(re.findall(r"^\s*for f in (.+); do$", body, re.M))
+    all_names = set()
+    for grp in published:
+        all_names.update(grp.split())
+    all_names.update(re.findall(r"cp -f (\S+) _pages/", body))
+    checks = re.findall(r"^\s*test -s (\S+)$", body, re.M)
+    assert published and checks, "发布名单(%d)或 test -s(%d) 为空 —— 判据在空集合上跑" % (
+        len(published), len(checks))
+
+    def _covered(name):
+        # shell 的 `for f in rss-data-*.js` 会展开出 rss-data-0.js，所以按模式匹配判"是否被发布"，
+        # 否则判据会把真实存在的覆盖读成漏项（反过来也一样：写死字面名会漏掉 glob 的覆盖）。
+        return any(fnmatch.fnmatch(name, tok) for tok in all_names)
+
+    for name in SITE_ARTIFACTS:
+        assert name not in add_names, "%s 又回到提交清单：每场重写重新进历史" % name
+        assert _covered(name), "%s 不在按名发布名单：它已退出 git，ls-files 不会再带它上线" % name
+        assert "_pages/%s" % name in checks, "%s 缺 test -s 硬断言：空文件会被当成功发布" % name
+    for name in STATE_ONLY_ARTIFACTS:
+        assert name not in add_names, "%s 又回到提交清单：跨场累积改由缓存承担后它不必入库" % name
+        assert not _covered(name), (
+            "%s 被放进发布名单：它没有任何前端读方（48 个可发布文件零命中），上线只会扩大公开面" % name)
 
 
 def test_staging_takes_the_git_tree_not_the_worktree():

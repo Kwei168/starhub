@@ -25,7 +25,9 @@ import os
 import subprocess
 import sys
 
-KEEP_ALWAYS = ('rss-data-0.js',)          # chunk 0 故意留在库里：真实分块测试读已入库副本
+KEEP_ALWAYS = ()  # 批 5b 起 chunk 0 也不再入库；原注释"真实分块测试读已入库副本"经实测失真：
+#   tests/rss_composite/test_diverse_realdata.py:32 读的是工作目录那份（该目录未接进任何门禁步），
+#   没有任何测试用 git 取库内副本 ⇒ 把它留在白名单只会永久挡住这批历史 blob 的回收。
 PRUNED_PREFIX = ('rss-data-', 'rss_history', 'rss_api_snapshot')
 PRUNED_EXACT = ('rss_cache.json',)
 DELETED = '0' * 40                        # filter-repo 在 map 里给被删提交写的占位 sha

@@ -22,7 +22,10 @@ CLEANUP_MARK = "      - name: Cleanup old build logs"
 STAGE_MARK = "      - name: Stage Pages site for Actions deployment"
 WORKTREE_MARK = "      - name: Restore worktree after insight tests"
 BUILD_MARK = "      - name: Fetch stars & build"
-ADD_PREFIX = "          git add rss-data-0.js "
+# 行锚不能绑首列文件名：批 5b 把 rss-data-0.js 从清单里摘掉后，旧锚 `git add rss-data-0.js `
+# 会一处也匹配不到 ⇒ 所有 T1/T2 变异变成"没落地的 INVALID"。改成"缩进 10 空格 + ≥4 个操作数"
+# 这种与内容无关的形状，条件式 `then git add x; fi`（只有 1 个操作数）天然不匹配。
+ADD_SHAPE = re.compile(r"^          git add \S+(?: \S+){3,}$", re.M)
 
 
 def block(text, start_mark, end_mark):
@@ -33,8 +36,7 @@ def block(text, start_mark, end_mark):
 
 def add_lines(src):
     """返回所有主/重试清单行的 (起点, 终点) 区间。"""
-    return [(m.start(), src.index("\n", m.start()))
-            for m in re.finditer(r"^" + re.escape(ADD_PREFIX) + r".*$", src, re.M)]
+    return [(m.start(), m.end()) for m in ADD_SHAPE.finditer(src)]
 
 
 def main():
@@ -85,6 +87,9 @@ def main():
          src.replace("            descriptions_zh.json\n", "", 1), None),
         ("C2 .gitignore 少 trending_snapshot.json（可被 add 请回库里）", src,
          gi.replace("\ntrending_snapshot.json\n", "\n", 1)),
+        ("C6 往缓存 path 里「顺手」加一个名字（整族旧缓存瞬间不可达=冷启动）",
+         src.replace("            hot_snapshot.json\n",
+                     "            hot_snapshot.json\n            source_quality.json\n", 2), None),
         ("C3 诊断循环漏掉 hot_snapshot.json（不在盘上无人知道）",
          src.replace("descriptions_zh.json trending_snapshot.json hot_snapshot.json; do",
                      "descriptions_zh.json trending_snapshot.json; do", 1), None),

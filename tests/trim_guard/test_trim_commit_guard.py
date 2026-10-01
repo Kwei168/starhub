@@ -85,7 +85,7 @@ def test_pruned_path_rules():
     assert G.is_pruned('rss_api_snapshot.json') is True
     assert G.is_pruned('rss_cache.json') is True
     # chunk 0 是故意留在库里的，判据不能把它算成"该消失"
-    assert G.is_pruned('rss-data-0.js') is False
+    assert G.is_pruned('rss-data-0.js') is True  # 批 5b：chunk 0 退出 git，历史里的旧副本可回收
     assert G.is_pruned('build_rss_aggregator.py') is False
 
 

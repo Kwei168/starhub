@@ -318,7 +318,7 @@ jobs:
           # 一次冷启动而不是断链。build_logs 由下面的每日闸门管（批 4）：每场都写工作树与缓存，
           # 但每天只有一次把 jsonl/summary 快照提交进 git —— 每小时刷摘要的 build-log-summary.yml
           # 已同步退役，否则它会从旧 jsonl 生成摘要并覆盖掉主构建生成的正确摘要。
-          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
+          git add known_categories.json rss_sources.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
           # 构建日志：每天只提交一次（其余场次靠 starhub-state 缓存累积，实测 1.7-2.1 MiB/场）。
           # 判据读自己入库的标记文件，不用 `git log` —— 后者依赖 fetch-depth:0 这个偶然条件，
           # 一旦改成 1 就查不到历史、被读成"到期了"，于是静默退回每场提交。
@@ -354,7 +354,7 @@ jobs:
               python fetch_and_build.py $MODE
           git checkout origin/main -- build_daily_insight.py insight_engine.py test_daily_insight.py 2>/dev/null || true
           # 重试分支：清单必须与主路径逐字同一份（批 2 起两处同改，只改一条 = 重试时把状态请回库里）
-          git add rss-data-0.js known_categories.json descriptions_zh.json trending_snapshot.json rss_sources.json hot_snapshot.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
+          git add known_categories.json rss_sources.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
           # 构建日志：每天只提交一次（其余场次靠 starhub-state 缓存累积，实测 1.7-2.1 MiB/场）。
           # 判据读自己入库的标记文件，不用 `git log` —— 后者依赖 fetch-depth:0 这个偶然条件，
           # 一旦改成 1 就查不到历史、被读成"到期了"，于是静默退回每场提交。
@@ -376,6 +376,16 @@ jobs:
               git push
             }
           fi
+
+      - name: Monitor per-build git growth (advisory)
+        # 批 6：曲线压平之后真正的风险是"哪天被悄悄改回每场重写"，所以每天自己报一次数并出声。
+        # 口径=相邻两个提交的递归 tree 差里"新 (path,sha)"的字节和；tip 看不出膨胀（被覆盖的
+        # 旧 blob 永久留在历史里）。阈值 6 MiB 的理由：每天那一次日志提交合法带来 ~2.6 MiB，
+        # 阈值低于它天天误报，而天天误报的告警等于没有告警；要抓的回退形态是 17-20 MiB/场。
+        # 必须 continue-on-error：本仓已两次"自己把自己的部署冻掉"。工具只读，绝不改仓库状态。
+        continue-on-error: true
+        run: |
+          python tools/history_growth.py --cur HEAD --prev HEAD^1
 
       - name: Trim Actions cache keys (keep newest per family)
         # 实测 09-20：缓存 9.97 / 10 GB 已用满、79 个键 —— emb-cache 45 键 9.64GB 是元凶，
@@ -463,8 +473,14 @@ jobs:
           for f in index.html ai-daily.html rss-aggregator.html daily-insight-history.html; do
             [ -f "$f" ] && cp -f "$f" _pages/
           done
+          # 批 5b：首页侧栏 fetch('hot_snapshot.json')（生成于 rss-aggregator.html:3407）的数据源。
+          # 它已退出 git ⇒ `git ls-files` 不再带它，必须按名从工作目录取，漏了就是首页空数据。
+          for f in hot_snapshot.json; do
+            [ -f "$f" ] && cp -f "$f" _pages/
+          done
           # 空制品发布 = 全站清空，这几条把"必须有内容"钉成硬失败而不是 warning
           test -s _pages/rss-data-0.js
+          test -s _pages/hot_snapshot.json
           test -s _pages/rss-data-1.js
           test -s _pages/rss-aggregator.html
           test -s _pages/index.html

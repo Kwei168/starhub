@@ -89,7 +89,7 @@ jobs:
             || python3 -m pip install --quiet --user --break-system-packages pytest pyyaml
           python3 -m pytest tests/trim_guard/ -q -s
 
-      - name: 剔除死数据族（保留 rss-data-0.js，真实分块测试要读已入库副本）
+      - name: 剔除死数据族（批 5b 起 rss-data-0.js 也不再保留：无测试读库内副本）
         run: |
           # 不要给 filter-repo 加 --verbose：本机与站内实测都不认这个开关，加了整步直接红
           # （2026-09-30 13:56Z 第二趟就是这么挂的，后面路径守恒/闸零/CAS 全没跑到）。

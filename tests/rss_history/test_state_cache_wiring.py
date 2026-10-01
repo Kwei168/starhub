@@ -312,3 +312,26 @@ def test_build_logs_dir_is_cache_carried():
     cached = set(_path_lines(_by_name("Save cross-build state cache")))
     assert LOG_DIR_NAME in cached, (
         "build_logs 不在缓存 path：批 4 的每日闸门让 jsonl 退出每场提交后，就没有任何东西承载累积了")
+
+def test_state_path_list_has_a_frozen_record_copy():
+    """批 5a 付过学费的接缝：缓存 path 名单是**族身份的一部分**，改名单 = 换族 = 旧缓存全不可达。
+
+    实测证据（2026-10-01 14:00 场，head=批 5a）：`Cache not found for input keys:
+    starhub-state-Linux-36872974114-1, starhub-state-Linux-` —— 前缀回退也没命中，而库里明明还躺着
+    12:20 / 12:56 / 13:38 三份 4.48 MB 的同族缓存。唯一变化就是 path 从 7 条变 10 条。
+    后果当场可见：那一场把 translations 从零重建到 30,000 上限、撞了 34 次 429，
+    而 hot_history / insight_tracking 这类**append-only 历史**是重建不出来的（7 天窗口要从头积）。
+
+    所以名单不许"顺手加一行"：改名单必须同时改这里，并在同一批里安排**播种**（从历史 blob 回灌）
+    或明确接受一次冷启动。判据本身用变异自证能红（tools/mut_state_cache.py 的 C6）。
+    """
+    frozen = {"hot_history.json", "analysis_snapshot.json", "translations.json",
+              "rss_trend_history.json", "insight_tracking_history.jsonl",
+              "daily_insight_tracking_history.jsonl", "daily_insight_history.json",
+              "descriptions_zh.json", "trending_snapshot.json", "hot_snapshot.json",
+              LOG_DIR_NAME}
+    now = set(_path_lines(_by_name("Restore cross-build state cache")))
+    assert now == frozen, (
+        "缓存 path 名单与登记副本不一致（多=%s，少=%s）。这会让整族旧缓存瞬间不可达 ⇒ 冷启动。"
+        "要么改回名单，要么在同一批里 bump 本判据并安排播种/写明接受冷启动" % (
+            sorted(now - frozen), sorted(frozen - now)))
