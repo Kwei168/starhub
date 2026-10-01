@@ -946,6 +946,44 @@ if(_wallDirty){ _wallDirty = 0; renderWall(); }
 （`repo-trim.yml` 用 `fetch-depth: 0`，实测 259 秒拉完整历史；本机线路 0.2~0.34 MB/s 且不可续传）。
 本地只做对象级/工作树级核对。参见 §10.20 与手册开头的体积读数，那批数字全部来自 CI。
 
+### 10.32 10-01 12:00 场的实测读数（下一次接手时，这些就是"当前真相"）
+
+构建与部署（run `36813103502`，head=`6c7956f`，completed/success）：
+A1 语法 → **A2 blocking success**（第 4 个翻译判据文件 `test_agnes_429_backoff.py` 首次上 ubuntu）
+→ A3 → B → 构建 → Commit → Stage Pages → Prune → **Deploy to Vercel success** → **Deploy to GitHub Pages success**。
+
+端点（Vercel 域，逐个 GET 无参）：`/api/build_log` **404**（推之前是 200，这半边真落地了）；
+`/api/rss` 200、`/api/news` 200、`/api/translate` 405、`/api/search` 405、`/api/article` 400、
+`/api/agihunt` 400、`/api/events` 403 ⇒ 现存 8 个函数都在且都在应答。
+`/api/stars` 也是 404，但那是**正确的**：`api/` 里从来没有这个文件，部署的 index/rss 两份 HTML 与
+三个生成脚本里它的引用数都是 0，只有 `2026-08-15-starhub-realtime` 那份计划稿写着"Create: api/stars.js"
+⇒ 历史设计稿，不是空链，不要去"补一个实现"。
+
+运行时翻译在**真能取到数据的域名（Pages）**上的实测：渲染窗口 120 张卡，标题 CJK 覆盖 **0.992**、
+残留拉丁标题 **0 条**；摘要 94 条里 CJK **0.787**，未翻的恰好是超出"窗口前 30 条"口径的尾巴
+（arXiv 长摘要 + 一条 `Comments` 占位）⇒ 与 §10.26 定的范围一致。整个窗口只发 **17 个 translate POST**
+（全 200），对比改造前的全库 41 分钟队列。控制台 **0 报错**，1 条 warning 是信源自带的 `http://` 封面图
+触发 Mixed Content（浏览器已自动升级，`onerror="this.remove()"` 会把坏图摘掉）。
+
+缓存轮转实测（`actions/caches`）：**11 个键 / 1.21 GiB**，`emb-cache` 5 键 ×224 MiB、`rss-history` 6 键 ×~20 MiB，
+键的 created_at 跨度只有 5 小时 ⇒ 与 `--keep emb-cache=4 --keep rss-history=5` 完全吻合
+（"每族保留 N + 本场那一个"），改造前是 79 键 / 9.97 GB。**轮转在生效，不是在原地好看。**
+
+死函数审计（本轮新做的两条）：
+· Python 侧用 AST（不是 grep）数"定义后从未被引用"：124 个 def，**0 个死**。
+· 产物侧我先写了个"去注释与字符串再数标识符"的扫描器，报出 7 个死函数 —— **其中 4 个是假阳性**
+  （`adjColor`/`loadQRLib`/`stripHtmlForCanvas`/`wrapText` 都有真实调用点；状态机会被正则里的
+  引号带偏，把真代码当字符串吞掉）。逐个 grep 复核后确认的死函数是 3 个：
+  **`_dedup`、`_fmtRelTime`、`_normSignals`** —— 产物里各自只有定义那一次（`_dedup` 要按词边界数，
+  否则 `_dedupSeen`/`_dedupCount` 会冒充成调用点），且 `b2e84fb3` 的词边界计数与现在同为 1
+  ⇒ **既有孤儿，不是本次改动造成**；要删得单独批准（`_normSignals` 还被 repowiki 的"前端信号规范化"条目引用着）。
+  结论：**这套扫描器不可信，没有把它固化成常驻判据。**
+· 改钉一条可信的：`tests/site_nav/test_artifact_js_parses.py::test_wall_queue_symbols_are_actually_called_in_artifact`
+  对窗口队列 12 个符号要求"在产物的代码行里出现 ≥2 次"，只跳过注释行。变异验证：删掉 `renderWall()` 末尾
+  那次 `_scheduleWallTranslate()` 调用 ⇒ 当场红；正常态整跑 CI 原命令 **276 passed**。
+  这条为什么值得存在：删掉一个调用点时页面只是"少翻几屏"，控制台不报错、语法照过，是纯粹静默的回归。
+
+
 
 
 
