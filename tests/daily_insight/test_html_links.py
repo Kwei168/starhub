@@ -71,12 +71,13 @@ class TestInsightHtmlLinks:
         assert '<section id="sec-7" class="sec di-sec">' in html
         assert "深度洞察" in html and "2 条 · 1 篇深读" in html
         assert '<div class="di-feat">' in html
-        assert "评分 0.3" in html and "新 · 垂直 · AI 模型" in html
-        assert "评分 0.1" in html and "新 · 政策" in html
+        # 眉线只留对读者有意义的中文分类；status/resonance/score 是管线内部信号
+        assert ">AI 模型</span>" in html and ">政策</span>" in html
+        assert "新 · 垂直" not in html and "评分" not in html
         assert "[agihunt]" not in html and "特稿摘要" in html   # 语料标记剥除，正文保留
         feat = html.split('<div class="di-feat">')[1].split('<div class="cols">')[0]
         assert "特稿事件" in feat and "简报事件" not in feat
-        assert 'class="di-deep"' in feat and "置信度 high" in feat
+        assert 'class="di-deep"' in feat and "置信度" not in feat
         assert 'class="di-quote"' in feat
         assert "vii</span>深度洞察" in html   # 日报索引补第 vii 项
 

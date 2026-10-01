@@ -4789,9 +4789,6 @@ function switchDay(id){
 _AI_DAILY_FILE = "ai-daily.html"
 
 # 洞察卡片眉线/徽标文案（注入块与历史页共用，消除两处拷贝漂移）
-_DI_STATUS_LABELS = {"new": "新", "ongoing": "持续", "escalating": "升级", "faded": "消退"}
-_DI_RESONANCE_LABELS = {"breakout": "破圈", "tech_hot": "技术热",
-                        "niche": "垂直", "consumer": "消费级"}
 # 洞察 category 码 → 报纸眉线中文（缺失回退原码）
 _DI_CAT_CN = {"ai-models": "AI 模型", "ai-products": "AI 产品", "industry": "行业",
               "policy": "政策", "developer": "工程实践", "research": "论文",
@@ -4856,11 +4853,11 @@ def _cited_sources_html(deep):
 
 def _evt_card_html(evt, feat):
     """洞察卡片：与日报 .item 同一语法（眉线/衬线标题/摘要/点线引用）。
-    feat=True 渲染深读面板（card-2 底，对应日报 .item.top 语汇）。"""
-    sl = _DI_STATUS_LABELS.get(evt.get("status", "new"), "")
-    rl = _DI_RESONANCE_LABELS.get(evt.get("resonance", ""), "")
+    feat=True 渲染深读面板（card-2 底，对应日报 .item.top 语汇）。
+    眉线只放对读者有意义的中文分类——status/resonance/score 是管线内部信号
+    （"新"每条都有、"垂直"是黑话、0-1 评分无图例），不进阅读层（用户裁决 2026-10-01）。"""
     cat = evt.get("category", "")
-    kicker = " · ".join(p for p in (sl, rl, _DI_CAT_CN.get(cat, cat)) if p)
+    kicker = _DI_CAT_CN.get(cat, cat)
     deep = evt.get("deep_analysis") or {}
     has_deep = bool(deep) and deep.get("status") != "degraded"
     links = _allowed_links(evt.get("key_links"), evt.get("items"))
@@ -4868,9 +4865,7 @@ def _evt_card_html(evt, feat):
     label = ('<h3 class="di-label"><a href="%s" target="_blank" rel="noopener">%s</a></h3>'
              % (_esc(links[0]), head)) if links else '<h3 class="di-label">%s</h3>' % head
     out = ['<article class="di-card%s">' % (" has-deep" if feat else ""),
-           '<div class="di-kicker"><span>%s</span>'
-           '<span class="di-score" title="综合评分">评分 %.1f</span></div>'
-           % (_esc(kicker), evt.get("score", 0)),
+           '<div class="di-kicker"><span>%s</span></div>' % _esc(kicker),
            label,
            '<p class="di-summary">%s</p>' % _esc(_strip_corpus_tags(evt.get("summary", "")))]
     if has_deep:
@@ -4885,19 +4880,17 @@ def _evt_card_html(evt, feat):
 <div class="di-deep-sec"><strong>信源分歧</strong><p>%s</p></div>
 %s
 <div class="di-deep-sec"><strong>后续展望</strong><p>%s</p></div>
-<div class="di-deep-foot"><span class="di-conf">置信度 %s</span>%s</div>
+<div class="di-deep-foot">%s</div>
 </div>''' % (_esc(deep.get("event_reconstruction", "")),
              _esc(deep.get("impact_analysis", "")),
              _esc(deep.get("source_divergence", "")),
              ('<blockquote class="di-quote">%s</blockquote>' % _esc(deep["quote"]))
              if deep.get("quote") else "",
              _esc(deep.get("outlook", "")),
-             _esc(deep.get("confidence", "")),
              cites))
     else:
-        srcs = " · ".join(_esc(s) for s in evt.get("source_types", []))
-        foot = ('<span class="di-srcs">信源 %s</span>' % srcs) if srcs else ""
-        foot += _source_links_html(evt.get("key_links"), evt.get("items"))
+        # 来源由链接域名（goo.gle↗ 等）体现，不再渲染语料代号
+        foot = _source_links_html(evt.get("key_links"), evt.get("items"))
         if foot:
             out.append('<div class="di-foot">%s</div>' % foot)
     out.append('</article>')
@@ -4910,13 +4903,11 @@ _DI_CSS = """/* ---- 每日深度洞察 · 与日报同一套报纸语法 ---- *
 .di-card{padding:14px 0;border-bottom:1px solid var(--line);break-inside:avoid;}
 .di-feat .di-card{padding:16px 0;}
 .di-kicker{display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;}
-.di-kicker .di-score{margin-left:auto;font-family:var(--display);font-style:italic;font-size:12px;color:var(--accent-ink);letter-spacing:.02em;white-space:nowrap;}
 .di-label{font-family:var(--display);font-size:17px;font-weight:700;line-height:1.42;margin:0 0 6px;}
 .di-label a:hover{color:var(--accent-ink);}
 .di-feat .di-label{font-size:20px;}
 .di-summary{font-size:13px;color:var(--muted);line-height:1.7;margin:0 0 8px;}
 .di-foot{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;}
-.di-srcs{font-size:11px;color:var(--muted);letter-spacing:.05em;}
 .di-links{display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;}
 .di-links a,.di-cites a{font-size:11.5px;color:var(--accent-ink);border-bottom:1px dotted var(--accent);white-space:nowrap;}
 .di-links a:hover,.di-cites a:hover{color:var(--accent);}
@@ -4928,19 +4919,18 @@ _DI_CSS = """/* ---- 每日深度洞察 · 与日报同一套报纸语法 ---- *
 .di-deep-sec p{font-size:12.5px;color:var(--muted);line-height:1.75;margin:0;}
 .di-quote{font-family:var(--display);font-style:italic;font-size:14px;line-height:1.7;color:var(--ink);border-left:2px solid var(--accent);padding:1px 0 1px 12px;margin:10px 0;}
 .di-deep-foot{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;margin-top:2px;padding-top:8px;border-top:1px solid var(--line);}
-.di-conf{font-size:11px;color:var(--muted);letter-spacing:.08em;}
 .di-cites{display:flex;gap:12px;flex-wrap:wrap;}
 .di-bubble{margin-top:30px;border-top:3px double var(--line-strong);border-bottom:3px double var(--line-strong);padding:14px 0 4px;}
 .di-bubble-head{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
 .di-bubble-head::before,.di-bubble-head::after{content:"";flex:1;height:1px;background:var(--line-strong);}
 .di-bubble-head-t{font-family:var(--display);font-size:15px;font-weight:700;letter-spacing:.14em;white-space:nowrap;}
+.di-bubble-deck{font-size:11.5px;color:var(--muted);font-style:italic;margin:0 0 10px;}
 .di-bubble-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:34px;}
 .di-bubble-card{padding:10px 0;border-bottom:1px solid var(--line);}
 .di-bubble-card:nth-last-child(-n+2){border-bottom:none;}
 .di-bubble-card h4{font-family:var(--display);font-size:15px;font-weight:700;line-height:1.45;margin:0 0 4px;}
 .di-bubble-card h4 a:hover{color:var(--accent-ink);}
 .di-bubble-card p{font-size:12px;color:var(--muted);line-height:1.65;margin:0 0 4px;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;}
-.di-bubble-reason{font-size:11px;color:var(--muted);font-style:italic;}
 @media (max-width:760px){
 .di-feat .di-label{font-size:18px;}
 .di-links{margin-left:0;}
@@ -4954,7 +4944,8 @@ _DI_CSS = """/* ---- 每日深度洞察 · 与日报同一套报纸语法 ---- *
 # ──────────────────── 破茧栏 HTML 构建 ────────────────────
 
 def _build_bubble_html(bubble_breaker):
-    """破茧栏：上下双细线夹住的报纸边栏（信息增量）。"""
+    """破茧栏：上下双细线夹住的报纸边栏（信息增量）。
+    选入理由只在栏头下说明一次（旧版逐卡重复同一句，纯噪音——用户裁决 2026-10-01）。"""
     if not bubble_breaker:
         return ""
     cards = []
@@ -4967,12 +4958,11 @@ def _build_bubble_html(bubble_breaker):
             '<article class="di-bubble-card">'
             '<h4 class="di-bubble-label">%s</h4>'
             '<p class="di-bubble-summary">%s</p>'
-            '<div class="di-bubble-reason">%s</div>'
-            '</article>' % (_bh, _esc(item.get("summary", "")),
-                            _esc(item.get("reason", ""))))
+            '</article>' % (_bh, _esc(item.get("summary", ""))))
     return ('<aside class="di-bubble">\n'
             '  <div class="di-bubble-head">'
             '<span class="di-bubble-head-t">破茧栏 · 信息增量</span></div>\n'
+            '  <p class="di-bubble-deck">依你的常读画像挑出的科技圈外增量——偶尔换换脑子</p>\n'
             '  <div class="di-bubble-grid">\n%s\n  </div>\n</aside>'
             % "\n".join(cards))
 

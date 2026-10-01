@@ -311,9 +311,10 @@ def _parse_iso(s):
 
 
 def _hn_summary(points, author):
-    """HN 条目元信息中文渲染：≤3 分不显分（对读者无信息量）。"""
+    """HN 条目元信息中文渲染：≤3 分不显分（对读者无信息量）。
+    "用户 xxx"孤立无上下文，改为"xxx 发起的讨论"（用户裁决 2026-10-01）。"""
     pts = int(points or 0)
-    who = "用户 %s" % (author or "?")
+    who = ("%s 发起的讨论" % author) if author else "匿名发起的讨论"
     return "%d 分 · %s" % (pts, who) if pts > 3 else who
 
 

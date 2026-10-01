@@ -49,14 +49,14 @@ class TestTruncate:
 
 class TestHnSummary:
     def test_high_score(self):
-        assert A._hn_summary(273, "allisdust") == "273 分 · 用户 allisdust"
+        assert A._hn_summary(273, "allisdust") == "273 分 · allisdust 发起的讨论"
 
     def test_low_score_no_points(self):
-        assert A._hn_summary(1, "tim333") == "用户 tim333"
-        assert A._hn_summary(3, "x") == "用户 x"
+        assert A._hn_summary(1, "tim333") == "tim333 发起的讨论"
+        assert A._hn_summary(3, "x") == "x 发起的讨论"
 
     def test_missing_author(self):
-        assert A._hn_summary(10, "") == "10 分 · 用户 ?"
+        assert A._hn_summary(10, "") == "10 分 · 匿名发起的讨论"
 
     def test_summary_no_longer_has_triangle(self):
         s = A._hn_summary(72, "allisdust")
@@ -126,7 +126,7 @@ class TestHistoryPageUnified:
         B._build_history_html()
         html = open(B.HISTORY_HTML, encoding="utf-8").read()
         assert '<article class="di-card">' in html
-        assert "新 · 垂直 · 行业" in html
+        assert ">行业</span>" in html
         assert "[aihot]" not in html
         assert "深度解读 · ANALYSIS" not in html  # 无 deep 不渲染面板
         assert B._DI_CSS in html                  # 与日报洞察共用同一份 CSS
