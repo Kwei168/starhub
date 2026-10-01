@@ -93,6 +93,11 @@ def _run(node_src):
 PRELUDE = r"""
 var ART = [];
 var afItems = [];
+/* 运行时队列现在读窗口指纹（wallLimit/filter/sortMode/artKey）：真实页面里这些都是全局，
+   harness 必须一并给出，否则判据是"环境缺东西"而红，不是实现有 bug。 */
+var wallLimit = 120, WALL_STEP = 80;
+var filter = { type: 'all' }, sortMode = 'newest';
+function artKey(a){ return a.u; }
 var localStorage = (function(){ var s={}; return {
   getItem:function(k){ return Object.prototype.hasOwnProperty.call(s,k)?s[k]:null; },
   setItem:function(k,v){ s[k]=String(v); }, removeItem:function(k){ delete s[k]; } }; })();

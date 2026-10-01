@@ -93,14 +93,14 @@ jobs:
       # 多出的 </div> 提前闭合了 flex 行容器，页面在次日构建后整条导航纵向堆叠。
       # rss_translate 是 2026-10-01 才接进来的：这个目录里有运行时翻译守卫与翻译引擎判据，
       # 但历史上没有任何 workflow 引用过它（grep 全 workflows = 0 命中）⇒ 翻译链的回归可以静默落地。
-      # ⚠ 只接 test_runtime_translate_guards.py 那一个文件，不接整个目录：同目录的
+      # ⚠ 只接该目录里**能被 pytest 收集的那两个文件**，不接整个目录：同目录的
       #   test_translate_engines.py 是**脚本风格**（末尾 `if failures: sys.exit(1)` 藏在缩进里，
       #   扫 ^sys.exit 抓不到），被 pytest 当模块导入就是 INTERNALERROR。09:00 那场（head=bd96d24）
       #   整场部署被 A2 挡掉就是这么来的；tests/rss_history/test_gate_wiring.py 现在钉住"可收集性"。
       # 刻意不接 tests/trim_guard/：那条排练判据会在临时仓里真跑 git-filter-repo，
       # ubuntu 上的行为未验证；拿它挡每场构建 = 我上次"自己把整场冻掉"的形状。改挂 repo-trim.yml。
       - name: Quality gate A2 — RSS history persistence & site nav structure (blocking)
-        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ tests/rss_translate/test_runtime_translate_guards.py -q -s
+        run: python -m pytest tests/rss_history/ tests/rss_source_coverage/ tests/site_nav/ tests/rss_translate/test_runtime_translate_guards.py tests/rss_translate/test_wall_queue_window.py tests/rss_translate/test_buildtime_skip_guard.py -q -s
 
       # ── 质量门禁 A3：产物与生成端漂移（advisory）──
       # 只观测不拦截：index.html 每场由 template.html 重写，漂移下一场自愈。

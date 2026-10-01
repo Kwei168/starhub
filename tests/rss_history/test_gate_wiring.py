@@ -28,7 +28,9 @@ WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "work
 # 不含 trim_guard：它排练的是 repo-trim.yml（真跑 git-filter-repo），ubuntu 行为未验证，
 # 放进每场构建的 blocking 闸就是我上次"自己把整场冻掉"的形状 —— 它已挂到 repo-trim.yml 里。
 MUST_BLOCK = ["tests/rss_history/", "tests/rss_source_coverage/", "tests/site_nav/",
-              "tests/rss_translate/test_runtime_translate_guards.py"]
+              "tests/rss_translate/test_runtime_translate_guards.py",
+              "tests/rss_translate/test_wall_queue_window.py",
+              "tests/rss_translate/test_buildtime_skip_guard.py"]
 
 # 已知未接线的目录 + 原因。别顺手往里加：每一条都意味着一类无人监督的判据。
 # 原因必须自立——写"同上"的人（我）过不了 test_unwired_entries_are_explained。

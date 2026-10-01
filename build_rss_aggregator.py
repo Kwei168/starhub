@@ -2025,6 +2025,48 @@ def _zen_translate(text, timeout=25):
     return None
 
 
+_ANSI_RE = re.compile(r"\u001b?\[[0-9;]{1,4}[A-Za-z]")
+_URL_RE = re.compile(r"https?://\S+", re.I)
+_META_STUB_RE = re.compile(
+    r"^(article url|comments url|points|submitted by|# comments|permalink|story link)\b", re.I)
+_CJK_RANGES = ((0x4E00, 0x9FFF), (0x3400, 0x4DBF))
+_KANA_RANGES = ((0x3040, 0x309F), (0x30A0, 0x30FF))
+
+
+def _in_ranges(ch, ranges):
+    o = ord(ch)
+    return any(a <= o <= b for a, b in ranges)
+
+
+def _needs_translation(text):
+    """这条文本该不该送去翻译（构建期口径，与运行时 JS 的 _needsTranslation 同规则）。
+
+    旧口径 `cn_chars > len(text) * 0.3` 的分母是**整串长度**，所以中文里夹一串 `+` 或 ANSI
+    残片（`[1m`、`[36m`）会把中文占比稀释到阈值以下 ⇒ 当成"需要翻译"真发请求；
+    2026-10-01 探针实测：中文垃圾串、纯 URL 都各占用了一次外呼。
+    现在先剥 ANSI/URL/CJK，再要求**存在非中文的字母**且中文不占多数，并跳过 HN 元数据样板。
+    门槛刻意不是"有没有拉丁词"：谚文/西里尔/阿拉伯文一个拉丁字母都没有，用拉丁词做门槛会把它们
+    一起跳过（我第一版就是这样，被 test_korean_still_sent 当场打死）。
+    含平假名/片假名的日文一律要翻 —— 那是既有规则（原来用 has_kana 排除误跳），不能改坏。
+    """
+    if any(_in_ranges(c, _KANA_RANGES) for c in text):
+        return True
+    clean = _URL_RE.sub(" ", _ANSI_RE.sub(" ", text))
+    clean = "".join(c for c in clean if not _in_ranges(c, _CJK_RANGES))
+    other_letters = sum(1 for c in clean if c.isalpha())
+    if not other_letters:
+        return False                                  # 除中文外没有任何文字：数字/标点/纯符号/纯 URL
+    cjk = sum(1 for c in text if _in_ranges(c, _CJK_RANGES))
+    if cjk >= other_letters:
+        return False                                  # 中文已占多数
+    lines = [l for l in text.splitlines() if l.strip()]
+    if len(lines) >= 3:
+        stubs = sum(1 for l in lines if _META_STUB_RE.match(l.strip()))
+        if stubs * 2 >= len(lines):
+            return False                              # 六成以上是 URL/点数样板，翻出来只有链接
+    return True
+
+
 def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     """翻译降级链：Agnes → Google gtx → Zen 免费模型轮询 → MyMemory → dict-chrome（带缓存+熔断）。"""
     if not text:
@@ -2033,10 +2075,8 @@ def _translate_to_zh(text, timeout=TRANSLATE_TIMEOUT):
     text = _strip_html(text)
     if not text:
         return ""
-    # 如果已经是中文为主，跳过（但需排除日文：含平假名/片假名的文本是日文而非中文）
-    has_kana = any('\u3040' <= c <= '\u309f' or '\u30a0' <= c <= '\u30ff' for c in text)
-    cn_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
-    if not has_kana and cn_chars > len(text) * 0.3:
+    # 已经是中文为主 / 纯 URL / 元数据样板 → 跳过（日文除外：见 _needs_translation 里的 kana 规则）
+    if not _needs_translation(text):
         _TRANS_STATS["skip"] += 1
         return text
 
@@ -5259,7 +5299,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     var c=s.slice(0,n), i=Math.max(c.lastIndexOf(' '), c.lastIndexOf('\\n'));
     return i>40 ? c.slice(0,i) : c;
   }
-  function _browserGtx(texts){
+  function _browserGtx(texts,_ctrlSink){
     var out=[],uncached=[],uncachedIdx=[],_seen={},_dup={};
     // ① 客户端缓存命中：直接填入，不发请求
     for(var k=0;k<texts.length;k++){
@@ -5279,6 +5319,8 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         if(i>=uncached.length) return;
         var idx=i++;
         var ctrl=(typeof AbortController==='function')?new AbortController():null;
+        // 把控制器交出去：换窗口时要能打断**在飞**的那一批（只丢结果不够，请求照扣带宽与配额）
+        if(ctrl && _ctrlSink) _ctrlSink.push(ctrl);
         var tmr=ctrl?setTimeout(function(){ctrl.abort();},GTX_ABORT_MS):null;
         fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q='+encodeURIComponent(_cutW(uncached[idx],500)),{signal:ctrl?ctrl.signal:undefined})
         .then(function(r){ if(tmr)clearTimeout(tmr); return r.ok?r.json():Promise.reject(new Error('gtx '+r.status)); })
@@ -5351,55 +5393,105 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     })();
   }
   /* ── RSS 卡片墙运行时翻译兜底：构建期翻译熔断/漏网的英文条目，挂载于 renderWall 末尾；
-     主力 = 浏览器端 GTX 直连，失败条目走服务端 API 兜底；_zhTried 标记防重复请求，
-     完成后重渲染刷新卡片（终止条件：cands 耗尽）。 */
+     主力 = 浏览器端 GTX 直连，失败条目走服务端 API 兜底，完成后重渲染刷新卡片。
+
+     队列范围刻意取**当前渲染窗口**而不是整条 ART（2026-10-01 实测，HANDOFF §10.25）：
+     全库 25766 条里标题只有 5.5% 仍需翻（构建期预翻已覆盖 100% 的 title_zh），摘要 33% 需翻；
+     旧写法从 ART 头上遍历，把 9902 条待翻文本按每批 10 条 / 2.5s 走满 ≈41 分钟，
+     绝大部分花在看不见的条目上；而 GTX 在大陆不可达时这些整批转 /api/translate
+     ⇒ 等于每个访客替全库消耗服务端翻译配额。窗口化后一次首屏 ≈36 个文本，总量随浏览而非全库。
+
+     打断语义（用户 2026-10-01 选定）：窗口指纹一变（切排序 / 改筛选 / 滚动扩窗）就换代、
+     abort 在飞请求，并且**旧批次回来的结果一律丢弃** —— 否则会把上一个窗口的译文
+     写进用户此刻正看着的条目（串台）。 */
   var _wallTrBusy=0,_wallDirty=0;
+  var _wallGen=0, _wallFp='', _wallCtrls=[];
+  var WALL_SUMMARY_LIMIT = 30;      // 摘要只翻窗口前 30 条：长文本才是任务量的大头
+  function _wallWindow(){
+    var w = (typeof visibleArts === 'function') ? visibleArts() : ART;
+    if(!w || !w.length) return [];
+    return w.slice(0, Math.max(0, wallLimit || 0));
+  }
+  function _wallFingerprint(win){
+    var ft = (typeof filter !== 'undefined' && filter && filter.type) || '';
+    var fs = (typeof filter !== 'undefined' && filter && filter.src) || '';
+    var sm = (typeof sortMode !== 'undefined' && sortMode) || '';
+    /* 指纹只取"窗口头部是谁" + 排序/筛选，**不含 wallLimit 与长度**：
+       滚动扩窗是往同一个窗口里追加（不该打断在飞批次，否则快速滚动的人永远翻不完），
+       而切排序/换筛选是把窗口整个换掉（必须打断，否则旧结果会串台到新窗口）。 */
+    return [sm, ft, fs, win.length ? artKey(win[0]) : ''].join('|');
+  }
+  function _abortWallInflight(){
+    for(var i=0;i<_wallCtrls.length;i++){ try{ _wallCtrls[i].abort(); }catch(e){} }
+    _wallCtrls = [];
+  }
   function _scheduleWallTranslate(){ setTimeout(_translateWallItems,120); }
-  function _translateWallItems(){
-    if(_wallTrBusy) return;
-    var cands=ART.filter(function(a){ return !a._zhTried && (_needsTranslation(a.t)||(a.s&&_needsTranslation(a.s))); });
-    if(!cands.length) return;
-    var batch=cands.slice(0,10);
-    batch.forEach(function(a){ a._zhTried=1; });
-    _wallTrBusy=1;
-    var texts=[],map=[];
-    batch.forEach(function(a){
-      if(_needsTranslation(a.t)){ texts.push(a.t); map.push({a:a,f:'t'}); }
-      if(a.s&&_needsTranslation(a.s)){ texts.push(a.s); map.push({a:a,f:'s'}); }
+  function _applyWallTr(map, idxs, trs, myGen){
+    if(myGen !== _wallGen) return;              // 已被新窗口打断：结果作废
+    idxs.forEach(function(idx, k){
+      var m = map[idx]; if(!m) return;
+      var zh = (String(trs[k] || '')).trim(); if(!zh) return;
+      if(m.f === 't' && _needsTranslation(m.a.t)) m.a.t = zh;
+      else if(m.f === 's' && m.a.s && _needsTranslation(m.a.s)) m.a.s = zh;
     });
-    if(!texts.length){ _wallTrBusy=0; return; }
+  }
+  function _translateWallItems(){
+    var win = _wallWindow();
+    var fp = _wallFingerprint(win);
+    if(fp !== _wallFp){                         // 窗口换了：先打断在飞的，再允许立刻重开一轮
+      _wallFp = fp; _wallGen++; _abortWallInflight(); _wallTrBusy = 0;
+    }
+    if(_wallTrBusy) return;
+    var myGen = _wallGen;
+    var cands = win.filter(function(a){
+      return !a._zhTried && (_needsTranslation(a.t) || (a.s && _needsTranslation(a.s)));
+    });
+    if(!cands.length) return;
+    _wallTrBusy = 1;
+    var texts = [], map = [];
+    cands.forEach(function(a){
+      a._zhTried = 1;                            // 打过标记就不再重发（失败条目保留原文）
+      if(_needsTranslation(a.t)){ texts.push(a.t); map.push({a:a, f:'t'}); }
+    });
+    cands.slice(0, WALL_SUMMARY_LIMIT).forEach(function(a){
+      if(a.s && _needsTranslation(a.s)){ texts.push(a.s); map.push({a:a, f:'s'}); }
+    });
+    if(!texts.length){ _wallTrBusy = 0; return; }
+    var ctrls = [];
+    _wallCtrls = ctrls;                          // 交给换代时 abort 的那份引用
     (async function(){
-      var trs = await _browserGtx(texts);
-      var failed=[];
-      trs.forEach(function(zhRaw,idx){
-        var m=map[idx]; if(!m) return;
-        var zh=(zhRaw||'').trim(); if(!zh){ failed.push(idx); return; }
-        if(m.f==='t'&&_needsTranslation(m.a.t)) m.a.t=zh;
-        else if(m.f==='s'&&m.a.s&&_needsTranslation(m.a.s)) m.a.s=zh;
+      var trs = await _browserGtx(texts, ctrls);
+      if(myGen !== _wallGen) return;
+      var failed = [], okIdx = [];
+      trs.forEach(function(zhRaw, idx){
+        if(String(zhRaw || '').trim()) okIdx.push(idx); else failed.push(idx);
       });
+      _applyWallTr(map, okIdx, trs, myGen);
       if(failed.length){
-        var fbTexts=failed.map(function(k){ return texts[k]; });
-        var ctrl=(typeof AbortController==='function')?new AbortController():null;
-        var tmr=ctrl?setTimeout(function(){ctrl.abort();},12000):null;
-        try{
-          var resp=await fetch(TR_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texts:fbTexts,mode:'bulk'}),signal:ctrl?ctrl.signal:undefined});
-          if(tmr)clearTimeout(tmr);
-          var j=(resp&&resp.ok)?(await resp.json().catch(function(){ return null; })):null;
-          if(j&&j.ok&&j.translations&&j.translations.length===fbTexts.length){
-            fbTexts.forEach(function(_,fi){
-              var m=map[failed[fi]]; if(!m) return;
-              var zh=(j.translations[fi]||'').trim(); if(!zh) return;
-              if(m.f==='t'&&_needsTranslation(m.a.t)) m.a.t=zh;
-              else if(m.f==='s'&&m.a.s&&_needsTranslation(m.a.s)) m.a.s=zh;
-            });
-          }
-        }catch(e){ if(tmr)clearTimeout(tmr); }
+        /* 服务端兜底：按 15 条分片（bulk 上限），每片同样受代数管制 */
+        for(var s = 0; s < failed.length; s += 15){
+          var part = failed.slice(s, s + 15);
+          var fbTexts = part.map(function(k){ return texts[k]; });
+          var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+          if(ctrl) ctrls.push(ctrl);
+          var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 12000) : null;
+          try{
+            var resp = await fetch(TR_API, {method:'POST', headers:{'Content-Type':'application/json'},
+                                            body: JSON.stringify({texts: fbTexts, mode: 'bulk'}),
+                                            signal: ctrl ? ctrl.signal : undefined});
+            if(tmr) clearTimeout(tmr);
+            var j = (resp && resp.ok) ? (await resp.json().catch(function(){ return null; })) : null;
+            if(j && j.ok && j.translations && j.translations.length === fbTexts.length){
+              _applyWallTr(map, part, j.translations, myGen);
+            }
+          }catch(e){ if(tmr) clearTimeout(tmr); }
+          if(myGen !== _wallGen) return;
+        }
       }
-      _wallDirty=1;
-      _wallTrBusy=0;
-      if(_wallDirty){ _wallDirty=0; renderWall(); }
-      // 批间节流：温和节奏防单 IP 突发高频（失败条目保留原文，下批继续）
-      setTimeout(_translateWallItems,2500);
+      _wallDirty = 1;
+      _wallTrBusy = 0;
+      if(_wallDirty){ _wallDirty = 0; renderWall(); }
+      setTimeout(_translateWallItems, 2000);
     })();
   }
   /* 运行时翻译诊断：摘要翻译自 2026-09-16 起移出构建期，"到底翻没翻"只有浏览器知道，

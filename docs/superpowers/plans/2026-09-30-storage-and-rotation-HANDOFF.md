@@ -727,5 +727,88 @@ rss-data-2.js   条目 10303  title_zh 全覆盖  标题仍需翻 644 ( 6.3%)  �
 按已批准的 ①窗口优先队列 ②摘要只翻窗口前 30 ③切排序打断在飞批次 ④不动构建期，
 一次首屏降到 **≈6 条标题 + ≤30 条摘要 ≈ 36 个文本**，总量随浏览增长而非随全库增长。
 
+### 10.26 运行时翻译队列改为"渲染窗口"排队（10-01 09:3x 用户批准并实施）
+
+按 §10.25 的读数，用户定版四条口径，全部落在 `build_rss_aggregator.py` 的运行时 JS 里：
+
+- **① 队列范围**：`_wallWindow()` = `visibleArts().slice(0, wallLimit)`，不再遍历整条 `ART`。
+  窗口外不入队；滚动扩窗由 `renderWall → _scheduleWallTranslate` 重新武装 ⇒ "滚到才翻"。
+- **② 摘要上限**：`WALL_SUMMARY_LIMIT = 30`，只翻窗口前 30 条的摘要（标题先全部排队、摘要殿后）。
+  摘要才是长文本的大头；标题侧构建期已覆盖 100% `title_zh`。
+- **③ 切排序/筛选打断在飞批次**：`_wallGen` 代数 + `_wallCtrls` 控制器表；窗口指纹变化时
+  `_abortWallInflight()` 并换代，**旧批次回来的结果一律丢弃**（`_applyWallTr` 首行校验代数），
+  否则会把上一个窗口的译文写进用户此刻看着的条目。`_browserGtx(texts, _ctrlSink)` 新增第二个
+  参数，把每个 AbortController 交出来供打断。
+- **④ 构建期一行未动**：`_translate_source_items` / `api/translate.js` 不在本次范围内。
+
+**我自己发现并修掉的设计缺陷**（值得单独记）：第一版把 `wallLimit` 与窗口长度算进了
+`_wallFingerprint` ⇒ 滚动扩窗被误判成"换窗口"，每滚一次 abort 一轮在飞批次，
+**快速滚动的人一条都翻不完**。指纹改成只取
+`[sortMode, filter.type, filter.src, artKey(win[0])]`：扩窗是追加（不打断），
+切排序/换筛选是替换（必须打断）。判据
+`test_growing_the_window_does_not_abort_the_inflight_batch` 就是这条的护栏，
+变异 M5（把 `wallLimit` 塞回指纹）会被它当场杀掉。
+
+判据与验证（`tests/rss_translate/test_wall_queue_window.py`，node 真跑 6 条）：
+
+- 窗口刻意设在 `ART` **尾部**（350..399）：只要队列还在从 `ART` 头上遍历，第一批就越界，
+  一条判据当场咬住。第一版把窗口放在头部，第一批恰好落在窗口内 ⇒ 判据空转（我自己踩的）。
+- 兜底 `fetch` 必须带延迟（400ms）：瞬间 resolve 时"在飞被打断"永远测不到，
+  我因此把一次**判据缺陷**误读成"实现没生效"。
+- `dump` 之后必须 `process.exit(0)`：队列尾部有 `setTimeout` 自我续跑，node 不退出会让这套
+  判据跑到 **402 秒** —— 放进 CI 就是每场构建多拖 6 分钟。
+- 五路变异全部被杀（`.deploy-tmp/_mut_wall_window.py`，MUTSET_RC=0）：
+  M1 队列退回遍历 ART、M2 摘要不设上限、M3 去掉代数校验、M4 去掉打断、M5 扩窗误判成换窗。
+- 完整回归：新 A2 原命令 **258 passed（36s）**；A3 漂移 1 passed；`py_compile *.py` 与
+  `compileall tests` 均通过。`test_wall_queue_window.py` 也一并接进 A2（按文件粒度），
+  否则它自己就成了 §10.20 里那种"写着但从不跑"的孤儿。
+
+### 10.27 构建期同一个洞（中文/纯 URL 被送进翻译）+ 我这段改动里自己引入的两个错
+
+探针（`.deploy-tmp/_probe_buildtime_translate_skips.py`，把 `urlopen` 换成记录器）实测
+`_translate_to_zh` 旧口径 `cn_chars > len(text) * 0.3` 的分母是**整串长度**，于是：
+
+```
+中文夹符号     送出=是   ← 78 个 `+` 与 ANSI 残片把中文占比稀释到阈值以下
+HN 元数据样板  送出=是   ← Article URL / Points 这种投稿样板被当正文翻
+纯 URL        送出=是   ← 整串只有一个链接也发出去
+正常英文       送出=是   ✓ 该翻
+正常中文       送出=否   ✓ 该跳过（改动不许把它弄反）
+```
+
+新增 `_needs_translation()`：剥 ANSI/URL/CJK 后**必须还存在非中文文字**、中文不占多数、
+且不是元数据样板；含假名的日文一律早返回"要翻"（既有规则）。
+
+**真实影响要说清，别把这次改动吹成减负主力**：拿真实首屏 360 条标题逐条比对
+（`.deploy-tmp/_measure_skip_delta.py`），新口径相对旧口径**只多跳过 1 条**
+（`开爪 2026.9.7`，跳过是对的），仍会去翻 62 条。构建期这个洞在实际数据上几乎是**休眠**的，
+真正的负担是 §10.25/§10.26 那条"浏览器遍历全库"。改它为了口径一致 + 堵住纯 URL/ANSI 垃圾，
+**不是为了省配额**。
+
+我在这段改动里自己引入、又被判据当场抓到的两个错：
+
+1. **门槛写成"必须有拉丁词"→ 顺手砍掉韩文/西里尔**。谚文标题一个拉丁字母都没有，
+   `새로운 공개 프레임워크…` 被跳过，而旧口径照翻。这条在 360 条真实首屏标题上
+   **完全看不出来**（样本里没有谚文），只有反向判据兜得住（`test_korean_still_sent`、
+   `test_cyrillic_still_sent`）。门槛改为"剥掉中文之后是否还有 `isalpha()` 字符"。
+2. **判据依赖"环境恰好干净"**：`test_buildtime_skip_guard` 单独跑 8 绿、放进全量 A2 就红 ——
+   `load_build()` 复用同一模块实例，前面 `tests/rss_history` 的用例把构建期熔断
+   `_TRANS_BLOCK_UNTIL` 打开了，探针于是发不出任何请求。fixture 现在自己清零并在 teardown 还原
+   （`_TRANS_BLOCK_UNTIL/_TRANS_FAIL_STREAK/_AGNES_*`）。与 §10.19"门禁测试必须自带 git 身份"
+   同一类教训：**判据不许依赖上一个用例留下的状态**。
+
+变异四路全杀（`.deploy-tmp/_mut_btskip.py`）：M1 退回旧占比口径、M2 去掉元数据样板规则、
+M3 门槛改回拉丁词、M4 去掉假名早返回。**M4 第一次是存活的** —— 我那条日文样本拉丁词太多，
+去掉早返回也照样会被翻；补了"汉字占多数、假名很少"的样本（`当社の新技術発表会のご案内です`）
+才把它杀掉。判据不 discriminating 时，"绿"没有意义。
+
+最终：A2 原命令（含三个翻译判据文件，按文件粒度收集）**266 passed / 34s**；
+`py_compile *.py` + `compileall tests` 通过。
+
+部署恢复实测（`36803780256`，head=`ed1f6a08`）：A2 success ⇒ A3 success ⇒ Stage Pages success
+⇒ Prune success ⇒ **Deploy to Vercel success** ⇒ Upload Pages success ⇒ **Deploy to GitHub Pages success**。
+站点数据停更区间为 08:19→10:2x（约 2 小时），此后接上每小时。
+
+
 
 
