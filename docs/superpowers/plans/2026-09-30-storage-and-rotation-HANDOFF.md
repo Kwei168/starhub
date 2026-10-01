@@ -2015,3 +2015,39 @@ insight_tracking_history.jsonl     778,323 →     2,473
 同时 `/trending_snapshot.json`、`/descriptions_zh.json`、`/translations.json` 变 404 —— 这三个是
 批 5c 故意不再公开的（实测前端零引用），属于公开面缩小，不是回归。
 16:00 场之后的页面尺寸是"回灌是否真起作用"的硬指标：若没回到塌前量级，说明归因错了，要重新查。
+
+
+### 10.60 判据 ↔ 电池 ↔ CI 证据对照表（做完成审计用的底稿，别当成"都好了"）
+
+这张表只列**有实测证据**的行；证据栏没写 CI run 号的，就是只在本地验过。
+
+| 机制 | 判据 | 电池（变异数 / 逃逸） | 现取证据 |
+|---|---|---|---|
+| 批 1 缓存族 `starhub-state` 接线 | `test_state_cache_wiring.py` 里 1–6 号（键、顺序、path 精确、双向对账、trim 预算、诊断出声） | `mut_state_cache.py` S1–S12 | run 36867529773 A2 342 passed；Diagnose 打 7 个文件字节数 |
+| 批 2 七个状态退出 add 清单 | 同上 `test_state_family_files_are_not_committed_anymore` | 同上 T1/T2（含"只摘主路径"） | bot 972a51d678：新增 5 条，状态名一条不在 |
+| 批 3 退出 git 树 | `test_state_files_are_not_tracked` + 反空转 `test_tracking_probe_works_in_both_directions` | 探针双向 P1/P2 | 7 个 raw URL 404；tip 40.97→24.27 MiB；run 36867529773 success |
+| 批 4 日志每天一次 | `test_log_daily_commit_gate.py` 10 条（真跑闸门脚本 + 计数断言） | `mut_log_gate.py` G1–G6 | bot fed5b3c509 有 build_logs；db6aba4a09 无；63690c5933（日界）又有一次 ⇒ 三个方向都取到 |
+| 批 5a 三个读回文件补通路 | `test_carry_files_have_a_cache_home_before_they_leave_git` + 名单登记副本 | C1/C2/C3 + C6 | 15:34 Diagnose 打 `OK descriptions_zh/trending_snapshot/hot_snapshot` |
+| 批 5a 的教训：改 path 名单=换族 | `test_state_path_list_has_a_frozen_record_copy` | C6（往 path 里"顺手"加名字） | 14:00 场 `Cache not found for input keys: starhub-state-Linux-` |
+| 批 5b/5c 产物退出 git + 按名发布 | `test_no_big_chunk_is_committed`（语义翻转）+ `test_site_artifacts_are_published_not_committed`（三向 + 反向禁上线） | `mut_site_artifacts.py` B1–B5 + P1 | Pages：`rss-data-0.js` 442,489B、`hot_snapshot.json` 64,284B 仍 200；`trending_snapshot`/`descriptions_zh` 404（有意） |
+| 判据 (e) 反向登记对账 | `test_state_transport_registry.py` 4 条（含控制项 `source_quality.json`） | `mut_transport_registry.py` R1–R5 | 本地 A2 372→379 passed |
+| 判据 (g) 第二半：前端 fetch 必须有来源 | `test_frontend_fetched_names_are_served`（从生成端源码抽 fetch 目标） | 同一电池 B3 + P1 | 16:00 场 A2 369 passed |
+| 冷启动读取端退化 | `test_cold_start_readers.py` 6 条（真调 `_load_caches`/`_load_prev_analysis`/`_load_history`/`_accumulate_hot_history`） | `mut_cold_start.py` K1–K4（破坏生产读取端，finally 逐字节还原） | 本地；CI 侧靠 14:00 场 6 个 MISSING 反证了"缺文件时不抛" |
+| 播种回灌（临时创口贴） | `test_state_seed.py` 6 条（体积比较 + 一次性 marker + 不碰 git + 顺序） | `mut_state_seed.py` N1–N10 | 16:00 场 CI 日志：7 个 SEED 行 + `seeded hot_history.json (8280186 B)` 等；marker 已进树 |
+| 批 6 每场新增字节监测 | `test_history_growth.py` 12 条（含 growth 事件不污染每日摘要） | `mut_history_growth.py` H1–H12 | 16:00 场 `[growth] new blobs=7 3.157 MiB threshold=6.00 MiB verdict=ok` |
+| 批 6 回读端 | `test_growth_history.py` 6 条 | `mut_growth_history.py` GH1–GH4 | 仅本地（远端要等 T+1 才有 growth 事件可读） |
+
+**这一轮电池自己暴露的两个假绿源（比任何一条判据都值得记）**
+1. **pyc 缓存**：变异体只改一个字符、文件长度不变、落在同一秒 ⇒ CPython 按 (mtime, 大小) 命中旧字节码，
+   `mut_history_growth` 连跑 4 次有 1 次把 H9 报成 GREEN。修法是 `PYTHONDONTWRITEBYTECODE=1` +
+   变异文件名按 label 唯一化；修后 12 条连跑两次全红。**"0 逃逸"这句话在修之前不可信。**
+2. **判据没摸到被测分支**：`test_cli_reads_local_first...` 第一版只调 `iter_growth_events(路径)`，
+   根本没走 `growth_events_for_day` 的本地/远端分支 ⇒ 把该分支改成"永远联网"也全绿（GH4 实测漏）。
+   改成必须调那个函数本身才抓到。
+
+**还没做完的**
+- 回灌步的摘除：等它打印一次 `seed 已对 … 做过，跳过`（marker 已在树里）就连同 `test_state_seed.py` 一起删。
+- 计划 §1 要的"连续 3 场 tree-diff 读数"：批 5b 之后目前只有 1 场（db6aba4a09 0.032 MiB）。
+- 等用户点单：`per_source` 降频（批 4b，日志 2.82 MB/天 → ~0.2 MB/天）、`.qoder/repowiki`（每次重建 93 blob）。
+- 本地索引与远端的对齐只做了白名单内路径（`tools/untrack_state.py --align-remote`），
+  另一条工作线（AI 日报）未推的 89 个文件刻意不动。
