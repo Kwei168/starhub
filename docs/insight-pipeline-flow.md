@@ -25,14 +25,12 @@ flowchart TD
     I2["热榜 实时 · 不做硬过滤"]
     I3["AIHOT 168h 内"]
     I4["AGI Hunt tier 分级"]
-    I5["GitHub Trending"]
     I6["⚠ api/rss.js 运行时旁路 ?source= 与 ?batch= · 上游 429 时出厂 200 加空数组"]
     SUM["汇总计数 print RSS 热榜 AIHOT AGI"]
     I1 --> SUM
     I2 --> SUM
     I3 --> SUM
     I4 --> SUM
-    I5 --> SUM
     I6 -. "不进洞察主链 · 只喂页面抽屉" .-> I1
   end
 

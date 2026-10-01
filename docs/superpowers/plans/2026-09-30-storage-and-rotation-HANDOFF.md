@@ -532,9 +532,79 @@ rss_trend_history     09-08 0.00 → 09-13 0.32 → 09-18 0.78 → 09-24 1.04 �
   已改成上面这句。教训：引用自己旧文档的具体数字之前必须 grep 到原文，不能凭"我大概是这么写的"。
 - §10.17 原先写的"每场约 0.32 MiB 入 git"是估的，实测 0.052 MiB/场（打包后），已就地改掉。
 
-测量陷阱备忘：隔离的老 `.git`（`E:\_quarantine\starhub-old-git-20261001-072905`）**本身是浅仓**
-（有 `shallow` 文件，`rev-list --count HEAD` 只有 391），所以从它算出的任何"全历史体积"都是截断下界，
-不能当结论引用 —— 要量历史就用远端 shallow clone 并显式写明窗口。
+测量陷阱备忘：隔离的老 `.git` **本身是浅仓**（有 `shallow` 文件，`rev-list --count HEAD` 只有 391），
+所以从它算出的任何"全历史体积"都是截断下界，不能当结论引用 —— 要量历史就用远端 shallow clone 并显式写明窗口。
+（该目录已于 2026-10-01 删除，见 §10.21；这条教训与它引用的读数仍有效。）
+
+### 10.21 隔离的 8.7 GB 旧 `.git` 已删除（10-01 09:0x，核心任务收口）
+
+用户授权口径是"**确定没有风险的前提下可以删**"，所以先做四道核验，再动手：
+
+1. **本地库是否依赖它**：`.git/objects/info/alternates` 不存在、`.git/config` 里没有任何指向
+   `_quarantine` 的引用、`git fsck --no-dangling` rc=0 ⇒ 新对象库自足，删它不会炸库。
+2. **旧 index 里有没有"已 add 从未 commit"的唯一内容**：逐条比"旧 blob == 现 HEAD / == 工作树 /
+   blob 本身在当前库里"，得 18 条 `ONLY`，但逐条回查它们**正是旧 HEAD 的树内容**
+   （`template.html 3fb215a11e`、`index.html 472de96afc`、`rss-data-0.js db4ad1e73d` …），
+   即已被远端后续版本取代的旧版本，不是未保存工作。
+3. **`refs/stash`（两条 09-18 WIP）是不是独有功能**：先取"stash 相对自身父提交的增量"再逐行查现状。
+   stash@{1} 增量为 0；stash@{0} 有 57 条实体新增行、其中 6 条在今天的文件里**找不到原句** ——
+   但这 6 条的概念全都还在（`RETRIEVAL_TOP_K` 2 次、`_ragas_ctx` 2 次、`global_context` 7 次、
+   余弦 6 次 / 相似度 8 次、`Top15` 3 次、`_llm_phase1` 3 次、`全局检索` 5 次）
+   ⇒ 是**已落地功能的旧草稿**，不是丢失的能力。两条 WIP 的 diff（103 KB / 93 KB）连同 refs
+   已导出到 `.deploy-tmp/_quarantine_forensics/`，删除后草稿仍可回读。
+4. **分支**：`daily-insight-fix-v2` 与 PR#2 head 同 sha（此前已证），删它回收不了任何字节。
+
+**一条必须记下的自纠错**：第 3 步我第一版用 shell 的 `if ! grep -q …` 判断，Git Bash 把 `!` 当命令执行，
+57 次判断一次都没真跑，却打印出"今天已不存在 = 0"——**假绿**。换成 Python 逐行判定才拿到真实数字。
+教训：核验脚本自己也要被核验；"跑完了且没报错"不等于"跑对了"，尤其当输出恰好符合预期时。
+
+执行与结果：`rm -rf /e/_quarantine/starhub-old-git-20261001-072905`（8.7G）
+⇒ E: 盘占用 71G → 62G、可用 242G → **251G**，回收约 9 GB。
+删后新鲜验证：`git fsck` rc=0、`git status` 干净、`git show HEAD` 正常、
+`pytest tests/rss_history tests/site_nav tests/rss_translate` = **215 passed**。
+
+### 10.22 我把 blocking 闸接红了一场（10-01 09:00，head=bd96d24）——根因是"job 级 env 改变被测分支"
+
+现象：`36798984025` 在 **Quality gate A2** 上 `INTERNALERROR … SystemExit: 1`，A2 是 blocking
+⇒ 该场没提交也没部署，Pages/Vercel 自 08:19 那场之后停更（下一场自愈，前提是我把接线改对）。
+
+两层原因，都要记住：
+
+1. **我接错了对象**：`tests/rss_translate/test_translate_engines.py` 是**脚本风格**（模块末尾
+   `if failures: sys.exit(1)`），被 pytest 当测试模块导入 ⇒ 一旦它有失败项就是 INTERNALERROR 而不是普通红。
+   我在 §10.20 刚写下"rss_composite/rss_date/rss_sort 是脚本风格不能接"，却把同类的第四个目录接了进去 ——
+   因为 `test_gate_wiring.py` 只问"目录里有没有 `test_*.py`"，没问"这些文件能不能被 pytest 收集"。
+2. **本地全绿、ubuntu 红的确切原因**（已用复现证明，不是推测）：`update.yml:35-36` 的 env 是
+   **job 级**，`AGNES_API_KEY/AGNES_API_KEYS` 会注入**每一个步骤**，包括 A2；
+   `build_rss_aggregator.py:207` 的 `_AGNES_KEYS` 正是从这两个变量构建。而
+   `_agnes_translate()` 在 `1919` 行按 `len(_AGNES_KEYS) > 1` 分叉：**多 key 时 429 只轮转 key 并返回 None，
+   不进罚期**（`1928-1930` 才是罚期分支）。`A2b/A2c` 断言的恰是罚期 ⇒ 有 key 的 CI 必红、无 key 的本地必绿。
+   复现命令（本机，注入两个假 key）：
+
+```
+AGNES_API_KEYS="fake1,fake2" python tests/rss_translate/test_translate_engines.py
+  [翻译] Agnes 429，轮转到 key[1]
+  [PASS] A2a / [FAIL] A2b / [FAIL] A2c   →  13 通过 / 2 失败
+```
+
+⇒ 判据写法本身也错了：它设的是 `B._AGNES_KEY`（单数），而生产代码读 `_AGNES_KEYS`（复数），
+key 池由环境决定 ⇒ **任何依赖全局端点状态的判据，都必须自己把状态设成确定值**，不能靠"机器上恰好没有 key"。
+
+顺带一条**真实缺陷**（不是这次造成，未动）：多 key 时 429 永远只轮转、`_AGNES_OFFENSES` 不涨、
+不进罚期 ⇒ 若所有 key 同时被限流，构建每次调用都会继续打 Agnes，没有任何退避。
+`A2b/A2c` 想守的就是这个性质。修它属于改逻辑，按用户暂停令未动。
+
+### 10.23 `insight-pipeline-flow.md` 的 Trending 输入节点是误画，已删（10-01 09:5x）
+
+`docs/insight-pipeline-flow.md` 泳道 1 里 `I5["GitHub Trending"] --> SUM` 是当时 agent 乱画的：
+`build_daily_insight.py` 全文 **零次**出现 `trending`，其真实输入汇总打印（5364 行）只有
+`RSS / 热榜 / AIHOT / AGI Hunt` 四路。误画大概源自两个同名词：`trending_snapshot.json` 的读者是
+`fetch_and_build.py:432`（首页排行榜），而 `build_rss_aggregator.py:129` 又定义了同名常量
+`TRENDING_SNAPSHOT_FILE` —— 照着常量名反推输入层就会把它接进洞察链。
+现已删除 `I5` 节点与其入边（全文 `I5`/`Trending` 零残留，`SUM` 剩 4 条入边，与该节点自身文字一致），
+并在 `2026-09-22-nightly-deep-insight-design.md` 的"已知挂起"处留痕改准。
+
+
 
 ### 10.19 RSS 页控制台的三类错误与四处孤儿（10-01 08:0x 取证并修）
 
