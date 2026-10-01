@@ -187,6 +187,52 @@ def test_site_artifacts_are_published_not_committed():
             "%s 被放进发布名单：它没有任何前端读方（48 个可发布文件零命中），上线只会扩大公开面" % name)
 
 
+def test_frontend_fetched_names_are_served():
+    """计划判据 (g) 的第二半：生成端往页面里塞的每个 `fetch('x.json')`，都必须有上线的来源。
+
+    为什么从**生成端源码**抽而不是读 `rss-aggregator.html`：A2 跑在 `Fetch stars & build` 之前，
+    那时产物还不存在（在 CI 里读产物 = 判据读上一场的旧文件，正是本仓反复踩过的"代理信号绿"）。
+    注意源码里那些 JS 是写在 Python 字符串里的，引号被转义成 `\\'`，所以模式要能吃掉反斜杠 ——
+    第一版没吃，`hot_snapshot.json` 就直接漏了。
+
+    允许的来源只有两种：还在 `git add` 清单里（会被跟踪、由 `git ls-files` 带上线），
+    或在 Stage 的按名拷贝名单里。**"库里有份冻结副本"不算来源** —— 那正是 批 3 清掉的形状：
+    文件不再更新，页面却每场都拿旧数据当新的。
+    """
+    gen = os.path.join(ROOT, "build_rss_aggregator.py")
+    src = open(gen, encoding="utf-8", errors="replace").read()
+    fetched = set(re.findall(r"fetch\(\s*\\?['\"]([A-Za-z0-9_.\-]+\.(?:json|js))\\?['\"]", src))
+    fetched |= {os.path.basename(p) for p in
+                re.findall(r"fetch\(\s*\\?['\"][^'\"]*?/([A-Za-z0-9_.\-]+\.json)\\?['\"]", src)}
+    assert fetched, "生成端一个 fetch 目标都没抽到 —— 抽取器失明，这条判据在空集合上跑"
+    known = {"hot_snapshot.json", "rss_sources.json"}
+    assert known <= fetched, (
+        "抽取结果 %s 少了 %s —— 模式退化（这两个是实测在前端 fetch 的名字，"
+        "hot_snapshot 那份 JS 写在 Python 字符串里、引号是转义的，最容易漏抽）"
+        % (sorted(fetched), sorted(known - fetched)))
+
+    adds = set()
+    for _, body in _runs():
+        for line in body.splitlines():
+            if re.match(r"\s*git add\b", line):
+                for tok in line.split()[1:]:
+                    if not tok.startswith("-"):
+                        adds.add(os.path.basename(tok.rstrip("/")))
+    stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
+    assert stage, "没有 Stage Pages site 步骤"
+    pub = set()
+    for grp in re.findall(r"^\s*for f in (.+); do$", stage[0], re.M):
+        pub.update(grp.split())
+    pub.update(os.path.basename(p) for p in re.findall(r"cp -f (\S+) _pages/", stage[0]))
+    assert adds and pub, "add 清单(%d)或发布名单(%d) 为空 —— 判据在空集合上跑" % (len(adds), len(pub))
+
+    naked = sorted(n for n in fetched
+                   if n not in adds and not any(fnmatch.fnmatch(n, p) for p in pub))
+    assert not naked, (
+        "这些名字被前端 fetch，但既不在 git add 清单也不在按名发布名单 ⇒ 上线就是 404/空数据：%s"
+        % naked)
+
+
 def test_staging_takes_the_git_tree_not_the_worktree():
     """staging 必须按 `git ls-files` 取清单：legacy 发的是 git 树，照工作目录整拷会泄露缓存语料。
 

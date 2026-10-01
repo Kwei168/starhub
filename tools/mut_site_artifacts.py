@@ -52,6 +52,9 @@ def main():
          src.replace(TEST_S, "", 1), None),
         ("B5 把纯跨场态 descriptions_zh.json 塞进发布名单（扩大公开面）",
          src.replace(PUBLISH, "          for f in hot_snapshot.json descriptions_zh.json; do\n", 1), None),
+        ("P1 从**两条** add 清单一起摘掉 rss_sources.json（前端 fetch 它 ⇒ 上线就是 404/空侧栏）",
+         sub_nth(src, ADD_MAIN, ADD_MAIN.replace(" rss_sources.json", ""), 1)
+            .replace(ADD_MAIN, ADD_MAIN.replace(" rss_sources.json", "")), None),
     ]
 
     def run(mut, label):
