@@ -214,6 +214,9 @@ jobs:
             insight_tracking_history.jsonl
             daily_insight_tracking_history.jsonl
             daily_insight_history.json
+            descriptions_zh.json
+            trending_snapshot.json
+            hot_snapshot.json
             build_logs
           key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
@@ -226,7 +229,7 @@ jobs:
           # translations.json 丢了要重译 ~8400 条（真花配额）、analysis_snapshot.json 丢了
           # 会让 _semantics_missing 恒真 ⇒ 每场重跑 LLM 重分析。
           echo "=== starhub-state restore diagnostics ==="
-          for f in hot_history.json analysis_snapshot.json translations.json rss_trend_history.json insight_tracking_history.jsonl daily_insight_tracking_history.jsonl daily_insight_history.json; do
+          for f in hot_history.json analysis_snapshot.json translations.json rss_trend_history.json insight_tracking_history.jsonl daily_insight_tracking_history.jsonl daily_insight_history.json descriptions_zh.json trending_snapshot.json hot_snapshot.json; do
             if [ -f "$f" ]; then
               echo "  OK $f ($(wc -c < "$f") B)"
             else
@@ -427,6 +430,9 @@ jobs:
             insight_tracking_history.jsonl
             daily_insight_tracking_history.jsonl
             daily_insight_history.json
+            descriptions_zh.json
+            trending_snapshot.json
+            hot_snapshot.json
             build_logs
           key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 

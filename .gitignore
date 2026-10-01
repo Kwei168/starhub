@@ -58,3 +58,6 @@ daily_insight_history.json
 daily_insight_faiss.index
 daily_insight_chunks.json
 daily_insight_vectors.npy
+descriptions_zh.json
+trending_snapshot.json
+hot_snapshot.json

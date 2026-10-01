@@ -80,6 +80,14 @@ def main():
          src.replace(block(src, SAVE_MARK, STAGE_MARK),
                      block(src, SAVE_MARK, STAGE_MARK).replace(
                          "\n            build_logs", "", 1), 1), None),
+        # ── 批 5a：三个"读回型"文件的通路（少了就是静默冻基线，构建照样绿）──
+        ("C1 只在 Restore 名单去掉 descriptions_zh.json（保存但不还原）",
+         src.replace("            descriptions_zh.json\n", "", 1), None),
+        ("C2 .gitignore 少 trending_snapshot.json（可被 add 请回库里）", src,
+         gi.replace("\ntrending_snapshot.json\n", "\n", 1)),
+        ("C3 诊断循环漏掉 hot_snapshot.json（不在盘上无人知道）",
+         src.replace("descriptions_zh.json trending_snapshot.json hot_snapshot.json; do",
+                     "descriptions_zh.json trending_snapshot.json; do", 1), None),
     ]
     assert " hot_history.json" not in src.split("\n")[al[0][1] - 1:], "锚点自检失败"
 

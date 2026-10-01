@@ -46,6 +46,16 @@ STATE_FILES = {
     "daily_insight_history.json",
 }
 LOG_DIR_NAME = "build_logs"
+# 批 5a：这三个也是"先读回上一次结果、再写回"的跨场缓存，但它们的传递通道**今天只有 git checkout**
+# （实测：`fetch_and_build.py:432` 读 trending_snapshot、`:486` 写回；`:722` 读 descriptions_zh、`:813` 写回；
+# `build_rss_aggregator.py:8732` 在抓取失败时兜底读 hot_snapshot）。它们既不在缓存 path 也不在 .gitignore，
+# 所以 批 5 若直接把它们从 add 清单摘掉 ⇒ 星标增量的基线与描述译文缓存被永久冻在最后一份提交上
+# （delta 每场对着不动的基线重算，新仓库描述每场重译烧配额）。先补通路，再摘名字，顺序不能反。
+CARRY_FILES = {
+    "descriptions_zh.json",
+    "trending_snapshot.json",
+    "hot_snapshot.json",
+}
 # 反空转对照用：批 2 没动它，两条 `git add` 清单里都还有 ⇒ 只要工作流还在跑就一直被跟踪。
 PROBE_TRACKED_CONTROL = "rss_sources.json"
 PROBE_ABSENT_CONTROL = "starhub_probe_control_absent.json"
@@ -131,13 +141,12 @@ def test_state_save_runs_after_cleanup_and_before_prune():
 
 @pytest.mark.parametrize("step_name", ["Restore cross-build state cache",
                                         "Save cross-build state cache"])
-def test_state_path_list_is_exactly_the_seven_files_plus_log_dir(step_name):
+def test_state_path_list_is_exactly_the_family_plus_carry_plus_log_dir(step_name):
     entries = set(_path_lines(_by_name(step_name)))
-    assert entries == STATE_FILES | {LOG_DIR_NAME}, (
-        "%s 的 path 名单与状态族清单不一致：多出来=%s，少了=%s" % (
-            step_name,
-            sorted(entries - (STATE_FILES | {LOG_DIR_NAME})),
-            sorted((STATE_FILES | {LOG_DIR_NAME}) - entries)))
+    want = STATE_FILES | CARRY_FILES | {LOG_DIR_NAME}
+    assert entries == want, (
+        "%s 的 path 名单与（7 个状态文件 ∪ 3 个批 5a 补通路的读回文件 ∪ build_logs）不一致："
+        "多出来=%s，少了=%s" % (step_name, sorted(entries - want), sorted(want - entries)))
 
 
 def test_two_path_lists_are_identical():
@@ -228,6 +237,27 @@ def test_state_files_are_in_both_gitignore_and_cache_paths():
     assert not not_ignored and not not_cached, (
         ".gitignore 缺少=%s；缓存 path 缺少=%s" % (", ".join(not_ignored) or "无",
                                                    ", ".join(not_cached) or "无"))
+
+
+def test_carry_files_have_a_cache_home_before_they_leave_git():
+    """批 5a：三个"读回型"文件必须先有缓存通路（path + .gitignore + 诊断出声），才谈得上摘 add 名字。
+
+    与上一条判据同构，但防的是另一类事故：**通路没搭就摘名字**。那种情况下构建照样绿，
+    只是 `trending_snapshot.json` 从此停在库里那份旧基线，星标增量每场对着静止基线重算 ⇒
+    数字一路虚高，而没有任何一处会报错。所以三个方向都断言，且输入非空。
+    """
+    ign = _gitignore_names()
+    cached = set(_path_lines(_by_name("Save cross-build state cache")))
+    body = (_by_name("Diagnose cross-build state cache").get("run") or "")
+    assert ign and cached and body, "对账输入为空（.gitignore=%d, path=%d, 诊断=%d）—— 判据在空集合上跑" % (
+        len(ign), len(cached), len(body))
+    not_ignored = sorted(f for f in CARRY_FILES if f not in ign)
+    not_cached = sorted(f for f in CARRY_FILES if f not in cached)
+    not_diagnosed = sorted(f for f in CARRY_FILES if f not in body)
+    assert not not_ignored and not not_cached and not not_diagnosed, (
+        "批 5a 通路未补齐：.gitignore 缺少=%s；缓存 path 缺少=%s；诊断未覆盖=%s" % (
+            ", ".join(not_ignored) or "无", ", ".join(not_cached) or "无",
+            ", ".join(not_diagnosed) or "无"))
 
 
 def test_tracking_probe_works_in_both_directions():
