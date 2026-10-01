@@ -4596,74 +4596,18 @@ def _build_history_html():
         for d in days
     )
 
-    # 构建每天的事件卡片
+    # 构建每天的事件卡片（与日报洞察卡同构：眉线/衬线标题/深读面板）
     day_sections = []
     for d in days:
         date = d.get("date", "")
         theme = _esc(d.get("theme", ""))
         events_html = []
         for evt in d.get("events", []):
-            status = evt.get("status", "new")
-            status_labels = {
-                "new": "新", "ongoing": "持续", "escalating": "升级", "faded": "消退",
-            }
-            resonance = evt.get("resonance", "")
-            resonance_labels = {
-                "breakout": "破圈", "tech_hot": "技术热",
-                "niche": "垂直", "consumer": "消费级",
-            }
-
+            # 归档数据用 sources 命名信源，卡片眉线读 source_types——入口对齐一次
+            evt.setdefault("source_types", evt.get("sources", []))
             deep = evt.get("deep_analysis") or {}
-            deep_html = ""
-            if deep.get("status") != "degraded":
-                deep_html = '''
-<div class="di-deep">
-  <div class="di-deep-title">深度解读</div>
-  <div class="di-deep-sec"><strong>事件还原</strong><p>%s</p></div>
-  <div class="di-deep-sec"><strong>影响分析</strong><p>%s</p></div>
-  <div class="di-deep-sec"><strong>信源分歧</strong><p>%s</p></div>
-  %s
-  <div class="di-deep-sec"><strong>后续展望</strong><p>%s</p></div>
-  <span class="di-conf">置信度: %s</span>
-  %s
-</div>''' % (
-                    _esc(deep.get("event_reconstruction", "")),
-                    _esc(deep.get("impact_analysis", "")),
-                    _esc(deep.get("source_divergence", "")),
-                    ('<div class="di-deep-sec"><strong>金句</strong><blockquote>%s</blockquote></div>'
-                     % _esc(deep["quote"])) if deep.get("quote") else "",
-                    _esc(deep.get("outlook", "")),
-                    _esc(deep.get("confidence", "")),
-                    _cited_sources_html(deep),
-                )
-
-            sources_tags = " ".join(
-                '<span class="di-src">%s</span>' % _esc(s) for s in evt.get("sources", [])
-            )
-
-            events_html.append('''
-<article class="di-card">
-  <div class="di-head">
-    <span class="di-status">%s</span>
-    %s
-    <span class="di-score">%.1f</span>
-  </div>
-  <h3 class="di-label">%s</h3>
-  <p class="di-summary">%s</p>
-  %s
-  <div class="di-meta">%s %s</div>
-  %s
-</article>''' % (
-                status_labels.get(status, status),
-                ('<span class="di-resonance">%s</span>' % resonance_labels.get(resonance, resonance)) if resonance else "",
-                evt.get("score", 0),
-                _esc(evt.get("label", "")),
-                _esc(evt.get("summary", "")),
-                _source_links_html(evt.get("key_links")),
-                sources_tags,
-                '<span class="di-cat">%s</span>' % _esc(evt.get("category", "")) if evt.get("category") else "",
-                deep_html,
-            ))
+            events_html.append(_evt_card_html(
+                evt, feat=bool(deep and deep.get("status") != "degraded")))
 
         day_sections.append('''
 <section id="day-%s" class="day-section" style="display:none">
@@ -4755,32 +4699,8 @@ a{color:inherit;text-decoration:none;}
   padding:10px 14px;border-left:3px solid var(--accent);background:var(--card-2);
 }
 
-/* event cards */
-.di-card{padding:14px 0;border-bottom:1px solid var(--line);}
-.di-card:last-child{border-bottom:none;}
-.di-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
-.di-status{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 6px;letter-spacing:.05em;}
-.di-resonance{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 5px;}
-.di-score{margin-left:auto;font-weight:bold;color:var(--accent);font-size:0.85em;font-family:var(--display);}
-.di-label{font-family:var(--display);font-size:1.05em;font-weight:700;margin-bottom:4px;line-height:1.4;}
-.di-summary{color:var(--muted);font-size:0.88em;margin-bottom:6px;line-height:1.7;}
-.di-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
-.di-src{font-size:10px;padding:1px 5px;border:1px solid var(--line);color:var(--faint);}
-.di-cat{font-size:10px;padding:1px 5px;color:var(--accent-ink);border:1px solid var(--accent);}
-.di-links{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px;}
-.di-link{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 7px;border-radius:10px;background:var(--accent-weak);}
-.di-cites{font-size:11px;margin-top:4px;}
-.di-cite{color:var(--accent-ink);border-bottom:1px dotted var(--accent);margin-right:8px;}
-.di-bubble-link{color:var(--accent-ink);border-bottom:1px solid var(--accent);}
-
-/* deep analysis */
-.di-deep{margin-top:10px;padding:10px 0 10px 16px;border-left:2px solid var(--line-strong);font-size:0.88em;}
-.di-deep-title{font-family:var(--display);font-weight:700;font-size:0.95em;margin-bottom:6px;color:var(--ink);}
-.di-deep-sec{margin-bottom:10px;}
-.di-deep-sec strong{display:block;font-size:0.85em;color:var(--muted);margin-bottom:2px;}
-.di-deep-sec p{font-size:0.95em;line-height:1.7;}
-.di-deep-sec blockquote{font-style:italic;padding:6px 10px;border-left:2px solid var(--accent);color:var(--muted);margin:4px 0;}
-.di-conf{font-size:10px;color:var(--faint);}
+/* insight cards（与日报洞察版块共用 _DI_CSS，消除两处拷贝漂移） */
+%s
 
 /* footer */
 .foot{
@@ -4854,7 +4774,7 @@ function switchDay(id){
 })();
 </script>
 </body>
-</html>''' % (len(days), date_options, "\n".join(day_sections))
+</html>''' % (_DI_CSS, len(days), date_options, "\n".join(day_sections))
 
     try:
         with open(HISTORY_HTML, "w", encoding="utf-8") as f:
@@ -4868,6 +4788,21 @@ function switchDay(id){
 
 _AI_DAILY_FILE = "ai-daily.html"
 
+# 洞察卡片眉线/徽标文案（注入块与历史页共用，消除两处拷贝漂移）
+_DI_STATUS_LABELS = {"new": "新", "ongoing": "持续", "escalating": "升级", "faded": "消退"}
+_DI_RESONANCE_LABELS = {"breakout": "破圈", "tech_hot": "技术热",
+                        "niche": "垂直", "consumer": "消费级"}
+# 洞察 category 码 → 报纸眉线中文（缺失回退原码）
+_DI_CAT_CN = {"ai-models": "AI 模型", "ai-products": "AI 产品", "industry": "行业",
+              "policy": "政策", "developer": "工程实践", "research": "论文",
+              "consumer": "消费"}
+_CORPUS_TAG_RE = re.compile(r"\s*\[(?:agihunt|aihot|rss)\]", re.I)
+
+
+def _strip_corpus_tags(s):
+    """摘要里的语料来源标记是机器内部记号，阅读层剥除（正文 [1][3] 引用序号保留）。"""
+    return _CORPUS_TAG_RE.sub("", s or "").replace("  ", " ").strip()
+
 
 def _link_host(u):
     """URL 域名作为原文链接文案（去 www.，失败回退「原文」）。"""
@@ -4879,8 +4814,8 @@ def _link_host(u):
         return "原文"
 
 
-def _source_links_html(links, items=None):
-    """可跳转原文链接组：仅放行 http(s)，去重保序 cap 3；
+def _allowed_links(links, items=None):
+    """可跳转原文 URL 白名单序列：仅放行 http(s)，去重保序 cap 3；
     key_links 为空时回退 items URL（红线：每个洞察必须带可跳转原文引用）。"""
     seen, out = set(), []
 
@@ -4896,9 +4831,14 @@ def _source_links_html(links, items=None):
     if not out:
         for it in items or []:
             _add(it.get("url") or it.get("link") if isinstance(it, dict) else "")
+    return out[:3]
+
+
+def _source_links_html(links, items=None):
+    """可跳转原文链接组（点线引用样式，不再用胶囊块）。"""
     chips = "".join(
         '<a class="di-link" href="%s" target="_blank" rel="noopener">%s&#8599;</a>'
-        % (_esc(u), _esc(_link_host(u))) for u in out[:3])
+        % (_esc(u), _esc(_link_host(u))) for u in _allowed_links(links, items))
     return '<div class="di-links">%s</div>' % chips if chips else ""
 
 
@@ -4911,13 +4851,110 @@ def _cited_sources_html(deep):
             continue
         chips += '<a class="di-cite" href="%s" target="_blank" rel="noopener">[%s] %s&#8599;</a> ' % (
             _esc(u), _esc(str(s.get("index", ""))), _esc(_link_host(u)))
-    return ('<p class="di-cites"><b>引用来源</b> %s</p>' % chips) if chips else ""
+    return ('<p class="di-cites">%s</p>' % chips) if chips else ""
+
+
+def _evt_card_html(evt, feat):
+    """洞察卡片：与日报 .item 同一语法（眉线/衬线标题/摘要/点线引用）。
+    feat=True 渲染深读面板（card-2 底，对应日报 .item.top 语汇）。"""
+    sl = _DI_STATUS_LABELS.get(evt.get("status", "new"), "")
+    rl = _DI_RESONANCE_LABELS.get(evt.get("resonance", ""), "")
+    cat = evt.get("category", "")
+    kicker = " · ".join(p for p in (sl, rl, _DI_CAT_CN.get(cat, cat)) if p)
+    deep = evt.get("deep_analysis") or {}
+    has_deep = bool(deep) and deep.get("status") != "degraded"
+    links = _allowed_links(evt.get("key_links"), evt.get("items"))
+    head = _esc(evt.get("label", ""))
+    label = ('<h3 class="di-label"><a href="%s" target="_blank" rel="noopener">%s</a></h3>'
+             % (_esc(links[0]), head)) if links else '<h3 class="di-label">%s</h3>' % head
+    out = ['<article class="di-card%s">' % (" has-deep" if feat else ""),
+           '<div class="di-kicker"><span>%s</span>'
+           '<span class="di-score" title="综合评分">评分 %.1f</span></div>'
+           % (_esc(kicker), evt.get("score", 0)),
+           label,
+           '<p class="di-summary">%s</p>' % _esc(_strip_corpus_tags(evt.get("summary", "")))]
+    if has_deep:
+        cites = _cited_sources_html(deep)
+        if not cites:
+            # 红线兜底：深读缺引用清单时回退原文链接组
+            cites = _source_links_html(evt.get("key_links"), evt.get("items"))
+        out.append('''<div class="di-deep">
+<div class="di-deep-kicker">深度解读 · ANALYSIS</div>
+<div class="di-deep-sec"><strong>事件还原</strong><p>%s</p></div>
+<div class="di-deep-sec"><strong>影响分析</strong><p>%s</p></div>
+<div class="di-deep-sec"><strong>信源分歧</strong><p>%s</p></div>
+%s
+<div class="di-deep-sec"><strong>后续展望</strong><p>%s</p></div>
+<div class="di-deep-foot"><span class="di-conf">置信度 %s</span>%s</div>
+</div>''' % (_esc(deep.get("event_reconstruction", "")),
+             _esc(deep.get("impact_analysis", "")),
+             _esc(deep.get("source_divergence", "")),
+             ('<blockquote class="di-quote">%s</blockquote>' % _esc(deep["quote"]))
+             if deep.get("quote") else "",
+             _esc(deep.get("outlook", "")),
+             _esc(deep.get("confidence", "")),
+             cites))
+    else:
+        srcs = " · ".join(_esc(s) for s in evt.get("source_types", []))
+        foot = ('<span class="di-srcs">信源 %s</span>' % srcs) if srcs else ""
+        foot += _source_links_html(evt.get("key_links"), evt.get("items"))
+        if foot:
+            out.append('<div class="di-foot">%s</div>' % foot)
+    out.append('</article>')
+    return "\n".join(out)
+
+
+# 洞察版块 CSS：注入块与历史归档页共用同一份（spec PartA §3.4，demo 为像素基准）
+_DI_CSS = """/* ---- 每日深度洞察 · 与日报同一套报纸语法 ---- */
+.di-sec .di-theme{font-family:var(--display);font-style:italic;font-size:14.5px;color:var(--muted);margin:-4px 0 6px;line-height:1.7;}
+.di-card{padding:14px 0;border-bottom:1px solid var(--line);break-inside:avoid;}
+.di-feat .di-card{padding:16px 0;}
+.di-kicker{display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--muted);letter-spacing:.08em;margin-bottom:6px;}
+.di-kicker .di-score{margin-left:auto;font-family:var(--display);font-style:italic;font-size:12px;color:var(--accent-ink);letter-spacing:.02em;white-space:nowrap;}
+.di-label{font-family:var(--display);font-size:17px;font-weight:700;line-height:1.42;margin:0 0 6px;}
+.di-label a:hover{color:var(--accent-ink);}
+.di-feat .di-label{font-size:20px;}
+.di-summary{font-size:13px;color:var(--muted);line-height:1.7;margin:0 0 8px;}
+.di-foot{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;}
+.di-srcs{font-size:11px;color:var(--muted);letter-spacing:.05em;}
+.di-links{display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;}
+.di-links a,.di-cites a{font-size:11.5px;color:var(--accent-ink);border-bottom:1px dotted var(--accent);white-space:nowrap;}
+.di-links a:hover,.di-cites a:hover{color:var(--accent);}
+.di-deep{margin-top:12px;background:var(--card-2);border:1px solid var(--line);padding:14px 18px 12px;}
+.di-deep-kicker{font-size:11px;letter-spacing:.18em;color:var(--accent-ink);font-weight:700;display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.di-deep-kicker::after{content:"";flex:1;height:1px;background:var(--line);}
+.di-deep-sec{margin-bottom:9px;}
+.di-deep-sec strong{display:block;font-size:11.5px;letter-spacing:.1em;color:var(--ink);margin-bottom:3px;}
+.di-deep-sec p{font-size:12.5px;color:var(--muted);line-height:1.75;margin:0;}
+.di-quote{font-family:var(--display);font-style:italic;font-size:14px;line-height:1.7;color:var(--ink);border-left:2px solid var(--accent);padding:1px 0 1px 12px;margin:10px 0;}
+.di-deep-foot{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;margin-top:2px;padding-top:8px;border-top:1px solid var(--line);}
+.di-conf{font-size:11px;color:var(--muted);letter-spacing:.08em;}
+.di-cites{display:flex;gap:12px;flex-wrap:wrap;}
+.di-bubble{margin-top:30px;border-top:3px double var(--line-strong);border-bottom:3px double var(--line-strong);padding:14px 0 4px;}
+.di-bubble-head{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
+.di-bubble-head::before,.di-bubble-head::after{content:"";flex:1;height:1px;background:var(--line-strong);}
+.di-bubble-head-t{font-family:var(--display);font-size:15px;font-weight:700;letter-spacing:.14em;white-space:nowrap;}
+.di-bubble-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:34px;}
+.di-bubble-card{padding:10px 0;border-bottom:1px solid var(--line);}
+.di-bubble-card:nth-last-child(-n+2){border-bottom:none;}
+.di-bubble-card h4{font-family:var(--display);font-size:15px;font-weight:700;line-height:1.45;margin:0 0 4px;}
+.di-bubble-card h4 a:hover{color:var(--accent-ink);}
+.di-bubble-card p{font-size:12px;color:var(--muted);line-height:1.65;margin:0 0 4px;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;}
+.di-bubble-reason{font-size:11px;color:var(--muted);font-style:italic;}
+@media (max-width:760px){
+.di-feat .di-label{font-size:18px;}
+.di-links{margin-left:0;}
+.di-bubble-grid{grid-template-columns:1fr;}
+.di-bubble-card:nth-last-child(-n+2){border-bottom:1px solid var(--line);}
+.di-bubble-card:last-child{border-bottom:none;}
+}
+"""
 
 
 # ──────────────────── 破茧栏 HTML 构建 ────────────────────
 
 def _build_bubble_html(bubble_breaker):
-    """将破茧栏数据渲染为报纸风格 HTML 段。"""
+    """破茧栏：上下双细线夹住的报纸边栏（信息增量）。"""
     if not bubble_breaker:
         return ""
     cards = []
@@ -4926,19 +4963,18 @@ def _build_bubble_html(bubble_breaker):
         _bl = _esc(item.get("label", ""))
         _bh = ('<a class="di-bubble-link" href="%s" target="_blank" rel="noopener">%s&#8599;</a>'
                % (_esc(_bu), _bl)) if re.match(r'https?://', _bu or "", re.I) else _bl
-        cards.append('''
-<div class="di-bubble-card">
-  <div class="di-bubble-label">%s</div>
-  <div class="di-bubble-summary">%s</div>
-  <div class="di-bubble-reason">%s</div>
-</div>''' % (_bh,
-             _esc(item.get("summary", "")),
-             _esc(item.get("reason", ""))))
-    return '''
-<div class="di-bubble">
-  <div class="di-bubble-title">\u7834\u8327\u680f \u00b7 \u4fe1\u606f\u589e\u91cf</div>
-  %s
-</div>''' % "\n".join(cards)
+        cards.append(
+            '<article class="di-bubble-card">'
+            '<h4 class="di-bubble-label">%s</h4>'
+            '<p class="di-bubble-summary">%s</p>'
+            '<div class="di-bubble-reason">%s</div>'
+            '</article>' % (_bh, _esc(item.get("summary", "")),
+                            _esc(item.get("reason", ""))))
+    return ('<aside class="di-bubble">\n'
+            '  <div class="di-bubble-head">'
+            '<span class="di-bubble-head-t">破茧栏 · 信息增量</span></div>\n'
+            '  <div class="di-bubble-grid">\n%s\n  </div>\n</aside>'
+            % "\n".join(cards))
 
 
 def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
@@ -4960,115 +4996,36 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
             r'<!-- daily-insight-start -->.*?<!-- daily-insight-end -->\s*',
             '', html, flags=re.DOTALL)
 
-    # 构建事件卡片
-    cards_html = []
+    # 构建事件卡片：有深读的进通栏特稿区，无深读的进双栏简报区（与日报 .cols 同栅格）
+    feats, briefs = [], []
     for evt in clusters:
-        status_labels = {
-            "new": "新", "ongoing": "持续", "escalating": "升级", "faded": "消退",
-        }
-        resonance_labels = {
-            "breakout": "破圈", "tech_hot": "技术热",
-            "niche": "垂直", "consumer": "消费级",
-        }
-        sl = status_labels.get(evt.get("status", "new"), "")
-        rl = resonance_labels.get(evt.get("resonance", ""), "")
-        deep = evt.get("deep_analysis") or {}
+        _deep = evt.get("deep_analysis") or {}
+        (feats if (_deep and _deep.get("status") != "degraded") else briefs).append(evt)
+    feat_html = "\n".join(_evt_card_html(e, True) for e in feats)
+    brief_html = "\n".join(_evt_card_html(e, False) for e in briefs)
+    n_total, n_deep = len(clusters), len(feats)
+    # 日报页首索引补第 vii 项（分类版块固定 6 个，洞察是第 7 区）
+    vii_link = ('<a href="#sec-7"><span class="idx-n" style="color:var(--accent)">vii</span>'
+                '深度洞察<span class="idx-cnt">%d</span></a>' % n_total)
 
-        # 来源标签
-        src_tags = "".join(
-            '<span class="di-src">%s</span>' % _esc(s) for s in evt.get("source_types", [])
-        )
-
-        # 深度解读（缩进式排版，非折叠）
-        deep_html = ""
-        if deep and deep.get("status") != "degraded":
-            deep_html = '''
-<div class="di-deep">
-<p class="di-deep-title">深度解读</p>
-<p><b>事件还原</b><br>%s</p>
-<p><b>影响分析</b><br>%s</p>
-<p><b>信源分歧</b><br>%s</p>
-%s
-<p><b>后续展望</b><br>%s</p>
-<p class="di-conf">置信度: %s</p>
-%s
-</div>''' % (
-                _esc(deep.get("event_reconstruction", "")),
-                _esc(deep.get("impact_analysis", "")),
-                _esc(deep.get("source_divergence", "")),
-                ('<blockquote class="di-quote">%s</blockquote>' % _esc(deep["quote"])) if deep.get("quote") else "",
-                _esc(deep.get("outlook", "")),
-                _esc(deep.get("confidence", "")),
-                _cited_sources_html(deep),
-            )
-
-        cards_html.append('''
-<div class="di-card">
-  <div class="di-head">
-    <span class="di-status">%s</span>
-    %s
-    <span class="di-score">%.1f</span>
-  </div>
-  <h3 class="di-label">%s</h3>
-  <p class="di-summary">%s</p>
-  %s
-  <div class="di-meta">%s <span class="di-cat">%s</span></div>
-  %s
-</div>''' % (
-            sl,
-            ('<span class="di-resonance">%s</span>' % rl) if rl else "",
-            evt.get("score", 0),
-            _esc(evt.get("label", "")),
-            _esc(evt.get("summary", "")),
-            _source_links_html(evt.get("key_links"), evt.get("items")),
-            src_tags,
-            _esc(evt.get("category", "")),
-            deep_html,
-        ))
-
-    # 完整子板块 HTML（报纸风格）
+    # 完整子板块 HTML（报纸风格，与日报 sec-head 同构）
     section_html = '''<!-- daily-insight-start -->
 <style>
-.di-section{margin:34px 0;padding:18px 0;border-top:3px double var(--line-strong);}
-.di-title{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:.04em;margin-bottom:4px;}
-.di-theme{color:var(--muted);font-size:0.9em;margin-bottom:16px;font-style:italic;}
-.di-card{padding:14px 0;border-bottom:1px solid var(--line);}
-.di-card:last-child{border-bottom:none;}
-.di-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
-.di-status{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 6px;letter-spacing:.05em;}
-.di-resonance{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 5px;}
-.di-score{margin-left:auto;font-weight:bold;color:var(--accent);font-size:0.85em;font-family:var(--display);}
-.di-label{font-family:var(--display);font-size:1.05em;font-weight:700;margin-bottom:4px;line-height:1.4;}
-.di-summary{color:var(--muted);font-size:0.88em;margin-bottom:6px;line-height:1.7;}
-.di-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
-.di-src{font-size:10px;padding:1px 5px;border:1px solid var(--line);color:var(--faint);}
-.di-cat{font-size:10px;padding:1px 5px;color:var(--accent-ink);border:1px solid var(--accent);}
-.di-links{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px;}
-.di-link{font-size:11px;color:var(--accent-ink);border:1px solid var(--accent);padding:1px 7px;border-radius:10px;background:var(--accent-weak);}
-.di-cites{font-size:11px;margin-top:4px;}
-.di-cite{color:var(--accent-ink);border-bottom:1px dotted var(--accent);margin-right:8px;}
-.di-bubble-link{color:var(--accent-ink);border-bottom:1px solid var(--accent);}
-.di-deep{margin-top:10px;padding:10px 0 10px 16px;border-left:2px solid var(--line-strong);font-size:0.88em;}
-.di-deep-title{font-family:var(--display);font-weight:700;font-size:0.95em;margin-bottom:6px;color:var(--ink);}
-.di-deep p{margin:5px 0;line-height:1.7;}
-.di-quote{font-style:italic;padding:6px 10px;border-left:2px solid var(--accent);color:var(--muted);margin:6px 0;}
-.di-conf{font-size:10px;color:var(--faint);}
-.di-bubble{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line-strong);}
-.di-bubble-title{font-family:var(--display);font-size:0.95em;font-weight:700;color:var(--muted);margin-bottom:10px;letter-spacing:.06em;}
-.di-bubble-card{padding:8px 0;border-bottom:1px dotted var(--line);}
-.di-bubble-card:last-child{border-bottom:none;}
-.di-bubble-label{font-family:var(--display);font-weight:700;font-size:0.92em;}
-.di-bubble-summary{color:var(--muted);font-size:0.82em;line-height:1.6;margin:3px 0;}
-.di-bubble-reason{font-size:0.78em;color:var(--faint);font-style:italic;}
-</style>
-<div class="di-section">
-  <div class="di-title">\u6bcf\u65e5\u6df1\u5ea6\u6d1e\u5bdf</div>
-  <div class="di-theme">%s</div>
-  %s
-  %s
-</div>
+%s</style>
+<section id="sec-7" class="sec di-sec">
+  <div class="sec-head"><span class="sec-num" style="color:var(--accent)">07</span><h2 class="sec-name">深度洞察</h2><span class="sec-cnt">%d 条 · %d 篇深读</span></div>
+  <p class="di-theme">%s</p>
+  <div class="di-feat">
+%s
+  </div>
+  <div class="cols">
+%s
+  </div>
+%s
+</section>
 <!-- daily-insight-end -->
-''' % (_esc(theme), "\n".join(cards_html), _build_bubble_html(bubble_breaker))
+''' % (_DI_CSS, n_total, n_deep, _esc(theme), feat_html, brief_html,
+       _build_bubble_html(bubble_breaker))
 
     # 在 <footer> 之前插入；若 footer 标记不存在则回退到 </body> 前
     if '<footer class="foot">' in html:
@@ -5078,6 +5035,13 @@ def _inject_into_ai_daily(clusters, theme, bubble_breaker=None):
     else:
         print("[每日洞察] ai-daily.html 无注入锚点，跳过", file=sys.stderr)
         return
+
+    # 索引补 vii（锚定 class="index" 的 nav，防未来新增 nav 后按文档序注错位置）
+    html, n_nav = re.subn(r'(<nav class="index"[^>]*>.*?)(</nav>)',
+                          lambda m: m.group(1) + vii_link + "\n  " + m.group(2),
+                          html, count=1, flags=re.S)
+    if n_nav == 0:
+        print("[每日洞察] ai-daily.html 无索引导航，跳过 vii 注入", file=sys.stderr)
 
     try:
         with open(_AI_DAILY_FILE, "w", encoding="utf-8") as f:

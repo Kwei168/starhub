@@ -10,7 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import build_daily_insight as B
 
 
-STUB = "<html><body><footer class=\"foot\">f</footer></body></html>"
+STUB = ('<html><body><nav class="index" aria-label="今日分类索引"></nav>'
+        '<footer class="foot">f</footer></body></html>')
 
 
 def _inject(tmp, clusters, bubble=None):
@@ -44,12 +45,47 @@ class TestInsightHtmlLinks:
              "key_links": []},
         ]
         html = _inject(self.tmp, clusters)
-        cards = re.findall(r'<div class="di-card">.*?(?=<div class="di-card">|<!-- daily-insight-end)',
+        # 新报纸排版卡片容器是 <article class="di-card">（旧版 div，正则两者兼容）
+        cards = re.findall(r'<(?:div|article) class="di-card">.*?(?=<(?:div|article) class="di-card">|<!-- daily-insight-end)',
                            html, re.S)
         assert len(cards) == 2
         for c in cards:
-            assert 'class="di-link"' in c, "洞察卡片缺失可跳转原文链接"
+            # 红线：每个洞察必须带可跳转原文引用——简报卡走 di-link，深读特稿卡走 di-cite
+            assert 'class="di-link"' in c or 'class="di-cite"' in c, "洞察卡片缺失可跳转原文引用"
         assert "https://c.com/z" in html  # key_links 空时回退 items URL
+
+    def test_newspaper_anatomy(self):
+        clusters = [
+            {"label": "特稿事件", "summary": "特稿摘要[agihunt]", "category": "ai-models",
+             "score": 0.3, "status": "new", "resonance": "niche",
+             "source_types": ["rss"], "key_links": ["https://a.com/x"],
+             "deep_analysis": {"status": "ok", "event_reconstruction": "r",
+                               "impact_analysis": "i", "source_divergence": "d",
+                               "quote": "金句", "outlook": "o", "confidence": "high",
+                               "cited_sources": [{"index": 1, "url": "https://src.io/a"}]}},
+            {"label": "简报事件", "summary": "简报摘要", "category": "policy",
+             "score": 0.1, "status": "new", "source_types": ["rss"],
+             "items": [{"url": "https://c.com/z"}], "key_links": []},
+        ]
+        html = _inject(self.tmp, clusters)
+        assert '<section id="sec-7" class="sec di-sec">' in html
+        assert "深度洞察" in html and "2 条 · 1 篇深读" in html
+        assert '<div class="di-feat">' in html
+        assert "评分 0.3" in html and "新 · 垂直 · AI 模型" in html
+        assert "评分 0.1" in html and "新 · 政策" in html
+        assert "[agihunt]" not in html and "特稿摘要" in html   # 语料标记剥除，正文保留
+        feat = html.split('<div class="di-feat">')[1].split('<div class="cols">')[0]
+        assert "特稿事件" in feat and "简报事件" not in feat
+        assert 'class="di-deep"' in feat and "置信度 high" in feat
+        assert 'class="di-quote"' in feat
+        assert "vii</span>深度洞察" in html   # 日报索引补第 vii 项
+
+    def test_bubble_newspaper_shell(self):
+        bubble = [{"label": "破界", "summary": "s", "reason": "r", "url": "https://b.org/x"}]
+        html = _inject(self.tmp, [], bubble=bubble)
+        assert 'class="di-bubble-head"' in html
+        assert "破茧栏 · 信息增量" in html
+        assert 'class="di-bubble-grid"' in html
 
     def test_javascript_scheme_filtered(self):
         clusters = [{"label": "事件", "summary": "s", "category": "research", "score": 5,
