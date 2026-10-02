@@ -14,6 +14,7 @@
 """
 import hashlib
 import os
+import re
 import subprocess
 import sys
 
@@ -23,14 +24,26 @@ MUT_WF = os.path.join(ROOT, ".deploy-tmp", "_mut_update.yml")
 TESTF = os.path.join(ROOT, "tests", "rss_history", "test_pages_deploy_wiring.py")
 TARGET = "test_site_artifacts_are_published_not_committed"
 
-# ②（缺件点名）之后 Stage 正文换了形状：三个 `for f in` 合成一个循环、7 条字面 `test -s`
-# 换成带 -s 的 must 循环。所以下面两条锚点跟着换——电池对旧形状报 INVALID 而不是悄悄少测，
-# 这正是它该有的表现（2026-10-02 实测：D2/D3 一度锚在已被替换的行上，当场 INVALID）。
-PUB_ANCHOR = ('          for f in rss-data-*.js index.html ai-daily.html rss-aggregator.html '
-              'daily-insight-history.html hot_snapshot.json; do')
-PUB_NEW = ('          for f in daily-insight.json; do\n'
-           '          if [ -e "$f" ]; then cp -f "$f" _pages/; fi\n'
-           '          done\n' + PUB_ANCHOR)
+# ②（缺件点名）之后 Stage 正文换了形状，19:00 又翻成白名单 ⇒ 旧那三条 `for f in` 合成一条按名循环。
+# 电池对旧形状报 INVALID 而不是悄悄少测，这正是它该有的表现（2026-10-02 实测：D2/D3 一度锚在已被
+# 替换的行上，当场 INVALID）。锚点改成**按行要素定位**而不是抄整行字面量：这一行的空格数不属于契约，
+# 抄字面量会在正文只改空格时一处也匹配不到（B4 就是这个形状，见 mut_site_artifacts 的同名注释）。
+_BYNAME_RE = re.compile(r"^([ \t]*for f in )([^\n]*index\.html[^\n]*?)([ \t]*; do[ \t]*)$", re.M)
+
+
+def _byname_pair():
+    src = open(WF, encoding="utf-8").read()
+    m = _BYNAME_RE.search(src)
+    if not m:
+        raise AssertionError("找不到 Stage 的按名发布行 ⇒ D2 没有靶，别把它算作覆盖")
+    assert "index.html" in m.group(2), "锚抓错行（这行不含 index.html，多半是嵌入缓存那两个循环）"
+    old = m.group(0)
+    new = m.group(1) + m.group(2) + " daily-insight.json" + m.group(3)
+    assert src.count(old) == 1, "按名发布行在正文里出现 %d 次 ⇒ 无法只改一处" % src.count(old)
+    return old, new
+
+
+PUB_ANCHOR, PUB_NEW = _byname_pair()
 CHECK = '          if [ ! -s "_pages/$must" ]; then'
 CHECK_OFF = "          if [ false ]; then"
 # D1/D4 的锚点是**当前**文本（变异=把已删除的那行加回去），别把 old/new 写反

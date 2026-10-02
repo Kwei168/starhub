@@ -547,6 +547,13 @@ jobs:
           du -sh .
 
       - name: Deploy to Vercel
+        id: vercel
+        # 封顶 12 分钟：现取正常场只用 0.5–0.7 分钟，而 1578/1585/1586 三次分别挂到 38.8 分钟与 42 分钟，
+        # 最后是被下一场的并发取消 —— 整场撑爆的代价由 Pages 上线时间与 Vercel 部署一起付。
+        # 12 分钟 ≈ 正常用时的 20 倍，够 5 次退避重试（sleep 15+30+45+60=150s 加四次上传）。
+        # 刻意**不**加 continue-on-error：那会把失败遮成 success（见 A3 的 test_vercel_step_is_not_silenced），
+        # 未成功的可见性由本步之后那一步负责。
+        timeout-minutes: 12
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           # 项目链接通过环境变量生效（Vercel CLI 不支持 --project-id 命令行参数）
@@ -610,11 +617,20 @@ jobs:
         if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
         uses: actions/deploy-pages@v5
 
-      - name: Mark the run red when Pages was not published
+      - name: Mark the run red when Pages was not published or Vercel did not deploy
         # 排在 Upload/Deploy 之后 ⇒ 只改"结论颜色"，不碰任何部署动作，也不会连坐 Vercel。
         # 缺件那场以前只留一条 ::error:: 标注而整场仍标 success（Stage 带 continue-on-error，
         # 这是刻意不连坐的代价）；这一步把"本场没发布"升级成 run 级失败 —— 不用翻日志也看得见。
-        if: always() && steps.stage.outcome == 'failure'
+        # 2026-10-02 补上 Vercel 那一半：封顶之后被掐会以 outcome=cancelled/failure 结束，
+        # 而不引用它的话，"Vercel 连续几场没部署成功"在门禁上仍然是一片绿。
+        # 不用 `!= 'success'`：Vercel 步被上游判跳过时 outcome 是 skipped，那是另一回事，不该在这里红。
+        if: always() && (steps.stage.outcome == 'failure' || steps.vercel.outcome == 'failure' || steps.vercel.outcome == 'cancelled')
         run: |
-          echo "::error::本场未发布 Pages（Stage 缺件，上方已逐个点名，站点停在上一份制品）"
-          exit 1
+          if [ "${{ steps.stage.outcome }}" = "failure" ]; then
+            echo "::error::本场未发布 Pages（Stage 缺件，上方已逐个点名，站点停在上一份制品）"
+            exit 1
+          fi
+          if [ "${{ steps.vercel.outcome }}" != "success" ]; then
+            echo "::error::本场 Vercel 未部署成功（outcome=${{ steps.vercel.outcome }}）；Pages 不受影响，但 API 主机停在上一版"
+            exit 1
+          fi

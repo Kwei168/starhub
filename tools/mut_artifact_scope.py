@@ -92,7 +92,7 @@ CASES2 = [
      SRC_TMPL + "\nfetch('https://other.example/api/rss')\n", False),
 ]
 for label, content, want_red in CASES2:
-    open(CLIENT, "w", encoding="utf-8", newline="").write(content)
+    open(CLIENT, "w", encoding="utf-8", errors="replace", newline="\n").write(content)
     env_backup = os.environ.get("STARHUB_CLIENT_SOURCES")
     os.environ["STARHUB_CLIENT_SOURCES"] = CLIENT + os.pathsep + OTHER
     try:
@@ -108,5 +108,54 @@ for label, content, want_red in CASES2:
     if not ok:
         bad.append(label + ("（没挡住）" if want_red else "（误伤：外部域名也被判红）"))
 os.remove(CLIENT)
+
+# 批 12 的另一半：白名单只发那 6 个名字 + 分块 ⇒ 页面请求一个名单外的名字就是线上 404，
+# 而"两份手抄名单相等"那条天生看不见（缺的那项会两边一起缺）。这条判据要有自己的变异。
+# 注意被测清单要**四份真生成端 + 一份合成副本**：只喂合成那份，`known <= refs` 那条
+# 模式退化控制会先红，于是"红了"红的是不相干的断言（本仓在解析器上算过这类账）。
+REAL_CLIENTS = [os.path.join(ROOT, p) for p in
+                ("template.html", "build_rss_aggregator.py", "build_ai_daily.py", "build_daily_insight.py")]
+K2 = "test_every_browser_referenced_name_is_published"
+CASES3 = [
+    ("R1 页面新增一个白名单外的浏览器请求（必须红）",
+     SRC_TMPL + "\nvar q = fetch('secret_state.json');\n", True),
+    ("R2 页面新增一个分块请求 rss-data-3.js（拼接形状，必须绿）",
+     SRC_TMPL + "\nsc.src='rss-data-'+i+'.js?v='+BUILD_TS;\n", False),
+    ("R3 外部域名的 .json 请求不该管（必须绿）",
+     SRC_TMPL + "\nfetch('https://other.example/x.json')\n", False),
+    # 语境扩到 CSS 之后要有自己的靶：只按 src/href/fetch 抽的话这条会绿（=漏），
+    # 而"绿"在这里不是好消息 —— 白名单外的样式文件线上同样 404。
+    ("R4 CSS url() 引一个白名单外的样式（必须红）",
+     SRC_TMPL + "\n<style>.c{background:url(lib/cover.css)}</style>\n", True),
+    ("R5 data: URI 与外部字体不该管（必须绿）",
+     SRC_TMPL + "\n<style>.c{background:url(\"data:image/png;base64,iVBOR\")"
+                ";font:url(https://cdn.example.com/a.woff2)}</style>\n", False),
+    # 注释剥离的**那一半**：只在注释里出现的 href 例子不该把 A3 判红（判据按关键词读正文
+    # 会被注释喂假读数，本仓在 _needs_rsync 上栽过）。与 R1 是同一段文本去掉 `//` 的两面。
+    ("R6 注释里的 href 例子不该算浏览器请求（必须绿）",
+     SRC_TMPL + "\n// 举例：<a href=\"secret_state.json\">demo</a>\n", False),
+]
+for label, content, want_red in CASES3:
+    open(CLIENT, "w", encoding="utf-8", errors="replace", newline="\n").write(content)
+    # 新判据要用 staged fixture（真跑 Stage 正文），所以 workflow 副本必须还在。
+    open(COPY, "w", encoding="utf-8", newline="\n").write(src)
+    backup = os.environ.get("STARHUB_CLIENT_SOURCES")
+    os.environ["STARHUB_CLIENT_SOURCES"] = os.pathsep.join([CLIENT] + REAL_CLIENTS)
+    try:
+        red, tail, failed = run(k=K2)
+    finally:
+        if backup is None:
+            os.environ.pop("STARHUB_CLIENT_SOURCES", None)
+        else:
+            os.environ["STARHUB_CLIENT_SOURCES"] = backup
+    ok = (red == want_red)
+    if want_red and ok and K2 not in failed:
+        ok = False     # 红了但不是自己的靶
+    print("%-46s %s %s%s" % (label, "RED  " if red else "GREEN", tail[:22],
+                            "" if ok else "  <- 期望%s，判据有问题（红错对象也算）" % ("红" if want_red else "绿")))
+    if not ok:
+        bad.append(label + ("（没挡住/红错对象）" if want_red else "（误伤：合法请求也被判红）"))
+os.remove(CLIENT)
+os.remove(COPY)
 print("问题条目：%s" % (bad if bad else "无"))
 sys.exit(1 if bad else 0)

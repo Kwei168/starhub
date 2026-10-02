@@ -20,6 +20,9 @@ DIAGNOSE_MARK = "      - name: Diagnose cross-build state cache restore"
 SAVE_MARK = "      - name: Save cross-build state cache"
 CLEANUP_MARK = "      - name: Cleanup old build logs"
 STAGE_MARK = "      - name: Stage Pages site for Actions deployment"
+# 2026-10-02：Stage 被搬到 Save 之前（缺件落痕要赶在缓存保存前），所以 Save 块的**结束锚**
+# 不能再是 Stage —— 那会让 index() 找不到终点直接崩。换成 Save 之后的那一步（Prune）。
+PRUNE_MARK = "      - name: Prune large build artifacts"
 WORKTREE_MARK = "      - name: Restore worktree after insight tests"
 BUILD_MARK = "      - name: Fetch stars & build"
 # 行锚不能绑首列文件名：批 5b 把 rss-data-0.js 从清单里摘掉后，旧锚 `git add rss-data-0.js `
@@ -44,7 +47,7 @@ def main():
     gi = open(GI, encoding="utf-8").read()
     restore_blk = block(src, RESTORE_MARK, DIAGNOSE_MARK)
     diagnose_blk = block(src, DIAGNOSE_MARK, BUILD_MARK)
-    save_blk = block(src, SAVE_MARK, STAGE_MARK)
+    save_blk = block(src, SAVE_MARK, PRUNE_MARK)
     al = add_lines(src)
     assert len(al) == 2, "git add 清单行应有 2 处（主路径 + 重试分支），实测 %d" % len(al)
 
@@ -75,12 +78,12 @@ def main():
         ("T3 .gitignore 少一行（状态以未跟踪形态回来）", src,
          gi.replace("\ntranslations.json\n", "\n", 1)),
         ("T4 缓存只保存不还原（Restore 与 Save 名单不对称）",
-         src.replace(block(src, SAVE_MARK, STAGE_MARK),
-                     block(src, SAVE_MARK, STAGE_MARK).replace(
+         src.replace(block(src, SAVE_MARK, PRUNE_MARK),
+                     block(src, SAVE_MARK, PRUNE_MARK).replace(
                          "            daily_insight_history.json\n", "", 1), 1), None),
         ("T5 缓存 path 里去掉 build_logs（每日闸门失去累积承载）",
-         src.replace(block(src, SAVE_MARK, STAGE_MARK),
-                     block(src, SAVE_MARK, STAGE_MARK).replace(
+         src.replace(block(src, SAVE_MARK, PRUNE_MARK),
+                     block(src, SAVE_MARK, PRUNE_MARK).replace(
                          "\n            build_logs", "", 1), 1), None),
         # ── 批 5a：三个"读回型"文件的通路（少了就是静默冻基线，构建照样绿）──
         ("C1 只在 Restore 名单去掉 descriptions_zh.json（保存但不还原）",
@@ -143,11 +146,17 @@ def main():
 
 
 def save_blk_keyless(src):
+    """把 Save 的 key 去掉 run_attempt —— 这个键形状会覆盖同一 run 内更早那次的缓存。
+
+    锚点用"Save 之后的那一步"来定位：2026-10-02 把 Stage 挪到 Save **之前**（缺件落痕要赶在
+    保存前进缓存）之后，Save 的下一步已经是 Prune —— 继续锚 Stage 会让本变异"一处也落不上"，
+    于是 S3 从"被挡住"退化成 INVALID（而这正是最容易骗过人的那种假干净）。
+    """
     return src.replace(
         "          key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}\n\n"
-        "      - name: Stage Pages site",
+        "      - name: Prune large build artifacts",
         "          key: starhub-state-${{ runner.os }}-${{ github.run_id }}\n\n"
-        "      - name: Stage Pages site", 1)
+        "      - name: Prune large build artifacts", 1)
 
 
 if __name__ == "__main__":

@@ -12,8 +12,10 @@
 挪到前面的话**它们任何一次失败就会终止 job，把 Vercel 部署整个跳过**。
 所以"改顺序"不是免费午餐：它把"Pages 被 Vercel 拖慢"换成"Vercel 被 Pages 挡掉"。
 
-要治那条延迟，可行的方向是**给 Vercel 步本身封顶**（`timeout-minutes` + `continue-on-error`，
-再在 Pages 两步之后补一步把 Vercel 的失败重新标红），而不是移动步骤。
+要治那条延迟，可行的方向是**给 Vercel 步本身封顶**（`timeout-minutes`，再让末步把 Vercel 的
+未成功也标红），**不是**加 `continue-on-error` —— 本文件自己的 `test_vercel_step_is_not_silenced`
+就禁止静默，而静默恰恰是本项目最怕的形态（写这段时我先把"封顶 + continue-on-error"当成可行方向，
+是读了那条判据才发现二者互斥；改形后的方案见下面两条新判据）。
 本文件因此钉的是**现状不变量**（顺序 + 两道 if 守卫 + Vercel 不许被静默），
 这样将来谁要动这两步，会先看到这里的理由，而不是把不变量悄悄改掉。
 """
@@ -84,3 +86,45 @@ def test_vercel_step_is_not_silenced():
     assert ver.get("continue-on-error") is not True, \
         "Vercel 被改成 continue-on-error ⇒ 失败会被遮成 success，Pages 与 Vercel 的耦合判断要重做"
     assert "5" in (ver.get("run") or ""), "Vercel 的 5 次重试循环不见了？确认一下再改本文件的结论"
+
+
+RED_FLAG = "Mark the run red"
+
+
+def test_vercel_step_has_a_timeout_cap_and_id():
+    """Vercel 步必须自己封顶，并有 id 让后面那步引用它的结果。
+
+    现取的依据（2026-10-02）：正常场这一步只用 **0.5–0.7 分钟**，而 1578 跑了 38.8 分钟被并发掐掉、
+    1585 跑了约 42 分钟同样被掐、1586 也被掐 ⇒ 从 18:00 场（1584）之后连续三场 Vercel 部署没落地。
+    没有封顶时，这一步的挂起会把整场撑到被并发取消，而门禁与告警都不会说"Vercel 没部署成功"。
+    上限取 12 分钟：是正常用时的 ~20 倍，给足 5 次退避重试（15+30+45+60=150s 的 sleep 加四次上传），
+    又远小于整场被掐的时间。下限 3 分钟是防手滑写成 1 分钟把正常场全打死。
+    """
+    ver = _steps()[_idx(_steps(), VERCEL)]
+    cap = ver.get("timeout-minutes")
+    assert isinstance(cap, int) and 3 <= cap <= 12, (
+        "Vercel 步没有合理的 timeout-minutes（实得 %r）⇒ 挂起时整场只会被并发掐掉，"
+        "而 Pages 之后的标红步也拿不到它的结果" % cap)
+    assert ver.get("id"), "Vercel 步没有 id ⇒ 末步无法用 steps.<id>.outcome 引用它，标红判不了"
+
+
+def test_unsuccessful_vercel_is_marked_red_at_the_end():
+    """Vercel 未成功（failure / cancelled）必须让整场标红，且不许靠 continue-on-error 静默。
+
+    与上一条是一对：封顶负责"别拖垮整场"，这条负责"别悄悄算过"。
+    现状是末步只看 Stage 的 outcome（`steps.stage.outcome == 'failure'`），
+    所以 Vercel 被掐时整场显示 cancelled 却没有任何一步说明"是 Vercel 没部署成"。
+    """
+    steps = _steps()
+    ver = steps[_idx(steps, VERCEL)]
+    hits = [i for i, s in enumerate(steps) if (s.get("name") or "").startswith(RED_FLAG)]
+    assert len(hits) == 1, "标红步骤应只有 1 个，实得 %d ⇒ 引用关系判不出" % len(hits)
+    mark = steps[hits[0]]
+    cond = (mark.get("if") or "")
+    assert "steps.%s" % (ver.get("id") or "?") in cond, (
+        "末步的 if 没引用 Vercel 的 outcome（实得 %r）⇒ Vercel 未成功时整场仍是绿的" % cond)
+    assert "failure" in cond or "!= 'success'" in cond, (
+        "末步只判断一种失败形态不够：超时被掐时 outcome 是 cancelled，实得 %r" % cond)
+    assert "exit 1" in (mark.get("run") or ""), "标红步没真的 exit 1，写了 if 也不会红"
+    assert ver.get("continue-on-error") is not True, (
+        "Vercel 又被加了 continue-on-error ⇒ 与 test_vercel_step_is_not_silenced 冲突，二选一")

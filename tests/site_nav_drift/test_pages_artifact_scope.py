@@ -15,6 +15,7 @@
 判据是双向的：既要求非站点件不在制品里，也要求站点自身的东西一个都不能少 ——
 只关不留会把"收窄"做成"砍站点"。
 """
+import fnmatch
 import os
 import re
 import shutil
@@ -193,7 +194,23 @@ def test_the_probe_bites_on_a_blanket_copy(tmp_path):
 # 页面里那些调用今天全是绝对域名（2026-10-02 现取：4 个入口共 13 处引用，同源 0 处）。
 # 这条把"前提"钉成判据：将来谁改成 `fetch('/api/rss')`，Pages 域上就是 404，
 # 而站点功能会静默坏掉 —— 制品面那条判据本身看不见这件事。
-CLIENT_SOURCES = ["template.html", "build_rss_aggregator.py"]
+CLIENT_SOURCES = ["template.html", "build_rss_aggregator.py", "build_ai_daily.py", "build_daily_insight.py"]
+# 四个已发布页面各自的生成端。名单要覆盖全部四个而不是只抽两个：白名单化（cee84b1666）之后
+# Pages 只发那 6 个名字 + 分块，任何一个入口写出白名单外的请求都是同一类坏。
+# 现取（本次改动前）：build_ai_daily.py / build_daily_insight.py 里的 `/api/v1`、`/api/query`
+# 全是 aihot / algolia / arxiv / openrouter 的绝对 URL ⇒ 分类器两类都不计，扩名单不判红。
+PUBLISHED_PAGES = {"template.html": "index.html", "build_rss_aggregator.py": "rss-aggregator.html",
+                   "build_ai_daily.py": "ai-daily.html", "build_daily_insight.py": "daily-insight-history.html"}
+
+
+def _client_sources():
+    """被测输入必须真在检出集合里取到（这四份都被跟踪）。变异电池用 env 换成合成副本。"""
+    override = os.environ.get("STARHUB_CLIENT_SOURCES")
+    if override:
+        return override.split(os.pathsep)
+    missing = [p for p in CLIENT_SOURCES if not os.path.exists(os.path.join(ROOT, p))]
+    assert not missing, "生成端清单里有取不到的文件：%s ⇒ 判据会在缺件上空跑" % missing
+    return [os.path.join(ROOT, p) for p in CLIENT_SOURCES]
 
 
 def _api_refs(text):
@@ -226,12 +243,10 @@ def test_api_ref_classifier_sees_both_forms():
 
 
 def test_client_sources_make_no_same_origin_api_calls():
-    """被测输入可以在 CI 的检出集合里取到（template.html / build_rss_aggregator.py 都被跟踪）。"""
-    override = os.environ.get("STARHUB_CLIENT_SOURCES")
-    srcs = override.split(os.pathsep) if override else CLIENT_SOURCES
+    """`api/` 关出制品之后，页面里出现同源 `/api/x` 调用就是 Pages 域 404。"""
+    srcs = _client_sources()
     abs_names, offenders = [], []
-    for rel in srcs:
-        p = rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
+    for p in srcs:
         a, r = _api_refs(open(p, encoding="utf-8", errors="replace").read())
         abs_names += a
         offenders += ["%s: /api/%s" % (os.path.basename(p), n) for n in r]
@@ -239,3 +254,98 @@ def test_client_sources_make_no_same_origin_api_calls():
         "api/ 已不在 Pages 制品里（批 11），同源调用只会在 Pages 域 404：%s" % offenders[:6])
     assert len(set(abs_names)) >= 4, (
         "只认出 %s 个绝对引用 ⇒ 分类器没读到真调用，上面那条「不报错」是空集自证" % sorted(set(abs_names)))
+
+
+# ---- 浏览器请求的每个名字都必须发得出去（白名单化之后新开的接缝，cee84b1666）----
+# `test_published_set_is_exactly_the_allowlist` 比的是"两份手抄名单相等"：页面真去请求一个
+# 名单外的名字时，那两项会**一起缺**，相等照样成立 ⇒ 它天生看不见这类坏。
+# 这里的对账对象是**跑出来的制品**（合成树上真跑 Stage 正文的产物清单），不是又一份手抄。
+_NAME = r"[A-Za-z0-9_.\-/]*[A-Za-z0-9_.\-]+\.(?:html|js|json|css|png|jpg|jpeg|svg|ico|webp|woff2?|map)"
+# 语境要按"浏览器会发请求的那几种写法"来限定，不是把所有引号里的文件名都算上：
+# 生成端有大量 `open("x.json","w")` 这类构建期写法，全算就是把 批 3 刚清掉的东西又请回制品。
+# 尚**未**覆盖的形状（现取四份生成端零命中，将来出现要在这里加语境）：`import('x.js')`、
+# `new Worker('x.js')`、`xhr.open('GET','x.json')`、`navigator.sendBeacon('x')`。
+_REF_RULES = [
+    # <a href="x.html"> / <link rel="preload" href="x.json"> / sc.src='x.js'
+    # `\\?` 是给生成端留的：JS 写在 Python 字符串里时引号常被转义（A2 的第一版没吃反斜杠，
+    # hot_snapshot.json 就这么漏过去一次）。
+    (re.compile(r"""(?:src|href)\s*=\s*\\?["'](%s)\\?["']""" % _NAME), lambda m: m.group(1)),
+    # fetch('x.json') / fetch("sub/x.json") ⇒ 保留相对路径去和制品对账。
+    # 绝对 URL 含 `:`，落不进 _NAME ⇒ aihot / algolia / arxiv / newsnow 这些外部域名不会被误当同源。
+    (re.compile(r"""fetch\(\s*\\?["'](%s)\\?["']""" % _NAME), lambda m: m.group(1)),
+    # CSS `url(x.css)` / `url("assets/app.js")`：样式与字体也走同一只手套（白名单外一样 404）。
+    (re.compile(r"""url\(\s*['"]?(%s)['"]?""" % _NAME), lambda m: m.group(1)),
+    # 'rss-data-' + i + '.js?v=' ⇒ 块号是运行期定的，静态抽不出具体文件名，
+    # 归一成 rss-data-*.js 去和制品对账（fnmatch 的**方向**是"制品名 匹配 引用模式"）。
+    (re.compile(r"""["']([A-Za-z0-9_.\-]*)["']\s*\+\s*[A-Za-z0-9_.\[\]()]+?\s*\+\s*"""
+                r"""["']\.(js|json)(\?[^"']*)?["']"""),
+     lambda m: m.group(1) + "*." + m.group(2)),
+]
+
+
+def _strip_comments(text):
+    """剥掉注释再抽 —— 判据按关键词读正文会被注释喂假读数（本仓在 `_needs_rsync` 上栽过一次，
+    见 test_needs_rsync_reads_invocations_not_comments）。今天四个生成端的注释里没有任何
+    `href/src/fetch` 形状（实测含注释与去注释抽出的是同一批 6 个名字），所以这条不改判读数，
+    只是把"不改"从巧合变成性质：将来谁在文档注释里写个 `<a href="demo.json">` 举例，
+    不该让 A3 判红。
+    """
+    t = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    t = re.sub(r"/\*.*?\*/", "", t, flags=re.S)
+    keep = []
+    for line in t.splitlines():
+        s = line.strip()
+        if s.startswith("//") or s.startswith("#") or s.startswith("*"):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
+
+
+def _browser_refs(text):
+    got = set()
+    for rx, to_name in _REF_RULES:
+        for m in rx.finditer(_strip_comments(text)):
+            got.add(to_name(m))
+    return got
+
+
+def test_browser_ref_extractor_sees_every_request_shape():
+    """抽取器自己的双向控制：五种真形状都要认，三类假形状都不许认。
+
+    少了反向那半，"页面没请求任何名单外文件"这句绿话可能只是抽取器失明的另一种说法
+    （本仓在 _needs_rsync 上被注释骗过一次，判据 test_needs_rsync_reads_invocations_not_comments 就是那次的账）。
+    """
+    assert _browser_refs('<a href="rss-aggregator.html">AI</a>') == {"rss-aggregator.html"}
+    assert _browser_refs('<link rel="preload" href="hot_snapshot.json" as="fetch">') == {"hot_snapshot.json"}
+    assert _browser_refs("const r = await fetch('daily-deep-2026-10-02.json')") == {"daily-deep-2026-10-02.json"}
+    assert _browser_refs("sc.src='rss-data-'+i+'.js?v='+BUILD_TS;") == {"rss-data-*.js"}
+    assert _browser_refs("background:url(lib/cover.css)") == {"lib/cover.css"}
+    # 生成端把 JS 塞进 Python 字符串时引号是转义的，这条必须照样认
+    assert _browser_refs(r"""fetch(\'hot_snapshot.json\')""") == {"hot_snapshot.json"}
+    # 反向：外部域名 / data URI / 构建期文件名 / 注释里的例子都不是浏览器请求
+    assert _browser_refs('fetch("https://aihot.virxact.com/api/v1/items")') == set()
+    assert _browser_refs('background:url("data:image/png;base64,iVBOR")') == set()
+    assert _browser_refs('json.dump(d, open("known_categories.json", "w"))') == set()
+    assert _browser_refs('OUT = "ai-daily.html"') == set()
+    # 注释剥掉的**那半**也要有靶：同一行内容，带注释前缀不算、不带就算
+    assert _browser_refs('// 举例：<a href="demo.json">demo</a>') == set()
+    assert _browser_refs('<a href="demo.json">demo</a>') == {"demo.json"}
+    assert _browser_refs('/* <link href="demo.css"> */') == set()
+    assert _browser_refs('# 形如 href="demo.html" 的写法') == set()
+
+
+
+def test_every_browser_referenced_name_is_published(staged):
+    refs = set()
+    for p in _client_sources():
+        refs |= _browser_refs(open(p, encoding="utf-8", errors="replace").read())
+    assert refs, "四个生成端一个浏览器引用都没抽到 ⇒ 抽取器失明，这条判据在空集合上跑"
+    known = {"ai-daily.html", "rss-aggregator.html", "hot_snapshot.json", "rss-data-*.js"}
+    assert known <= refs, (
+        "抽取结果 %s 少了 %s —— 模式退化（这四个是实测在页面里请求的名字，"
+        "rss-data 那份是 'rss-data-'+i+'.js' 的拼接形状，最容易整条丢掉）"
+        % (sorted(refs), sorted(known - refs)))
+    naked = sorted(n for n in refs if not any(fnmatch.fnmatch(f, n) for f in staged))
+    assert not naked, (
+        "浏览器会请求、制品里却没有：%s ⇒ Pages 域上就是 404（白名单外不发）" % naked)
+

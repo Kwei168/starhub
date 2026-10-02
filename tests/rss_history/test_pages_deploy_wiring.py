@@ -339,6 +339,48 @@ def test_frontend_fetched_names_are_served():
         % naked)
 
 
+# 被有意"发布但不提交"的东西（批① 四个 HTML、批 5b 的分块与侧栏快照）：
+# 它们的 git 副本是过期产物，正因为如此才从提交清单里摘掉、改由工作目录取新鲜的一份。
+PUBLISHED_NOT_COMMITTED = {
+    "index.html", "ai-daily.html", "rss-aggregator.html", "daily-insight-history.html",
+    "rss-data-0.js", "rss-data-1.js", "hot_snapshot.json",
+}
+
+
+def test_tracked_published_names_stay_in_both_add_lists():
+    """既被 Stage 发布、又是仓库跟踪输入的件，必须留在**两条** git add 清单里。
+
+    白名单化之后，Stage 是从工作目录取文件的，所以"摘掉 add"不会再让站点 404 ——
+    但它会让 git 里那份与线上那份**长期不一致**（构建端会改写它，比如 fetch_and_build
+    往里追加新信源）。这种漂移最难查：站点看着是对的，仓库里那份却停在旧内容，
+    任何从 GitHub/raw 读它的人拿到的是过期数据。
+    PUBLISHED_NOT_COMMITTED 是显式豁免（那些件的 git 副本本来就是过期产物，故意不更新）；
+    豁免之外的每一项都必须同时出现在主路径与重试分支两条清单里 —— 只摘一条是最常见的错法。
+    """
+    stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
+    assert stage, "没有 staging 步骤"
+    toks = set()
+    for grp in re.findall(r"^\s*for f in (.+); do$", stage[0], re.M):
+        toks.update(grp.split())
+    toks.update(os.path.basename(x) for x in re.findall(r"cp -f (\S+) _pages/", stage[0]))
+    toks = {t for t in toks if "$" not in t and "*" not in t}
+    assert toks, "抽不出发布名 ⇒ 本判据在空集合上跑"
+    tracked_published = {t for t in toks if os.path.exists(os.path.join(ROOT, t))} - PUBLISHED_NOT_COMMITTED
+    assert tracked_published, "一个'被发布且仓库里有副本'的名字都没认出 ⇒ 抽取器失明"
+    # 注意：_runs() 给的是 YAML 解析后的正文（已去掉 workflow 那 10 空格缩进），
+    # 所以这里按"行首可选空白"匹配，不能照抄电池里针对**原始文件**的 `^          git add`。
+    lines = [ln for ln in _add_lines()
+             if re.match(r"^git add \S+(?: \S+){3,}$", ln.lstrip())]
+    assert lines, "抽不出任何一条多操作数 git add 清单 ⇒ 本判据在空集合上跑"
+    names = _add_names(lines)
+    missing = [n for n in sorted(tracked_published)
+               if not all(n in re.split(r"\s+", ln.split("git add", 1)[1]) for ln in lines)]
+    assert not missing, (
+        "这些件在 git 里是构建端会改写的跟踪输入，却没同时留在**每一条** add 清单里：%s"
+        " ⇒ 线上会拿工作目录的新内容，仓库里那份从此停在旧数据（清单实测 %d 条：%s）"
+        % (missing, len(lines), sorted(names)[:3]))
+
+
 def _code_lines(body):
     """staging 正文里的**命令行**（剔掉注释）。
 

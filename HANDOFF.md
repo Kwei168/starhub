@@ -1055,8 +1055,259 @@ A2 的 `test_staging_publishes_only_the_site_allowlist` 钉集合（多一项/�
 4 个只有它一个文件（约 11 KB/场）。白名单已经让它不再公开，但它仍在 git 历史里每场新增 blob。
 处置方向与批 2/批 3 同：出 `git add` 清单 → 进 `starhub-state` 缓存族 → 退出 git 树 + 反空转守卫。
 
+**2026-10-02 20:26 把这条的代价量准了（`.deploy-tmp/_why_kc_churn.py` + `_measure_category_drift.py`）**：
+① 每场重写**不是键序抖动**：远端 8 个触及该文件的提交、相邻 7 对逐对分类 = **7/7 content**（每次新增 1~11 个仓库，
+删除 0），`order_only` 与 `same_bytes` 各 0 ⇒ "加 `sort_keys=True` 就能免掉重写"这个猜想被证据否掉，别再去改落盘顺序。
+② 冷启动重算的真实代价**是可见的**：按 `fetch_and_build.py:738` 同一行口径复算（输入取自同一份
+`users/Kwei168/starred` 响应，实测该响应 **175/283 条带 topics**，所以不能假设没有 topics），
+**283 条可比对里 39 条会改判 = 漂移率 13.8%**。样例：`jerrywu001/cc-sessions-viewer` agent→coding、
+`zhongerxin/Cowart` video→agent、`getopenscreen/openscreen` tools→video。
+⇒ 结论：这条**不是"零成本清掉"的一笔**。文件的作用就是把首次判定的分类冻住（规则后来变了也不重判），
+所以"缓存里改判 0"按构造必然为 0，不能当成"规则稳定"的证据。若要把 11.3 KB/场 换成缓存族，
+**必须同批带播种**（从当前 git blob 回灌），并知道族一旦失效（改 path 清单 / 7 天到期 / 冷启动）就是首页 14% 分类跳动。
+顺带测出：现 294 条里只有 283 条还在星标列表 ⇒ 有 11 个已取消星标的键永久滞留，文件只增不减。
+
 **别学我犯的兩個错**：① 用 Edit 时把 `trending_snapshot.json` 连同换行一起挤进注释吃掉（靠"改完就与远端逐行 diff"才发现）；
 ② 新增判据里嵌 ASCII 引号 + U+2212 导致语法非法（靠 `py_compile` 才发现）。⇒ 改完判据先 compile、再与远端 diff，两步都不能省。
+
+### 8.17 白名单的第二道闸：浏览器请求的名字必须出现在**跑出来的制品**里（2026-10-02 19:40）
+
+**为什么白名单还缺一半**：`test_published_set_is_exactly_the_allowlist` 比的是"两份手抄名单相等"
+（A2 的 `STAGE_ALLOWLIST` ↔ A3 的 `PUBLISH`）。页面真去请求一个名单外的名字时，那一项会**两边一起缺**，
+相等照样成立 ⇒ 这类坏它天生看不见。补的判据把对账对象换成"合成树上真跑 Stage 正文得到的产物清单"
+（复用已有 `staged` fixture，不再写第三份名单解析器）：`test_every_browser_referenced_name_is_published`。
+
+抽取器 `_browser_refs` 认五种真形状、拒三类假形状（控制测试 `test_browser_ref_extractor_sees_every_request_shape`）：
+
+| 形状 | 例 | 归一结果 |
+|---|---|---|
+| 标签属性 | `<a href="rss-aggregator.html">`、`<link rel=preload href="hot_snapshot.json">`、`sc.src='x.js'` | 原样（允许相对子目录） |
+| `fetch('x.json')` | 含子目录时保留相对路径，不剥末段 | `sub/x.json` |
+| 转义引号 | 生成端把 JS 塞进 Python 字符串时的 `fetch(\'hot_snapshot.json\')` | 同上（A2 第一版没吃反斜杠，漏过一次） |
+| 参数化拼接 | `sc.src='rss-data-'+i+'.js?v='+BUILD_TS` | `rss-data-*.js`，对账方向是"制品名 匹配 引用模式" |
+| **CSS `url()`** | `background:url(lib/cover.css)` | `lib/cover.css`（样式/字体走同一只手套） |
+| **拒**：绝对 URL | `fetch("https://aihot.virxact.com/api/v1/items")` | 空（`:` 落不进名字字符类） |
+| **拒**：data URI | `url("data:image/png;base64,iVBOR")` | 空 |
+| **拒**：构建期文件名 | `open("known_categories.json","w")`、`OUT = "ai-daily.html"` | 空（没有请求语境） |
+
+语境是按"现取四份生成端里真实出现的写法"定的，还**没**覆盖 `import('x.js')`、`new Worker()`、
+`xhr.open('GET', ...)`、`navigator.sendBeacon()`（今天零命中）—— 边界写在判据注释里，将来出现就在那里加语境，
+而不是现在就为设想中的形状加规则（加了也没证据）。
+**注释会被喂假读数**（`_needs_rsync` 那次的同类账）：`_browser_refs` 现在先 `_strip_comments`
+（`<!-- -->`、`/* */`、行首 `//`/`#`/`*`）再抽。今天这条不改判读数 —— 实测含注释与去注释抽出的是同一批 6 个名字，
+是把"不改"从巧合变成性质；电池 **R6**（注释里写 `href="secret_state.json"` ⇒ 必须绿）与
+**R1**（同样内容写成真代码 ⇒ 必须红）是同一行文本的两面。控制测试里也配了这对（带 `//` 前缀算空、不带算有）。
+
+**线上那半用脚本对账，不进闸门**（`.deploy-tmp/_audit_live_refs.py`，20:18 现取）：判据读的是生成端源码
+（CI 里 A2/A3 跑在构建之前，产物还不存在），而**出厂 HTML 里由数据带进来的引用**（条目摘要含 `<a href=...>`）
+静态扫看不见 ⇒ 用同一个 `_browser_refs`（从判据文件 import，不留第二份正则）扫线上四个页面：
+`index.html` 291,559 B/2 个引用、`ai-daily.html` 52,993 B 级 1 个、`rss-aggregator.html` 2,366,110 B/6 个、
+`daily-insight-history.html` 206,495 B/1 个，**白名单外 0 个**；脚本对"某一页一个引用都没抽到"也当问题报
+（抽取器在产物上失明不能算"没问题"），取数失败同样不作读数。
+
+
+现取读数：四个生成端共抽出 6 个名字（`ai-daily.html` / `rss-aggregator.html` / `index.html` /
+`hot_snapshot.json` / `rss_sources.json` / `rss-data-*.js`），全部发得出 ⇒ 白名单化没有砍掉任何浏览器请求。
+顺带把 `CLIENT_SOURCES` 从 2 份扩到 4 份（补 `build_ai_daily.py`、`build_daily_insight.py`）：
+那两份里的 `/api/v1`、`/api/query` 全是 aihot/algolia/arxiv/openrouter 的绝对 URL，分类器两类都不计 ⇒ 扩名单不判红，
+只是让"以后有人往日报页加同源调用"能被看见。`_client_sources()` 现在会先断言四份文件都取得到（缺件时不许空跑）。
+
+**变异电池**（`tools/mut_artifact_scope.py`）加了 R1–R5 五例并保留反向那半：
+R1 合成源里加 `fetch('secret_state.json')` ⇒ 必须红且**红在自己身上**（`-k` 只选新判据，
+四份真生成端一起喂，否则先红的会是"模式退化"那条控制）；R2 拼接形状 `rss-data-`+i+`.js` ⇒ 必须绿；
+R3 外部域名 `.json` ⇒ 必须绿；R4 `url(lib/cover.css)` ⇒ 必须红（只按 src/href/fetch 抽的窄版会绿，
+那个"绿"是漏，不是好消息）；R5 `data:` URI 与外部字体 ⇒ 必须绿。实测：基线 32 passed，
+W1/W2/W3/C1–C2/R1–R5 全按期望，问题条目 0。
+另外 W1（白名单少 `hot_snapshot.json`）现在会**同时**打中新判据 —— 那正是它存在的理由：旧判据只说"名单少一项"，
+新判据说"浏览器在要它"。
+
+**两处电池锚点的账**（同类错误第二次，写死以免再犯）：
+① `mut_site_artifacts` 的 B4 一直报 INVALID，因为锚写成 `! -s("_pages/$must"` —— 漏了 `-s` 与 `[` 之间那个空格，
+变异从没落到字节上；现按"操作符 + `$must` + `; then`"三要素定位，缩进与空格宽度不参与匹配。
+② 按名发布那行的锚必须把 `index.html` 写进模式本身：正文里还有别的 `for f in …; do`（嵌入缓存那三个 `.npy/.index`），
+只按形状 `search` 会先抓错行 —— 抓错行比抓不到更危险，因为变异会打在无关步骤上还"看起来红了"。
+⇒ 电池报 INVALID 时先怀疑锚，不要怀疑判据。
+
+**Vercel 步的真实代价（#27 的读数，未处置）**：近 12 场里正常场 `Deploy to Vercel` 用 **0.5–0.7 分钟**，
+而 1578（head `f156bbff16`）跑了 **38.8 分钟被 cancelled**、1585（head `77147ed9a0`）19:18:02 起跑、到 20:00 被并发掐掉，
+`Upload Pages artifact` 全程排在它后面 ⇒ 这两场的 Pages 更新被同一步扣住。这是"顺序不能改、只能给 Vercel 步封顶"
+那条提议的量化依据，仍等点单。
+
+**1585 的验收读数（20:04 现取，白名单化第一次上线）**：整场 `completed / cancelled`（就是上面那一步被掐），
+但 `Upload Pages artifact` 与 `Deploy to GitHub Pages` 都是 **success**（`Reported success!`，deployment 绑 `77147ed9a0`）
+⇒ **站点按白名单发出去了**，代价是 **Vercel 那一次部署整体丢失**（API 主机停在上一版；`api/rss`/`api/news`/`api/translate`
+现取仍有响应，说明旧版活着）。门禁：A2 **392 passed**、A3 **29 passed**、gate B **425 passed / 0 failed**；
+`[growth] new blobs=2 0.126 MiB verdict=ok`（那 2 个里一个是设计的每日 `build_logs` 提交）。
+制品清单 **15 项、白名单外 0 项**（集合对账，不是抽样）。线上：7 个站点件全 **200**
+（`index.html` 262,590 B、`rss-aggregator.html` 2,366,110 B、`ai-daily.html` 52,993 B、`daily-insight-history.html` 206,495 B、
+`rss-data-0.js` 362,113 B、`hot_snapshot.json` 51,346 B、`rss_sources.json` 153,081 B），
+30 个内部路径全 **404**（源码/日志/文档/lib/api/截图/依赖清单），
+`daily-insight.json`/`trending_snapshot.json`/`descriptions_zh.json`/`rss_history.json`/`build_logs/2026-10-03.jsonl` 也全 **404**。
+⇒ 第 23/26 两条挂账可以销；`_verify_build.py` 里那条 `known_categories.json` "该 200" 的旧期望已删（白名单之后它是"该 404"，
+留着会把正确地不发报成站点件异常）。
+
+**电池总体状态（17 支，20:04 全跑一遍）**：15 支 0 逃逸；两处修复 ——
+
+**顺带查出的一条（20:13 现场定位，未处置，需用户裁决）**：`##[warning title=RSS 留存超硬上限]` 近 3 场
+（17:00/18:00/19:00）**每场稳定 1 条**出厂外显龄期 >168h。条目实名核过：
+`blog.jetbrains.com/blog/2026-09-22/introducing-jetbrains-air/`（IntelliJ Blog 源，出厂
+`pub_date=2026-09-22T09:00:34+00:00`，20:11 读时 251.2h），落在 `rss-data-6.js`；
+同场另一条 `notebooklm` 的 168.4h 是**读数随时间漂**（建场时 168.0h，落在 72-168 桶），不是第二条逃逸。
+
+机制用 `_retention_ref_dt` 双输入模拟确定（不是推断）：
+| 历史里的状态 | 判龄基准 | 判龄 | 结果 |
+|---|---|---|---|
+| 不在历史（本轮新抓） | 原始 pub_date | 251.2h | 丢弃 ✓ |
+| 历史有 pub_date（9-22）| first_seen（证伪分支）| 258.7h | 丢弃 ✓ |
+| **历史无 pub_date、first_seen=今天** | first_seen | **0.0h** | **放行 ⇒ 外显 251h** |
+| 历史无 pub_date、first_seen=9-22 | first_seen | 258.7h | 丢弃 ✓ |
+
+⇒ 破口是 `build_rss_aggregator.py:539-540`（历史条目缺 pub_date ⇒ 直接取 `first_seen`）与 `:549-551`
+（`d - first_seen` 超容忍 ⇒ 也取 `first_seen`）这两条回退：**"旧文今天才第一次收录"会被判成 0 小时新**，
+闸门放行，而分项按出厂串算 ⇒ 不变量必然被破。两个解析器（`_parse_hist_dt` 与 `_effective_pub_dt`）
+在带 `+00:00` / `-05:00` 的串上实测逐位相同，所以不是解析器分叉 —— 这个怀疑先证伪再换方向。
+三个处置方向（都不动，等点单）：① 判龄取 `min(pub_date, first_seen)` 里更旧的那个（硬上限真为 0，
+代价是"旧文重见天日"这类内容会被丢）；② 放行但外显按 `date_fallback` 标「收录」（不变量改成"外显超龄必须带收录标记"）；
+③ 认了，把 warning 的口径改成"未被标记的超龄条数"，与分项解耦。
+
+
+`mut_site_artifacts` 的 B4 锚（少一个空格，长期 INVALID）与 `mut_daily_insight_retire` 的 D2 锚
+（抄了白名单化之前的整行字面量 ⇒ INVALID，现按"行要素 + 必须含 index.html"定位，并断言只命中一处）；
+`mut_untrack_gates.py` 需要 `gates`/`push` 参数，裸跑只会打印用法（不是失败）。
+
+### 8.18 第二个主机：Vercel 的部署包仍在公开源码与文档（2026-10-02 20:34，判据与改法已就绪待推）
+
+**为什么 Pages 关了还不算关**：Pages 走 `_pages` 白名单，而 Vercel 是 `npx vercel --prod` **直接从工作目录打包**，
+只吃 `.vercelignore`（排除式）。20:29 现取 41 个仓库根跟踪文件：**16 个在 `starhub-refresh.vercel.app` 上 200**
+——`HANDOFF.md` 84,323 B、`CLAUDE.md` 4,895 B、`REFRESH_VERIFICATION_REPORT.md`、`template.html` 116,509 B、`LICENSE`、
+`vendor_qrcode.min.js`、`ai_daily.json`、`build_config.json`、`predictions.jsonl`、三张 `failed-run-364-*.png`、
+`actions-step5-expanded.png`、两个 `daily-deep-*.json`、`rss_sources.json`、`index.html`。
+（`.gitignore`/`.vercelignore`/`README.md` 实测 404 —— Vercel 自己就没上传，别把这条当成"我们已经挡住了"。）
+
+**判据**：`tests/site_nav_drift/test_vercel_ignore_scope.py`（3 条，接进 A3；本地跑真实的 A2 全量命令 + A3 目录 = **428 passed**）。
+三条口径都是本仓付过学费的地方：
+1. **"运行时需要什么"从 `api/*.js` 源码推**（`join(process.cwd(),'x')` 与 `require('../lib/y')` 两种形状都抽），
+   不另抄名单 —— 实测推出 `{rss_sources.json, rss_api_snapshot.json, lib/…}`。
+   `api/rss.js:239 loadSources()` 直接 `readFileSync` 且**没有 try/catch** ⇒ 把 `rss_sources.json` 排除就是当场把 `/api/rss` 打成 500。
+2. **gitignore 语义交给 git**：在临时仓里把 `.vercelignore` 当唯一 `.gitignore`，并把 `core.excludesFile` 指到空文件。
+   两个坑当场踩过：`git check-ignore` **没有 `--exclude-from`**（那是 status/ls-files 的选项，第一版直接 129）；
+   Windows 上 text 模式会把喂进 stdin 的 `\n` 翻成 `\r\n` ⇒ git 拿 `"HANDOFF.md\r"` 去判，**一个都不命中 = 假绿**。
+   第三条控制专门验隔离性：`ai_daily.json` 在主仓 `.gitignore` 里、不在合成那份里，若被判"已覆盖"说明临时仓串吃了主仓规则。
+3. **keep 用点名不用后缀**：根级唯一被跟踪的 `.html` 恰好是**源码模板** `template.html`（四个页面 HTML 已停止提交），
+   "根级 `*.html` 保留"这种后缀规则等于专门替它开门。与 `test_pages_artifact_scope.py` 的 `PUBLISH` 只验**子集**
+   不验相等（那边是站点运行时全集，含 `hot_snapshot.json`；这边是"Vercel 上刻意保留的页面"）。
+
+**变异自证**（去掉某一行必须红且点名）：去 `*.md` ⇒ `['CLAUDE.md','HANDOFF.md','README.md','REFRESH_VERIFICATION_REPORT.md']`；
+去 `template.html` ⇒ `['template.html']`；去 `vendor_qrcode.min.js` ⇒ `['vendor_qrcode.min.js']`。三条都 rc=1 且只报自己那一类。
+
+**改法**（已落在本地 `.vercelignore`，与判据同批）：新增一段点名排除 `*.md` / `LICENSE` / `template.html` /
+`vendor_qrcode.min.js` / `ai_daily.json` / `build_config.json` / `predictions.jsonl` / `daily-deep-*.json` /
+`failed-run-*.png` / `actions-step5-*.png` / `.gitignore` / `.vercelignore` / `.github/`，并把**不许排除**的几样写进注释
+（`vercel.json`、四个站点页面、`api/`+`lib/`+`rss_sources.json`+`rss_api_snapshot*.json`、`.vercel/`）。
+
+**自查出来的一处判据缺陷（同类账，必须记）**：第一版判据只数**仓库根的文件**，于是漏掉
+`.github/workflows/*.yml` —— 现取 `starhub-refresh.vercel.app/.github/workflows/update.yml` 是 **200 / 36,632 B**、
+`repo-trim.yml` 200 / 8,021 B ⇒ **整条部署管线公开**。这就是本仓在排除式名单上连漏三次（`.md`/`lib/`/根级 junk）的
+同款毛病：**按"先想到的那一层"枚举等于没枚举**。判据已改成对**每一条跟踪路径**要求覆盖，keep 只留三半且有实测理由：
+`api/`+`lib/`（函数与它 require 的东西）、`VERCEL_KEEP`（四个页面 + `vercel.json`）、`.vercel/`
+（CLI 自己的 linkage，且实测 `.vercel/project.json` 404 不发 ⇒ 既不需要收窄也承担不起被排除）。
+顺带一条容易被直觉带偏的实测：**根级点文件不上传（`.gitignore`/`.vercelignore` 404）≠ 点目录不上传（`.github/` 200）**，
+别把两者合并处理。去掉 `.github/` 那行的变异会点名 4 个 workflow 文件（rc=1）。
+
+⇒ 生效要等下一场 Vercel 部署；验收口径 = 那 16 个根级名字 + `.github/workflows/update.yml` 重新 GET 应变 404，
+而 `/api/rss`、`/api/news`、`/api/translate` 必须仍 200。本地读数：判据 3 条先红后绿、变异四处各点名自己那一类，
+**真实 A2 全量命令 + A3 目录 = 428 passed**。
+
+**`git check-ignore` 探路的两个坑（都是当场被变异抓出来的，别再踩）**：
+1. **别问裸目录名**。gitignore 里 `lib/` 这类目录规则匹配的是 `lib/x.js`，问 `lib` 不命中 ⇒
+   反向断言第一版问 `api/`、`lib/`，"把 `lib/` 加进 `.vercelignore`"这个变异当场**绿**（漏检）。
+   现在问的是 `_tracked_paths()` 里真实存在的路径（`lib/rel_time.js`、`api/rss.js`、`rss_sources.json`）。
+2. **带结尾斜杠的查询会被"空行"误命中**。`api/` 被解析成"目录 api + 空文件名"，
+   而 gitignore 的空行恰好匹配空成分 ⇒ git 回一条 `.gitignore:47:`（空模式）的假读数，
+   表现为"运行时依赖全被判成已排除"。已在 `_covered_by_ignore` 里 `rstrip('/')`，注释写明实测两边读数。
+3. 附带一条口径判断：运行时读到的名字要分**三档**并按调用点定档 ——
+   `rss_sources.json`（`loadSources()` 无 try/catch ⇒ 排除即 500）、
+   `lib/rss_retention.js` 与 `lib/rss_cover.js`（在 try/catch 里但缺了掉留存闸门/实时封面 ⇒ 同权重不许排除）、
+   `rss_api_snapshot.json`（有 try/catch 且 `.vercelignore:5` 本来就排它，实测线上 404 ⇒ **不发是设计**）。
+   判据里有"分类不许烂掉"的守卫：抽取器新认出一个读取点而这三档没归档，当场红。
+4. 我的 Edit 把整个 `.vercelignore`（75 行）写成了 CRLF，与远端 LF 不一致 ⇒ 已归一；
+   与远端对账确认**删行 0**。这类"行尾被工具换掉"会让一次本该三行的改动变成 75 行 diff。
+
+补完这些后的读数：判据 4 条全绿，`加 lib/`、`加 api/`、`加 rss_sources.json`、`去掉 .github/` 四个变异各红且点名，
+基线（不改内容）必须绿；**真实 A2 全量命令 + A3 目录 = 429 passed**。
+
+
+### 8.19 待点单的一批：13 个路径（21:54 封账，等待授权；结论在前，清单与证据在下文）
+
+- **待推 13 路径**：见本节末尾"这批包含"与"命令"两段；提交说明 `.deploy-tmp/_msg.txt`（1,371 B）；
+  回退基线 `.deploy-tmp/_rollback_baseline.json`（推送当下的**远端 blob sha**：11 已有 / 3 新增 `ABSENT`）。
+- **最后一次的现跑读数**：14 个磁盘路径 CRLF 命中 0；真实 A2 全量命令 + A3 + 推送器判据 = **433 passed**；
+  六节打 `update.yml` 的电池问题条目全 0；#27 两条判据的 M1/M2/M3 变异各红在自己的靶（基线 5 passed）。
+- **下一轮开工先查三件事**：① `gh api repos/Kwei168/starhub/actions/runs?per_page=1` 看有没有 run 在飞
+  （有则 `--wait-window`，别用 `--allow-running`）；② `1587` 之后 Vercel 是否还挂（若整场超时/取消，
+  正好用 §8.19 第 3/4 条证据核"步骤超时后末步会不会执行"这件**仍未证**的事）；③ 与远端逐路径对账要用
+  **默认** `git hash-object`，不要 `--no-filters`（`core.autocrlf=true` 下会把每个 CRLF 工作树文件报成 DIFF）。
+- **仍未取得授权的四件**：推这批 13 路径；#32（建议 ②，①≈砍 4% 内容）；#30（建议不动）；#10（挂账）。
+
+
+
+**这批包含**：① 白名单第二道闸（浏览器请求名必须出现在跑出来的制品里，含注释剥离，R1–R6 变异）；
+② 第二台主机 Vercel 的公开面判据 + `.vercelignore` 补 12 项与 `tools/`、`.github/`；
+③ 推送器 CRLF 归一的判据（此前只有代码没有测试）；④ 两处电池锚修复 + 新电池 `mut_vercel_ignore.py`；
+⑤ **#27 的封顶与标红**：`Deploy to Vercel` 加 `id: vercel` + `timeout-minutes: 12`，末步扩成
+`Mark the run red when Pages was not published or Vercel did not deploy`（引用 `failure` 与 `cancelled`，
+刻意不用 `!= 'success'` 以免把 `skipped` 判红）。**`continue-on-error` 已放弃** —— 同文件的
+`test_vercel_step_is_not_silenced` 禁止把失败遮成 success，先读判据再改方案，别推一个与判据互斥的改动。
+
+**步级 `timeout-minutes` 是不是合法键**（这条决定 ⑤ 的可行性）：文档确认 steps 支持；
+本仓另有**生产先例** —— `update.yml:403` 早就有步级 `timeout-minutes: 5`，而该 workflow 这几天整场跑通
+（1584 = success）⇒ 不是拿"看起来对"当证据。
+**仍未证的一件事**：步骤因超时结束时，同一 job 的**后续步骤是否继续执行**（1585/1586 是
+`cancel-in-progress` 取消，不能当成步骤超时的证据）。两种结果都可接受：继续 ⇒ 末步把 Vercel 标红；
+不继续 ⇒ 整场本身已经是非绿，可见性照样成立。第一次真实超时时按下面第 3/4 条证据核对，别提前下结论。
+
+**#27 两条新判据的变异自证（2026-10-02 21:50，副本上跑 `STARHUB_UPDATE_YML`，不动生产文件）**：
+`M1 timeout-minutes 12→99` ⇒ 只红 `test_vercel_step_has_a_timeout_cap_and_id`；
+`M2 去掉 Vercel 的 id` ⇒ 两条一起红（末步引用不到 outcome，封顶那条也缺 id）；
+`M3 把末步的 if 退回 `always() && steps.stage.outcome == 'failure'` ⇒ 只红 `test_unsuccessful_vercel_is_marked_red_at_the_end`；
+基线（真 `update.yml`）= 5 passed rc=0。⇒ 这两条不是"写了就绿"的装饰，各自能分辨自己那半边。
+
+**命令**（逐路径点名，别用目录展开）：
+`py -3.11 tools/data_api_push.py --wait-window --msg-file .deploy-tmp/_msg.txt` + 上面 **13** 个路径
+（含 `.github/workflows/update.yml` 与 `tests/site_nav_drift/test_pages_vercel_ordering.py`）。
+`--wait-window` 是必需项：本仓每小时 `:00:29` 触发且 `cancel-in-progress: true` ⇒ :40 之后推会造出注定被掐掉的 run
+（见 memory: starhub-push-window）。
+
+**推完缺一条就不算验收**：
+1. A2 计数 ≥429 且 0 failed、A3 含新增 4 条、gate B 0 failed；
+2. `[growth] verdict=ok`（这批不该改斜率；跳大格先逐文件看构成）；
+3. `Deploy to GitHub Pages` = `Reported success!`；
+4. 线上二次 GET：16 个根级名字 + `.github/workflows/update.yml` + `tools/daily_commit_gate.sh` **转 404**，
+   四页与 `/api/rss`、`/api/news`、`/api/translate` **仍 200**
+   （第 4 项要等一场**成功的** Vercel 部署才生效 —— 该步连场挂起时部署会整场丢失）；
+5. `mut_vercel_ignore` 与 `mut_artifact_scope` 问题条目仍为 0（防止判据被"绕过"而不是被"修好"）。
+
+**这次修掉的一处自伤**：两次"看着是空操作"的 Edit 中有一次真的把 `## 九、技术栈总结` 与下一行的表头 `| 层 | 技术 |`
+并成了一行 —— 正是记忆里那条"少个换行会把下一行挤进来"。⇒ 手册这类长文档改完必须**结构化复核**：
+本次做法是 `grep -n '^## '` 数一遍节名，并做与远端的删行对账（`HANDOFF.md` 应为 0 删行）。
+
+**#27 的读数修正（2026-10-02 23:12 现取，两次自我否定的全过程记在这里）**：
+- 挂起点**不在我们这侧**：Vercel 步的日志显示上传 4.3 MB 只花 1.5 秒（22:19:59→22:20:00），
+  随后 `Building…` 独占 22:20:00→23:01:44（41.7 分钟）才被下一场并发取消 ⇒ 是 **Vercel 服务端构建**。
+  本地无可解释诱因：`vercel.json` 没有 build/install 命令；函数现网响应 0.83–0.89 秒且 `api/article.js`
+  的 jsdom/readability 正常（"`.vercelignore` 排了 `package.json` 会断依赖"这个怀疑被实测否掉）；
+  同一 head 的 1578 挂 38.8 分钟、1579 只花 0.7 分钟 ⇒ 间歇性，现在变成常发。
+- **"部署有没有丢"必须用每场必变的东西判**：我第一次拿 `rss_sources.json` 对 hash，三方全等 ⇒ 差点得出
+  "部署没丢"的**错误撤回**——它只在信源变化时才改写，相同是必然的，属代理信号冒充证据。
+  换成 `index.html`（每场新生成、从不入库，天然场次指纹）才看清：
+  Vercel 内嵌 `2026-10-03 02:07`（=1584，18:00 UTC）而 Pages 是 `06:07`（=1588）⇒ **Vercel 连 1585–1588 四场都没部署成功**。
+- **由此两条口径要分开**：① Pages 没停更，只是每场被推迟 ~30–55 分钟；② Vercel 侧从 18:00 起停在旧版，
+  所以那之后合入的 `api/*.js`、`lib/*.js` 改动**未生效**（现网函数仍是 1584 那一版）。
+- `timeout-minutes: 12` 只解决 ①（让 Pages 早半小时到一小时上线、并把"Vercel 未成功"变成 run 级红），
+  **解决不了 ②**：CLI 被掐后 Vercel 的构建有没有继续/是否被连带取消，从外面判不了（部署 URL 302 跳 SSO，
+  无权限）。②要查得进 Vercel 项目面板看那 40 分钟卡在哪。
+- 一条操作层面的连带后果：**每场挂 40 分钟 ⇒ 一天里只有 xx:43→xx:59 那十几分钟没有 run 在飞**，
+  而 `data_api_push.py --wait-window` 只等 30 分钟 ⇒ 在这个状态下推送会反复白等。封顶落地后这个空档才恢复正常。
 
 ## 九、技术栈总结
 
@@ -1071,5 +1322,5 @@ A2 的 `test_staging_publishes_only_the_site_allowlist` 钉集合（多一项/�
 | 前端 | 原生 HTML/CSS/JS，无框架 |
 | 数据源 | GitHub REST API v3、AIHOT API v1 + RSS、RSSHub 镜像、HN/Verge/TechCrunch/arXiv/Redis RSS、BestBlogs（559 源）、X/Twitter（160 源 via xgo.ing）、newsnow 40 平台热榜、AGI Hunt Agent API（12 频道，密钥 + 限速合规） |
 | 翻译 | 构建期五端点降级链：Agnes AI（多 key 轮询）→ OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时 Vercel 网关统一链 GTX → MyMemory → Agnes → Zen，mode 只改并发（full 4 / bulk 2）与 Agnes 条数上限（bulk 30） |
-| RSS 架构 | 1005 源三层分级（T1=6 实时/T2=204/T3=795 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放；快照已出仓（gitignore，仅随 Vercel 上传） |
+| RSS 架构 | 1005 源三层分级（T1=6 实时/T2=204/T3=795 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放；快照已出仓（gitignore；**也不随 Vercel 上传** —— `.vercelignore:5` 排除 `rss_api_snapshot*.json`，2026-10-02 20:46 实测 `starhub-refresh.vercel.app/rss_api_snapshot.json` 404，`loadSnapshot()` 有 try/catch 走"实时抓取"降级） |
 | 洞察引擎 | insight_engine：LlamaIndex + RAGAS-inspired 自纠错 + 话题聚类 + 关键词生命周期 + 14 天趋势滚动；每日深度洞察：RAG 混合检索 + 多级 Phase（去重/核查/自审/硬过滤）+ RAGAS 四维阈值闭环 + 破茧栏 + 30 天跨天关联 |

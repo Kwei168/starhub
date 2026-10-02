@@ -182,3 +182,21 @@ def test_a_missing_chunk_is_named_too(tmp_path):
     assert rc != 0, "分块全缺却退出 0 ⇒ 会发一份没有卡片数据的站点：%s" % out[-300:]
     assert "::error::Pages 缺件：rss-data-0.js" in out, (
         "非零退出但没点名分块（多半是 nullglob 被去掉了，字面模式撞 cp）：%s" % out[-420:])
+
+
+def test_a_zero_byte_artifact_is_rejected_and_named(tmp_path):
+    """存在但 0 字节必须当缺件处理 —— 守卫用 `-s` 而不是 `-e`，这条就是那半个字母的靶。
+
+    来历：② 彩排时我为"消除重复列表"顺手删了累加，副作用正是 0 字节件被当有效件发出去；
+    当时靠 R3 案例抓住，但**写进仓库的判据一直没有这一类**：把 `-s` 改成 `-e`，
+    本文件其它六条全绿。⇒ 空制品发布 = 那个入口整页空白，比少发一场更糟。
+    """
+    d = _tree(str(tmp_path))
+    with open(os.path.join(d, "ai-daily.html"), "w", encoding="utf-8") as fh:
+        fh.write("")                      # 存在、但是空的
+    rc, out = _run(d, _stage_body())
+    assert rc != 0, "0 字节的 ai-daily.html 被当成有效件放行了 ⇒ 上线是一份空页面：%s" % out[-300:]
+    assert "::error::Pages 缺件：ai-daily.html" in out, (
+        "非零退出但没点名 0 字节件（多半是 `-s` 被换成 `-e`）：%s" % out[-420:])
+    assert any(r.get("type") == "pages_missing" and "ai-daily.html" in str(r.get("files", ""))
+               for r in _records(d)), "0 字节件没进跨场记录"
