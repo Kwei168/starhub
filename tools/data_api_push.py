@@ -51,6 +51,10 @@ def req(method, path, body=None, tries=6):
                 return json.loads(f.read().decode())
         except Exception as exc:
             last = exc
+            # 404 是**语义正确**的答案，不是故障：verify(gone=…) 就靠它判定"已删除"。
+            # 留在重试循环里，一次 --delete 147 条要白烧 147×45s（实测单条 tries=2 用时 10.6s）。
+            if isinstance(exc, urllib.error.HTTPError) and exc.code == 404:
+                raise
             print("  重试 %d/%d %s %s: %s" % (k + 1, tries, method, path.split("/")[-1], exc),
                   file=sys.stderr)
             time.sleep(3 + 3 * k)

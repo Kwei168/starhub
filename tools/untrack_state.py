@@ -35,7 +35,10 @@ ROLLBACK_ALIGN = os.path.join(ROOT, ".deploy-tmp", "restore_index_align.sh")
 
 
 def git(*args):
-    return subprocess.run(["git"] + list(args), cwd=ROOT, capture_output=True, text=True)
+    # encoding 必须显式 utf-8：本机默认 locale 是 GBK，git 输出里的 UTF-8 中文会抛
+    # UnicodeDecodeError（或被替换成乱码），而乱码路径永远匹配不到远端条目。
+    return subprocess.run(["git"] + list(args), cwd=ROOT, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace")
 
 
 def tracked():
@@ -73,9 +76,11 @@ def do_align(dry=False):
     只动索引、不动磁盘，且先在 HEAD 里确认该路径可取回（撤销 = `git restore --staged`）。
     """
     sha, rem = remote_paths()
-    local = git("ls-files")
+    local = git("ls-files", "-z")
     assert local.returncode == 0, "git ls-files 失败：探针本身不可信，不对齐"
-    loc = [l.strip() for l in local.stdout.splitlines() if l.strip()]
+    # -z 不能省：不带它，非 ASCII 路径会被 git 输出成 "\344\270\255…" 的转义+引号形式，
+    # 于是 .qoder/repowiki 那 91 个中文名永远匹配不到远端条目 —— 对齐会静默少掉一整族。
+    loc = [p for p in (local.stdout or "").split("\0") if p]
     gone = [p for p in loc if p not in rem]
     # 白名单：只对齐这批存储工作**主动退役**的路径。本地 HEAD 还带着另一条工作线（AI 日报）的提交，
     # 他们的文件天然"本地跟踪 / 远端还没有"，全量对齐会把别人的在制品从索引里摘掉。
@@ -85,8 +90,11 @@ def do_align(dry=False):
         "tests/rss_history/test_state_seed.py", "tools/mut_state_seed.py",
         "build_logs/.state_seed.done",
     }
+    # docs/ 与 .qoder/：2026-10-02 用户裁定"跟代码无关的不进 git"，整目录退出跟踪。
+    # 远端删完后本地索引还留着 147 条，不对齐的话防回潮判据在本地恒红（恒红的判据会污染变异电池）。
     offenders = [p for p in gone if p in allowed or p.startswith("build_logs/")
-                 or p.startswith("rss-data-") or p.startswith(".qoder/")]
+                 or p.startswith("rss-data-") or p.startswith(".qoder/")
+                 or p.startswith("docs/")]
     skipped = [p for p in gone if p not in offenders]
     print("远端 %s：本地跟踪 %d 个；远端已不存在 %d 个，其中本工具允许对齐 %d 个"
           % (sha[:10], len(loc), len(gone), len(offenders)))
@@ -100,21 +108,25 @@ def do_align(dry=False):
         print("dry-run：不写索引")
         return 0
     # 可逆性前置检查：HEAD 里必须还留着这些条目，否则 `git restore --staged`（它的来源就是 HEAD）救不回来。
-    head_paths = set(x.strip() for x in git("ls-tree", "-r", "--name-only", "HEAD").stdout.splitlines()
-                     if x.strip())
+    # 同样要 -z：ls-tree 不带 -z 时，中文路径会被转义引号包起来，那样 91 个 CJK 条目会全体
+    # 被误判成「无法还原」而跳过 —— 表现为「对齐了一半」，比不对齐全更糟。
+    head_paths = set(p for p in git("ls-tree", "-r", "-z", "--name-only", "HEAD").stdout.split("\0") if p)
     unrestoreable = [p for p in offenders if p not in head_paths]
     if unrestoreable:
         print("[NG] 这些路径无法从索引快照还原，跳过不动：%s" % unrestoreable)
     offenders = [p for p in offenders if p in head_paths]
+    # 回滚文件必须给每个路径加引号：这批 147 条里有含空格的目录名（`StarHub 收藏台与 …`），
+    # 不加引号的话它是一份"看着能跑、实际会拆成几十个参数"的假可逆。
+    quoted = " ".join('"%s"' % p for p in offenders)
     with open(ROLLBACK_ALIGN, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("#!/bin/sh\n# 撤销 tools/untrack_state.py --align-remote（把 %d 个路径放回索引）\n"
-                  "git restore --staged -- %s\n" % (len(offenders), " ".join(offenders)))
+                  "git restore --staged -- %s\n" % (len(offenders), quoted))
     print("回滚命令已写入：%s" % ROLLBACK_ALIGN)
     r = git("rm", "--cached", "--quiet", "--", *offenders)
     if r.returncode != 0:
         print("[NG] git rm --cached 失败：%s" % (r.stderr or r.stdout).strip()[:200])
         return 1
-    still = [p for p in offenders if p in set(x.strip() for x in git("ls-files").stdout.splitlines())]
+    still = [p for p in offenders if p in set(x for x in git("ls-files", "-z").stdout.split("\0") if x)]
     print("对齐后仍被跟踪：%s" % (still or "无"))
     return 0 if not still else 1
 
