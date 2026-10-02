@@ -38,7 +38,11 @@ NON_SITE = ["build_rss_aggregator.py", "fetch_and_build.py", "insight_engine.py"
             "docs/insight-pipeline-flow.md",
             # 批 10 的名单比现实窄了一处：它挡了 docs/ 却没挡根级 .md。
             # 2026-10-02 15:26 现取：线上 HANDOFF.md = 200 / 84,323 B（其余内部件已 404）。
-            "HANDOFF.md", "README.md", "CLAUDE.md", "REFRESH_VERIFICATION_REPORT.md"]
+            "HANDOFF.md", "README.md", "CLAUDE.md", "REFRESH_VERIFICATION_REPORT.md",
+            # 15:58 自测解析器时顺出来的同类漏项：清单里有 lib/ 4 项。三个文件里
+            # rel_time.js 是构建期内联（线上正文那两处 `lib/rel_time.js` 是注释），
+            # rss_cover/rss_retention 是 api/rss.js 在 Vercel 侧 require 的 ⇒ 浏览器从不请求 lib/。
+            "lib/rel_time.js", "lib/rss_cover.js", "lib/rss_retention.js"]
 # 用户点头（2026-10-02 13:16"关出去"）后 api/ 站"不许公开"这一侧。
 # 名字是 `ls api/` 现取的 8 个，不虚构 ⇒ 过滤写错时判据会真的红。
 API_SOURCES = ["api/agihunt.js", "api/article.js", "api/events.js", "api/news.js",
@@ -114,7 +118,7 @@ def staged(tmp_path):
 def test_non_site_files_are_not_published(staged):
     leaks = sorted(p for p in staged
                    if p.endswith((".py", ".md"))
-                   or p.startswith(("tests/", "tools/", "build_logs/", "docs/", "api/")))
+                   or p.startswith(("tests/", "tools/", "build_logs/", "docs/", "api/", "lib/")))
     assert not leaks, "这些非站点文件随制品公开了：%s" % leaks[:8]
 
 
@@ -150,10 +154,11 @@ def test_the_probe_bites_on_a_blanket_copy(tmp_path):
                     .replace(os.sep, "/"))
     leaks = sorted(p for p in got
                    if p.endswith((".py", ".md"))
-                   or p.startswith(("tests/", "tools/", "build_logs/", "api/")))
+                   or p.startswith(("tests/", "tools/", "build_logs/", "api/", "lib/")))
     assert leaks, "对照组居然没泄漏 ⇒ 合成树没建非站点文件，主判据是在空集上跑"
     assert {"build_rss_aggregator.py", "tools/data_api_push.py",
-            "build_logs/2026-10-02.jsonl", "api/rss.js", "HANDOFF.md"} <= set(leaks), leaks
+            "build_logs/2026-10-02.jsonl", "api/rss.js", "HANDOFF.md",
+            "lib/rss_cover.js"} <= set(leaks), leaks
 
 
 # ---- 批 11 的前提：`api/` 已关出 Pages 制品 ⇒ 站点从此不许用同源写法调它 ----

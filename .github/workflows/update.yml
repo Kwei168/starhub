@@ -465,9 +465,11 @@ jobs:
           # Vercel 从工作目录部署不读 _pages ⇒ 站点与 API 都不受影响，Pages 少公开 8 个函数源码（~114 KB）。
           # 根级 .md 同批关掉（15:26 现取：批 10 之后线上 HANDOFF.md 仍 200 / 84,323 B —— 它只挡了 docs/）。
           # 4 个入口的 .md 文本引用核过：只有卡片正文里 `<code>CLAUDE.md` 这种描述性提及，没有任何 fetch。
+          # `lib/` 一并关掉（15:58 用自测过的解析器在旧场清单里抓出来的同类漏项）：rel_time.js 是构建期
+          # 内联进产物的，rss_cover/rss_retention 由 api/rss.js 在 Vercel 侧 require ⇒ 浏览器不请求它。
           git ls-files -z \
             | grep -zv -E '(^|/)[._]' \
-            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api)/' \
+            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api|lib)/' \
             | grep -zv '\.py$' \
             | grep -zv '\.md$' \
             | grep -zv '^template\.html$' \

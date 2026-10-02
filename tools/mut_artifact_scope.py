@@ -14,8 +14,8 @@ WF = os.path.join(ROOT, ".github", "workflows", "update.yml")
 COPY = os.path.join(ROOT, ".deploy-tmp", "_mut_scope.yml")
 TEST = os.path.join("tests", "site_nav_drift", "test_pages_artifact_scope.py")
 
-DIRS = "            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api)/' \\\n"
-API = "(tests|tools|build_logs|docs|api)/"
+DIRS = "            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api|lib)/' \\\n"
+API = "(tests|tools|build_logs|docs|api|lib)/"
 PYS = "            | grep -zv '\\.py$' \\\n"
 MDS = "            | grep -zv '\\.md$' \\\n"
 HTML = "            | grep -zv '^template\\.html$' \\\n"
@@ -33,6 +33,10 @@ MUTS = [
     # 批 11 的专属防线：只漏掉 api/ 时，其余过滤全在、站点也完好，只有 api 重新公开。
     # 没有这一条，S1（整行删掉）挡不住"把 api 从名单里摘掉"这种最小回退。
     ("S4 只把 api/ 放回公开面", API, API.replace("|api", ""),
+     "test_non_site_files_are_not_published"),
+    # 16:00 现取：旧场清单里 lib/ 有 4 项 —— 判据名单比现实窄时的典型形状。
+    # 锚点若跟不上正文（少 `|lib`），本电池会直接报 INVALID 而不是假装覆盖到了。
+    ("S6 只把 lib/ 放回公开面", API, API.replace("|lib", ""),
      "test_non_site_files_are_not_published"),
 ]
 
