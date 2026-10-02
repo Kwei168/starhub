@@ -462,37 +462,39 @@ jobs:
           # 躺着 cache restore-keys 放回、被 .gitignore 排除的原始语料（实测本地合计 398M：
           # rss_cache 110M / rss_history 62M / rss_api_snapshot 41M / daily_insight_* 向量 146M）。
           # `.`/`_` 前缀照 Jekyll 行为剔掉（实测今天 /_bra.py 与 /.gitignore 都是 404）。
-          mkdir -p _pages
-          git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/
           # 分块按名字模式补进来，**不依赖它是否被 git 跟踪**：chunk1+ 已停止提交，main 上那份是
           # 停在旧流程的过期副本，只取 git 清单就会把过期块发上线；而后面要从历史里剔除这些
           # 过期副本（存量 45.71GB 的主项），届时它们连"被跟踪"都不是。模式只放行 rss-data-*.js
           # 一族 —— 被 .gitignore 排除的语料族（rss_cache/rss_history/emb_cache/daily_insight_*）
           # 都不匹配这个模式，不会因此漏进制品。
-          for f in rss-data-*.js; do
-            [ -f "$f" ] && cp -f "$f" _pages/
-          done
           # 4 个 HTML 页面同样按名字从工作目录取新鲜的那一份，**不信 git 里那份**：
           # 它们已停止提交，main 上的副本是过期产物；只按 git 清单取文件 = 把旧页面发上线。
-          for f in index.html ai-daily.html rss-aggregator.html daily-insight-history.html; do
-            [ -f "$f" ] && cp -f "$f" _pages/
-          done
           # 批 5b：首页侧栏 fetch('hot_snapshot.json')（生成于 rss-aggregator.html:3407）的数据源。
           # 它已退出 git ⇒ `git ls-files` 不再带它，必须按名从工作目录取，漏了就是首页空数据。
-          for f in hot_snapshot.json; do
-            [ -f "$f" ] && cp -f "$f" _pages/
-          done
           # 空制品发布 = 全站清空，这几条把"必须有内容"钉成硬失败而不是 warning
-          test -s _pages/rss-data-0.js
-          test -s _pages/hot_snapshot.json
-          test -s _pages/rss-data-1.js
-          test -s _pages/rss-aggregator.html
-          test -s _pages/index.html
-          test -s _pages/ai-daily.html
-          test -s _pages/daily-insight-history.html
+
+          mkdir -p _pages
+          git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/
+          MISS=""
+          for f in rss-data-*.js index.html ai-daily.html rss-aggregator.html daily-insight-history.html hot_snapshot.json; do
+          if [ -e "$f" ]; then cp -f "$f" _pages/; else MISS="$MISS $f"; fi
+          done
+          for must in rss-data-0.js hot_snapshot.json rss-data-1.js rss-aggregator.html index.html \
+          ai-daily.html daily-insight-history.html; do
+          if [ ! -s "_pages/$must" ]; then
+          echo "::error::Pages 缺件：$must（这场不发，站点停在上一份制品）"
+          case " $MISS " in *" $must "*) ;; *) MISS="$MISS $must";; esac
+          fi
+          done
+          if [ -n "$MISS" ]; then
+          mkdir -p build_logs
+          printf '{"ts":"%s","type":"pages_missing","files":"%s"}\n' "$(date -Iseconds)" "$MISS" \
+          >> "build_logs/$(TZ=Asia/Shanghai date +%F).jsonl" || true
+          echo "缺件清单：$MISS"
+          exit 1
+          fi
           echo "Staged site size:"
           du -sh _pages
-
       - name: Prune large build artifacts before Vercel deploy
         run: |
           # 构建产物只供 GitHub Pages 加载，Vercel 只需要 api/ + HTML 入口 + vercel.json

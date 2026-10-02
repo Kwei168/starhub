@@ -17,12 +17,15 @@ CTL = "test_probe_sees_an_ignored_tracked_file_in_both_directions"
 MAIN = "test_no_new_ignored_file_is_tracked"
 
 MUTS = [
-    ("L1 LEGACY 少一项（等于放开了 411KB 那个 Scratch 件）",
-     '    "_check_js_temp.js",                                # 411,404 B：Scratch 打包产物，无引用\n',
+    # 锚点跟着 LEGACY 走：2026-10-02 摘掉 _check_js_temp.js / _fix_quotes.py 之后，
+    # 这两条原来锚在已删除的行上 ⇒ 电池当场报 INVALID（锚点命中 0 次），而不是悄悄少测两项。
+    # 现在改锚到名单里仍然存在的 .vercel/project.json。
+    ("L1 LEGACY 少一项（任何被忽略却回库的路径都被放开）",
+     '    ".vercel/project.json",                             # 120 B：Vercel 项目链接，删前先确认 CLI 不需要\n',
      "", MAIN),
     ("L2 LEGACY 多一项不存在的路径（名单开始骗人）",
-     '    "_fix_quotes.py",                                   # 1,039 B：一次性改引号的脚本\n',
-     '    "_fix_quotes.py",                                   # 1,039 B：一次性改引号的脚本\n'
+     '    ".vercel/project.json",                             # 120 B：Vercel 项目链接，删前先确认 CLI 不需要\n',
+     '    ".vercel/project.json",                             # 120 B：Vercel 项目链接，删前先确认 CLI 不需要\n'
      '    "_never_was_here.js",\n', MAIN),
     ("L3 探针丢掉 -i：从此只看已跟踪，永远看不到违规",
      '["git", "ls-files", "-i", "-c", "--exclude-standard", "-z"]',
