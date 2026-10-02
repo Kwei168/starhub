@@ -929,10 +929,16 @@ LLM 生成（Agnes agnes-2.5-flash，enable_thinking:false，多 key 轮询）�
 **对抗审查抓出两条由本次改动引进的 P0**（都已修，记录在此以防回退）：
 1. staging 若照**工作目录**整拷，会把 `.gitignore` 排除、却由 cache `restore-keys` 放回磁盘的原始语料第一次公开发布
    —— 实测本地合计 **398M**（`rss_cache.json` 110M / `rss_history.json` 62M / `rss_api_snapshot.json` 41M /
-   `daily_insight_*` 向量 146M）。legacy 发的是 **git 树**，所以 staging 必须按 `git ls-files` 取清单，
+   `daily_insight_*` 向量 146M）。legacy 发的是 **git 树**，所以当时 staging 按 `git ls-files` 取清单，
    并保留 Jekyll 的 `.`/`_` 排除（实测今天 `/_bra.py`、`/.gitignore` 就是 404）。
+   **2026-10-02 更新（§8.16）**：`git ls-files` − 排除表这套已被**白名单**取代（用户裁决 18:12）——
+   排除表挡不住"没想到的那一类"（18:12 全量枚举：公开集仍有 15 项／0.48 MiB，含 4 张调试截图与根级
+   构建期 json）。这条 P0 的**理由不变、且被白名单更严格地满足**：正文里已经没有任何"按目录取文件"的写法，
+   `.`/`_` 项也在 A2 `test_staging_publishes_only_the_site_allowlist` 里被显式禁止。
+   ⇒ 别把它改回"整拷"或"再补一行排除"，要公开新文件就改 `STAGE_ALLOWLIST` 那份名单（A2/A3 会逼你确认前端真的 fetch 它）。
 2. `upload-pages-artifact` 的 `if-no-files-found` **默认是 warn**，空制品会被"绿发布"= 抹平站点。
-   须显式 `error` + staging 里 `test -s` 三个必须存在的产物 + `deploy-pages` 的 `if` 依赖 upload 结果。
+   须显式 `error` + staging 里对**白名单每一项**做非空 `-s` 守卫（当前 8 项：4 个 HTML + `rss-data-0/1.js` +
+   `hot_snapshot.json` + `rss_sources.json`）+ `deploy-pages` 的 `if` 依赖 upload 结果。
 
 **cutover 顺序（错了就全站红，且窗口极窄）**：① 先按 §8.12 两条判据确认窗口 → ② `PUT /pages {"build_type":"workflow"}`
 （**注意是 PUT，`PATCH /pages` 路由不存在，会回 404**；token scopes `repo/workflow` 够用）→ ③ 按具体路径推

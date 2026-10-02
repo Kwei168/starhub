@@ -440,10 +440,12 @@ jobs:
         id: stage
         continue-on-error: true
         run: |
-          # 清单必须来自 `git ls-files` 而不是整拷工作目录：legacy 分支源发的是 git 树，而工作目录里
-          # 躺着 cache restore-keys 放回、被 .gitignore 排除的原始语料（实测本地合计 398M：
-          # rss_cache 110M / rss_history 62M / rss_api_snapshot 41M / daily_insight_* 向量 146M）。
-          # `.`/`_` 前缀照 Jekyll 行为剔掉（实测今天 /_bra.py 与 /.gitignore 都是 404）。
+          # 发布取文件走**白名单**（见下方 STAGE 名单与判据），既不是整拷工作目录、也不再是
+          # `git ls-files` − 排除表（2026-10-02 18:12 翻成白名单，理由见 §8.16）。两条老理由都还在：
+          # ① 工作目录里躺着 cache restore-keys 放回、被 .gitignore 排除的原始语料（实测本地合计 398M：
+          #    rss_cache 110M / rss_history 62M / rss_api_snapshot 41M / daily_insight_* 向量 146M），
+          #    白名单让这类文件**默认不可能**进制品；② `.`/`_` 前缀项照 Jekyll 行为不许出现在名单里
+          #    （实测今天 /_bra.py 与 /.gitignore 都是 404；A2 判据直接禁止名单里出现这类名字）。
           # 分块按名字模式补进来，**不依赖它是否被 git 跟踪**：chunk1+ 已停止提交，main 上那份是
           # 停在旧流程的过期副本，只取 git 清单就会把过期块发上线；而后面要从历史里剔除这些
           # 过期副本（存量 45.71GB 的主项），届时它们连"被跟踪"都不是。模式只放行 rss-data-*.js
@@ -452,7 +454,7 @@ jobs:
           # 4 个 HTML 页面同样按名字从工作目录取新鲜的那一份，**不信 git 里那份**：
           # 它们已停止提交，main 上的副本是过期产物；只按 git 清单取文件 = 把旧页面发上线。
           # 批 5b：首页侧栏 fetch('hot_snapshot.json')（生成于 rss-aggregator.html:3407）的数据源。
-          # 它已退出 git ⇒ `git ls-files` 不再带它，必须按名从工作目录取，漏了就是首页空数据。
+          # 它已退出 git ⇒ 只能按名从工作目录取（白名单里漏一项，首页侧栏就是空数据 —— A2/A3 两条集合判据会红）。
           # 空制品发布 = 全站清空，这几条把"必须有内容"钉成硬失败而不是 warning
 
           mkdir -p _pages
