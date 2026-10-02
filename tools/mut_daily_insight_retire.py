@@ -23,10 +23,16 @@ MUT_WF = os.path.join(ROOT, ".deploy-tmp", "_mut_update.yml")
 TESTF = os.path.join(ROOT, "tests", "rss_history", "test_pages_deploy_wiring.py")
 TARGET = "test_site_artifacts_are_published_not_committed"
 
-PUB_BLOCK = ('          for f in hot_snapshot.json; do\n'
-             '            [ -f "$f" ] && cp -f "$f" _pages/\n'
-             '          done')
-CHECK = "          test -s _pages/rss-data-0.js\n"
+# ②（缺件点名）之后 Stage 正文换了形状：三个 `for f in` 合成一个循环、7 条字面 `test -s`
+# 换成带 -s 的 must 循环。所以下面两条锚点跟着换——电池对旧形状报 INVALID 而不是悄悄少测，
+# 这正是它该有的表现（2026-10-02 实测：D2/D3 一度锚在已被替换的行上，当场 INVALID）。
+PUB_ANCHOR = ('          for f in rss-data-*.js index.html ai-daily.html rss-aggregator.html '
+              'daily-insight-history.html hot_snapshot.json; do')
+PUB_NEW = ('          for f in daily-insight.json; do\n'
+           '          if [ -e "$f" ]; then cp -f "$f" _pages/; fi\n'
+           '          done\n' + PUB_ANCHOR)
+CHECK = '          if [ ! -s "_pages/$must" ]; then'
+CHECK_OFF = "          if [ false ]; then"
 # D1/D4 的锚点是**当前**文本（变异=把已删除的那行加回去），别把 old/new 写反
 D1_ANCHOR = ("          fi\n"
              "          if ! python3 tools/size_tripwire.py; then")
@@ -47,11 +53,9 @@ D5_NEW = ("（不许回 add、也不许进发布名单）。\n"
 CASES = [
     ("D1 条件式 add 回到清单", D1_ANCHOR, D1_NEW, "red", "又回到提交清单",
      "test_site_artifacts_are_published_not_committed"),
-    ("D2 无读方的它被塞进发布名单", PUB_BLOCK,
-     PUB_BLOCK + "\n          for f in daily-insight.json; do\n"
-     "            [ -f \"$f\" ] && cp -f \"$f\" _pages/\n          done",
+    ("D2 无读方的它被塞进发布名单", PUB_ANCHOR, PUB_NEW,
      "red", "被放进发布名单", "test_site_artifacts_are_published_not_committed"),
-    ("D3 少一条 test -s（空制品会被当成功发布）", CHECK, "", "red", "缺非空守卫",
+    ("D3 非空守卫被关掉（空制品会被当成功发布）", CHECK, CHECK_OFF, "red", "非空守卫",
      "test_site_artifacts_are_published_not_committed"),
     ("D5 fetch 名改成条件式 add（统一口径后不该误报）", D5_ANCHOR, D5_NEW, "green", "",
      "test_frontend_fetched_names_are_served"),

@@ -474,7 +474,18 @@ jobs:
           # 空制品发布 = 全站清空，这几条把"必须有内容"钉成硬失败而不是 warning
 
           mkdir -p _pages
-          git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/
+          # 制品只放站点会用到的东西（用户批准 2026-10-02）：跟踪文件里再剔掉非站点目录
+          # （tests/ 144 个、tools/ 26 个、build_logs/ 14.3 MiB、docs/）与源码 .py 与生成端模板。
+          # 收窄前的现取实测：线上 build_logs/2026-10-02.jsonl = 200（237 KB）、fetch_and_build.py = 200。
+          # 换成 cp --parents 而不是继续 rsync：① 过滤之后是按名单拷，rsync 的 --files-from 反而绕；
+          # ② 判据能在没有 rsync 的机器上真跑（tests/site_nav_drift/test_pages_artifact_scope.py）。
+          # `api/` 刻意不动：用户定案是"入口就是 Pages、Vercel 只当 API 主机"，关它要单独点头。
+          git ls-files -z \
+            | grep -zv -E '(^|/)[._]' \
+            | grep -zvE '(^|/)(tests|tools|build_logs|docs)/' \
+            | grep -zv '\.py$' \
+            | grep -zv '^template\.html$' \
+            | xargs -0 -r cp --parents -t _pages/
           MISS=""
           for f in rss-data-*.js index.html ai-daily.html rss-aggregator.html daily-insight-history.html hot_snapshot.json; do
           if [ -e "$f" ]; then cp -f "$f" _pages/; else MISS="$MISS $f"; fi

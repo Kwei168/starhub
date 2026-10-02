@@ -325,6 +325,56 @@ def test_frontend_fetched_names_are_served():
         % naked)
 
 
+def _code_lines(body):
+    """staging 正文里的**命令行**（剔掉注释）。
+
+    为什么必须剔：2026-10-02 这条判据差点被我的注释骗过去 —— 收窄之后 rsync 调用已经没了，
+    但注释里写了"rsync 的 --files-from 反而绕"，于是 `"--files-from" in body` 与
+    `"rsync" in ln` 双双"巧合成立"，判据看着绿、其实什么都没看。
+    判据读的是行为，不能读关键词。
+    """
+    out = []
+    for ln in body.splitlines():
+        s = ln.strip()
+        if s and not s.startswith("#"):
+            out.append(s)
+    return out
+
+
+def _staging_copy_lines(body):
+    """所有往 `_pages` 里拷文件的命令行（rsync 或 cp 都算）。"""
+    return [ln for ln in _code_lines(body)
+            if "_pages" in ln and re.search(r"\b(rsync|cp)\b", ln)]
+
+
+def test_staging_copy_lines_probe_bites():
+    """抽取器自己的判据：两种合法写法都要抽到，两种整拷写法也都要抽到（由主判据去拒）。"""
+    ok_rsync = "git ls-files -z | grep -zv -E '(^|/)[._]' | rsync -a --files-from=- --from0 ./ _pages/"
+    ok_cp = "git ls-files -z | grep -zv '\\.py$' | xargs -0 -r cp --parents -t _pages/"
+    bad_rsync = "rsync -a --exclude _pages ./ _pages/"
+    bad_cp = "cp -r . _pages"
+    body = "# rsync 的 --files-from 反而绕\n%s\n%s\n%s\n%s\n" % (ok_rsync, ok_cp, bad_rsync, bad_cp)
+    got = _staging_copy_lines(body)
+    assert len(got) == 4, "抽到的拷贝行不对（注释漏进来或漏抽）：%s" % got
+    assert _listings_from_git_tree(ok_rsync) and _listings_from_git_tree(ok_cp), "合法写法被拒"
+    assert not _listings_from_git_tree(bad_rsync), "rsync 整拷没被拒"
+    assert not _listings_from_git_tree(bad_cp), "cp -r 整拷没被拒"
+    assert not _listings_from_git_tree("# cp -r . _pages 这种写法很危险"), "注释被当成命令行拒了"
+
+
+def _listings_from_git_tree(copy_line):
+    """这一行拷贝是不是"由 git 清单喂出来"的（而不是整拷工作目录）。"""
+    if "rsync" in copy_line:
+        return "--files-from" in copy_line
+    if "cp" in copy_line:
+        # cp 的合法形状：`xargs -0 -r cp --parents -t _pages/`（名单来自 stdin 的 git ls-files）
+        # 非法形状：`cp -r . _pages` / `cp -a ./ _pages/`（整拷，会带出被 ignore 的语料）
+        if re.search(r"\bcp\s+(-[a-zA-Z]*[ra][a-zA-Z]*\s+|-r\b|-a\b)", copy_line):
+            return False
+        return "cp --parents" in copy_line or re.search(r"\bcp\s+-f\b", copy_line)
+    return False
+
+
 def test_staging_takes_the_git_tree_not_the_worktree():
     """staging 必须按 `git ls-files` 取清单：legacy 发的是 git 树，照工作目录整拷会泄露缓存语料。
 
@@ -335,12 +385,16 @@ def test_staging_takes_the_git_tree_not_the_worktree():
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 staging 步骤"
     body = stage[0]
-    assert "git ls-files" in body, "staging 不再按 git 树取清单，会把 .gitignore 排除的缓存语料发布出去：%s" % body
-    assert "--files-from" in body, "staging 没用 git ls-files 的清单喂 rsync：%s" % body
-    assert "[._]" in body, "staging 不再剔除 `.`/`_` 开头文件，公开面会比今天变宽：%s" % body
-    # 合法的 rsync 一定是被 git ls-files 的清单喂进去的；整拷 ./ 会带出被 ignore 的缓存语料
-    for ln in [l for l in body.splitlines() if "rsync" in l]:
-        assert "--files-from" in ln, "staging 又变成整拷工作目录：%s" % ln
+    code = _code_lines(body)
+    assert any("git ls-files" in ln for ln in code), \
+        "staging 不再按 git 树取清单，会把 .gitignore 排除的缓存语料发布出去"
+    assert any("[._]" in ln for ln in code), \
+        "staging 不再剔除 `.`/`_` 开头文件，公开面会比今天变宽"
+    copies = _staging_copy_lines(body)
+    assert copies, "staging 里抽不出任何往 _pages 拷文件的命令行 ⇒ 本判据在空集上跑"
+    for ln in copies:
+        assert _listings_from_git_tree(ln), \
+            "staging 里有整拷工作目录的写法（会把被 gitignore 的语料发布出去）：%s" % ln
 
 
 def test_staging_never_copies_the_worktree_wholesale():
