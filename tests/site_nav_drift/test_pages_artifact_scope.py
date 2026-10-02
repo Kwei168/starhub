@@ -28,23 +28,34 @@ yaml = pytest.importorskip("yaml")
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "workflows", "update.yml")
 
+# SITE = 站点运行时集合 = 白名单本身（两边不许各写一份，见 PUBLISH）。
+# 18:12 现取核过：`known_categories.json` 从这份名单里删掉了 —— 它只被 build_daily_insight.py
+# 在构建期读，4 个入口的正文里 0 引用；留着它会逼 Stage 把一个非运行时文件发上线。
 SITE = ["index.html", "ai-daily.html", "rss-aggregator.html", "daily-insight-history.html",
-        "rss-data-0.js", "rss-data-1.js", "hot_snapshot.json",
-        "rss_sources.json", "known_categories.json"]
+        "rss-data-0.js", "rss-data-1.js", "hot_snapshot.json", "rss_sources.json"]
 NON_SITE = ["build_rss_aggregator.py", "fetch_and_build.py", "insight_engine.py",
             "tests/rss_history/test_pages_deploy_wiring.py",
             "tools/data_api_push.py",
             "build_logs/2026-10-02.jsonl",
             "docs/insight-pipeline-flow.md",
             # 批 10 的名单比现实窄了一处：它挡了 docs/ 却没挡根级 .md。
-            # 2026-10-02 15:26 现取：线上 HANDOFF.md = 200 / 84,323 B（其余内部件已 404）。
+            # 2026-10-02 15:26 现取：线上 HANDOFF.md 仍 200 / 84,323 B（其余内部件已 404）。
             "HANDOFF.md", "README.md", "CLAUDE.md", "REFRESH_VERIFICATION_REPORT.md",
-            # 15:58 自测解析器时顺出来的同类漏项：清单里有 lib/ 4 项。三个文件里
-            # rel_time.js 是构建期内联（线上正文那两处 `lib/rel_time.js` 是注释），
-            # rss_cover/rss_retention 是 api/rss.js 在 Vercel 侧 require 的 ⇒ 浏览器从不请求 lib/。
-            "lib/rel_time.js", "lib/rss_cover.js", "lib/rss_retention.js"]
-# 用户点头（2026-10-02 13:16"关出去"）后 api/ 站"不许公开"这一侧。
-# 名字是 `ls api/` 现取的 8 个，不虚构 ⇒ 过滤写错时判据会真的红。
+            # 15:58 用自测过的解析器在旧场清单里抓出的同类漏项（三个文件里 rel_time.js 是构建期
+            # 内联，另两个由 api/rss.js 在 Vercel 侧 require ⇒ 浏览器从不请求 lib/）。
+            "lib/rel_time.js", "lib/rss_cover.js", "lib/rss_retention.js",
+            # ↓ 18:12 **全量枚举**（远端 250 个跟踪 blob 按现过滤跑一遍）才看清的东西：
+            # 排除式名单会漏掉一切"没想到的类型"，而这些恰恰都真在仓库根里。
+            "vercel.json", "package.json", "LICENSE", "build_config.json",
+            "known_categories.json", "ai_daily.json", "predictions.jsonl",
+            "vendor_qrcode.min.js", "failed-run-364-final.png",
+            "daily-deep-2026-09-25.json"]
+
+# 站点运行时真正需要的全集（18:12 现取：4 个入口的同源请求只有这些；
+# qrcode 走 jsDelivr/unpkg 绝对 URL，starhub-share.png 是 a.download 的文件名不是请求）。
+PUBLISH = {"index.html", "ai-daily.html", "rss-aggregator.html", "daily-insight-history.html",
+           "hot_snapshot.json", "rss_sources.json"}
+
 API_SOURCES = ["api/agihunt.js", "api/article.js", "api/events.js", "api/news.js",
                "api/refresh.js", "api/rss.js", "api/search.js", "api/translate.js"]
 
@@ -113,6 +124,23 @@ def staged(tmp_path):
     if shutil.which("git") is None:
         pytest.skip("没有 git，无法造合成仓")
     return _run_stage(_tree(str(tmp_path)))
+
+
+def test_published_set_is_exactly_the_allowlist(staged):
+    """白名单式收口：制品里的东西必须**正好**等于站点需要的集合，多一项少一项都算红。
+
+    为什么翻成白名单（18:12 全量枚举的证据）：排除式名单跑出来的公开集是 15 项／0.48 MiB，
+    里面是 4 张调试截图、两个过期 daily-deep-*.json、build_config.json、predictions.jsonl、
+    vercel.json/package.json/LICENSE/known_categories.json/vendor_qrcode.min.js ——
+    每一类都要我"先想到才能挡"。集合相等这条把默认方向反过来：**新垃圾默认不公开**，
+    要公开就得改白名单（改的时候这条判据会逼你看清自己在加什么）。
+    """
+    chunks = {p for p in staged if re.fullmatch(r"rss-data-\d+\.js", p)}
+    extra = sorted(staged - PUBLISH - chunks)
+    missing = sorted(PUBLISH - staged)
+    assert not extra, "这些不是站点运行时需要的东西，却进了 Pages 制品：%s" % extra[:10]
+    assert not missing, "白名单里的站点件没进制品 ⇒ 首页或某个入口会空：%s" % missing
+    assert chunks, "rss-data-*.js 一块都没进制品 ⇒ 卡片墙没数据，白名单实现走偏了"
 
 
 def test_non_site_files_are_not_published(staged):

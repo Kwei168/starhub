@@ -467,19 +467,36 @@ jobs:
           # 4 个入口的 .md 文本引用核过：只有卡片正文里 `<code>CLAUDE.md` 这种描述性提及，没有任何 fetch。
           # `lib/` 一并关掉（15:58 用自测过的解析器在旧场清单里抓出来的同类漏项）：rel_time.js 是构建期
           # 内联进产物的，rss_cover/rss_retention 由 api/rss.js 在 Vercel 侧 require ⇒ 浏览器不请求它。
-          git ls-files -z \
-            | grep -zv -E '(^|/)[._]' \
-            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api|lib)/' \
-            | grep -zv '\.py$' \
-            | grep -zv '\.md$' \
-            | grep -zv '^template\.html$' \
-            | xargs -0 -r cp --parents -t _pages/
+          # 白名单式发布（用户裁决 2026-10-02 18:12"翻成白名单"）。
+          # 为什么不再是"git 清单 − 排除表"：18:12 拿远端 250 个跟踪 blob 按当时的排除表真跑一遍，
+          # 公开集仍有 15 项／0.48 MiB —— 里面是 4 张调试截图(128 KB)、两个过期 daily-deep-*.json、
+          # build_config.json、predictions.jsonl、vercel.json/package.json/LICENSE/
+          # known_categories.json/vendor_qrcode.min.js。排除表只能挡"先想到的那一类"；
+          # 白名单把默认方向反过来：**新垃圾默认不公开**，要公开必须改这张表 —— 判据
+          # tests/site_nav_drift/test_pages_artifact_scope.py::test_published_set_is_exactly_the_allowlist
+          # 断言集合相等 ⇒ 加错东西与漏发站点件都会当场红，不再可能"我漏写一行而静默公开"。
+          # 表内容是现取不是猜的：4 个入口的同源请求只有 4 个 HTML + rss-data-*.js +
+          # hot_snapshot.json + rss_sources.json；qrcode 走 jsDelivr/unpkg 的绝对 URL，
+          # `starhub-share.png` 是 a.download 的文件名而不是请求；构建期读的 build_config.json /
+          # known_categories.json / vendor_qrcode.min.js 由 python 直接从仓库根取，不经 _pages。
+          # 同类缺陷的证据链（历史读数，别删）：批 10 前线上 build_logs/*.jsonl 200／2.8 MB、
+          # fetch_and_build.py 200；批 10 之后 HANDOFF.md 仍 200／84,323 B；api/ 8 个函数 200／~114 KB；
+          # lib/ 那 4 项是用自测过的解析器在旧场清单里抓出来的。Vercel 从仓库根部署、不读 _pages，
+          # 所以关这些不影响 API 主机（18:13 现取：api/rss 200、api/news 200、api/translate 405）。
           MISS=""
-          for f in rss-data-*.js index.html ai-daily.html rss-aggregator.html daily-insight-history.html hot_snapshot.json; do
-          if [ -e "$f" ]; then cp -f "$f" _pages/; else MISS="$MISS $f"; fi
+          for f in index.html ai-daily.html rss-aggregator.html daily-insight-history.html                    hot_snapshot.json rss_sources.json; do
+            if [ -e "$f" ]; then cp -f "$f" _pages/; else MISS="$MISS $f"; fi
           done
+          # 分块按名字模式补进来（rss-data-1+ 已停止提交，git 里那份是停在旧流程的过期副本
+          # ⇒ 只能取工作树里新鲜的那一份）。shopt -s nullglob 让"这块还没生成"退化成零次循环，
+          # 而不是把字面模式 rss-data-*.js 当成一个缺件名字塞进 MISS（那样会每场误判缺件）。
+          shopt -s nullglob
+          for f in rss-data-*.js; do
+            cp -f "$f" _pages/
+          done
+          shopt -u nullglob
           for must in rss-data-0.js hot_snapshot.json rss-data-1.js rss-aggregator.html index.html \
-          ai-daily.html daily-insight-history.html; do
+          ai-daily.html daily-insight-history.html rss_sources.json; do
           if [ ! -s "_pages/$must" ]; then
           echo "::error::Pages 缺件：$must（这场不发，站点停在上一份制品）"
           case " $MISS " in *" $must "*) ;; *) MISS="$MISS $must";; esac

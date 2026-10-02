@@ -167,3 +167,18 @@ def test_stage_body_is_parsed_not_assumed():
     assert "git ls-files" in body, "抽出来的正文不像 Stage 正文：%r" % body[:120]
     assert len(body.splitlines()) >= 10, "正文只有 %d 行，疑似被截断" % len(body.splitlines())
     assert re.search(r"_pages", body), "正文里没有 _pages ⇒ 抽错了步骤"
+
+
+def test_a_missing_chunk_is_named_too(tmp_path):
+    """分块整族不存在时也必须点名，而不是靠 `cp` 失败把整步炸掉（那又是一次静默）。
+
+    白名单里分块是 `shopt -s nullglob` + glob 循环补进来的。把 nullglob 去掉的话，
+    `for f in rss-data-*.js` 会拿字面模式去 `cp`，在 `bash -e` 下当场中止 ——
+    rc 是非零没错，但**没有点名**，正是 ② 要治的那种形状（读日志的人只能看到"进程退出码 1"）。
+    这条判据就是那个变异的靶。
+    """
+    d = _tree(str(tmp_path), drop=("rss-data-0.js", "rss-data-1.js"))
+    rc, out = _run(d, _stage_body())
+    assert rc != 0, "分块全缺却退出 0 ⇒ 会发一份没有卡片数据的站点：%s" % out[-300:]
+    assert "::error::Pages 缺件：rss-data-0.js" in out, (
+        "非零退出但没点名分块（多半是 nullglob 被去掉了，字面模式撞 cp）：%s" % out[-420:])

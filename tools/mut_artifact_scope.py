@@ -12,37 +12,30 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WF = os.path.join(ROOT, ".github", "workflows", "update.yml")
 COPY = os.path.join(ROOT, ".deploy-tmp", "_mut_scope.yml")
-TEST = os.path.join("tests", "site_nav_drift", "test_pages_artifact_scope.py")
+TEST = os.path.join("tests", "site_nav_drift")   # 整目录：白名单的变异会打到不同判据上
 
-DIRS = "            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api|lib)/' \\\n"
-API = "(tests|tools|build_logs|docs|api|lib)/"
-PYS = "            | grep -zv '\\.py$' \\\n"
-MDS = "            | grep -zv '\\.md$' \\\n"
-HTML = "            | grep -zv '^template\\.html$' \\\n"
+# 白名单化之后锚点全部跟着换（2026-10-02 18:12）：旧那几条挡的是"排除表少一行"，
+# 现在正文里已经没有排除表了 —— 留着它们电池只会报 INVALID 而不是红（那正是它该有的行为）。
+# 锚点一律按**单行**定位，不写跨行字符串：跨行字面量在这个环境里被转义吃过两次。
+BY_NAME = "                   hot_snapshot.json rss_sources.json; do"
+NULLGLOB = "          shopt -s nullglob"
+HEAD_LOOP = ("          for f in index.html ai-daily.html rss-aggregator.html "
+             "daily-insight-history.html")
 
 MUTS = [
-    ("S1 少掉非站点目录过滤（tests/tools/build_logs 又公开）", DIRS, "",
-     "test_non_site_files_are_not_published"),
-    ("S2 少掉 .py 过滤（源码又公开）", PYS, "",
-     "test_non_site_files_are_not_published"),
-    ("S2b 少掉 .md 过滤（手册/README 又公开）", MDS, "",
-     "test_non_site_files_are_not_published"),
-    ("S3 过滤过头：把根目录 json 也剔掉（= 砍站点数据源）", HTML,
-     HTML + "            | grep -zv '\\.json$' \\\n",
+    # W1/W2 是同一枚硬币的两面：白名单少一项 = 站点发缺，多一项 = 垃圾公开。
+    ("W1 白名单少一项（首页侧栏的数据源不发）", BY_NAME,
+     "                   hot_snapshot.json; do",
      "test_site_files_are_still_published"),
-    # 批 11 的专属防线：只漏掉 api/ 时，其余过滤全在、站点也完好，只有 api 重新公开。
-    # 没有这一条，S1（整行删掉）挡不住"把 api 从名单里摘掉"这种最小回退。
-    ("S4 只把 api/ 放回公开面", API, API.replace("|api", ""),
-     "test_non_site_files_are_not_published"),
-    # 16:00 现取：旧场清单里 lib/ 有 4 项 —— 判据名单比现实窄时的典型形状。
-    # 锚点若跟不上正文（少 `|lib`），本电池会直接报 INVALID 而不是假装覆盖到了。
-    ("S6 只把 lib/ 放回公开面", API, API.replace("|lib", ""),
-     "test_non_site_files_are_not_published"),
+    ("W2 白名单多一项（把构建期的 known_categories 发上线）", HEAD_LOOP,
+     HEAD_LOOP + " known_categories.json",
+     "test_published_set_is_exactly_the_allowlist"),
+    # 去掉 nullglob 后 `for f in rss-data-*.js` 会拿字面模式去 cp，在 bash -e 下当场中止：
+    # rc 非零但没有点名 —— 正是 ② 治的那类静默，靶判据在 test_pages_missing_report.py。
+    ("W3 去掉 nullglob（分块全缺时字面模式撞 cp ⇒ 非零却没点名）", NULLGLOB,
+     "          : # 没有 nullglob ⇒ glob 保留字面量",
+     "test_a_missing_chunk_is_named_too"),
 ]
-
-
-def sha(p):
-    return hashlib.sha256(open(p, "rb").read()).hexdigest()
 
 
 def run(k=None):
@@ -53,7 +46,11 @@ def run(k=None):
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", env=env, timeout=900)
     lines = (p.stdout or "").strip().splitlines()
-    failed = sorted({l.split("::")[-1].split(" ")[0] for l in lines if l.startswith("FAILED")})
+    # FAILED 之外还要收 ERROR：判据的 fixture 自己炸掉（比如 Stage 在合成树上就 rc≠0）
+    # 同样是"这个变异被抓住了"。只数 FAILED 会把这种误记成"红了但不是自己的靶"。
+    failed = sorted({l.split("::")[-1].split(" ")[0]
+                     for l in lines
+                     if l.startswith(("FAILED", "ERROR"))})
     return p.returncode != 0, (lines[-1] if lines else "?"), failed
 
 

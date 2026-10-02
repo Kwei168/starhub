@@ -25,6 +25,18 @@ SITE_ARTIFACTS = (          # 退出 git，但必须按名发布且各有 test -
     "rss-data-0.js",        # 599,472 B/场
     "hot_snapshot.json",    #  62,936 B/场（首页侧栏 fetch 的数据源）
 )
+# Stage 的发布白名单（唯一口径）。A3 那边 `test_pages_artifact_scope.PUBLISH` 必须与它逐个相同
+# —— 两处各写一份名单正是本仓反复付过学费的分叉源（翻译判据 5/14、解析器盲点两次都是这个形状）。
+STAGE_ALLOWLIST = (
+    "index.html",
+    "ai-daily.html",
+    "rss-aggregator.html",
+    "daily-insight-history.html",
+    "rss-data-*.js",
+    "hot_snapshot.json",
+    "rss_sources.json",
+)
+
 STATE_ONLY_ARTIFACTS = (    # 纯跨场态：退出 git、进缓存，且**不许**被发布
     "trending_snapshot.json",   # 14,399 B/场，星标增量基线（fetch_and_build.py:432/486）
     "descriptions_zh.json",     # 77,007 B，描述译文缓存（fetch_and_build.py:722/813）
@@ -290,8 +302,10 @@ def test_frontend_fetched_names_are_served():
     注意源码里那些 JS 是写在 Python 字符串里的，引号被转义成 `\\'`，所以模式要能吃掉反斜杠 ——
     第一版没吃，`hot_snapshot.json` 就直接漏了。
 
-    允许的来源只有两种：还在 `git add` 清单里（会被跟踪、由 `git ls-files` 带上线），
-    或在 Stage 的按名拷贝名单里。**"库里有份冻结副本"不算来源** —— 那正是 批 3 清掉的形状：
+    允许的来源**只有 Stage 的白名单**这一种（2026-10-02 收紧）：白名单化之后"还在 `git add` 清单里"
+    不再等于"会被发布" —— `git ls-files` 那条管道已经没有了，跟踪中的 `build_config.json` /
+    `known_categories.json` 就是现取的反例（跟踪中、被构建期读、但不上线）。
+    **"库里有份冻结副本"同样不算来源** —— 那正是 批 3 清掉的形状：
     文件不再更新，页面却每场都拿旧数据当新的。
     """
     gen = os.path.join(ROOT, "build_rss_aggregator.py")
@@ -319,9 +333,9 @@ def test_frontend_fetched_names_are_served():
     assert adds and pub, "add 清单(%d)或发布名单(%d) 为空 —— 判据在空集合上跑" % (len(adds), len(pub))
 
     naked = sorted(n for n in fetched
-                   if n not in adds and not any(fnmatch.fnmatch(n, p) for p in pub))
+                   if not any(fnmatch.fnmatch(n, p) for p in pub))
     assert not naked, (
-        "这些名字被前端 fetch，但既不在 git add 清单也不在按名发布名单 ⇒ 上线就是 404/空数据：%s"
+        "这些名字被前端 fetch，却不在 Stage 的白名单里 ⇒ 上线就是 404/空数据：%s"
         % naked)
 
 
@@ -375,26 +389,49 @@ def _listings_from_git_tree(copy_line):
     return False
 
 
-def test_staging_takes_the_git_tree_not_the_worktree():
-    """staging 必须按 `git ls-files` 取清单：legacy 发的是 git 树，照工作目录整拷会泄露缓存语料。
+def test_staging_publishes_only_the_site_allowlist():
+    """staging 只许发"站点运行时白名单"，白名单之外一律不发 —— 钉的是集合，不是取文件的手法。
 
-    工作目录里有 cache restore-keys 放回、被 .gitignore 排除的原始语料（实测本地合计 398M：
-    rss_cache 110M / rss_history 62M / rss_api_snapshot 41M / daily_insight_* 146M），
-    它们今天不在 Pages 上。整拷 ./ 等于这次切换顺手把它们公开发布。
+    前身是 `test_staging_takes_the_git_tree_not_the_worktree`（钉"清单必须来自 `git ls-files`"）。
+    2026-10-02 18:12 全量枚举证明那条不变量**保不住它的初衷**：按"git 树 − 排除表"跑出来的公开集
+    仍有 15 项／0.48 MiB，里面是 4 张调试截图、两个过期 `daily-deep-*.json`、`build_config.json`、
+    `predictions.jsonl`、`vercel.json`/`package.json`/`LICENSE`/`known_categories.json`/
+    `vendor_qrcode.min.js` —— 排除表只能挡"先想到的那一类"。于是设计翻成白名单（用户裁决），
+    本判据跟着把靶从"手法"换成"结果"：**发布集合必须是白名单的子集，且不许出现 `.`/`_` 开头项**。
+    它真正防的那件事（工作目录里有 cache restore-keys 放回、被 .gitignore 排除的 398 MB 语料：
+    rss_cache 110M / rss_history 62M / rss_api_snapshot 41M / daily_insight_* 146M）现在由
+    `test_staging_never_copies_the_worktree_wholesale` 那条继续钉 —— 两条都在 A2 里。
     """
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 staging 步骤"
     body = stage[0]
     code = _code_lines(body)
-    assert any("git ls-files" in ln for ln in code), \
-        "staging 不再按 git 树取清单，会把 .gitignore 排除的缓存语料发布出去"
-    assert any("[._]" in ln for ln in code), \
-        "staging 不再剔除 `.`/`_` 开头文件，公开面会比今天变宽"
-    copies = _staging_copy_lines(body)
-    assert copies, "staging 里抽不出任何往 _pages 拷文件的命令行 ⇒ 本判据在空集上跑"
-    for ln in copies:
-        assert _listings_from_git_tree(ln), \
-            "staging 里有整拷工作目录的写法（会把被 gitignore 的语料发布出去）：%s" % ln
+    assert not any("git ls-files" in ln for ln in code), (
+        "staging 又回到「git 树 - 排除表」的取法：白名单之外的一切会静默重新公开")
+    toks = set()
+    for grp in re.findall(r"^\s*for f in (.+); do$", body, re.M):
+        toks.update(grp.split())
+    toks.update(os.path.basename(p) for p in re.findall(r"cp -f (\S+) _pages/", body))
+    # `cp -f "$f" _pages/` 是循环体里的变量，不是发布名：留它会以"白名单之外的名字"假红。
+    toks = {t for t in toks if "$" not in t and not t.startswith("`")}
+    assert toks, "抽不出任何发布名 ⇒ 本判据在空集合上跑"
+    stray = sorted(t for t in toks if t not in STAGE_ALLOWLIST)
+    assert not stray, (
+        "Stage 里出现了白名单之外的名字 %s：加名字之前先证明前端真的 fetch 它"
+        "（判据 test_frontend_fetched_names_are_served 只认 Stage 名单这一个来源）" % stray)
+    missing = sorted(t for t in STAGE_ALLOWLIST if not any(fnmatch.fnmatch(t, k) for k in toks))
+    assert not missing, "白名单里的东西没在正文里发出去：%s ⇒ 某个入口会缺数据" % missing
+    for t in toks:
+        assert not t.startswith((".", "_")), (
+            "发布名以 `.`/`_` 开头会让公开面比今天更宽：%s" % t)
+    # 名单只许有一份。A3 的 `PUBLISH` 与本文件的 `STAGE_ALLOWLIST` 必须逐个相同 ——
+    # 两处各写一份早晚分叉（本仓在翻译判据 Py/JS 两边、解析器两份实现上都付过这个学费）。
+    other = open(os.path.join(ROOT, "tests", "site_nav_drift",
+                              "test_pages_artifact_scope.py"), encoding="utf-8").read()
+    j = other.index("PUBLISH = {")
+    a3 = set(re.findall(r'"([^"]+)"', other[j:other.index("}", j)]))
+    assert a3 | {"rss-data-*.js"} == set(STAGE_ALLOWLIST), (
+        "A2 与 A3 的发布白名单分叉了：A3=%s A2=%s" % (sorted(a3), sorted(STAGE_ALLOWLIST)))
 
 
 def test_staging_never_copies_the_worktree_wholesale():
