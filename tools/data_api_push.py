@@ -139,28 +139,60 @@ def _rel(full):
         return full.replace(os.sep, "/")
 
 
-def list_files(rel):
-    """列出一个路径（文件或目录）下的文件；排除 __pycache__ 与 .pyc。"""
+def _ignored(rels):
+    """返回其中被 .gitignore 规则排除的路径。
+
+    必须带 `--no-index`：`check-ignore` 默认先看索引，**已跟踪的文件一律答"不忽略"**，
+    那正好漏掉我们要拦的那一类（"被忽略却已跟踪"）。
+    """
+    if not rels:
+        return []
+    p = subprocess.run(["git", "check-ignore", "--stdin", "--no-index", "-z"],
+                       input="\0".join(rels).encode("utf-8"),
+                       cwd=ROOT, capture_output=True)
+    return [x.decode("utf-8", "replace") for x in (p.stdout or b"").split(b"\0") if x]
+
+
+def refused_ignored(paths):
+    """显式点名、但被 .gitignore 排除的路径 —— 单独成口，是为了让调用方能审计而不是静默吞掉。"""
+    hit = set(_ignored([norm_path(p) for p in paths]))
+    return [p for p in paths if norm_path(p) in hit]
+
+
+def list_files(rel, allow_ignored=False):
+    """列出一个路径（文件或目录）下的文件；排除 __pycache__ 与 .pyc，以及被 .gitignore 排除的路径。
+
+    为什么这条必须在工具里：目录展开历史上只看 `__pycache__`/`.pyc`，
+    于是"按目录推"会把 gitignored 的 Scratch 件永久写进 git 历史（实测远端树里那个
+    411,404 B 的 `_check_js_temp.js` 就是这么进去的），而历史不可回收。
+    """
     ap = _abs(rel)
     if os.path.isfile(ap):
-        return [rel]
-    out = []
-    for root, dirs, files in os.walk(ap):
-        dirs[:] = [d for d in dirs if d != "__pycache__"]
-        for fn in sorted(files):
-            if fn.endswith((".pyc", ".pyo")):
-                continue
-            out.append(_rel(os.path.join(root, fn)))
-    return out
+        out = [rel]
+    else:
+        out = []
+        for root, dirs, files in os.walk(ap):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for fn in sorted(files):
+                if fn.endswith((".pyc", ".pyo")):
+                    continue
+                out.append(_rel(os.path.join(root, fn)))
+    if allow_ignored:
+        return out
+    drop = set(_ignored(out))
+    if drop:
+        print("  [忽略] 目录展开跳过 %d 个被 .gitignore 排除的路径：%s"
+              % (len(drop), ", ".join(sorted(drop)[:6])))
+    return [p for p in out if p not in drop]
 
 
-def expand_paths(paths):
+def expand_paths(paths, allow_ignored=False):
     """目录参数展开成其中的文件（原子推送要靠一次列出全部路径，逐个数文件正是漏项的来源）。"""
     out = []
     for p in paths:
         p = norm_path(p)
         if os.path.isdir(_abs(p)):
-            out.extend(list_files(p))
+            out.extend(list_files(p, allow_ignored))
         else:
             out.append(p)
     return out
@@ -302,11 +334,23 @@ def main():
                     help="从远端删除这些路径（tree 项 sha:null，走 Git Data API 的唯一删除方式）")
     ap.add_argument("--ref", default="",
                     help="目标分支，默认 main。夜场验证走分支：不占白天构建窗口、不碰线上站点")
+    ap.add_argument("--allow-ignored", action="store_true",
+                    help="放行被 .gitignore 排除的路径（默认拒绝：这类文件一旦进树就是永久历史，"
+                         "远端那个 411KB 的 _check_js_temp.js 就是这么进去的）")
     a = ap.parse_args()
     if a.msg_file:
         a.msg = open(a.msg_file, encoding="utf-8").read().strip()
 
-    a.paths = expand_paths(a.paths or [])
+    # 点名路径先判 ignore（目录展开那条路是"跳过 + 播报"，点名的路必须让人明确决定）；
+    # 只查点名文件不查 --delete：删除被忽略却仍在树里的路径，正是清理要做的事。
+    named = [norm_path(p) for p in (a.paths or [])]
+    blocked = [] if a.allow_ignored else refused_ignored(
+        [p for p in named if not os.path.isdir(_abs(p))])
+    if blocked:
+        print("::error::拒绝推送被 .gitignore 排除的路径：%s（确实要推就加 --allow-ignored）"
+              % ", ".join(blocked))
+        return 1
+    a.paths = expand_paths(named, a.allow_ignored)
     # 任一 workflow 被推都要过原子性检查（原实现只认 update.yml 这一个字符串）
     wfs = [p for p in a.paths if p.startswith(".github/workflows/") and p.endswith((".yml", ".yaml"))]
     for wf in wfs:

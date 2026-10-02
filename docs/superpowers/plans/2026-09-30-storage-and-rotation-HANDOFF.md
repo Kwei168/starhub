@@ -2076,3 +2076,581 @@ insight_tracking_history.jsonl     778,323 →     2,473
 ② 摘除前，把步骤 + 附属判据整体临时移出、跑完整门禁、再 sha256 逐字节还原（这次 A2 摘除后 372 passed，
    且证明没有别的判据偷偷 index 那个步骤名）。
 本地门禁计数轨迹：379（A2 瘦身前）→ 378（搬走 1 条）→ 372（摘掉 6 条回灌判据）。
+
+### 10.62 摘除后首场验收 + 一条 ① 留下的静默缺口（未决，等用户拍板）
+
+head=`6667cc18c4` 的首场（RUN 36903608415）三项都对上了：A2 **372 passed**（379→372 的差额
+= 删掉的 6 条回灌判据 + 搬去 gate B 的 2 条里的一条）、`SEED` 残迹 **0 行**、
+`[growth] new blobs=1  0.023 MiB  verdict=ok`，Pages 与 Vercel 双绿。**创口贴这条线到此闭环。**
+
+同一天查另一件事时撞见 ①（4 个页面 HTML 退出 git，`7c08d02cea` 10-01T07:56Z）留的缺口，链路是：
+
+1. `fetch_and_build.py:779` 的 `if stars_ok:` 罩到 820 行，里面同时写着
+   `open("index.html","w")`（811）与 `build_ai_daily.main()`（816-820）。
+   ⇒ **GitHub star API 限流的场次，index.html 与 ai-daily.html 根本不生成。**
+   17:00 场日志两行铁证：`::error::[Star] 拉取 star 失败（可能 API 限流）` 与
+   `[每日洞察] ai-daily.html 不存在，跳过注入`。
+2. 从前"保持不变"靠的是 git 里那份旧副本；① 之后树上没有副本了 ⇒ "保持不变"实际等于"不存在"。
+3. Stage Pages 步静默的**致命行是断言 `test -s _pages/<产物>`，不是按名拷贝那一行**（此处我原先写错过，
+   见 §10.77 的探针更正）：`for f in …; do [ -f "$f" ] && cp …; done` 在 `bash -e` 下缺件时**不会**中止，
+   脚本继续走到那 7 条 `test -s`，第一条不通过的断言才让整步 `exit 1` —— 而 `echo "Staged site size:"`
+   排在断言之后，所以现场看起来就是"一行输出都没有就红了"。
+   本地把 34 行正文原样抽出来、造缺件树复现：`rc=1、stdout 为空`，与 CI 日志
+   （endgroup 之后直接 `##[error]Process completed with exit code 1.`）逐字对上。
+4. 该步是 `continue-on-error`，界面显示 success；`Upload Pages artifact` / `Deploy to GitHub Pages`
+   因 `steps.stage.outcome` 判假而双双 skipped ⇒ **这场 Pages 静默不发，站点停在上一场产物。**
+
+实测频率（近 12 场）：star 限流 **1/12**（就是 17:00），那场 Pages 没发；18:00 起连发 5 场全绿。
+所以影响是"限流场少发一场且无人得知"，不是站点坏掉 —— 但按批 5b 自己的承诺
+（"不提交不会让页面缺文件"）这条承诺只在生成端每次都真写文件时成立，现在不成立。
+
+待选修法（**未动，等点单**）：
+- A 只把失败变响亮：按名拷贝不再被 `bash -e` 当场炸，缺件逐条 `::error::缺 index.html` 并落
+  `build_logs`；发布仍拒绝发半套（不发空首页）。CI-only，零功能改动。
+- B 治因：`build_ai_daily.main()` 挪出 `if stars_ok:` —— 它自带 API→RSS→本地 `ai_daily.json`
+  三级回退，与 star 数据无关，不该被 star 限流连坐。属功能改动，动手前判据要先红（缺件树复现即红）。
+- C 把 4 个 HTML 进 `starhub-state` 的 carry 名单当"上一场副本"：限流场也能发完整站点，
+  但改 path 清单等于换族（§10.58 踩过，前缀回退一起落空），且本质仍是静默发过期页。
+
+### 10.63 变异电池自己的账目：轮内还原 + 靶判据归属
+
+`tools/mut_cold_start.py` 原来只在 `finally` 里还原，于是 **K3 改的 `build_rss_aggregator.py`
+还挂在树上就进了 K4**（K4 改的是另一份文件 `build_daily_insight.py`）。账面后果：
+K4 报 `2 failed`，其中 `test_translation_cache_missing_is_a_noop_not_a_crash` 是 K3 的靶判据
+⇒ "挡住了"有一半是借来的。单独复现 K4 是 `1 failed, 6 passed` —— 差值就是这次抓到的洞。
+（同仓其余电池都走"改副本 + 环境变量注入"，不受影响；只有这一条是就地改。）
+
+修了三处，并按"守卫必须证明会咬"验过：
+- **轮内还原**：每轮 `finally` 里立刻按字节写回并 `sha256` 校验；
+- **轮前守卫**：每轮进场前断言"本轮不该碰的那份文件"仍是初始字节，否则记 leak、非零退出、
+  不声称覆盖率。证明方式：把轮内还原整块换成 `pass` 的合法变体（先 `py_compile` 自检，
+  第一版变体写成语法错时自检就拒绝了结论），电池播报
+  `K4 ... 进场前 build_rss_aggregator.py 已不是初始字节` 且 rc=1；
+- **靶判据归属**：每条变异登记自己的靶判据名，红了但靶判据不在 `failed` 里 ⇒ 记为未挡住。
+  证明方式：把 K4 的靶判据名改成不存在的 `test_no_such_target`，电池播报"记为未挡住"且 rc=1。
+
+修后电池：K1-K4 全 RED、各由自己的靶判据挡住、`轮间泄漏：无`、`未被挡住：0`、两份生产文件
+逐字节回到初始值。回归面：本地按 CI 的 A2 原命令复跑 **372 passed / 0 failed**。
+
+### 10.64 回读端在真实数据上验了一次：空集不是"平的"，而键名契约此前没人钉
+
+`tools/growth_history.py --days 3` 今天跑出来是 `没有 growth 事件`。**不是坏了**，是构造上的滞后：
+Monitor 步排在 `Commit & push` 之后（step 24 vs 23），而 `build_logs` 每个北京日只提交一次（批 4 的闸门），
+⇒ 某场的 growth 读数要等**下一个北京日的首场**才进 git。现取证据：
+远端 `build_logs/2026-10-01.jsonl` 2,819,872 B 与 `2026-10-02.jsonl` 112,798 B 里
+`"type":"growth"` 各 **0 条**（`--log` 参数是 `4c5c445bbc` 才上的，BJ 10-02 的事件首批要等 10-02 ~16:00 UTC）；
+同时 22:00 场 CI 打印 `[growth] new blobs=1  0.032 MiB  verdict=ok` 且真实路径没有
+`写日志失败`（唯一的失败播报来自它自测用的 `__no_such_dir__`）⇒ 写端在工作目录里是好的。
+
+但这暴露了一个真问题：**读端此前只在合成数据上跑过，空集等于从没被生产验证过**，
+而写端与读端是两份文件、各写各的键名（本仓已经为"Py/JS 两套翻译判据分叉 5/14"付过一次代价）。
+补的判据：`tests/rss_history/test_growth_roundtrip.py` —— 用**真** `log_line()` 写、**真**
+`iter_growth_events()`/`summarize()` 读，4 条：键名往返、聚合落在中位数/日均上、
+合法的 0 读数必须保留、坏记录必须被丢而不是变成 0。
+
+其中第 3 条先红后抓到读端的真缺陷：`new_bytes: null` 的行原本被当成一条事件收下，
+`summarize` 的 `or 0` 会把它算成"这场没长"⇒ 一行坏数据就能把中位数拖向 0，
+"曲线是平的"于是可以是假话。修法是把过滤放在读端：只收 `new_bytes` 是非 bool int 的记录
+（0 合法，null / 字符串 / bool 不合法）。
+
+电池：`tools/mut_growth_roundtrip.py`（G1 恢复旧缺陷 / G2 过滤过严丢 0 / G3 写端键名改名 /
+G4 写端不写 new_blobs / G5 按天聚合截错长度），账目沿用 §10.63 那套（轮内还原 + 轮前守卫 +
+靶判据归属）。读数：**5 条全 RED、各由自己的靶判据挡住、轮间泄漏 无、未被挡住 0、两份工具逐字节回到初始值**。
+回归面：本地按 CI 原命令跑 A2 = **376 passed / 0 failed**（372 + 新增 4 条）。
+
+### 10.65 回读端的三种「空」必须分开说：浅副本、不可达、真没数据
+
+§10.64 那句"今天空是正常的"不能停在口头解释上 —— 这台工作树的 `.git` 是浅取副本，
+`build_logs/<天>.jsonl` 本地那份永远是旧的，而旧版 `growth_events_for_day` 是**本地优先且本地存在就收工**：
+⇒ 明天远端有了 growth 行，本地照旧读到 0 条，工具会**一直**回答"没测到"，而真实曲线可能早就在长。
+另一半在 `fetch_remote`：`except Exception: return ""`，断网/超时/403 与"这天确实没日志"同一个返回值。
+两种"我没看到"都会被读成"没在长"，而这台仪表回答的正是那个是否题。
+
+改法（判据先红：`tests/rss_history/test_growth_readback_honesty.py` 5 条全红在缺 `day_reading` 上）：
+- 新增 `day_reading(day, local_dir, fetch) -> (events, note)`，把口径写进 note：
+  `本地` / `本地副本陈旧：本地 0 条、远端 N 条` / `本地与远端都无 growth 事件` /
+  `取数失败（URLError）⇒ 读数缺失，不代表没长` / `无该日日志`；
+- **本地读到 0 条才复核远端**（本地有读数时绝不白跑网络，反向判据钉住这条优化还在）；
+- 404 的翻译只写一处（`_fetch_text`），`fetch_remote` 不再吞异常；非 404 一律由调用方播报"取数失败"；
+- `main(fetch=None)` 可注入，出口把"取数失败天数"单独成行 —— 函数层绿、出口糊是这一仓的老病。
+
+电池 `tools/mut_growth_honesty.py`（H1 不复核远端 / H2 永远联网 / H3 吞异常 / H4 把 404 说成故障 /
+H5 出口不播报）：**5 条全 RED，各由自己的靶判据挡住，轮间泄漏 无，工具文件逐字节回到初始值**。
+
+现取读数（真数据，非合成）：
+- `growth_history.py --days 1` 耗时 512 ms 走完了远端复核，输出
+  `没有 growth 事件 … 只代表还没测到` 且**没有**"取数失败"行 ⇒ 网络可达、这天确实还没入库（与 §10.64 一致）；
+- `fetch_remote("2026-10-01")` 取回 2,584,197 字符（直连 URL 2,819,872 字节）⇒ 远端这条路是通的；
+- 回归面：本地按 CI 原命令跑 A2 = **381 passed / 0 failed**（372 + 4 条往返契约 + 5 条诚实性）。
+
+### 10.66 斜率复核 + 树里 0.41 MiB「被忽略却已跟踪」的驻留项（只加闸，不删）
+
+**斜率复核（全用 CI 自己打印的数，摘除播种之后的 5 场）**：16:00 `3.157 MiB/ok`（北京日界那次日志入库）、
+17:00 `0.028`、18:00 `0.023`、19:00 `0.032`、20:00 `0.032`、21:00 `0.036`、22:00 `0.032`，全部 `verdict=ok`。
+当前 tip：**379 个 blob / 21.45 MiB（22,495,455 字节）**，取自 `git/trees/main?recursive=1`
+并**断言 `truncated=false`**（不写死这条，残缺树会假装变小）。tip 最大的 5 项全是 `build_logs/*.jsonl`
+（2.71–2.93 MiB/天，5 天保留滚动）⇒ 这就是 tip 不涨的原因。
+
+**量到一类新东西**：`.gitignore:18` 明明写着 `_check_js_temp.js`（实际生效的匹配是 `:21` 的 `_check_*`，
+`git check-ignore -v` 给的是"最后命中那条"），它却还在远端树里，411,404 B。
+两条**独立口径**给出的清单完全一致（5 项 / 0.41 MiB）：
+`git/trees/main` ∩ `git check-ignore --no-index`，以及 `git ls-files -i -c --exclude-standard`。
+
+| 字节 | 路径 | 性质 |
+|---|---|---|
+| 411,404 | `_check_js_temp.js` | qrcode 压缩件 + 站点片段的 Scratch 打包，无业务引用；`_` 前缀连 Pages 制品都进不去 |
+| 19,304 | `.workbuddy/backup/build_ai_daily.py.bak-20260827` | 另一条工作线的 .bak（**他线内容，不动**） |
+| 1,447 | `.workbuddy/memory/2026-08-20.md` | 同上 |
+| 1,039 | `_fix_quotes.py` | 一次性改引号脚本 |
+| 120 | `.vercel/project.json` | `git check-ignore -v` 实测命中 `.gitignore:7:.vercel` —— `:3` 排 `.vercel/*`、`:4` 想用 `!.vercel/project.json` 放行，但 `:7` 又把 `.vercel` 整目录排除且**在后**（最后命中生效）⇒ 那条负向规则是死的 |
+
+关键口径（别把收益说大）：这类文件**不每场重写**，所以它不动 0.03 MiB/场 的斜率，只永久占 tip；
+而用户已明确不再做第三次历史重写 ⇒ 删它**只减 tip（0.41 MiB），不减 `.size`**（历史里那份还在）。
+所以本轮**一个都不删**，只把"从现在起不许再多"钉成判据。
+
+
+| 场次(UTC) | head | 每场 growth |
+|---|---|---|
+| 场次(UTC) | head | 每场 growth |
+|---|---|---|
+| 16:00 | 621e88c7 | 3.157 MiB/ok（北京日界那次日志入库） |
+| 17:00 | 4c5c445b | 0.028 MiB/ok |
+| 18:00 | 6667cc18 | 0.023 MiB/ok |
+| 19:00 | 8b262159 | 0.032 MiB/ok |
+| 20:00 | 438211e4 | 0.032 MiB/ok |
+| 21:00 | 287f55a2 | 0.036 MiB/ok |
+| 22:00 | 8ed075d4 | 0.032 MiB/ok |
+| 字节 | 路径 | 性质 |
+|---|---|---|
+| 411,404 | `_check_js_temp.js` | qrcode 压缩件 + 站点片段的 Scratch 打包，无业务引用；`_` 前缀连 Pages 制品都进不去 |
+| 19,304 | `.workbuddy/backup/build_ai_daily.py.bak-20260827` | 另一条工作线的 .bak（**用户/他线内容，不动**） |
+| 1,447 | `.workbuddy/memory/2026-08-20.md` | 同上 |
+| 1,039 | `_fix_quotes.py` | 一次性改引号脚本 |
+| 120 | `.vercel/project.json` | `.gitignore:3-4` 想靠 `!.vercel/project.json` 放行它，但父目录 `.vercel/*` 已被排除 ⇒ **Git 无法在已排除的目录里重新纳入文件**，那条负向规则是死的 |
+**新判据（A3 advisory）：`tests/site_nav_drift/test_ignored_not_tracked.py`**
+- 控制组先跑双向：临时仓里 `git add -f keep.ignored` ⇒ 探针必须抓到；`clean.txt` ⇒ 必须放过；
+  再加一个 ⇒ 必须多抓一个（门禁测试自带 git 身份，防 runner 没配 `user.name` 那类当场崩）；
+- 主判据：`被忽略却已跟踪` 集合 ⊆ `LEGACY`，且**名单不许过期**（已消失的条目留着 = 判据开始骗人）；
+- 反空转：索引必须 >50 个文件，否则两条 assert 是在空集上比"谁都不违规"；
+- 位置刻意在 A3（advisory，跑在 Stage/Commit 之前）：这是整洁度不是站点坏掉，不配挡 blocking 闸。
+
+**电池 `tools/mut_ignored_guard.py`**：L1 名单少一项 / L2 名单多一项不存在的 / L3 探针丢 `-i` /
+L4 探针恒返回空集 ⇒ **4 条全 RED**（L3/L4 同时打红控制组与主判据，正是期望行为），
+轮间泄漏 无，判据文件逐字节回到初始值。
+
+**差点被自己的探针骗过一次**（方法论，值得单独记）：第一版用 `git check-ignore`（不带 `--no-index`）报
+"0 个命中"，看着像"树很干净"。其实 `check-ignore` **默认先查索引**，已跟踪的文件一律答"不忽略"
+—— 而那正是我要找的那一类。⇒ 得到"0/空"时先怀疑口径，换一条独立口径对账再下结论。
+
+回归面：A2 仍是 **381 passed / 0 failed**（新判据不在 A2 清单里，不受影响）；A3 **3 passed**。
+
+### 10.67 补测 A2 覆盖不到的两道闸，并改掉一条过期三倍的登记数
+
+前面的"回归面：A2 381 passed"其实只覆盖了 `update.yml` 里 A2 那一串目录清单，**两道与本轮改动直接相关的闸
+不在其中**（都是刻意不接的，注释里写明了原因）：
+
+| 闸 | 收集范围 | 为什么不进每场构建 | 本轮实测 |
+|---|---|---|---|
+| `tests/trim_guard/` | 只在 `repo-trim.yml` 的判据自测步（destructive 步骤之前） | 会在临时仓里**真跑 `git-filter-repo`** | **22 passed / 17.6s** |
+| `tests/tools/` | 无（`test_gate_wiring.py` 的 UNWIRED 里点名 + 给原因） | 本地推送工具判据，CI 不调用 | **30 passed / 338.4s** |
+
+trim_guard 绿意味着两件事：批 6 加的 Monitor 步与摘除 Seed 步之后的 update.yml，
+被逐步排练的判据认可；`set -eo pipefail` 那条承重墙也还在。另确认
+`update.yml:100` 就写着"刻意不接 tests/trim_guard"，所以这道闸**只能像这样手动跑** —— 以后动 workflow 步骤要补上。
+
+顺手抓到一处登记数过期：UNWIRED 的 `tools` 原因写"实测 30 条 **128.7s**，3 条各 30~62s"，
+本轮真跑是 **338.4s**（同一台机器同一份代码，差 2.6 倍）。这正踩在本手册反复讲的"引用表里的数字之前先重测"上，
+已按实测改写并把"只能现跑不能引用"写进原因（改完 A2 复跑仍 **381 passed / 0 failed**）。
+
+另做了一次**内容级**对账（不看 commit sha）：本地 `update.yml` 与远端 `6667cc18c4` 的 blob 同为
+`2de382ffe4…` ⇒ 待推批次不会夹带意外的 workflow 改动。
+
+### 10.68 制品里公开的不只是站点：整棵源码树 + 14.3 MiB 日志都是 200（只测不改，等点单）
+
+Stage 步的过滤只有一条 `grep -zv -E '(^|/)[._]'` —— 它挡得住 `.`/`_` 前缀，挡不住其余一切。
+线上现取（GET，非推断）：
+
+| 路径 | 状态 |
+|---|---|
+| `fetch_and_build.py`（构建主脚本） | **200** |
+| `tests/rss_history/test_pages_deploy_wiring.py`（判据源码） | **200** |
+| `docs/superpowers/plans/2026-09-30-storage-and-rotation-HANDOFF.md`（本手册） | **200** |
+| `api/rss.js` | **200** |
+| `build_logs/2026-10-02.jsonl`（内部构建日志） | **200** |
+| `_check_js_temp.js` / `.qoder/repowiki/…` | 404（前缀被挡，与 §10.66 一致） |
+| `docs/排查记录.md` | 404（这份用户自写记录从未入库，与既有记录一致） |
+
+**远端树按顶层目录的真实构成**（`git/trees/main?recursive=1`，断言 `truncated=false`；379 blob / 21.46 MiB）：
+
+```
+build_logs   13 个   14.329 MiB   ← 67% 的跟踪内容是日志
+.qoder       91 个    2.273 MiB
+(根目录)       44 个    2.116 MiB
+docs         56 个    1.433 MiB
+tests       136 个    1.006 MiB
+tools        21 个    0.136 MiB
+api           8 个    0.086 MiB
+```
+
+口径讲清楚，别把收益说大：
+- 制品 `du -sh _pages` 是 **78–82 MiB**，大头是当场生成的 `rss-data-*.js`（~50 MiB），
+  所以"少发源码/日志"能省的是 **~17–18 MiB（约两成）**，不是数量级；
+- 它**不动 git tip**（`build_logs/` 必须继续被跟踪，否则 §10.64 的 T+1 回读就没有数据源），
+  也不动 0.03 MiB/场 的斜率；省的是 Pages 制品体积与上传时间（配额上限 100 MiB，现在 80 MiB 只剩两成余量），
+  外加一条公开面收敛：构建脚本、判据源码、内部运维手册、内部日志目前**任何人可下载**。
+
+待点单的改法（**一行**，且刻意只收窄制品、不碰 git）：
+`grep -zv -E '(^|/)[._]'` → `grep -zv -E '(^|/)[._]|^(build_logs|docs|tests|tools|api)/|^(fetch_and_build|build_[a-z_]+|insight_engine|test_daily_insight)\.py'`
+
+配套判据（先红后绿）：① Stage 的排除式必须含这几族；② **反向**要求按名拷贝清单里不许出现这些族
+（防止一边排除一边又按名加回来）；③ 已有的 `test_frontend_fetched_names_are_served`
+继续钉住"站点真正 fetch 的名字必须照发"（现值 `{hot_snapshot.json, rss_sources.json}`），
+它是这次改动的安全网 —— 真要有人开始 fetch `build_logs/`，那条会先红。
+
+风险清点：`api/` 由 Vercel 承担执行，Pages 发了也不运行，但**若有人拿 Pages 域当 API 入口就会 404**
+（用户已定案"入口就是 Pages、Vercel 那份 RSS 空壳保持不动"，见 [[vercel-pages-hosting-split]]，
+所以这条要他确认，我不擅自改）；`.vercelignore` 与 prune 步不受影响。
+
+### 10.69 把自己写进结论的两处"推理"换成硬证据，顺带纠正一处引用
+
+上一轮有两句话是我**推断**出来的，不是测出来的，本轮各自补了证据：
+
+1. "`_check_js_temp.js` 无业务引用" ⇒ 光 grep 仓库不够，还得确认**线上页面没有正在引它**
+   （那会变成当场坏链）。对 5 个线上页面逐个 GET 计数：
+   `index.html 285,176 B / rss-aggregator.html 3,118,137 B / ai-daily.html 77,581 B /
+   daily-insight-history.html 288,367 B / 根 285,176 B`，`_check_js_temp` 命中 **0 / 0 / 0 / 0 / 0**
+   ⇒ 它确实是死重，不是"发了但坏链"。副产物是一条发布健康读数：
+   与本轮早些时候（17:2x）的 `index 284,716 / aggregator 3,077,549 / history 289,125` 相比都在变，
+   说明 17:00 那次跳发之后 **18:00–22:00 场确实连续发出去了**（与 trim_guard 外的 CI 读数互证）。
+2. "Git 不允许在已排除目录里重新纳入文件，所以 `!.vercel/project.json` 是死的" ⇒ 用
+   `git check-ignore -v --no-index` 取实际命中的规则行：`.gitignore:7:.vercel` 命中
+   `.vercel/project.json`（`:3` 排除、`:4` 放行、`:7` 再排除，**最后命中生效**）⇒ 结论成立，
+   但真正的修法是把 `:7` 那条整目录排除改掉，而不是在 `:4` 上加更多负向。
+
+顺带纠正我自己写错的一处引用：§10.66 原文写"`.gitignore:18` 明明写着它"——`:18` 那行确实在，
+但 `check-ignore -v` 报的是**最后命中**的 `:21 _check_*`，表格里已改成两行都点名。
+这类行号错不影响结论，但按"写进手册的每个数都要能当场复核"的规矩就得改。
+
+### 10.70 电池健康普查：本轮改了 `tools/growth_history.py` 三次，12 节电池全部重跑
+
+改一份被测文件，最坏的不是判据红，而是**某节电池的锚点悄悄打偏** —— 锚点命中 0 次时变异根本没落到字节上，
+"全 RED"就变成自我安慰。所以本轮对自己的审计装置做一次普查（这属于 §10.63 那条规矩的常规执行）。
+
+| 电池 | 变异体数（RED） | INVALID | 汇总行 |
+|---|---|---|---|
+| `mut_state_cache`（S/T/C） | **21** | 0 | 未被挡住 0 |
+| `mut_cover_table`（M1–M12） | **12** | 0 | 未被挡住 0 |
+| `mut_realtime_cover`（N 系列） | **9** | 0 | 未被挡住 0 |
+| `mut_growth_roundtrip`（G1–G5） | **5** | 0 | 未被挡住 0 |
+| `mut_growth_honesty`（H1–H5） | **5** | 0 | 未被挡住 0 |
+| `mut_growth_history`（GH1–GH4） | **4** | 0 | 未被挡住 0 |
+| `mut_cold_start`（K1–K4，修账目前后各一次） | **4 × 2** | 0 | 未被挡住 0 |
+| `mut_ignored_guard`（L1–L4） | **4** | 0 | 轮间泄漏 无、未被挡住 0 |
+| `mut_history_growth` / `mut_log_gate` / `mut_site_artifacts` / `mut_transport_registry` | 本轮重跑 | 0 | 各自"未被挡住 0"（基线 11 / 9 / 15 / 4 条全绿） |
+
+能精确计数的变异体 **64 个，全部被挡住，INVALID 0**；另外 4 节因输出只留了汇总行，按它们自己的汇总口径记 0 逃逸。
+
+两个过程教训：
+1. **`tail -6` + `timeout 590` 会把"没跑完"伪装成"跑完了"** —— `mut_state_cache` 第一次跑我用管道取尾，
+   只看到 baseline/T4/C1 三行、没有收尾汇总，才发现是被超时切了。⇒ 长跑要么落盘再看，要么必须看到收尾行才算数。
+2. **在地方改生产文件的电池不许并发**（`mut_cold_start`/`mut_growth_*`/`mut_ignored_guard` 属于这类），
+   所以普查按顺序跑；只改副本 + env 注入的那两节（`mut_cover_table`/`mut_realtime_cover`，
+   靠 `RSS_BUILD_SRC` / `STARHUB_API_RSS` / `STARHUB_COVER_LIB`）可以并行，但它们的副本文件名彼此会撞，也串行走完。
+3. 顺带确认：改过三次的 `tools/growth_history.py` 没有让 `mut_growth_history` 的锚点失效
+   （GH1–GH4 仍各自打在自己的靶判据上），`tools/history_growth.py` 本轮只读未改。
+
+### 10.71 「构建绿但 Pages 没发」的真实频率：1/49 场（并把分母错处改掉）
+
+给 §10.62 那条待决事项补一个可比较的分母，口径是**只读 jobs/steps 结论**（不下日志，避免抓取失败混进结论）：
+
+| 分类 | 场次 | 说明 |
+|---|---|---|
+| 发了 | 38 | Pages 正常发布 |
+| 并发取消 | 6 | `cancel-in-progress`，设计如此 |
+| 门禁/构建红 | 4 | A2 blocking 或构建失败，设计如此 |
+| **绿着没发（§10.62 那一类）** | **1** | 2026-10-01T17:00 head=`4c5c445b`，`job/build/stage` 全 success 而 `deploy=skipped` |
+| 早于 Pages 发布改造 | 11 | 见下面的分母修正 |
+
+**分母修正过程（这里我自己错了一次）**：第一版分类把 11 场留成"未分类余项"，
+而且判断式写成了 `A or B and C`（优先级不是我要的）。取其中一场（run `36693299839`，09-30 09:00）
+直接列它的步骤名：**29 个步骤里没有任何匹配 `pages|stage` 的步** ⇒ 那 11 场根本还没有 artifact 发布链，
+不是"该发没发"。⇒ 正确窗口是 **49 场**（60 − 11），故障率 **1/49 ≈ 2.0%**；
+只看在 job 成功的场次则是 **1/39 ≈ 2.6%**。
+收尾要求写成硬规则：**分类结果里"未分类"必须为 0**，否则这条读数不作为结论 ——
+余项本身就是探针没覆盖到的证据。
+
+对决策的含义（不替用户拍板）：2% 的场次会静默停在上一份产物，站点不会坏，但**没人得知**；
+所以 §10.62 的 A（把失败变响亮）几乎无争议、成本一行级，
+B（把 `build_ai_daily.main()` 挪出 `if stars_ok:`）治的是"日报页被 star 限流连坐"，
+C（4 个 HTML 进缓存 carry）要付一次缓存族失效。
+
+### 10.72 待推清单（内容级对账 + "我会覆盖谁"检查）
+
+远端 HEAD 已从本轮改动的基线 `6667cc18c4` 前进到 `02825ce08d`，而这条工作树是**两条工作线共用**的，
+所以"要推这批"之前必须逐路径对账，而不是看 `git status` 的 `M`（那既包含陈旧索引也包含他线工作）。
+
+**这批 = 10 个路径**
+
+| 路径 | 状态 | 本地/远端 blob |
+|---|---|---|
+| `tools/growth_history.py` | 改 | `d6a96d76` / `fba550ee` |
+| `tools/mut_cold_start.py` | 改 | `2398d2b1` / `aec7876c` |
+| `tests/rss_history/test_gate_wiring.py` | 改（只 1 行：30 条实测时长 128.7s → 338.4s） | `10f36994` / `b9100122` |
+| `docs/superpowers/plans/2026-09-30-storage-and-rotation-HANDOFF.md` | 改（§10.62–10.72） | 远端 `d20e630f`；本地 hash **每追加一节就变**（写这行时是 `5ce971c4`），推送时以实时值为准，别引用本表这个数 |
+| `tools/mut_growth_roundtrip.py`、`tools/mut_growth_honesty.py`、`tools/mut_ignored_guard.py` | 新增（3 节电池） | 远端 404 |
+| `tests/rss_history/test_growth_roundtrip.py`、`tests/rss_history/test_growth_readback_honesty.py`、`tests/site_nav_drift/test_ignored_not_tracked.py` | 新增（9 条判据） | 远端 404 |
+
+**"会不会覆盖别人"逐文件检查（拿远端正文做 unified diff，只看删行）**
+- `growth_history.py` +77/−22：删掉的 22 行**全部是我替换掉的旧实现**
+  （`except Exception: return ""`、旧 `growth_events_for_day`、旧 `main()`），无第三方内容被抹；
+- `mut_cold_start.py` +45/−12：删行是旧 docstring、单文件 `TEST`、不带靶判据的 `MUTS` 元组 —— 都是我改的；
+- `test_gate_wiring.py` +1/−1；
+- 手册：远端 2078 行、本地 2383 行，**"远端有而本地无"的章节 = 无**（本地只多 §10.62 起）⇒ 不会回退他线文档。
+
+**明确排除**：`daily-insight.json`（本地 `e5897e0b` vs 远端 `0db1c534`）与 `build_logs/*.jsonl` ——
+那是 CI 每场重写的数据/日志，本地这份是陈旧副本，**远端才是权威**，绝不随这批带走。
+其余显示为 `M` 的 `api/rss.js`、`.gitignore`、`repo-trim.yml`、`update.yml`、`build_rss_aggregator.py` 等
+经对账**与远端逐字节相同**（`M` 只是浅副本索引陈旧）。
+
+**推送后的可见变化**：A2 `372 → 381`（+9 判据）、A3 `1 → 3`（+2 条树整洁判据），
+`update.yml` 不在本批 ⇒ 不改构建步骤，`tests/trim_guard` 无需重登记。
+
+### 10.73 §10.62 那条的关联分析已做完，红判据也备好了（只等一句"修"）
+
+**结构根源用 AST 证实，不是 grep**（grep 只认字面量，分支写成 `if repos:` 就漏；AST 认控制流归属）：
+- `fetch_and_build.py` 里 `if stars_ok:` **只有 1 处，在第 779 行**；
+- `build_ai_daily.main` 的调用点在**第 818 行，落在该分支子树内** ⇒ 判据现在必须是红的，这是设计如此。
+- 该分支内的调用点全表（= 一旦 star 限流就被一起跳过的东西）：
+  `build_trending` / `generate_ai_summary` / `fetch_following_events` / `open(template.html).read` + `.replace` 链 /
+  `open("index.html","w").write` / `json.dump`(known_categories、descriptions_zh) / **`build_ai_daily.main`**。
+
+**"挪出来是不是孤立改动"——已核到函数签名级别**：
+`build_ai_daily.main()`（`build_ai_daily.py:1223`）**无参数**，自己取数（`fetch_api()` → `fetch_rss()` →
+本地 `ai_daily.json` 三级回退，源码里另有 6 处 `urllib` 抓取），只写 `OUT = "ai-daily.html"`；
+**不读** stars 分支产出的 `out` / `trending` / `feed` / 模板渲染结果 ⇒
+把它挪出 `if stars_ok:` 不产生新依赖、不需要补参数、不动 index.html 那条（限流场仍旧不发空首页）。
+连带被跳过的 `known_categories.json` / `descriptions_zh.json` 两份写入**保持原样**
+（前者仍在 git add 清单、后者是 `starhub-state` 的 carry 文件，内容不变时跳过无害）。
+
+**改法（最小两处，等你点头才动）**
+1. `fetch_and_build.py`：把 816–820 那段 `try: import build_ai_daily; build_ai_daily.main() except …`
+   移出 `if stars_ok:` 分支（缩进回一层），其余一字不改。
+2. `update.yml` Stage 步：按名拷贝改成"缺件点名但不当场炸"，缺哪个就
+   `::error::缺 index.html`，并把这条写进 `build_logs`；发布仍旧拒绝半套制品。
+
+**已经备好的判据（都是红的，改完整套转绿）**
+- 耦合判据：AST 断言 `build_ai_daily.main` 的调用点**不在**任何 `if stars_ok:` 子树内（现在红）。
+- 行为判据：把 Stage 步 34 行正文原样抽出来，在缺 `index.html` 的合成树上真跑一遍，
+  断言 stdout/stderr 必须点名缺的文件（现在实测 `rc=1`、输出为空 ⇒ 红）。
+
+**改完怎么验（沿用本仓规矩）**：先跑两条判据确认从红转绿 → 各做一次变异体（把 1 挪回分支内、
+把 2 换回 `[ -f ] && cp`）确认当场变红 → 本地按 CI 原命令跑 A2/A3/`trim_guard` →
+再等一场构建看 `Upload Pages artifact` / `Deploy to GitHub Pages` 的**步级 conclusion**（不看 job 绿）。
+
+### 10.74 提案自校验：`main()` 没有提前返回，所以"挪出分支"不是空炮
+
+上一条只证明了"`build_ai_daily.main()` 不依赖 star 数据"，但**还差一步**：
+如果 `main()` 在限流路径上提前 `return` / `raise` / `sys.exit`，那么把调用挪出 `if stars_ok:`
+也永远不会执行到 ⇒ 那就是一个"改了但没用"的空炮修复（本仓最痛的一类）。AST 实测：
+
+```
+宿主函数 main 行 705 – 842
+函数体顶层语句顺序：… 729-730 If(not …)  734-777 For  779-820 If(stars_ok)  826-832 Try  835-840 Try  842 Expr
+Return 个数 = 0    Raise 个数 = 0    sys.exit 调用 = 0
+```
+
+⇒ `main()` 全程**没有任何提前退出**，779–820 那段分支执行完（或被整块跳过）之后，
+控制流一定继续走到 826/835 两个 Try。所以修法确定有效，且插入点是明确的：
+**把 816–820 那段 `try: import build_ai_daily; build_ai_daily.main() except …` 整块搬到分支之后、
+与 826 的 Try 同层**（`if stars_ok:` 结束于 820 行，中间 821–825 是注释/空行，位置唯一）。
+
+顺带被这条读数解释了一件事：`main()` 既然不 return 也不 raise，
+限流场它照样正常退出 0 ⇒ 这正是 17:00 那场"构建绿、Pages 没发"能一路静默到底的上半段原因
+（下半段是 Stage 步的 `continue-on-error`，见 §10.62）。
+
+判据侧不变：AST 归属判据（调用点不许在任何 `if stars_ok:` 子树内，现为红）+
+缺件点名的行为判据（现测 `rc=1`、零输出，为红）。变异体两个：把调用挪回分支内、
+把 `[ -f ] && cp` 换回原形状 —— 都必须当场变红。
+
+### 10.75 同类缺陷普查：静默不发 Pages 的路径有 4 条，不是我之前说的 1 条（建议因此改变）
+
+按 Stage 步"必须当场存在"的名单（`ai-daily.html`、`daily-insight-history.html`、`hot_snapshot.json`、
+`index.html`、`rss-aggregator.html`）反向查生成端的保护结构，AST 实测：
+
+| 产物 | 生成端调用/写文件行 | 外层保护 | 触发条件 |
+|---|---|---|---|
+| `index.html` | 811（写） | **`If[stars_ok]@779`** | star API 限流 ⇒ 根本不写 |
+| `ai-daily.html` | `build_ai_daily.main()` @818 | **`If[stars_ok]@779`** + `Try(吞掉)@816` | 同上；或 AIHOT/RSS/本地 json 三级全失败被吞 |
+| `rss-aggregator.html` + `hot_snapshot.json` + `rss-data-*.js` | `build_rss_aggregator.main()` @828 | **`Try(吞掉)@826`** | **RSS 生成器抛任何异常** ⇒ 吞掉、退出码不变、产物不写 |
+| `daily-insight-history.html` | `build_daily_insight.main()` @837 | **`Try(吞掉)@835`** | 同上，洞察生成器抛异常 |
+
+另外 `known_categories.json`(812) / `descriptions_zh.json`(813) / `template.html` 的读取(792)
+也在 `If[stars_ok]` 里 —— 但这两份是**状态/carry 文件**，跳过等于"内容不变"，与站点发布无关，不算这类缺陷。
+
+**这修正了我在 §10.73 的建议权重**：
+- 我之前把修法写成"① 治因（挪出 `if stars_ok:`）+ ② 响亮化（可选）"；
+- 普查说明 ① 只覆盖 4 条路径里的 2 条，而 **RSS/洞察生成器抛异常那两条完全不走 `stars_ok` 分支**，
+  它们被 `Try(吞掉)` 保护 ⇒ 产物缺失、Stage 步静默 exit 1、Pages 不发、构建仍绿。
+  **只有 ②（缺件点名 + 把"这场没发出去"变成可见信号）能一次性覆盖全部 4 条路径**，
+  而且它不改任何功能逻辑。
+- ①仍然值得做，但定位要降级：它治的是"日报页被 star 限流无辜连坐"这一条具体耦合。
+
+**频率口径别混**：实测窗口里"构建绿但 Pages 没发"总共只有 **1/49 ≈ 2%**（§10.71），
+那 1 场的因是 star 限流；上表另外两条是**风险路径**，不是已观测到的发生率 ——
+把它们说成"常发生"就是夸大。也正因如此，②的成本是一行级、收益是把 2% 变成"看得见、可归因"。
+
+### 10.76 修法②已在沙箱彩排通过（含我自己改出来又抓回的一个真缺陷）
+
+`tools/../.deploy-tmp/_rehearse_fix_v2.py` 只读生产文件、在临时仓里跑，四条结果：
+
+| 案例 | 树的状态 | 期望 | 实测 |
+|---|---|---|---|
+| R1 | 缺 `index.html` + `ai-daily.html` | 非零退出 + **逐个点名** + 落 `build_logs` | `rc=1`、`缺件清单： index.html ai-daily.html`、`pages_missing` 记录在案 |
+| R2 | 齐件（反向护栏） | 零退出且**不许有 ::error::** | `rc=0`、`11K _pages` |
+| R3 | `ai-daily.html` 存在但 **0 字节** | 也必须非零退出并点名 | `rc=1`、点名成功 |
+| R0 | 与 R1 同一棵树，跑**旧正文** | 复现静默 | `rc=1`、**输出 0 字节** |
+
+新正文（等点单，未落地）：
+```bash
+MISS=""
+for f in rss-data-*.js index.html ai-daily.html rss-aggregator.html daily-insight-history.html hot_snapshot.json; do
+  if [ -e "$f" ]; then cp -f "$f" _pages/; else MISS="$MISS $f"; fi
+done
+for must in rss-data-0.js hot_snapshot.json rss-data-1.js rss-aggregator.html index.html \
+            ai-daily.html daily-insight-history.html; do
+  if [ ! -s "_pages/$must" ]; then
+    echo "::error::Pages 缺件：$must（这场不发，站点停在上一份制品）"
+    case " $MISS " in *" $must "*) ;; *) MISS="$MISS $must";; esac
+  fi
+done
+if [ -n "$MISS" ]; then
+  printf '{"ts":"%s","type":"pages_missing","files":"%s"}\n' "$(date -Iseconds)" "$MISS" \
+    >> "build_logs/$(TZ=Asia/Shanghai date +%F).jsonl" || true
+  echo "缺件清单：$MISS"; exit 1
+fi
+```
+三处形状是有原因的：`if [ -e ] ; then … else … ; fi` 只是把"缺件"从隐式变成显式累计
+（§10.77 的探针证明 `[ -e ] && cp` 在 `bash -e` 的循环里并不会中止，所以这不是修 bug 而是修可读性）；
+真正承重的是第二段用 `-s` 而不是 `-e`（**空文件是有效件的反例**，R3 就是钉这个）；
+`case` 去重是因为两段都会累加同一文件名。
+
+**我自己在这条上走错两步、都被彩排抓回**：
+① 第一版彩排读子进程输出没给 `encoding="utf-8"`，GBK 解码炸掉 ⇒ 我一度判"补丁没点名"（**是读失败不是改失败**）；
+② 为消除重复清单我把第二段的 `MISS=` 累加直接删掉 ⇒ 那会让 **0 字节文件被当有效件发出去**（R3 当场抓住）。
+⇒ 又一次印证：改动要配一条**反向**案例，否则"顺手简化"就是在制造新的静默。
+
+落地前置检查（**这一段我第一版写错了，已改正**）：我原写"`tests/trim_guard/` 会把 update.yml 的 run 步骤逐条真跑"——
+读了判据本体才发现它排练的是 **`repo-trim.yml` 的 `jobs.trim.steps`**（`load_steps()` 取的就是那一份，
+配套还有 `test_skip_list_cannot_absorb_a_real_step` 钉 SKIP 名单不许吞真步骤），**与 update.yml 无关**。
+真正管住这段新正文的是 **A2 的 `test_autocommit_no_rollback.py::test_every_run_step_is_shell_valid`**
+（按缩进做纯文本抽取后对每个 `run:` 块跑 `bash -n`，刻意不引 PyYAML），
+起因正是它抓过我"删掉 `git push || {` 留下无尾 `}`"那种"YAML 解析通过、整步却 red"的车。
+⇒ 实测：把本节的 New body 写进 `.deploy-tmp/_newbody.sh` 跑 `bash -n` —— **通过**（23 行）。
+所以 ② 落地不需要登记任何 SKIP，唯一的硬约束是 shell 语法，已当场验过。
+
+### 10.77 机制更正 + ②的电池 v3：7 个变异全抓住、0 逃逸（含一次"基线不绿拒绝自评"救了我）
+
+**更正：静默的致命行是 `test -s`，不是 `[ -f ] && cp`。** 我在 §10.62 与 §10.76 都写成
+"缺件让拷贝循环在 `bash -e` 下当场炸"，这是错的。两段最小探针实测：
+
+```
+for f in present.txt absent.txt; do [ -e "$f" ] && echo "copy $f"; done; echo REACHED_END
+  → rc=0，输出含 REACHED_END            ⇒ 循环里的 A && B 不中止（A 不是列表最后一条）
+同款循环 + 一条 test -s 不存在的文件; echo REACHED_END
+  → rc=1，输出停在 copy present.txt     ⇒ 中止来自 test -s
+```
+症状（`rc=1` 且零输出）不变，因为 `echo "Staged site size:"` 恰好排在 7 条 `test -s` 之后。
+但**归因错了会误导下一个人**：他会去改拷贝行，而拷贝行本来就不是病灶；断言行才是。两处正文已改。
+
+**②的电池 v3（`.deploy-tmp/_mut_fix2_v3.py`）**：判据从三条加到四条 ——
+R1 缺两件（要点名、要落 build_logs、**其余产物仍要进 `_pages`**）、R2 齐件（零退出且无 `::error::`）、
+R3 空文件（0 字节必须被挡）、**R4 逐件缺席各测一次**（断言清单直接从正文里正则抽出，不手抄，防两边分叉）。
+
+| 变异 | 结果 | 失败面 |
+|---|---|---|
+| N1 `-s` → `-e` | RED | R3 |
+| N2 删掉逐件 `::error::` | RED | R1,R3,R4（全 7 件） |
+| N3 删掉 `exit 1` | RED | R1,R3,R4 |
+| N5 删掉 build_logs 落盘 | RED | R1 |
+| N6 断言清单少钉 `hot_snapshot.json` | RED | R4 精确报出该件 |
+| N7 断言清单少钉 `index.html` | RED | R1,R4 |
+| N8 拷贝 glob 退化（只拷 index.html） | RED | R2 |
+
+**7/7 被抓住，0 逃逸，0 无效**。其中 N6/N7 是 v2 暴露的"判据太弱"补出来的：
+v2 只查 index/ai-daily 两件，于是"断言清单少钉一项"能全绿过关 ⇒ R4 是为此新增的。
+N4（退回 `[ -e ] && cp`）不计入：上面的探针证明它与新正文**行为等价**，属等价变异体，
+把它当"抓到了"就是虚报覆盖率。
+
+顺带又被自己的规矩救一次：v3 第一版跑出来是
+`基线: {R1: True, R2: True, R3: True, R4: ['\\']}` + `基线不满足 ⇒ 不作任何覆盖率声称`、rc=1 ——
+"基线不绿就拒绝自评"的守卫先炸（我的清单正则把续行 `\` 当成第 8 个产物），不是某条判据红。
+若当时只看"7 个变异全 RED"就继续，那些"被抓住"全都建在一条没跑通的基线上。
+
+### 10.78 修法①也彩排过了：改动面精确到 5 行，且"绿"是移动带来的、不是判据本来不咬
+
+`.deploy-tmp/_rehearse_fix1.py` 只读 `fetch_and_build.py`，在**副本**上做移动，四条验证：
+
+| | 验证 | 结果 |
+|---|---|---|
+| 定位 | 用 AST 找分支里保护 `build_ai_daily.main` 的 `Try` 段（不写死行号） | 第 **816–820** 行、5 行、缩进 8 空格 |
+| V1 | 移动后副本 `ast.parse` | 通过 |
+| V2 | 归属判据在**副本**上 | 子树内调用点 = 无 ⇒ **绿** |
+| V3 | 同一条判据在**生产文件**上 | 子树内调用点 = `[818]` ⇒ 仍**红** |
+| V4 | 改动面 | `-5/+5`，只动了那一段 |
+
+V3 是刻意配的**反向对照**：没有它，"副本变绿"可能只是因为判据根本不咬（本仓吃过好几次这种亏）。
+
+第一版脚本 V4 报 `-5/+6` —— 我在插入点多塞了一个空行，**"改动面超出预期"就是这条判据该报的东西**；
+删掉那句 `[""]` 后 `-5/+5` 通过。生产文件全程未写入，副本落在 `.deploy-tmp/_fab_hoisted.py`。
+
+至此 ① 与 ② 都是"彩排过 + 判据自证会咬"的状态：
+- ① 治 `index/ai-daily` 被 star 限流连坐（4 条路径里的 2 条），改动面 5 行；
+- ② 让全部 4 条路径的缺件在 CI 里点名并落 `build_logs`，且拒绝发半套（§10.76/§10.77，7 个变异 0 逃逸）。
+两者互不依赖，可以分开批；也都还没落地，等点单。
+
+### 10.79 待推批次的"当前状态"回归快照（不引用两小时前的读数）
+
+按"任何状态声明都要本轮现跑"的规矩重跑一遍：
+
+```
+A2（blocking，update.yml 原命令）   381 passed, 34 warnings in 62.18s   → 0 failed
+A3（advisory，tests/site_nav_drift）   3 passed in 0.90s
+mut_cold_start          rc=0   未被挡住/无效变异：0
+mut_growth_roundtrip    rc=0   未被挡住/无效变异：0
+mut_growth_honesty      rc=0   未被挡住/无效变异：0
+mut_ignored_guard       rc=0   未被挡住/无效变异：0
+```
+
+顺带记一条容易误读的点：`git diff --stat build_rss_aggregator.py` 显示 146/27 行差异，
+这**不是**谁改了它 —— 本地索引是浅副本；内容级对账（`git hash-object` vs 远端 contents API）
+给出同一个 blob `9742535bba…` ⇒ 与远端逐字节相同。⇒ 看 `git diff` 判断"有没有被我改坏"在这台机器上是错的，
+只能比 blob（§10.72 那张清单就是这么做的）。
+
+### 10.80 补上真正的根因闸：推送工具过去会把 gitignored 的 Scratch 件吞进历史
+
+§10.66 那个 411 KB 的 `_check_js_temp.js` 只是**症状**；入口在这里：
+`tools/data_api_push.py` 的 `list_files()` 用 `os.walk` 展开目录，**只排除 `__pycache__`/`.pyc`，
+从不查 `.gitignore`** ⇒ 任何"按目录推"的用法都会把被忽略的 Scratch 永久写进 git，而历史不可回收
+（用户已定不再第三次重写）。所以修的是工具本身，不是再手工清一次。
+
+改动（全在 `tools/data_api_push.py`）：
+- `_ignored()` 用 `git check-ignore --stdin --no-index`（**`--no-index` 是承重的**：默认口径先看索引，
+  已跟踪的文件一律答"不忽略"，恰好放过我们要拦的那一类）；
+- `list_files/expand_paths` 在目录展开时**跳过并播报**被忽略项（"跳过 N 个 …"，不静默）；
+- 显式点名的被忽略路径 ⇒ `main()` 出口**拒绝**（`::error::拒绝推送被 .gitignore 排除的路径：…`），
+  只有 `--allow-ignored` 才放行；**`--delete` 不受限** —— 删掉"被忽略却已跟踪"的存量路径正是清理要做的事。
+
+判据 `tests/tools/test_push_ignores_scratch.py`（先红：3 条各自红在漏口/无出口/无开关上，现 **5 passed**）：
+目录展开不含忽略项、点名必拦、开关真放行、**已跟踪却被忽略那类照样拦**（`--no-index` 的活体证明）、
+CLI 端到端在真仓里造命中 `_check_*` 规则的探针文件（跑完即删，`--dry-run` 不写远端）。
+
+电池 `tools/mut_push_guard.py`：P1 不过滤 / P2 点名不拦 / P3 开关在展开层失效 /
+P4 反向过头（展开一律清空 = 推送通道报废）/ P5 出口层不认开关 / P6 丢 `--no-index`
+⇒ **6 条全 RED、各由自己的靶判据挡住**，轮间泄漏 无，工具文件逐字节回到初始值。
+P4 是刻意配的**反向变异**：只写"要拦"不写"别乱拦"的判据，最后一定退化成把推送通道一起封死。
+
+诚实标注覆盖范围：`tests/tools/` 是 UNWIRED（CI 每场跑它不值当，实测 30 条要几百秒），
+所以**这道闸的常驻执行点是工具本身**（每次推送都过），测试只是回归证明 —— 别把它当"A2 会替我盯着"。
+
+**待推清单因此从 10 个路径变成 13 个**（§10.72 那份要按这版走）：新增
+`tools/data_api_push.py`、`tests/tools/test_push_ignores_scratch.py`、`tools/mut_push_guard.py`。
