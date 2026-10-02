@@ -22,6 +22,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 # 只在作为脚本跑时改挂载 stdout：pytest 捕获态下重挂载会吞掉测试输出
 if __name__ == "__main__":
@@ -90,10 +91,12 @@ def verify(expect, tag, ref="main", gone=()):
 
     `gone` 是本次声明要删的路径：**删除也必须复查**，否则 `sha: null` 没生效时
     工具会报"内容不同=0"，而远端那个文件其实还在（半拉子状态比不删更难发现）。
+    路径一律 `quote()`：本轮删除清单里 89/147 含非 ASCII 与空格，裸拼会让复查在 ref 已移动之后
+    抛异常 ——「推成功了但报栈」和「删漏了」就分不开了（判据 tests/tools/test_push_url_quoting.py）。
     """
     bad = 0
     for p, want in expect.items():
-        got = req("GET", "%s/contents/%s?ref=%s" % (REPO, p, ref))
+        got = req("GET", "%s/contents/%s?ref=%s" % (REPO, quote(p), ref))
         if got["sha"] != want:
             bad += 1
             print("  [NG] %s %s 远端=%s 期望=%s" % (tag, p, got["sha"][:10], want[:10]))
@@ -101,7 +104,7 @@ def verify(expect, tag, ref="main", gone=()):
             print("  [OK] %s %s %s" % (tag, p, want[:10]))
     for p in gone:
         try:
-            got = req("GET", "%s/contents/%s?ref=%s" % (REPO, p, ref))
+            got = req("GET", "%s/contents/%s?ref=%s" % (REPO, quote(p), ref))
             bad += 1
             print("  [NG] %s 删除未生效：%s 远端仍存在 sha=%s" % (tag, p, got["sha"][:10]))
         except urllib.error.HTTPError as e:
@@ -236,7 +239,9 @@ def remote_matches_local(rel):
     missing_local_only, notes = [], []
     for f in files:
         try:
-            got = req("GET", "%s/contents/%s" % (REPO, f), tries=2)
+            # quote 不能省：非 ASCII/含空格的路径裸拼会抛，而这里的 except 会把它
+            # 误分类成「远端不存在」⇒ 判据读数为假阴性。
+            got = req("GET", "%s/contents/%s" % (REPO, quote(f)), tries=2)
         except Exception:
             missing_local_only.append(f)
             continue

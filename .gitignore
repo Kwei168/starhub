@@ -35,7 +35,8 @@ rss_history_index.json
 # 工具/IDE 本地产物
 .workbuddy/
 .zcode/
-# Qoder（国内版）本地插件配置，repowiki 知识卡片除外
+# Qoder（国内版）本地插件配置。旧注释曾写「repowiki 知识卡片除外」，
+# 该豁免已于 2026-10-02 随整目录排除一并作废（见文件末尾）。
 .qoder/settings.json
 nul
 
@@ -62,3 +63,12 @@ descriptions_zh.json
 trending_snapshot.json
 hot_snapshot.json
 rss-data-0.js
+
+# 跟代码无关的整目录（用户裁定 2026-10-02：「不要把跟代码无关的推送到 github 上」）。
+# docs/（设计与台账文档 56 个 / 1.47 MiB）与 .qoder/repowiki（知识卡片 91 个 / 2.27 MiB）
+# 此前是被故意跟踪的；本次整目录排除 + 从远端树摘除，本地文件一份都不动。
+# 两条都是「永久驻留型」体积：不会每场重写，所以不动 0.03 MiB/场 的斜率，只压 tip；
+# 更要紧的是 docs/ 会跟着 Pages 制品整棵发布出去（线上可直接 GET 到），排除后不再公开。
+# 防回潮判据：tests/site_nav_drift/test_noncode_not_tracked.py（规则命中 + 索引为 0 两道各自独立）。
+/docs/
+/.qoder/
