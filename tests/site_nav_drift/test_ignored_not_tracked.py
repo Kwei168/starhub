@@ -20,9 +20,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 # 已知的历史驻留项（2026-10-01 实测字节数）。删掉一个就把这里同步删一行 ——
 # 名单过期本身要判红，否则它会慢慢变成"什么都允许"的挡箭牌。
+# 2026-10-02：_check_js_temp.js（411,404 B）与 _fix_quotes.py（1,039 B）已随批 6 之后
+# 用 --delete 逐路径摘掉，所以两行从名单里删除；名单里剩下的是两件刻意不动的：
+# .workbuddy/*（另一条工作线的用户内容，不碰）与 .vercel/project.json（120 B，
+# CI 走 VERCEL_PROJECT_ID 环境变量不依赖它，但用户本地 vercel CLI 可能要 ⇒ 不为 120 B 冒断供风险）。
 LEGACY = {
-    "_check_js_temp.js",                                # 411,404 B：Scratch 打包产物，无引用
-    "_fix_quotes.py",                                   # 1,039 B：一次性改引号的脚本
     ".workbuddy/backup/build_ai_daily.py.bak-20260827",  # 19,304 B：另一条工作线的 .bak
     ".workbuddy/memory/2026-08-20.md",                   # 1,447 B：另一条工作线的记忆文件
     ".vercel/project.json",                             # 120 B：Vercel 项目链接，删前先确认 CLI 不需要
