@@ -5,6 +5,8 @@ import sys
 import json
 import unittest
 
+import pytest
+
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 sys.path.insert(0, ROOT)
 
@@ -12,10 +14,18 @@ import build_daily_insight as B
 
 B.NOW_BJ = B._now_bj()
 
-# 测试隔离：PipelineTracer.flush() 会写真实 TRACKING_FILE（受版本控制），
-# 重定向到临时目录避免污染工作区与 CI 提交
-import tempfile as _tempfile
-B.TRACKING_FILE = os.path.join(_tempfile.mkdtemp(prefix="tracer_test_"), "tracking.jsonl")
+
+@pytest.fixture(autouse=True)
+def _tracking_isolation(tmp_path, monkeypatch):
+    """测试隔离：PipelineTracer.flush() 会写真实 TRACKING_FILE（受版本控制）⇒ 换 cwd。
+
+    原先这里是 `B.TRACKING_FILE = mkdtemp()/tracking.jsonl`（模块级改写）。pytest 会在
+    收集阶段 import 同目录所有测试文件，这个绝对路径就永久泄漏进 `build_daily_insight`，
+    把 `test_cold_start_history_reader.py::test_tracking_file_constant_is_relative_and_shared_with_cache`
+    的"必须是根目录相对名"守卫打红（gate B 每场 1 failed，2026-10-02 实测）。
+    `TRACKING_FILE` 本来就是相对名，chdir 同样隔离写入点，且不再污染其它判据读取的全局。
+    """
+    monkeypatch.chdir(tmp_path)
 
 
 class TestPipelineTracer(unittest.TestCase):
