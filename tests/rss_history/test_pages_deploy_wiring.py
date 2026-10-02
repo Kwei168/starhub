@@ -154,6 +154,50 @@ def test_pages_html_ship_from_workdir_not_from_git():
     assert 'cp -f "$f" _pages/' in body, "页面补入的那步被改动，_pages 里不会有新鲜页面：%s" % body
 
 
+def _guarded_names(body):
+    """staging 正文里"必须有内容"这条硬断言实际守到了哪些文件名。
+
+    认两种写法，但**要求本身不放松**（名单仍须覆盖全部站点产物，缺一个就判红）：
+      ① 字面 `test -s _pages/x`（旧形状，一条一行）；
+      ② `for must in a b c; do … [ ! -s "_pages/$must" ] … done`（②缺件点名的新形状，
+         每个缺件都 `::error::` 并写进 build_logs ⇒ 语义比 ① 更强）。
+    只认 ① 的后果是：一次改进被自己的判据判红（2026-10-02 实测就是如此），
+    而那等于用判据把实现钉死在最旧的写法上 —— 该收紧的是识别，不是要求。
+    """
+    names = set(re.findall(r"^\s*test -s _pages/(\S+)$", body, re.M))
+    m = re.search(r"for must in ([^;]+); ?do([\s\S]{0,600}?)\ndone", body)
+    if m and re.search(r'-s\s*"?_pages/\$must', m.group(2)):
+        names.update(t for t in re.split(r"\s+", m.group(1).replace("\\", "")) if t)
+    return names
+
+
+def test_guarded_names_extractor_recognizes_both_shapes():
+    """抽取器自己的判据：两种形状都抽得出、且都不像时必须是空集（不许把"没守卫"读成"有守卫"）。
+
+    用例里的正文一律写成**解析后的形状**：`_runs()` 交出来的是 YAML 块标量，
+    公共缩进已被 yaml 吃掉（这里若带 10 空格缩进，测的就不是判据真正会读到的东西）。
+    """
+    literal = "test -s _pages/index.html\ntest -s _pages/ai-daily.html\n"
+    loop = ('for must in index.html ai-daily.html; do\n'
+            'if [ ! -s "_pages/$must" ]; then\n'
+            'echo "::error::Pages 缺件：$must"\n'
+            'fi\n'
+            'done\n')
+    assert _guarded_names(literal) == {"index.html", "ai-daily.html"}
+    assert _guarded_names(loop) == {"index.html", "ai-daily.html"}
+    # 跨行续行（update.yml 里就是 `... index.html \` + 换行）也要抽得到，否则名单会被腰斩
+    cont = ('for must in index.html \\\n          ai-daily.html; do\n'
+            'if [ ! -s "_pages/$must" ]; then\nfi\ndone\n')
+    assert _guarded_names(cont) == {"index.html", "ai-daily.html"}, _guarded_names(cont)
+    assert _guarded_names("cp -f index.html _pages/\n") == set(), \
+        "没有任何非空守卫却抽出了名字 ⇒ 抽取器在替实现圆场"
+    # 只有循环、但循环里没有 -s 检查（例如退化成 echo）⇒ 必须抽不出名字
+    fake = ('for must in index.html; do\n'
+            'echo "$must"\n'
+            'done\n')
+    assert _guarded_names(fake) == set(), "把 echo 当成非空守卫了"
+
+
 def test_staging_refuses_empty_artifact():
     """空制品必须在 staging 就红，而不是发布出一个空站点。
 
@@ -162,11 +206,13 @@ def test_staging_refuses_empty_artifact():
     """
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 staging 步骤"
-    checks = re.findall(r"^\s*test -s (\S+)$", stage[0], re.M)
-    for must in ("_pages/rss-data-0.js", "_pages/rss-data-1.js",
-                 "_pages/rss-aggregator.html", "_pages/index.html",
-                 "_pages/ai-daily.html", "_pages/daily-insight-history.html"):
-        assert must in checks, "staging 缺少 %s 的非空断言，空制品会被当成功发布：%s" % (must, checks)
+    guarded = _guarded_names(stage[0])
+    assert guarded, "staging 里既没有字面 `test -s`，也没有带 -s 的 must 循环 ⇒ 空制品会被当成功发布"
+    for must in ("rss-data-0.js", "rss-data-1.js",
+                 "rss-aggregator.html", "index.html",
+                 "ai-daily.html", "daily-insight-history.html"):
+        assert must in guarded, "staging 缺少 %s 的非空断言，空制品会被当成功发布：%s" % (
+            must, sorted(guarded))
 
 
 def test_no_big_chunk_is_committed():
@@ -217,8 +263,8 @@ def test_site_artifacts_are_published_not_committed():
     for grp in published:
         all_names.update(grp.split())
     all_names.update(re.findall(r"cp -f (\S+) _pages/", body))
-    checks = re.findall(r"^\s*test -s (\S+)$", body, re.M)
-    assert published and checks, "发布名单(%d)或 test -s(%d) 为空 —— 判据在空集合上跑" % (
+    checks = _guarded_names(body)
+    assert published and checks, "发布名单(%d)或非空守卫(%d) 为空 —— 判据在空集合上跑" % (
         len(published), len(checks))
 
     def _covered(name):
@@ -229,7 +275,7 @@ def test_site_artifacts_are_published_not_committed():
     for name in SITE_ARTIFACTS:
         assert name not in add_names, "%s 又回到提交清单：每场重写重新进历史" % name
         assert _covered(name), "%s 不在按名发布名单：它已退出 git，ls-files 不会再带它上线" % name
-        assert "_pages/%s" % name in checks, "%s 缺 test -s 硬断言：空文件会被当成功发布" % name
+        assert name in checks, "%s 缺非空守卫：空文件会被当成功发布" % name
     for name in STATE_ONLY_ARTIFACTS:
         assert name not in add_names, "%s 又回到提交清单：跨场累积改由缓存承担后它不必入库" % name
         assert not _covered(name), (

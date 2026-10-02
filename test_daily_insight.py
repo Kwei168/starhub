@@ -94,6 +94,22 @@ for platform in hot_snapshot:
         })
 print("热榜条目: %d 条" % len(hot_items))
 
+# ── 就绪守卫 ──
+# 这道闸（Quality gate B）跑在 `Fetch stars & build` 之前，那时 RSS 历史与热榜快照都还不存在
+# （两者是 .gitignore 排除的跨场态，不进 git）⇒ 0 chunks 是必然。2026-10-02 实测 07:00~11:00
+# 四场全部在本文件 chunk 断言处以 exit 1 收场，而被 `continue-on-error: true` 遮成 success：
+# 恒红的闸等于没有闸，真回归混在里面看不见。
+# 处置（用户批准方案 a）：数据未就绪 ⇒ 响亮跳过并退 0。今天 106 行之后本来就一节都没跑过，
+# 所以早退不减少任何现有覆盖，只是把"必然红"换成"必然播报"。
+# 不选"塞合成样本继续跑"：合成条目要穿过 _filter_noise/_chunk_documents 的真实阈值，
+# 样本被判空时报出来的红就又变回噪声。真实数据那一节由构建后的产物判据接管。
+# 判据：tests/daily_insight/test_gate_b_readiness.py（守卫必须在 chunk 断言之前、必须退 0、必须留 [SKIP]）
+if not (rss_items or hot_items):
+    print("[SKIP] 构建前无当日历史数据 ⇒ 测试 5 起的机制段本轮不跑，真实数据那节由构建后的产物判据接管")
+    print("[SKIP] 本轮取数 RSS %d 篇 / 热榜 %d 条（都在 .gitignore 排除的跨场态里）"
+          % (len(rss_items), len(hot_items)))
+    sys.exit(0)
+
 # ── 测试 5: 文档切片 ──
 print("\n=== 测试 5: 文档切片 ===")
 rss_clean = B._filter_noise(rss_items)
@@ -103,7 +119,7 @@ agihunt_clean = []  # 跳过网络
 
 chunks = B._chunk_documents(rss_clean[:100], hot_clean[:50], aihot_clean, agihunt_clean)
 print("Chunks: %d 个" % len(chunks))
-assert len(chunks) > 0, "应至少有 1 个 chunk"
+assert len(chunks) > 0, "有数据却切不出 chunk ⇒ 切片机制真坏了（走到这里说明上面两族非空）"
 # 验证 chunk 格式
 c0 = chunks[0]
 assert "chunk_id" in c0, "chunk 应有 chunk_id"

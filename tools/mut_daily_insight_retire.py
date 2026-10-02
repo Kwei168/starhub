@@ -51,7 +51,7 @@ CASES = [
      PUB_BLOCK + "\n          for f in daily-insight.json; do\n"
      "            [ -f \"$f\" ] && cp -f \"$f\" _pages/\n          done",
      "red", "被放进发布名单", "test_site_artifacts_are_published_not_committed"),
-    ("D3 少一条 test -s（空制品会被当成功发布）", CHECK, "", "red", "缺 test -s 硬断言",
+    ("D3 少一条 test -s（空制品会被当成功发布）", CHECK, "", "red", "缺非空守卫",
      "test_site_artifacts_are_published_not_committed"),
     ("D5 fetch 名改成条件式 add（统一口径后不该误报）", D5_ANCHOR, D5_NEW, "green", "",
      "test_frontend_fetched_names_are_served"),
