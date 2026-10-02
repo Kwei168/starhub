@@ -50,6 +50,23 @@ def main():
          (tool.replace('"type": "growth"', '"type": "build"', 1), wf)),
         ("H12 log_line 不再写 new_bytes（有事件但没读数）",
          (tool.replace('"new_bytes": int(new_bytes), ', ""), wf)),
+        # ↓ 三条打的是 2026-10-02 新加的"归属"这一层：读数算不算本场。
+        # 没有它们，`attribution()` 反判、播报少了免责说明、记录里丢掉 committed_by_run
+        # 都不会有人红 —— 而这三条恰恰是"把别人的提交折进每场曲线"这条噪声的防线。
+        ("H13 归属反判（HEAD==检出 sha 却说本场提交了）",
+         (tool.replace("    return run_sha.strip()[:40] != head_sha.strip()[:40]",
+                       "    return run_sha.strip()[:40] == head_sha.strip()[:40]", 1), wf)),
+        ("H14 没提交也不说明（数字照播，读表的人无从折扣）",
+         (tool.replace("    if attributed is False:", "    if False:", 1), wf)),
+        ("H15 结构化记录里丢掉 committed_by_run（跨场查归属就没了字段）",
+         (tool.replace('    if attributed is not None:\n        rec["committed_by_run"] = bool(attributed)',
+                       '    if attributed is not None:\n        pass', 1), wf)),
+        # 来自早先一份独立电池草稿（X3）：本仓反复栽在"默认值冒充读数"。
+        # 归属未知（本地跑 / 浅取 / git 读失败）时字段必须**缺席**；写成 False 就把
+        # "没测到"伪装成"测到了：本场没提交"，读表的人会当成事实。
+        ("H16 未知归属被填成默认 False（「没测到」伪装成读数）",
+         (tool.replace('        rec["committed_by_run"] = bool(attributed)',
+                       '        rec["committed_by_run"] = False', 1), wf)),
     ]
 
     def run(mut_tool, mut_wf, label):

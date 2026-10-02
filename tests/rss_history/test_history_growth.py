@@ -197,3 +197,49 @@ def test_growth_step_logs_into_today_build_log():
     body = next(s for s in _steps() if (s.get("name") or "").startswith(STEP_NAME)).get("run") or ""
     assert "--log" in body, "监测步没把读数写进日志：那这些数只存在于 Actions 的一次性输出里"
     assert "build_logs/" in body, "--log 的目标必须在 build_logs/ 下（它每天一次进 git，也在缓存里）"
+
+
+def test_attribution_distinguishes_a_no_commit_build(tmp_path):
+    """读数必须说清"这条增长算不算本场"（2026-10-02 实测到的真缺陷）。
+
+    13:00 那场日志里同时有 `No changes, skip commit.` 和 `[growth] new blobs=2 0.037 MiB` ——
+    后者其实是**我 12:52 推的批 9** 被算成了"这场的增长"。监测的全部意义就是回答
+    "有没有人把每场重写的文件加回提交清单"，把别人的提交记成本场的，等于在这条曲线上造假噪声；
+    更糟的是反向情形：某场真提交了却没算进来，曲线会假装平静。
+    判据不打网络：`attribution()` 是纯函数，喂两个 sha 就够。
+    """
+    m = _load()
+    assert m.attribution("abc123", "abc123") is False, "HEAD 就是检出的那个 sha ⇒ 本场没提交"
+    assert m.attribution("abc123", "def456") is True, "HEAD 变了才是本场（或本场期间）提交的"
+    assert m.attribution("", "def456") is None, "不知道基线（本地跑）时不许猜"
+    assert m.attribution("abc123", "") is None, "HEAD 取不到时同样不许猜"
+
+
+def test_report_says_so_when_the_build_committed_nothing(tmp_path):
+    m = _load()
+    txt = m.report(39000, [("a.js", 39000)], attributed=False)
+    assert "本场未提交" in txt, "没提交却要报 0.037 MiB/场 ⇒ 播报必须自带归属，否则读的人无从折扣：%s" % txt
+    assert "new blobs=1" in txt, "归属说明不许吃掉数字本身"
+    assert "本场未提交" not in m.report(39000, [("a.js", 39000)], attributed=True)
+    assert "本场未提交" not in m.report(39000, [("a.js", 39000)]), \
+        "不知道归属时不该硬说「本场未提交」（那是假话），只报数就行"
+
+
+def test_log_line_records_the_attribution(tmp_path):
+    m = _load()
+    import json as _json
+    p = tmp_path / "g.jsonl"
+    m.log_line(39000, [("a.js", 39000)], str(p), commit="abc123",
+               head="abc123", head_subject="perf(pages): 收窄制品", attributed=False)
+    rec = _json.loads(p.read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["committed_by_run"] is False, rec
+    assert rec["head"] == "abc123" and rec["head_subject"] == "perf(pages): 收窄制品", rec
+    # True 这一侧必须单独验：H16（把赋值改成写死 False）只破坏这一侧，
+    # 只测 False + 缺席两个形状时它会全绿活下来 —— 电池逮到的正是判据自己的缺口。
+    m.log_line(7, [("c.js", 7)], str(p), commit="c", head="zzz", attributed=True)
+    rec3 = _json.loads(p.read_text(encoding="utf-8").splitlines()[-1])
+    assert rec3["committed_by_run"] is True, rec3
+    # 未知归属要写成 null，不能默认成 True/False（默认值会把"没测到"伪装成测到了）
+    m.log_line(5, [("b.js", 5)], str(p), commit="x", head="y")
+    rec2 = _json.loads(p.read_text(encoding="utf-8").splitlines()[-1])
+    assert "committed_by_run" not in rec2 or rec2["committed_by_run"] is None, rec2

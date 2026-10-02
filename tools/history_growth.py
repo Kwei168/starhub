@@ -90,10 +90,41 @@ def self_test():
     return 0
 
 
-def report(new_bytes, hits, top=6):
+def attribution(run_sha, head_sha):
+    """这条读数算不算「本场的增长」。
+
+    False = HEAD 就是本场检出的那个 sha ⇒ 构建没提交，测到的相邻提交差属于**别人**；
+    True  = HEAD 变了 ⇒ 是本场（或本场期间）产生的提交；
+    None  = 基线或 HEAD 拿不到（本地跑、浅取、git 读失败）⇒ 宁可不猜。
+
+    为什么要有这个函数（2026-10-02 实测）：13:00 那场日志里同时出现
+    `No changes, skip commit.` 与 `[growth] new blobs=2 0.037 MiB` —— 后者是我 12:52 推的批 9
+    被记成了"这场构建长了 0.037 MiB"。这条曲线唯一要回答的是"有没有人把每场重写的文件加回提交清单"，
+    把自己的推送混进分母，等于在监测里造噪声；反向情形（真提交没算进来）更危险。
+    """
+    if not run_sha or not head_sha:
+        return None
+    return run_sha.strip()[:40] != head_sha.strip()[:40]
+
+
+def head_info():
+    """HEAD 的 sha 与提交标题（读不到就返回空串，绝不让监测自己炸掉）。"""
+    def _one(args):
+        # 不写 cwd：本工具的 git 调用一律跟着 CWD 走（ls_tree 也是这样），凭空造一个 ROOT
+        # 会让"在临时仓里跑工具"的既有用例行为改变。
+        r = subprocess.run(["git"] + args, capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+        return r.stdout.strip() if r.returncode == 0 else ""
+    return _one(["rev-parse", "HEAD"]), _one(["log", "-1", "--format=%s"])
+
+
+def report(new_bytes, hits, top=6, attributed=None):
     """播报正文。判据直接喂字节数进这一层，验的是真会被读到的那段文本，不是 grep 源码。"""
     out = ["[growth] new blobs=%d  %.3f MiB  threshold=%.2f MiB  verdict=%s"
            % (len(hits), new_bytes / 1048576.0, threshold() / 1048576.0, verdict(new_bytes))]
+    if attributed is False:
+        # 数字照报，但当场说明它不算本场 —— 少了这行，读表的人会把别人的提交折进"每场增长"
+        out.append("[growth] 归属：本场未提交（HEAD 仍是检出的那个 sha），这条相邻提交差不计入每场增长")
     for path, size in sorted(hits, key=lambda x: -x[1])[:top]:
         out.append("   %10d B  %s" % (size, path))
     if verdict(new_bytes) != "ok":
@@ -103,14 +134,22 @@ def report(new_bytes, hits, top=6):
     return "\n".join(out)
 
 
-def log_line(new_bytes, hits, path, commit=""):
+def log_line(new_bytes, hits, path, commit="", head="", head_subject="", attributed=None):
     """把读数作为 `growth` 事件追加进当日构建日志。
 
     Actions 的输出只活 90 天，而 `build_logs/<今天>.jsonl` 每天一次进 git —— 写在这里才回答得了
     "哪一场开始又长回去了"。附带行为：路径不可写时静默跳过，绝不能把监测本身弄红。
+    `committed_by_run` 只在知道归属时写字段（不知道就缺席，不写默认值 —— 默认值会把"没测到"
+    伪装成"测到了 False"）。
     """
     rec = {"ts": datetime.now(_BJT).isoformat(), "type": "growth",
            "new_blobs": len(hits), "new_bytes": int(new_bytes), "commit": (commit or "")[:40]}
+    if head:
+        rec["head"] = head[:40]
+    if head_subject:
+        rec["head_subject"] = head_subject[:80]
+    if attributed is not None:
+        rec["committed_by_run"] = bool(attributed)
     try:
         with open(path, "a", encoding="utf-8", errors="replace") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
@@ -135,9 +174,12 @@ def main():
         return 0
     hits = new_blob_bytes(prev, cur)
     total = sum(sz for _, sz in hits)
-    print(report(total, hits, a.top), flush=True)
+    base = os.environ.get("GITHUB_SHA", "")
+    head_sha, head_subject = head_info()
+    att = attribution(base, head_sha)
+    print(report(total, hits, a.top, attributed=att), flush=True)
     if a.log:
-        log_line(total, hits, a.log, os.environ.get("GITHUB_SHA", ""))
+        log_line(total, hits, a.log, base, head=head_sha, head_subject=head_subject, attributed=att)
     return 0
 
 

@@ -42,6 +42,12 @@ MUTS = [
      'day = str(e.get("ts", ""))[:10]',
      'day = str(e.get("ts", ""))[:8]',
      "test_summarize_consumes_what_the_writer_emits"),
+    # ②（Stage 缺件点名）往同一份 build_logs 里新增了 pages_missing 记录 ⇒ type 这一层过滤
+    # 必须有判据守着：只看 new_bytes 是整数、不看 type 的读数器会把一条 build 记录当成增长。
+    ("G6 只看字段不看 type（别的记录类型混进增长统计）", GH,
+     'if isinstance(rec, dict) and rec.get("type") == "growth":',
+     "if isinstance(rec, dict):",
+     "test_other_record_types_are_not_growth"),
 ]
 
 
