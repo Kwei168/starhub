@@ -432,24 +432,6 @@ jobs:
 
       # 位置刻意在 Cleanup old build logs 之后、Prune 之前：缓存里就是裁剪后的目录，
       # 否则 build_logs 会在缓存里无界增长（prune 步会 rm -rf build_logs，必须在保存之后）。
-      - name: Save cross-build state cache (before prune deletes build_logs)
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            hot_history.json
-            analysis_snapshot.json
-            translations.json
-            rss_trend_history.json
-            insight_tracking_history.jsonl
-            daily_insight_tracking_history.jsonl
-            daily_insight_history.json
-            descriptions_zh.json
-            trending_snapshot.json
-            hot_snapshot.json
-            build_logs
-          key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
-
       - name: Stage Pages site for Actions deployment
         # 这一步必须在 prune 之前（prune 会把大产物从工作目录删掉），因此它天然排在 Vercel 之前。
         # 但它失败时绝不能连坐 Vercel 部署 —— 本仓已经有"A2 blocking + Deploy 无 if"的连坐教训，
@@ -479,11 +461,15 @@ jobs:
           # 收窄前的现取实测：线上 build_logs/2026-10-02.jsonl = 200（237 KB）、fetch_and_build.py = 200。
           # 换成 cp --parents 而不是继续 rsync：① 过滤之后是按名单拷，rsync 的 --files-from 反而绕；
           # ② 判据能在没有 rsync 的机器上真跑（tests/site_nav_drift/test_pages_artifact_scope.py）。
-          # `api/` 刻意不动：用户定案是"入口就是 Pages、Vercel 只当 API 主机"，关它要单独点头。
+          # `api/` 也关出去（用户点头 2026-10-02 13:16）：页面里的调用全是绝对域名 https://….vercel.app/api/x，
+          # Vercel 从工作目录部署不读 _pages ⇒ 站点与 API 都不受影响，Pages 少公开 8 个函数源码（~114 KB）。
+          # 根级 .md 同批关掉（15:26 现取：批 10 之后线上 HANDOFF.md 仍 200 / 84,323 B —— 它只挡了 docs/）。
+          # 4 个入口的 .md 文本引用核过：只有卡片正文里 `<code>CLAUDE.md` 这种描述性提及，没有任何 fetch。
           git ls-files -z \
             | grep -zv -E '(^|/)[._]' \
-            | grep -zvE '(^|/)(tests|tools|build_logs|docs)/' \
+            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api)/' \
             | grep -zv '\.py$' \
+            | grep -zv '\.md$' \
             | grep -zv '^template\.html$' \
             | xargs -0 -r cp --parents -t _pages/
           MISS=""
@@ -506,6 +492,24 @@ jobs:
           fi
           echo "Staged site size:"
           du -sh _pages
+      - name: Save cross-build state cache (before prune deletes build_logs)
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            hot_history.json
+            analysis_snapshot.json
+            translations.json
+            rss_trend_history.json
+            insight_tracking_history.jsonl
+            daily_insight_tracking_history.jsonl
+            daily_insight_history.json
+            descriptions_zh.json
+            trending_snapshot.json
+            hot_snapshot.json
+            build_logs
+          key: starhub-state-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Prune large build artifacts before Vercel deploy
         run: |
           # 构建产物只供 GitHub Pages 加载，Vercel 只需要 api/ + HTML 入口 + vercel.json
@@ -584,3 +588,12 @@ jobs:
       - name: Deploy to GitHub Pages
         if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
         uses: actions/deploy-pages@v5
+
+      - name: Mark the run red when Pages was not published
+        # 排在 Upload/Deploy 之后 ⇒ 只改"结论颜色"，不碰任何部署动作，也不会连坐 Vercel。
+        # 缺件那场以前只留一条 ::error:: 标注而整场仍标 success（Stage 带 continue-on-error，
+        # 这是刻意不连坐的代价）；这一步把"本场没发布"升级成 run 级失败 —— 不用翻日志也看得见。
+        if: always() && steps.stage.outcome == 'failure'
+        run: |
+          echo "::error::本场未发布 Pages（Stage 缺件，上方已逐个点名，站点停在上一份制品）"
+          exit 1

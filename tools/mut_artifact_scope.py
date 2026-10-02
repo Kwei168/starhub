@@ -14,8 +14,10 @@ WF = os.path.join(ROOT, ".github", "workflows", "update.yml")
 COPY = os.path.join(ROOT, ".deploy-tmp", "_mut_scope.yml")
 TEST = os.path.join("tests", "site_nav_drift", "test_pages_artifact_scope.py")
 
-DIRS = "            | grep -zvE '(^|/)(tests|tools|build_logs|docs)/' \\\n"
+DIRS = "            | grep -zvE '(^|/)(tests|tools|build_logs|docs|api)/' \\\n"
+API = "(tests|tools|build_logs|docs|api)/"
 PYS = "            | grep -zv '\\.py$' \\\n"
+MDS = "            | grep -zv '\\.md$' \\\n"
 HTML = "            | grep -zv '^template\\.html$' \\\n"
 
 MUTS = [
@@ -23,9 +25,15 @@ MUTS = [
      "test_non_site_files_are_not_published"),
     ("S2 少掉 .py 过滤（源码又公开）", PYS, "",
      "test_non_site_files_are_not_published"),
+    ("S2b 少掉 .md 过滤（手册/README 又公开）", MDS, "",
+     "test_non_site_files_are_not_published"),
     ("S3 过滤过头：把根目录 json 也剔掉（= 砍站点数据源）", HTML,
      HTML + "            | grep -zv '\\.json$' \\\n",
      "test_site_files_are_still_published"),
+    # 批 11 的专属防线：只漏掉 api/ 时，其余过滤全在、站点也完好，只有 api 重新公开。
+    # 没有这一条，S1（整行删掉）挡不住"把 api 从名单里摘掉"这种最小回退。
+    ("S4 只把 api/ 放回公开面", API, API.replace("|api", ""),
+     "test_non_site_files_are_not_published"),
 ]
 
 
@@ -68,5 +76,36 @@ for label, a, b, target in MUTS:
     elif target not in failed:
         bad.append("%s 红了但不是自己的靶（%s）" % (label, failed))
 os.remove(COPY)
+
+# 批 11 的另一半：`api/` 关出制品之后，页面里出现**同源** `/api/x` 调用就是 Pages 域 404。
+# 这条前提判据（test_client_sources_make_no_same_origin_api_calls）也得能被变异打到，
+# 否则它和红测输入之间又只剩下"我本地跑过一次"这种证据。
+CLIENT = os.path.join(ROOT, ".deploy-tmp", "_mut_template.html")
+SRC_TMPL = open(os.path.join(ROOT, "template.html"), encoding="utf-8", errors="replace").read()
+OTHER = os.path.join(ROOT, "build_rss_aggregator.py")
+K = "test_client_sources_make_no_same_origin_api_calls"
+
+CASES2 = [
+    ("C1 页面新增同源 /api/rss 调用（必须红）", SRC_TMPL + "\nfetch('/api/rss')\n", True),
+    ("C2 外部域名的 /api/ 引用不该管（必须绿）",
+     SRC_TMPL + "\nfetch('https://other.example/api/rss')\n", False),
+]
+for label, content, want_red in CASES2:
+    open(CLIENT, "w", encoding="utf-8", newline="").write(content)
+    env_backup = os.environ.get("STARHUB_CLIENT_SOURCES")
+    os.environ["STARHUB_CLIENT_SOURCES"] = CLIENT + os.pathsep + OTHER
+    try:
+        red, tail, failed = run(k=K)
+    finally:
+        if env_backup is None:
+            os.environ.pop("STARHUB_CLIENT_SOURCES", None)
+        else:
+            os.environ["STARHUB_CLIENT_SOURCES"] = env_backup
+    ok = (red == want_red)
+    print("%-46s %s %s%s" % (label, "RED  " if red else "GREEN", tail[:22],
+                            "" if ok else "  <- 期望%s，判据识别有问题" % ("红" if want_red else "绿")))
+    if not ok:
+        bad.append(label + ("（没挡住）" if want_red else "（误伤：外部域名也被判红）"))
+os.remove(CLIENT)
 print("问题条目：%s" % (bad if bad else "无"))
 sys.exit(1 if bad else 0)

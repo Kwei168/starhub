@@ -45,7 +45,12 @@ def _idx(steps, want):
 
 
 def test_pages_pair_sits_after_vercel_on_purpose():
-    """现状：Stage → Prune → Vercel → Log → Upload → Deploy。顺序是**有意**的，见文件头。"""
+    """现状：Stage → Save state cache → Prune → Vercel → Log → Upload → Deploy → 标红步。
+
+    Stage 排在 Save 之前是 2026-10-02 搬的：缺件落痕（`pages_missing` 写进 build_logs）必须
+    赶在缓存保存之前，否则同场 prune 一删就查不到（判据：test_pages_missing_lifecycle.py）。
+    Vercel 与 Pages 两步的相对顺序是**有意**的，理由见文件头。
+    """
     steps = _steps()
     si, ui, di, vi = (_idx(steps, w) for w in (STAGE, UPLOAD, DEPLOY, VERCEL))
     assert si < ui < di, "Pages 两步必须在 Stage 之后、且 Upload 早于 Deploy（否则发的是旧制品）"

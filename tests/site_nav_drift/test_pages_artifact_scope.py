@@ -8,9 +8,9 @@
 现状（2026-10-02 实测）：Stage 步用 `git ls-files -z | grep -zv -E '(^|/)[._]'` 全量 rsync，
 除了 `.`/`_` 前缀之外不设限 ⇒ tests/ 144 个、tools/ 26 个、根目录 .py、build_logs/ 14.3 MiB
 都随站点公开（`curl` 现取：`build_logs/2026-10-02.jsonl` 线上 200 / 237 KB、`fetch_and_build.py` 200）。
-用户批准的收窄范围＝tests/tools/根目录 .py/build_logs/；**`api/` 单独等点头**
-（见 memory: vercel-pages-hosting-split，用户定案是入口就是 Pages、Vercel 只当 API 主机，
-所以现在不能擅自把 api/ 关掉）。
+用户批准的收窄范围＝tests/tools/根目录 .py/build_logs/**api/**（`api/` 于 2026-10-02 13:16 点单"关出去"）。
+关 `api/` 不伤站点：页面里的调用全是绝对域名 `https://….vercel.app/api/x`（同源 `/api/x` 普查为 0），
+而 Vercel 是从工作目录部署、不读 `_pages` —— 见 memory: vercel-pages-hosting-split（入口就是 Pages、Vercel 只当 API 主机）。
 
 判据是双向的：既要求非站点件不在制品里，也要求站点自身的东西一个都不能少 ——
 只关不留会把"收窄"做成"砍站点"。
@@ -35,8 +35,14 @@ NON_SITE = ["build_rss_aggregator.py", "fetch_and_build.py", "insight_engine.py"
             "tests/rss_history/test_pages_deploy_wiring.py",
             "tools/data_api_push.py",
             "build_logs/2026-10-02.jsonl",
-            "docs/insight-pipeline-flow.md"]
-# api/ 刻意不在任何一侧：它的处置等用户点头，判据不替用户做决定
+            "docs/insight-pipeline-flow.md",
+            # 批 10 的名单比现实窄了一处：它挡了 docs/ 却没挡根级 .md。
+            # 2026-10-02 15:26 现取：线上 HANDOFF.md = 200 / 84,323 B（其余内部件已 404）。
+            "HANDOFF.md", "README.md", "CLAUDE.md", "REFRESH_VERIFICATION_REPORT.md"]
+# 用户点头（2026-10-02 13:16"关出去"）后 api/ 站"不许公开"这一侧。
+# 名字是 `ls api/` 现取的 8 个，不虚构 ⇒ 过滤写错时判据会真的红。
+API_SOURCES = ["api/agihunt.js", "api/article.js", "api/events.js", "api/news.js",
+               "api/refresh.js", "api/rss.js", "api/search.js", "api/translate.js"]
 
 
 def _stage_body():
@@ -56,7 +62,7 @@ def _tree(tmp):
     for k, v in (("user.name", "gate"), ("user.email", "gate@example.invalid"),
                  ("commit.gpgsign", "false")):
         subprocess.run(["git", "config", k, v], cwd=tmp, check=True)
-    for rel in SITE + NON_SITE:
+    for rel in SITE + NON_SITE + API_SOURCES:
         p = os.path.join(tmp, rel.replace("/", os.sep))
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as fh:
@@ -107,7 +113,8 @@ def staged(tmp_path):
 
 def test_non_site_files_are_not_published(staged):
     leaks = sorted(p for p in staged
-                   if p.endswith(".py") or p.startswith(("tests/", "tools/", "build_logs/", "docs/")))
+                   if p.endswith((".py", ".md"))
+                   or p.startswith(("tests/", "tools/", "build_logs/", "docs/", "api/")))
     assert not leaks, "这些非站点文件随制品公开了：%s" % leaks[:8]
 
 
@@ -142,7 +149,60 @@ def test_the_probe_bites_on_a_blanket_copy(tmp_path):
             got.add(os.path.relpath(os.path.join(base, f), os.path.join(d, "_pages"))
                     .replace(os.sep, "/"))
     leaks = sorted(p for p in got
-                   if p.endswith(".py") or p.startswith(("tests/", "tools/", "build_logs/")))
+                   if p.endswith((".py", ".md"))
+                   or p.startswith(("tests/", "tools/", "build_logs/", "api/")))
     assert leaks, "对照组居然没泄漏 ⇒ 合成树没建非站点文件，主判据是在空集上跑"
     assert {"build_rss_aggregator.py", "tools/data_api_push.py",
-            "build_logs/2026-10-02.jsonl"} <= set(leaks), leaks
+            "build_logs/2026-10-02.jsonl", "api/rss.js", "HANDOFF.md"} <= set(leaks), leaks
+
+
+# ---- 批 11 的前提：`api/` 已关出 Pages 制品 ⇒ 站点从此不许用同源写法调它 ----
+# 页面里那些调用今天全是绝对域名（2026-10-02 现取：4 个入口共 13 处引用，同源 0 处）。
+# 这条把"前提"钉成判据：将来谁改成 `fetch('/api/rss')`，Pages 域上就是 404，
+# 而站点功能会静默坏掉 —— 制品面那条判据本身看不见这件事。
+CLIENT_SOURCES = ["template.html", "build_rss_aggregator.py"]
+
+
+def _api_refs(text):
+    """把 `/api/<name>` 引用分成三类：绝对（返回名列表）、同源（返回名列表）、其余忽略。
+
+    只认确实是调用的形状：紧贴 `/api/` 之前是**我们自己 API 域名**的尾巴 ⇒ 绝对；是引号/反引号/左括号 ⇒ 同源。
+    外部域名（newsnow / aihot 那类）与制品无关，一律不计；注释与散文里的"供 /api/rss 直接返回"前面是空格 ⇒
+    两类都不算（判据按关键词读正文会被注释喂假读数，本仓 2026-10-02 栽过一次）。
+    模板插值 `${host}/api/x` 静态读不出宿主，故也不在两列之内。
+    """
+    absolute, relative = [], []
+    for line in text.splitlines():
+        for m in re.finditer(r"/api/([A-Za-z0-9_-]+)", line):
+            tail = line[:m.start()]
+            if re.search(r"https?://starhub-refresh\.vercel\.app(?:/[A-Za-z0-9._\-]*)*$", tail):
+                absolute.append(m.group(1))
+            elif tail and tail[-1] in "\"'`(":
+                relative.append(m.group(1))
+    return absolute, relative
+
+
+def test_api_ref_classifier_sees_both_forms():
+    """分类器自己的双向控制：漏认同源就是漏掉真回归，误伤注释就是假红。"""
+    assert _api_refs("var x='https://starhub-refresh.vercel.app/api/rss';") == (["rss"], [])
+    assert _api_refs("const y = '/api/translate';") == ([], ["translate"])
+    assert _api_refs('fetch(`"/api/news"`)') == ([], ["news"])
+    assert _api_refs("('/api/search')") == ([], ["search"])
+    assert _api_refs("# 供 /api/rss 直接返回，避免实时抓取") == ([], [])
+    assert _api_refs('NEWSNOW = "https://newsnow.busiyi.world/api/s?id=%s"') == ([], [])
+
+
+def test_client_sources_make_no_same_origin_api_calls():
+    """被测输入可以在 CI 的检出集合里取到（template.html / build_rss_aggregator.py 都被跟踪）。"""
+    override = os.environ.get("STARHUB_CLIENT_SOURCES")
+    srcs = override.split(os.pathsep) if override else CLIENT_SOURCES
+    abs_names, offenders = [], []
+    for rel in srcs:
+        p = rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
+        a, r = _api_refs(open(p, encoding="utf-8", errors="replace").read())
+        abs_names += a
+        offenders += ["%s: /api/%s" % (os.path.basename(p), n) for n in r]
+    assert not offenders, (
+        "api/ 已不在 Pages 制品里（批 11），同源调用只会在 Pages 域 404：%s" % offenders[:6])
+    assert len(set(abs_names)) >= 4, (
+        "只认出 %s 个绝对引用 ⇒ 分类器没读到真调用，上面那条「不报错」是空集自证" % sorted(set(abs_names)))

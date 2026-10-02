@@ -66,6 +66,28 @@ def test_zero_growth_record_is_a_real_reading(tmp_path):
     assert r.summarize(evs)["total_builds"] == 1, r.summarize(evs)
 
 
+def test_other_record_types_are_not_growth(tmp_path):
+    """同文件里的其它 type 不许被读成 growth 事件。
+
+    起因是 ②（Stage 缺件点名）往 `build_logs/<日期>.jsonl` 里新增了一种 `pages_missing` 记录，
+    而 growth 读数器解析的**就是这份文件** —— 两种新记录从此共存，读数的纯度得钉住。
+    故意放一条"带 new_bytes 的 build 记录"：只看 `new_bytes` 是不是整数、不看 type 的读数器
+    会把它算进去并抬高统计，所以这条判据守的是 type 这一层（上面那条守 null/坏行）。
+    """
+    w, r = _writer(), _reader()
+    p = tmp_path / "2026-10-02.jsonl"
+    w.log_line(1000, ["a"], str(p), commit="a" * 40)
+    with open(str(p), "a", encoding="utf-8") as fh:
+        fh.write('{"ts":"2026-10-02T13:00:00+08:00","type":"pages_missing","files":"index.html ai-daily.html"}\n')
+        fh.write('{"ts":"2026-10-02T13:00:01+08:00","type":"build","new_bytes":999999}\n')
+        fh.write('{"ts":"2026-10-02T13:00:02+08:00","type":"trigger"}\n')
+    evs = list(r.iter_growth_events(str(p)))
+    assert [e["new_bytes"] for e in evs] == [1000], \
+        "读数器把非 growth 记录也算进来了（type 过滤失效）：%s" % (evs,)
+    s = r.summarize(evs)
+    assert s["total_builds"] == 1 and s["max_bytes"] == 1000, s
+
+
 def test_reader_does_not_silently_zero_out_a_bad_record(tmp_path):
     """坏记录不许被当 0 混进统计：否则"曲线是平的"可以是假话。"""
     w, r = _writer(), _reader()
