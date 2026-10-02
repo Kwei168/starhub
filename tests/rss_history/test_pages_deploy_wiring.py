@@ -28,6 +28,13 @@ SITE_ARTIFACTS = (          # 退出 git，但必须按名发布且各有 test -
 STATE_ONLY_ARTIFACTS = (    # 纯跨场态：退出 git、进缓存，且**不许**被发布
     "trending_snapshot.json",   # 14,399 B/场，星标增量基线（fetch_and_build.py:432/486）
     "descriptions_zh.json",     # 77,007 B，描述译文缓存（fetch_and_build.py:722/813）
+    # 2026-10-02 树差实测：把 7 个状态文件与站点产物都摘完之后，**每场新增的那 1 个 blob 就是它**
+    # （22,518~37,860 B/场，当日 growth 合计 0.627 MiB）。它不需要进缓存族：
+    # build_daily_insight.py:4570 只在同场写、没有任何跨场读方；`.vercelignore:17` 早就排除了它；
+    # 线上 index/ai-daily/rss-aggregator/daily-insight-history 四个页面里 "daily-insight.json" 命中 0 次
+    # ⇒ 退出 git 不必修发布名单，反而**不许**进发布名单（进了只是扩大公开面）。
+    # 也不顺手改缓存 path 清单：改清单=换族，前缀回退也会全落空（批 5a 因此冷启动烧过一次重译）。
+    "daily-insight.json",
 )
 
 
@@ -47,11 +54,57 @@ def _runs():
     return [(s.get("name", ""), s.get("run") or "") for s in _steps()[1] if s.get("run")]
 
 
+_SHELL_WORDS = {"then", "fi", "do", "done", "else"}
+
+
+def _add_names(lines):
+    """从若干 `git add` 行里抽出文件名。
+
+    只取 `git add` 之后那段并按 `;` 断开：条件式 add 的整行是
+    `if [ -f X ]; then git add X; fi`，按整行切会把 `];`/`then`/`fi` 当成文件名。
+    """
+    names = set()
+    for ln in lines:
+        tail = ln.split("git add", 1)[1] if "git add" in ln else ""
+        for tok in tail.replace(";", " ").split():
+            if tok.startswith("-") or tok in _SHELL_WORDS:
+                continue
+            names.add(os.path.basename(tok.rstrip("/").strip('"').strip("'")))
+    return names
+
+
+def test_add_names_parser_catches_the_conditional_form():
+    """解析口径自己的判据：条件式 add 必须被看见（本轮实测它就是把 daily-insight.json 每场提交进去的那一行）。
+
+    同时把"为什么行首匹配会瞎"钉成断言而不是注释：`re.match(r"\\s*git add\\b")` 对整行以 `if`
+    开头的条件式返回 None —— 于是 `SITE_ARTIFACTS`/`STATE_ONLY_ARTIFACTS` 两组循环全部在空集上跑，
+    2026-10-02 我把 daily-insight.json 加进名单时它就是**当场判绿**的（15 passed），
+    换成 search 口径才报红。这条判据保证下次不会再退回去。
+    """
+    cond = '          if [ -f daily-insight.json ]; then git add daily-insight.json; fi'
+    plain = "          git add known_categories.json rss_sources.json"
+    assert _add_names([cond]) == {"daily-insight.json"}, _add_names([cond])
+    assert _add_names([plain]) == {"known_categories.json", "rss_sources.json"}
+    assert _add_names([cond, plain]) == {"daily-insight.json", "known_categories.json",
+                                         "rss_sources.json"}
+    # 旧口径的盲点本身也要断言（不是写给人看的注释）
+    assert re.match(r"\s*git add\b", cond) is None, \
+        "行首匹配现在却能看见条件式了 ⇒ 说明口径已变，本判据要跟着改，别留着当假证据"
+    assert re.search(r"\bgit add\b", cond) is not None
+
+
 def _add_lines():
+    """抽所有 `git add` 行。**不能用行首匹配**：本轮实测 `if [ -f daily-insight.json ]; then git add …; fi`
+    这种"条件式 add"整行以 `if` 开头，行首口径把它读成不存在 ⇒ 判据在明明每场提交的情况下报绿
+    （SITE/STATE 两组断言全部空跑）。注释行要跳过，否则正文里提到"git add 清单"的说明会被当清单。
+    """
     out = []
     for _, body in _runs():
         for line in body.splitlines():
-            if re.match(r"\s*git add\b", line):
+            s = line.strip()
+            if s.startswith("#"):
+                continue
+            if re.search(r"\bgit add\b", line):
                 out.append(line)
     return out
 
@@ -155,11 +208,7 @@ def test_site_artifacts_are_published_not_committed():
     """
     lines = _add_lines()
     assert lines, "没解析到 git add 行"
-    add_names = set()
-    for ln in lines:
-        for tok in ln.split()[2:]:
-            if not tok.startswith("-"):
-                add_names.add(tok.rstrip("/"))
+    add_names = _add_names(lines)
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 Stage Pages site 步骤"
     body = stage[0]
@@ -211,13 +260,10 @@ def test_frontend_fetched_names_are_served():
         "hot_snapshot 那份 JS 写在 Python 字符串里、引号是转义的，最容易漏抽）"
         % (sorted(fetched), sorted(known - fetched)))
 
-    adds = set()
-    for _, body in _runs():
-        for line in body.splitlines():
-            if re.match(r"\s*git add\b", line):
-                for tok in line.split()[1:]:
-                    if not tok.startswith("-"):
-                        adds.add(os.path.basename(tok.rstrip("/")))
+    # 共用 _add_lines() + _add_names() 这一个口径：这里原来另写了一份行首匹配，
+    # 与 _add_lines 修过的盲点是同一类（条件式 add 整行以 if 开头，行首匹配读不到）。
+    # 两处各写一份解析器 = 一处修好、另一处继续瞎，且两边读数会互相矛盾。
+    adds = _add_names(_add_lines())
     stage = [b for n, b in _runs() if n.startswith("Stage Pages site")]
     assert stage, "没有 Stage Pages site 步骤"
     pub = set()

@@ -33,6 +33,14 @@ MUTS = [
      '"%s/contents/%s" % (REPO, quote(f)), tries=2',
      '"%s/contents/%s" % (REPO, f), tries=2',
      "test_existence_check_quotes_too"),
+    ("R1 404 立即上抛扩成「所有 HTTPError 都不重试」（关掉真重试）", T,
+     "if isinstance(exc, urllib.error.HTTPError) and exc.code == 404:",
+     "if isinstance(exc, urllib.error.HTTPError):",
+     "test_transient_5xx_still_retries"),
+    ("R2 404 又回到重试循环（147 条复查白烧 110 分钟）", T,
+     "if isinstance(exc, urllib.error.HTTPError) and exc.code == 404:",
+     "if False:",
+     "test_404_is_raised_without_a_single_retry"),
     ("N1 探针丢掉 --no-index", S,
      '"git", "check-ignore", "--no-index", "-v", probe',
      '"git", "check-ignore", "-v", probe',
@@ -51,7 +59,8 @@ FILES = [T, S]
 # N 组依赖索引侧判据 —— 而那条在「远端删除 + 本地索引对齐」之前**本来就该红**，
 # 混在一起会被基线守卫正当拦下。所以 argv[1] ∈ {quote, gates, all}。
 GROUPS = {
-    "quote": ("Q", [os.path.join("tests", "tools", "test_push_url_quoting.py")]),
+    "push": ("QR", [os.path.join("tests", "tools", "test_push_url_quoting.py"),
+                    os.path.join("tests", "tools", "test_push_retry_policy.py")]),
     "gates": ("N", [os.path.join("tests", "site_nav_drift", "test_noncode_not_tracked.py")]),
 }
 
@@ -82,7 +91,7 @@ NL = {f: nl_of(src[f]) for f in FILES}
 def main():
     group = (sys.argv[1] if len(sys.argv) > 1 else "all").lower()
     if group not in GROUPS:
-        print("用法：mut_untrack_gates.py [quote|gates]")
+        print("用法：mut_untrack_gates.py [push|gates]")
         return 2
     os.makedirs(os.path.dirname(LOCK), exist_ok=True)
     with open(LOCK, "w", encoding="utf-8") as f:
@@ -97,8 +106,8 @@ def main():
 
 
 def loop(group):
-    letter, tests = GROUPS[group]
-    muts = [m for m in MUTS if m[0].startswith(letter)]
+    letters, tests = GROUPS[group]
+    muts = [m for m in MUTS if m[0][0] in letters]
     red, tail, failed = run(tests)
     print("基线（未变异，%s 组 %d 个变异体）：%s  rc_expected=green" % (group, len(muts), tail))
     if red:

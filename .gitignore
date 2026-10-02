@@ -54,6 +54,10 @@ rss_trend_history.json
 insight_tracking_history.jsonl
 daily_insight_tracking_history.jsonl
 daily_insight_history.json
+# 2026-10-02 树差点名：状态族摘完之后每场唯一新增的 1 个 blob 就是它（22.5~37.9 KB/场，
+# 当日 growth 合计 0.627 MiB）。同场写、无跨场读方，Vercel 侧早已 ignore、线上页面零引用
+# ⇒ 退出 git 也退出发布名单；判据 tests/rss_history/test_pages_deploy_wiring.py STATE_ONLY_ARTIFACTS。
+daily-insight.json
 
 # 每日深度洞察 FAISS 索引与 chunks（CI 构建产物，不进仓库）
 daily_insight_faiss.index

@@ -318,6 +318,10 @@ jobs:
           # 一次冷启动而不是断链。build_logs 由下面的每日闸门管（批 4）：每场都写工作树与缓存，
           # 但每天只有一次把 jsonl/summary 快照提交进 git —— 每小时刷摘要的 build-log-summary.yml
           # 已同步退役，否则它会从旧 jsonl 生成摘要并覆盖掉主构建生成的正确摘要。
+          # 2026-10-02 树差点名：上面这些都摘完之后，**每场唯一新增的那 1 个 blob 是 daily-insight.json**
+          # （22,518~37,860 B/场，当日 growth 合计 0.627 MiB）。它同场写、无跨场读方，
+          # `.vercelignore:17` 早排除它、线上四个页面对它零引用 ⇒ 退出 git 不必补发布名单。
+          # 判据：tests/rss_history/test_pages_deploy_wiring.py 的 STATE_ONLY_ARTIFACTS（不许回 add、也不许进发布名单）。
           git add known_categories.json rss_sources.json build_rss_aggregator.py insight_engine.py build_daily_insight.py test_daily_insight.py
           # 构建日志：每天只提交一次（其余场次靠 starhub-state 缓存累积，实测 1.7-2.1 MiB/场）。
           # 判据读自己入库的标记文件，不用 `git log` —— 后者依赖 fetch-depth:0 这个偶然条件，
@@ -331,7 +335,6 @@ jobs:
             # 否则它们永远留在树里（每天 +180 KB 的新无界点）
             git ls-files -d -z build_logs | xargs -0 -r git rm --cached --quiet
           fi
-          if [ -f daily-insight.json ]; then git add daily-insight.json; fi
           if ! python3 tools/size_tripwire.py; then
             echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
             exit 1
@@ -367,7 +370,8 @@ jobs:
             # 否则它们永远留在树里（每天 +180 KB 的新无界点）
             git ls-files -d -z build_logs | xargs -0 -r git rm --cached --quiet
           fi
-              if [ -f daily-insight.json ]; then git add daily-insight.json; fi
+              # 重试分支同样不带 daily-insight.json：两条路径的清单必须逐字同一份，
+              # 只改一条 = 并发重试时把它请回库里（判据读的是全量 add 行，两处都算）
               if ! python3 tools/size_tripwire.py; then
                   echo "::error::体积闸判红，本场不提交（宁可少发一场，也别把无上限产物写进不可回收的 git 历史）"
                   exit 1

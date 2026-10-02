@@ -29,9 +29,16 @@ STATE_FILES = (
     "insight_tracking_history.jsonl",
     "daily_insight_tracking_history.jsonl",
     "daily_insight_history.json",
+    # 批 6（2026-10-02 树差点名）：每场唯一重写的那个 blob，28.5~37.9 KB/场
+    "daily-insight.json",
 )
 ROLLBACK = os.path.join(ROOT, ".deploy-tmp", "restore_state_index.sh")
 ROLLBACK_ALIGN = os.path.join(ROOT, ".deploy-tmp", "restore_index_align.sh")
+
+# 批 6 之后摘除的一次性 Scratch 件（实测 411,404 B + 1,039 B，无任何引用、不进 Pages）。
+# 列在这里是为了让 --align-remote 认得它们：远端删完而本地索引还留着的话，
+# tests/site_nav_drift/test_ignored_not_tracked.py 会在本地恒红，而恒红的判据会污染变异电池。
+RETIRED_SCRATCH = ("_check_js_temp.js", "_fix_quotes.py")
 
 
 def git(*args):
@@ -84,7 +91,7 @@ def do_align(dry=False):
     gone = [p for p in loc if p not in rem]
     # 白名单：只对齐这批存储工作**主动退役**的路径。本地 HEAD 还带着另一条工作线（AI 日报）的提交，
     # 他们的文件天然"本地跟踪 / 远端还没有"，全量对齐会把别人的在制品从索引里摘掉。
-    allowed = set(STATE_FILES) | {"build_logs"} | {
+    allowed = set(STATE_FILES) | set(RETIRED_SCRATCH) | {"build_logs"} | {
         ".github/workflows/build-log-summary.yml",
         "rss-data-0.js", "hot_snapshot.json", "trending_snapshot.json", "descriptions_zh.json",
         "tests/rss_history/test_state_seed.py", "tools/mut_state_seed.py",
