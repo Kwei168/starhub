@@ -812,12 +812,15 @@ def main(mode="full"):
         json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         json.dump(desc_zh, open("descriptions_zh.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
-        # AI 晨报：读取 ai_daily.json 生成 ai-daily.html（独立页面）
-        try:
-            import build_ai_daily
-            build_ai_daily.main()
-        except Exception as e:
-            print("[AI晨报] 生成失败: %s" % e, file=sys.stderr)
+    # AI 晨报：数据源是 AIHOT（自带 API→RSS→本地 ai_daily.json 三级回退），与 star 数据无关，
+    # 所以刻意不挂进上面的 if stars_ok: 分支 —— 限流场也必须产出 ai-daily.html：
+    # 这 4 个页面 HTML 已退出 git（无兜底副本），缺件会让 Stage Pages 步 exit 1 且零输出，
+    # 结果是整次 Pages 发布被静默跳过。判据：tests/rss_history/test_generator_decoupling.py
+    try:
+        import build_ai_daily
+        build_ai_daily.main()
+    except Exception as e:
+        print("[AI晨报] 生成失败: %s" % e, file=sys.stderr)
 
     # RSS 聚合页：生成 rss-aggregator.html（独立页面）
     # 有意取舍（对抗性审查两轮确认）：RSS 失败只打 ::error:: 注解不改变退出码——
