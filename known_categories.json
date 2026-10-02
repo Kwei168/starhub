@@ -277,5 +277,16 @@
  "JustVugg/colibri": "agent",
  "colbymchenry/codegraph": "agent",
  "mksglu/context-mode": "coding",
- "magnitudedev/magnitude": "agent"
+ "magnitudedev/magnitude": "agent",
+ "ai-alchemy-lab/fde-arsenal": "distill",
+ "ai-alchemy-lab/fde-wiki": "distill",
+ "OpenFDEAI/OpenFDE": "agent",
+ "jiji262/fde-guide": "learning",
+ "luoboask/fde-learning": "learning",
+ "zhyese/fde-wiki": "agent",
+ "VanGong1999/FDE": "agent",
+ "feigaobox10/fde-reader": "learning",
+ "suboss87/FDEOps": "coding",
+ "phodal/fde": "frontend",
+ "pierpaolo28/Awesome-FDE-Roadmap": "agent"
 }
