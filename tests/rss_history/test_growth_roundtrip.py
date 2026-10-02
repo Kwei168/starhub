@@ -29,6 +29,23 @@ def _reader():
     return _load("_gg_reader", "tools/growth_history.py")
 
 
+def _clock(ymd):
+    """造一个只认 `ymd` 这一天的假时钟，装到写端模块的 `datetime` 上。
+
+    `log_line` 的 ts 来自 `datetime.now(_BJT)` ⇒ 测试若把日期写死进断言，跨过北京 00:00 就必然红。
+    本文件在 **A2（blocking）** 里，那颗雷会冻住构建与两次部署，所以日期一律由钉住的时钟产生。
+    """
+    import datetime as _dt
+    y, m, d = (int(x) for x in ymd.split("-"))
+
+    class _Clock:
+        @staticmethod
+        def now(tz=None):
+            return _dt.datetime(y, m, d, 13, 0, tzinfo=tz or _dt.timezone.utc)
+
+    return _Clock
+
+
 def test_written_record_is_readable_by_the_reader(tmp_path):
     """真 log_line 写一行，真 iter_growth_events 必须读回同一条，且字段一个都不许丢。"""
     w, r = _writer(), _reader()
@@ -42,9 +59,10 @@ def test_written_record_is_readable_by_the_reader(tmp_path):
     assert e["commit"].startswith("0123456789abcdef"), e
 
 
-def test_summarize_consumes_what_the_writer_emits(tmp_path):
+def test_summarize_consumes_what_the_writer_emits(tmp_path, monkeypatch):
     """读数最终要落到 summarize 的中位数/日均上：写端换键名后这里必须变空或变 0。"""
     w, r = _writer(), _reader()
+    monkeypatch.setattr(w, "datetime", _clock("2026-10-02"))
     p = tmp_path / "2026-10-02.jsonl"
     for nbytes, blobs in ((100, ["x"]), (300, ["y", "z"]), (200, ["w"])):
         w.log_line(nbytes, blobs, str(p), commit="c" * 40)
@@ -53,6 +71,23 @@ def test_summarize_consumes_what_the_writer_emits(tmp_path):
     assert s["median_bytes"] == 200, s
     assert s["max_bytes"] == 300, s
     assert s["days"][0]["date"] == "2026-10-02", s
+
+
+def test_summarize_groups_by_the_record_date(tmp_path, monkeypatch):
+    """上面那条钉住时钟之后的控制：日期来自记录自己的 ts，不是来自跑测试的那天。
+
+    两天各写一条 ⇒ 必须落成两个日桶。少了这条，`_clock()` 只要"让日期恒定"就能骗过上一条，
+    而 summarize 真按别的口径（比如文件mtime）分组时没人会红。
+    """
+    w, r = _writer(), _reader()
+    p = tmp_path / "two-days.jsonl"
+    for day in ("2026-10-01", "2026-10-02"):
+        monkeypatch.setattr(w, "datetime", _clock(day))
+        w.log_line(1000, ["a"], str(p), commit="c" * 40)
+    s = r.summarize(list(r.iter_growth_events(str(p))))
+    assert [d["date"] for d in s["days"]] == ["2026-10-01", "2026-10-02"], s
+    assert s["total_builds"] == 2, s
+    assert all(d["builds"] == 1 for d in s["days"]), s
 
 
 def test_zero_growth_record_is_a_real_reading(tmp_path):
