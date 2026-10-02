@@ -968,6 +968,90 @@ GTX 在出口 IP **长期 429**、Zen 构建期贡献为零，所以这是**慢�
 
 
 
+### 8.16 发布面收口：制品只发站点文件 + ② 的落痕活下来 + gate B 归零（2026-10-02）
+
+**提交链**：`1dd35983d0fa`（批 10：tests/tools/build_logs/根级 .py/template.html 关出 Pages 制品）
+→ `7eec12d6f7`（② 的常设判据 + 定序判据 + gate B 根因修复）→ `1cd6f91e22`（批 11：`api/` 与根级 `.md`
+关出；② 的落痕挪到 Save cache 之前；新增未发布标红步）。
+
+**制品面（现取 GET，含字节数）**
+- 收窄前（15:00 场 head `f156bbff16` 之后线上实测）：`build_logs/2026-10-01.jsonl` 200／2,819,872 B、
+  `tools/data_api_push.py` 200／24,232 B、`fetch_and_build.py` 200／38,898 B、
+  `tests/rss_history/test_pages_deploy_wiring.py` 200／25,880 B。
+- 批 10 后（15:26 复测）：上述全部 404，但 **`HANDOFF.md` 仍 200／84,323 B、`api/rss.js` 仍 200／42,671 B**
+  ⇒ 批 10 只挡了 `docs/` 目录、没挡根级 `.md`；批 11 一起关掉（`grep -zvE '(^|/)(…|api)/'` + `grep -zv '\.md$'`）。
+- 关 `api/` 的前提（13:16 点单时核过、15:2x 重取）：4 个入口共 13 处 `api/` 引用**全是绝对域名**
+  `starhub-refresh.vercel.app`（同源 0 处），`.md` 只有卡片正文里 `<code>CLAUDE.md` 这类描述性提及、无 fetch。
+- 消费者侧审计（`.deploy-tmp/_consumer_audit.py`，从页面正文抽同源可请求项逐个 GET）：
+  4 个入口共 22 项（含 JS 拼接出的 `rss-data-0..11.js`）全 200。探针两处口径要记住：
+  `about:blank`（iframe sandbox）不是请求；多 MB 文件 30s 超时会报 `000`（≠ 不存在，调到 120s 后 200／3.1 MB、6.5 MB）。
+
+**② 的两半只有一半是真的（本轮最该记住的一条）**
+`::error::Pages 缺件：<file>` 的点名已上线，但"跨场可查"不成立：按真实步序复演一遍才发现
+Stage（第 27 步）写 `build_logs/<日>.jsonl` 的 `pages_missing` → `Save cross-build state cache` 是第 26 步
+（**先跑完**）→ 第 28 步 Prune `rm -rf build_logs` 删掉 ⇒ 记录既不进缓存也不进 git。
+只跑 Stage 正文的判据看不见它——那测的是"这段 shell 会写"，不是"写了还活着"。
+另有一条我自己说错的：**Stage 带 `continue-on-error: true`（刻意不连坐 Vercel），所以缺件那场的 job 结论
+仍是 success**，界面上只多一条 error 注解。
+修完的形状：`Stage(26) → Save state cache(27) → Prune(28) → Vercel(29) → Log(30) → Upload(31) → Deploy(32)
+→ Mark the run red(33)`，末步 `if: always() && steps.stage.outcome == 'failure'` + `exit 1`。
+复演读数：`rc=1` 且点名 → 缓存快照含 1 条 `pages_missing` → Prune 之后快照仍有。
+
+**gate B 从每场 1 failed 到 0 failed**：根因不是外因，是 `tests/daily_insight/test_tracer.py` 在 import 期
+（= pytest 收集阶段）把 `build_daily_insight.TRACKING_FILE` 改成绝对临时路径，泄漏给同 session
+"必须是根目录相对名"的守卫。改成 autouse fixture 里 `monkeypatch.chdir(tmp_path)` 即可——
+写入点照样隔离，全局不再被污染。本地复现与 CI 同数（1 failed／424 passed）→ 修后整目录 415 passed
+（`--ignore=tests/daily_insight/test_integration.py`：该文件本地单跑会挂，CI 里 5.25s 跑完）。
+
+**体积读数**：`[growth] new blobs=1  0.011 MiB verdict=ok`（14:00 与 15:00 两场都是），
+起点是 0.023~0.036 MiB/场；批 6~11 之后每场新增只剩 1 个 blob。
+
+**新登记的判据与电池**（`tests/site_nav_drift/` 归 A3，A3 是 advisory 不冻部署）：
+`test_pages_artifact_scope.py`（制品面双向 + 同源 api 前提）、`test_pages_missing_report.py`（② 正文三条）、
+`test_pages_missing_lifecycle.py`（**步序**：落痕早于 Save、中间不许删 build_logs；标红步必须存在且不早于 Deploy）、
+`test_pages_vercel_ordering.py`（Pages/Vercel 定序现状与被否掉的提案理由）；
+电池 `tools/mut_artifact_scope.py`（S1/S2/S2b/S3/S4 + C1/C2）、`tools/mut_pages_missing_report.py`（A1~A4）。
+动过 workflow 步骤要补跑被排除在每场构建外的 `tests/trim_guard/`（22 passed／20.3s）。
+
+**仍未做、等点头**：#27 给 `Deploy to Vercel` 封顶（`timeout-minutes` + `continue-on-error` + 事后标红）。
+"把 Pages 两步挪到 Vercel 之前"已被既有 A2 不变量否掉——它把"Pages 被 Vercel 拖慢"换成"Vercel 被 Pages 挡掉"。
+
+**提交链补完（18:12–18:40）**：`01996af8e6` 拆掉 A2 里的日期定时炸弹 → `e519419ebc` 增长读数带"归属" →
+`7c9c9d2332` 制品面关 `lib/` → `cee84b1666` **Stage 翻成白名单**（用户裁决 18:12）。
+
+**两场连续绿（17:00 场 head `7c9c9d2332`／18:00 场 head `2c6ad48fa3`）的读数**：
+A2 `392 passed`、A3 `27→29 passed`、gate B `425 passed / 0 failed`（此前每场 1 failed）、
+`Created deployment for 7c9c9d2332…` + `Reported success!`；线上 GET：`api/*`、`HANDOFF.md`、`README.md`、
+`CLAUDE.md`、`tools/*.py`、`tests/*`、`build_logs`、`fetch_and_build.py`、`template.html` **全 404**，
+站点件全 200；Vercel 侧 `api/rss` 200、`api/news` 200、`api/translate` 405 ⇒ 关 Pages 制品没伤 API 主机。
+17:00 场 `growth = new blobs=7 3.141 MiB verdict=ok` —— 逐个文件核过是批 4 的"日志每日一次提交"
+（`build_logs/2026-10-02.jsonl` + `2026-10-03.jsonl` + 两个 summary + `.committed_date` + `.state_seed.done` + `known_categories.json`），
+设计内、阈值 6 MiB 之下。
+
+**日期炸弹（本轮最贵的一条教训）**：`test_summarize_consumes_what_the_writer_emits` 把日期写死成
+`"2026-10-02"`，而写端 ts 来自 `datetime.now(_BJT)` ⇒ 北京跨 00:00 起每天必红；它在 blocking 的 A2 里，
+16:03 那场因此 `completed failure`（部署整场冻住）。修法是把写端时钟钉住，另加一条"按记录自身日期分组"的控制。
+⇒ **凡是断言里带"今天"的判据，都要问它 24 小时后/月末/跨年还成不成立。**
+普查口径已跑：其余带日期的断言用的都是测试自造的固定输入或显式传参 ⇒ 无第二颗。
+
+**归属这一层是电池教我补的**：`mut_history_growth.py` 的 H16（把 `bool(attributed)` 改成写死 `False`）
+第一次跑出 **GREEN** —— 判据只验了 False 与"未知时缺席"，**没验 True**。补上 True 侧断言后 H16 转红，
+H1~H16 共 16 个变异 0 逃逸。⇒ "0 逃逸"在补上这一条之前是假的。
+
+**白名单化的证据与做法**（`cee84b1666`）：排除式名单在 18:12 的全量枚举前已经连漏三次
+（`.md` 15:26、`lib/` 15:58、根级 junk 18:12），因为"只挡想得到的一类"。现在 Stage 只发
+`STAGE_ALLOWLIST` = 4 个 HTML + `rss-data-*.js` + `hot_snapshot.json` + `rss_sources.json`；
+A2 的 `test_staging_publishes_only_the_site_allowlist` 钉集合（多一项/少一项/出现 `.` 开头项都红），
+并断言 A2 与 A3 两份名单逐个相同（名单只许一份）；A3 的 `test_published_set_is_exactly_the_allowlist`
+在合成树上真跑正文。`test_frontend_fetched_names_are_served` 同时**收紧**：白名单之后"被跟踪"不再算来源。
+
+**仍挂着的一条（本轮查出、未处置）**：`known_categories.json` 是**新的每场重写者** —— 最近 8 个自动提交里
+4 个只有它一个文件（约 11 KB/场）。白名单已经让它不再公开，但它仍在 git 历史里每场新增 blob。
+处置方向与批 2/批 3 同：出 `git add` 清单 → 进 `starhub-state` 缓存族 → 退出 git 树 + 反空转守卫。
+
+**别学我犯的兩個错**：① 用 Edit 时把 `trending_snapshot.json` 连同换行一起挤进注释吃掉（靠"改完就与远端逐行 diff"才发现）；
+② 新增判据里嵌 ASCII 引号 + U+2212 导致语法非法（靠 `py_compile` 才发现）。⇒ 改完判据先 compile、再与远端 diff，两步都不能省。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
