@@ -273,5 +273,9 @@
  "ZJU-REAL/Easel": "agent",
  "KKKKhazix/AIHOT": "agent",
  "VectifyAI/PageIndex": "agent",
- "t8y2/dbx": "assistant"
+ "t8y2/dbx": "assistant",
+ "JustVugg/colibri": "agent",
+ "colbymchenry/codegraph": "agent",
+ "mksglu/context-mode": "coding",
+ "magnitudedev/magnitude": "agent"
 }
