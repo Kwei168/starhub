@@ -172,7 +172,26 @@ def _bool_tree(node):
 def _one(sid, op, val, outcomes):
     got = outcomes.get(sid)
     assert got is not None, "末步 if 引用了 steps.%s，但测试没给这一步的 outcome" % sid
-    return (got == val) if op == "==" else (got != val)
+    # shell 的相等写作 `=`、表达式里是 `==` —— 两种都要认。
+    # 这里原本只判 `==`，于是所有 `=` 分支都掉进"不等"那一支 ⇒ 判据自己算反，
+    # 而且"上次它通过"是撞对的（假绿）。2026-10-03 复现并修，配 _body_reds 的自测。
+    return (got == val) if op in ("==", "=") else (got != val)
+
+
+def test_body_evaluator_is_not_backwards():
+    """求值器自身的自测：`=` 与 `!=` 两个方向各打一次，正反都要有。
+
+    末步的判断是按 outcome 组合真算的，那么"算"这一步也必须有判据 ——
+    否则它算反时，所有下游断言都会因为"两边都错"而静默通过。
+    """
+    body = ('if [ "${{ steps.stage.outcome }}" = "skipped" ]; then\n  exit 1\nfi\n'
+            'if [ "${{ steps.vercel.outcome }}" != "success" ]; then\n  exit 1\nfi\n')
+    hit = lambda o: sorted(m.split("=")[0].split("!")[0] for m in _body_reds(body, o))
+    assert hit({"stage": "skipped", "vercel": "success"}) == ["stage"], "`=` 方向算反了"
+    assert hit({"stage": "success", "vercel": "success"}) == [], "都成功时不该有任何命中"
+    assert hit({"stage": "success", "vercel": "cancelled"}) == ["vercel"], "`!=` 方向算反了"
+    assert hit({"stage": "success", "vercel": "skipped"}) == ["vercel"], (
+        "vercel=skipped 会让 body 那半出声（这是 run 结论那半刻意不红的形状，两者口径本就不一样）")
 
 
 def _body_reds(mark_run, outcomes):
@@ -187,11 +206,11 @@ def _body_reds(mark_run, outcomes):
 def test_cancelled_run_also_marks_pages_unpublished():
     """整场被取消时 Stage 是 skipped 而不是 failure —— 那种"Pages 没发"也必须出声。
 
-    覆盖面要说清（不然这条会被当成"发布链的总闸"）：它只管 **stage / vercel 两个 outcome 的组合**。
-    还剩一种它管不到的形状：Stage 与 Vercel 都 success，但 `Upload Pages artifact` 或
-    `Deploy to GitHub Pages` 自己失败/被跳过 —— 那要钉就得给 Deploy 步加 id 再引用它，
-    是另一处改动（17:00 那场静默失败正是靠 upload/deploy 的 skipped 揪出来的，
-    见 memory: pages-publish-silent-skip-on-star-ratelimit）。
+    覆盖面（说准，别当成"发布链的总闸"）：按 stage / pages_upload / vercel 三个 outcome 组合真算。
+    已覆盖：Stage 缺件(failure)、整场被取消或前置判红(stage skipped)、
+    Stage 成了但上传没跑(pages_upload skipped，17:00 那场静默失败就是它)、Vercel failure/cancelled。
+    **仍未覆盖**：`Upload Pages artifact` 成功、但 `Deploy to GitHub Pages` 自己失败 ——
+    那一步没有 id，引用不到（`tools/prod_verify.py` 从站点侧能看到"页面没更新"，是另一条路径）。
     """
     steps = _steps()
     mark = steps[_idx(steps, RED_FLAG)]
@@ -215,6 +234,19 @@ def test_cancelled_run_also_marks_pages_unpublished():
         "末步跑了但没有 Pages 那半的 ::error::（实得命中 %s）⇒ 读日志的人只知道 Vercel 没成，"
         "不知道站点这一小时没更新" % hits)
 
+    # 第三种"没发布"的形状：Stage 成了，但 Upload Pages artifact 没执行
+    # （17:00 那场静默失败正是靠 upload/deploy 的 skipped 揪出来的 —— Stage 成功 ≠ 制品上线）
+    half = {"stage": "success", "vercel": "success", "pages_upload": "skipped"}
+    assert _eval(cond, half), (
+        "Stage 完成但上传被跳过时末步不红 ⇒ 半拉子发布继续是绿的（实得条件 %r）" % cond)
+    assert any(h.startswith("pages_upload") for h in _body_reds(body, half)), (
+        "这种形状只说 Vercel/缺件，读日志的人不知道是上传没跑")
+
+    # 反向那半：Vercel 被**跳过**不该算红（封顶只在 failure/cancelled 时出声），
+    # 否则这条改动会把"上游判红所以 Vercel 没跑"重复报成 Vercel 的失败
+    assert not _eval(cond, {"stage": "success", "vercel": "skipped", "pages_upload": "success"}), (
+        "Vercel 的 skipped 被当成未部署 ⇒ 条件被写成了 != 'success'，会在别的失败上重复报红")
+
 
 def test_vercel_step_does_not_wait_for_the_server_build():
     """CI 不许站在原地等 Vercel 构建完成 —— 那是"连续 6 场部署失败"的直接原因。
@@ -227,9 +259,11 @@ def test_vercel_step_does_not_wait_for_the_server_build():
     于是"永远等不到终点"。官方口径就是那条 `--no-wait`：
     "does not wait for a deployment to finish before exiting from the deploy command"。
 
-    代价必须一起钉（否则这条改动会把失败遮起来）：加了 --no-wait 之后 CI **当场看不出部署成没成**，
-    所以必须另有一步去生产取"每场必变的指纹"（Vercel 域首页内嵌构建时间）确认上一场有没有落地
-    —— 那条判据等那个改动落地时一起写，不在这里假装已覆盖。
+    代价与配套（必须一起读，否则这条改动会把失败遮起来）：加了 --no-wait 之后 CI **当场看不出部署成没成**，
+    落地与否改由生产侧判 —— `tools/prod_verify.py` 取 Vercel 域首页的每场必变指纹 + 各场步级结论，
+    把"Vercel 连续 N 场未落地"报成 warn/blocking，并且它就是推送闸（判据
+    tests/tools/test_prod_verify_verdict.py::test_vercel_landing_stall_is_warn_with_evidence）。
+    也就是说：这条改动与那条门槛是**一对**，只做前半截会让 Vercel 失败重新变静默。
     """
     ver = _steps()[_idx(_steps(), VERCEL)]
     run = ver.get("run") or ""

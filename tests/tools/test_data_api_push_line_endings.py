@@ -61,6 +61,7 @@ class Api:
 def _drive(paths, api, monkeypatch, tmp_path):
     monkeypatch.setattr(D, "req", api)
     monkeypatch.setattr(D, "gate", lambda: (True, "测试守门通过"))
+    monkeypatch.setattr(D, "prod_gate", lambda: (True, "测试：生产验证通过"))
     monkeypatch.setattr(D.time, "sleep", lambda s: None)
     monkeypatch.setattr(D, "risky_runs", lambda ts: [])
     msg = tmp_path / "msg.txt"

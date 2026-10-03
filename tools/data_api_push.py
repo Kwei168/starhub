@@ -3,7 +3,9 @@
 
 为什么不用 `git push`：主仓 `.git` 已膨胀到 6.8GB 且含断链对象，`fetch/push` 直连一律失败（2026-09-19 实测）。
 为什么要守门：`update.yml` 的 auto-commit 会把它检出时刻的 docs/源码按文件名写回，
-  在构建进行中推送 = 几分钟后被回滚（2026-09-19 晚吞掉两次文档推送）。
+  在**它那个 Commit 步走完之前**推送 = 几分钟后被回滚（2026-09-19 晚吞掉两次文档推送）。
+  守门判的是那一步的状态，不是整场是否结束 —— 后者自 2026-10-02 起永远为真（Vercel 步连场挂 40+ 分钟），
+  会把推送闸变成恒拒（实测 4 小时一次都没推出去）。见 will_write_main()。
 为什么推完要自查：Data API 不回写本地工作树，本地与远端是两条并行历史，只有 blob 比对才知道有没有落住。
 
 用法：
@@ -34,6 +36,10 @@ WF = ".github/workflows/update.yml"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 就地变异 harness 的持锁标记：见 gate() 里的说明
 MUTATION_LOCK = os.path.join(ROOT, "_scratch", ".mutation-lock")
+# 生产验证时间戳：见 prod_gate()。默认落在 .deploy-tmp（gitignore 内），判据用 monkeypatch 指到临时目录
+import prod_verify as PV  # noqa: E402  （与本文件同目录，脚本态与测试态都在 sys.path 上）
+PROD_STAMP = PV.STAMP
+MAX_AGE_S = PV.MAX_AGE_S
 
 
 def req(method, path, body=None, tries=6):
@@ -65,6 +71,46 @@ def runs(per_page=10):
     return req("GET", "%s/actions/runs?per_page=%d" % (REPO, per_page))["workflow_runs"]
 
 
+# 全场唯一写 main 的 ref 的动作 = update.yml 的这一步。判「这场还会不会回滚我们」只看它，
+# 不看 run 的 status：Vercel 步连场挂 40+ 分钟 ⇒ 任何时刻都有一只未完成的 run，
+# 按 status 判会让闸恒拒（2026-10-02 实测：--wait-window 四轮 30 分钟全白等，4 小时推不出去）。
+REF_WRITE_STEP = "Commit & push if changed"
+_OPEN_STEP = ("queued", "pending", "in_progress")
+
+
+def jobs_of(run_id):
+    """取一场的 jobs（含步级状态）。取不到返回 None，由调用方按「判不了」处理。"""
+    try:
+        return req("GET", "%s/actions/runs/%s/jobs?per_page=100" % (REPO, run_id))["jobs"]
+    except Exception as exc:
+        print("  [?] 取 run %s 的 jobs 失败，按「仍可能写 ref」处理：%s" % (run_id, exc), file=sys.stderr)
+        return None
+
+
+def will_write_main(jobs):
+    """这一场的步序列之后还会不会写 main 的 ref。判不了一律 True —— 宁可多等一轮，也不推出去被回滚。
+
+    不接 run 对象是有意的：它那些形状（queued / in_progress / completed）在这里一律由**步序列**回答 ——
+    queued 的那场根本没有步（走空 steps 分支），挂着的 Vercel 场其 Commit 步已完成（走 False 分支）。
+    早先版本另有一条 `status in ("queued","requested")` 短路，被变异探针证明删掉后 12 条判据全绿
+    ⇒ 它是死逻辑，只让人误以为"状态参与了判断"（2026-10-02）。
+
+    为什么 Commit 步结束之后推是安全的（读 update.yml:346 的实现，不是猜）：它用的是**普通
+    `git push`（无 --force）**，被拒后走 `fetch + reset --hard origin/main + 重建 + 重新 add`
+    的重试路径 ⇒ 即便抢在它 fetch 之前推过去，它也会基于新 head 重跑，谁也不吞谁。
+    危险只剩该步**内部**（fetch 与 push 之间）那几秒，而那正是 in_progress 这个形状。
+    """
+    if jobs is None:
+        return True
+    steps = [s for j in jobs for s in (j.get("steps") or [])]
+    if not steps:
+        return True  # job 尚未开始（queued 的那场就长这样），看不到步序列
+    mine = [s for s in steps if (s.get("name") or "").strip() == REF_WRITE_STEP]
+    if not mine:
+        return True  # 别的 workflow，或有人改了步名 ⇒ 认不出就不放行
+    return any(s.get("status") in _OPEN_STEP for s in mine)
+
+
 def gate():
     """返回 (ok, 说明)。判据只有一条：当前没有任何未完成的 run（未跑完的那场随时会按文件名回滚 docs）。"""
     if os.path.exists(MUTATION_LOCK):
@@ -80,11 +126,16 @@ def gate():
         return False, "有就地变异 harness 在持锁（%s），此刻读盘会把变异体推上线" % who
     rs = runs()
     busy = [r for r in rs if r["status"] != "completed"]
-    if busy:
-        return False, "有 %d 场构建未结束，现在推会被它的 Commit 步骤回滚：%s" % (
-            len(busy), ["%s created=%s status=%s" % (r["id"], r["created_at"][11:19], r["status"])
-                        for r in busy])
     newest = max(rs, key=lambda r: r["created_at"])
+    if busy:
+        writers = [r for r in busy if will_write_main(jobs_of(r["id"]))]
+        if writers:
+            return False, "有 %d 场的「%s」步还没走完，现在推会被它的旧检出回滚：%s" % (
+                len(writers), REF_WRITE_STEP,
+                ["%s created=%s status=%s" % (r["id"], r["created_at"][11:19], r["status"])
+                 for r in writers])
+        return True, "守门通过：%d 场仍在飞，但它们的「%s」步都已结束 ⇒ 之后不再写 main（挂着的是 Vercel/Pages 步）；最近一场 %s created=%s" % (
+            len(busy), REF_WRITE_STEP, newest["id"], newest["created_at"][11:19])
     return True, "守门通过：无在跑 run；最近一场 %s created=%s 已 completed" % (
         newest["id"], newest["created_at"][11:19])
 
@@ -121,8 +172,39 @@ def verify(expect, tag, ref="main", gone=()):
 
 
 def risky_runs(push_ts):
-    """检出时刻早于本次推送、且还没提交的 run —— 它结束后会用旧 index 覆盖我们刚推的内容。"""
-    return [r for r in runs(10) if r["created_at"] < push_ts and r["status"] != "completed"]
+    """检出早于本次推送、且**还会**提交的 run —— 只有这种会用旧 index 覆盖我们刚推的内容。
+
+    旧实现只看 `status != completed`：挂着 Vercel 步的那场永远不结束，于是推送后的等待
+    会把 40×30s 全烧光再去复查（复查时它其实早已提交完，等的是无关的步骤）。
+    """
+    return [r for r in runs(10)
+            if r["created_at"] < push_ts and will_write_main(jobs_of(r["id"]))]
+
+
+def prod_gate():
+    """推下一批之前必须先做生产验证：见不到新鲜的时间戳就拒绝。
+
+    为什么是硬门槛而不是"我会记得跑"（2026-10-03 的定性批评）：Vercel 部署连续 6 场没落地
+    （现取步级 conclusion：1584 success，1585–1589 cancelled，1590 skipped），
+    我却照样一批批往下推 —— 把"CI 绿"当成了"改动生效"。线上读数一直拿得到，
+    我没把它变成阻塞条件，所以事故是被你发现的、不是被我发现的。
+
+    `warn` 不挡路：已知未修的问题（#27）若永久卡住推送，结果只会是有人加 --skip，
+    门槛反而失效；但 warn 的原文会打进推送日志，生产状态在提交历史里留痕。
+    """
+    try:
+        with io.open(PROD_STAMP, encoding="utf-8") as f:
+            stamp = json.load(f)
+    except Exception:
+        return False, ("没做过生产验证 ⇒ 生产状态未知，拒绝推送。先跑 "
+                       "`py -3.11 tools/prod_verify.py`（明知生产状态仍要推，用 --allow-running）")
+    if not PV.stamp_is_fresh(stamp):
+        return False, ("生产验证时间戳已过期（>%d 分钟）⇒ 重跑 tools/prod_verify.py" % (MAX_AGE_S // 60))
+    if stamp.get("level") == "blocking":
+        return False, "生产验证判为 blocking：%s" % stamp.get("why", "（没时间戳里的理由）")
+    note = "；提醒：%s" % stamp.get("why") if stamp.get("level") == "warn" else ""
+    return True, "生产验证通过（level=%s，%d 分钟内）%s" % (
+        stamp.get("level"), MAX_AGE_S // 60, note)
 
 
 def _abs(p):
@@ -338,7 +420,8 @@ def main():
     ap.add_argument("--wait-window", action="store_true", help="守门不过就每 60s 重试，最多 30 分钟")
     ap.add_argument("--check-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="只做守门+原子性检查并列出将要推的路径，不写远端")
-    ap.add_argument("--allow-running", action="store_true")
+    ap.add_argument("--allow-running", action="store_true",
+                    help="同时绕过『构建窗口』与『生产验证』两道闸（明知仍要推才用）")
     ap.add_argument("--delete", action="append", default=[],
                     help="从远端删除这些路径（tree 项 sha:null，走 Git Data API 的唯一删除方式）")
     ap.add_argument("--ref", default="",
@@ -379,6 +462,9 @@ def main():
     # 再按清单 add，中途推 main 会被它回滚。分支不在它的管辖里 —— 夜场验证因此不必再等缝。
     if on_main:
         ok, why = gate()
+        pok, pwhy = prod_gate()
+        why = why + "\n" + pwhy
+        ok = ok and pok
     else:
         ok, why = True, ("推送到分支 %s：不守构建窗口（白天场只回滚 main），"
                          "夜场验证与站点部署因此完全解耦" % ref_name)
@@ -398,7 +484,8 @@ def main():
             print("dry-run：将删 %d 个路径：%s" % (len(a.delete), ", ".join(a.delete)))
         return 0
     if not ok and not a.allow_running:
-        print("拒绝推送（加 --allow-running 可强行推，但大概率几分钟后被回滚）")
+        print("拒绝推送：上面两道闸（构建窗口 / 生产验证）至少一道没过。"
+              "加 --allow-running 可强行推 —— 但它同时绕过两道，用之前请把上面两行读完")
         return 1
     both = sorted(set(a.paths) & set(a.delete))
     if both:
