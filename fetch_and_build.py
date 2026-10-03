@@ -174,6 +174,65 @@ TREND_MAX_STARS = 50000  # 涨星榜排除超过此星标的巨头项目（避�
 
 BUILD_CONFIG_FILE = "build_config.json"
 
+# 限流场的首页兜底源：Pages 域（静态托管，不吃 GitHub API 的限流），实测首页 292 KB 左右，
+# 所以小于 40 KB 的一律不当"上一版首页"用 —— 把错误页/半截页当首页发出去，比缺件更糟：
+# 缺件至少会让 Stage 判失败并红，错误页却会被当成一次成功发布。
+PAGES_INDEX_URL = "https://kwei168.github.io/starhub/index.html"
+MIN_REAL_PAGE_BYTES = 40000
+PLACEHOLDER_INDEX = """<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub Star 收藏台 · 星标数据暂缺</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:38em;margin:6rem auto;padding:0 1.2em;line-height:1.7">
+<h1 style="font-size:1.15rem">星标数据暂缺</h1>
+<p>本场构建拉取 GitHub 星标失败（多半是 API 限流），收藏列表沿用不到，因此这一页暂时没有内容。</p>
+<p>其余栏目不受影响：<a href="ai-daily.html">AI 晨报</a> ·
+<a href="rss-aggregator.html">RSS 收藏</a> · <a href="daily-insight-history.html">洞察历史</a>。</p>
+</body></html>
+"""
+
+
+def fetch_live_index(url):
+    """取回线上首页正文；取不到返回 None。测试里打桩它（本机这条通道要走代理，CI 直连可用）。"""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "starhub-build/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            if getattr(r, "status", 200) != 200:
+                return None
+            return r.read().decode("utf-8", "replace")
+    except Exception as exc:  # noqa: BLE001
+        print("[首页兜底] 取线上首页失败：%s" % exc, file=sys.stderr)
+        return None
+
+
+def _looks_like_real_index(body):
+    return (bool(body) and body.lstrip().startswith("<!DOCTYPE html>")
+            and "</html>" in body and len(body) >= MIN_REAL_PAGE_BYTES)
+
+
+def write_index_fallback(out_dir="."):
+    """缺首页时才补：先拿回上一版，拿不到写占位页。已有合格首页则一律不碰。
+
+    为什么必须有这一步（2026-10-03 现取）：`if stars_ok:` 罩子里才有 `open("index.html","w")`，
+    而页面 HTML 已退出 git ⇒ 限流场工作树里根本没有首页；Stage 的必检清单含 index.html，
+    缺件会让 `Upload/Deploy Pages` 双双跳过 —— **代价不是"首页旧一小时"，是那一小时整站不发布**。
+    判据：tests/rss_history/test_index_fallback_on_star_ratelimit.py（含"不许挪回罩子里"的 AST 反向控制）。
+    """
+    path = os.path.join(out_dir, "index.html")
+    if os.path.exists(path) and os.path.getsize(path) >= MIN_REAL_PAGE_BYTES:
+        return None
+    body = fetch_live_index(PAGES_INDEX_URL)
+    if _looks_like_real_index(body):
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        print("[首页兜底] star 数据缺失，已用线上上一版顶上（%d B）⇒ Pages 不缺件" % len(body))
+        return "live"
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(PLACEHOLDER_INDEX)
+    print("[首页兜底] 取不到上一版首页，写占位页（宁可不美，不可缺件）")
+    return "placeholder"
+
+
 
 def load_build_config():
     """读取 build_config.json 覆盖榜单参数；文件缺失/损坏/字段非法时逐项回退内置默认值（零回归）。"""
@@ -727,7 +786,8 @@ def main(mode="full"):
     repos = fetch_stars(token)
     stars_ok = repos is not None
     if not stars_ok:
-        print("::error::[Star] 拉取 star 失败（可能 API 限流），index.html 保持不变")
+        print("::error::[Star] 拉取 star 失败（可能 API 限流）⇒ 首页改走兜底（见 write_index_fallback），"
+              "其余栏目照常产出；这句 error 是给 CI 看的，不影响本场发布")
 
     cat_label = {c["key"]: c["label"] for c in CATS}
     out = []
@@ -811,6 +871,13 @@ def main(mode="full"):
         open("index.html", "w", encoding="utf-8").write(html)
         json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         json.dump(desc_zh, open("descriptions_zh.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+    # 限流场也必须交得出首页：页面 HTML 已退出 git ⇒ 成功分支不写就是真的没有文件，
+    # 而 Stage 的必检清单含 index.html ⇒ 缺件会让这一小时整站不发布（不只是首页旧）。
+    # 只在"确实没拉到 star 数据"时兜底：拿 size 猜"有没有首页"会把瘦身后的新页误覆盖成线上旧页。
+    # 判据：tests/rss_history/test_index_fallback_on_star_ratelimit.py
+    if not stars_ok:
+        write_index_fallback()
 
     # AI 晨报：数据源是 AIHOT（自带 API→RSS→本地 ai_daily.json 三级回退），与 star 数据无关，
     # 所以刻意不挂进上面的 if stars_ok: 分支 —— 限流场也必须产出 ai-daily.html：
