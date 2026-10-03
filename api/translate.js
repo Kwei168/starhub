@@ -258,6 +258,11 @@ async function mapPool(items, limit, fn) {
   return out;
 }
 
+// 具名导出：search.js 的全网搜索复用同一条降级链（原 search.js 自带的
+// Google→MyMemory 两层在 GTX 被封 + MyMemory 配额打满时全断，用户实测
+// translated:false 且结果驴唇不对马嘴）。只加导出，行为零变化。
+export { translateWithFallback };
+
 export default async function handler(req, res) {
   const origin = (req.headers['origin'] || '').toLowerCase();
   if (ALLOWED_ORIGINS.has(origin)) {

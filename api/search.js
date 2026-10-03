@@ -1,9 +1,25 @@
 // Vercel Serverless Function：全网 GitHub 仓库搜索（跨语言）
 // 用法：POST /api/search  Body: { q: "视频创作", sort: "best-match"|"stars"|"updated", lang?: "Python", page?: 1 }
-// 流程：中文输入 → 翻译英文（Google 端点 → MyMemory 降级 → 失败原词）→ "中文 OR 英文" 组合查询
-// 防护：与 refresh.js 一致 —— ① CORS 仅允许白名单 Origin（比较时统一小写）；② X-Search-Key 头 == REFRESH_KEY（弱防护）
-// 缓存：搜索结果内存缓存 10 分钟（key=q|sort|lang|page）；翻译结果缓存 1 小时（key=原词）
-// 分页：per_page=30，page 上限 34（GitHub 搜索最多返回前 1000 条）
+//
+// 翻译（T6 重构 2026-10-04）：改用 api/translate.js 的统一降级链
+//   GTX → MyMemory → Agnes(多key) → Zen —— 旧版自带的 Google→MyMemory 两层在
+//   GTX 被数据中心 IP 封锁 + MyMemory 出口配额打满时全断（用户实测 translated:false，
+//   中文原词直接搜 GitHub 结果完全不可用）。translate.js 内置词级缓存与熔断。
+//
+// 多词查询（T6）：旧版对含空格的中文整串加引号 = GitHub 短语搜索，几乎必然 0 结果。
+//   现按空格拆词、逐词翻译，查询档位依次尝试（total=0 才降下一档）：
+//   单词 → [zh OR en]
+//   多词 → [en1 en2（不加引号，GitHub 隐式 AND，召回最大）
+//          → "zh1 zh2" OR "en1 en2"（短语兜底）
+//          → en1（仅英文主词）→ zh1（仅首个中文词）]
+//   实际生效的查询串在响应 strategy 字段返回，前端可标注。
+//
+// 防护：CORS 白名单 + X-Search-Key（与 refresh.js 同 key）+ 内存限流
+//   （每 IP 10 req/min、全局 25 req/min——key 公开内联在页面里，无限流时
+//   GH_TOKEN 的 30 req/min 搜索配额可被恶意烧穿）。
+// 缓存：搜索结果内存缓存 10 分钟（key=查询|sort|page）；词级翻译缓存 1 小时。
+import { translateWithFallback } from './translate.js';
+
 const ALLOWED_ORIGINS = new Set([
   'https://starhub-refresh.vercel.app',
   'https://kwei168.github.io',
@@ -14,10 +30,14 @@ const PER_PAGE = 30;
 const MAX_PAGE = 34; // 1000 / 30
 const TTL_SEARCH = 10 * 60 * 1000;
 const TTL_TRANS = 60 * 60 * 1000;
+const RATE_IP = 10;     // 每 IP 每分钟
+const RATE_GLOBAL = 25; // 全局每分钟
 
 // 模块级内存缓存（Vercel 单实例有效，冷启动丢失可接受）
 const searchCache = new Map();
 const transCache = new Map();
+const rateIp = new Map();
+let rateGlobalTs = [];
 
 function cacheGet(map, key, ttl) {
   const hit = map.get(key);
@@ -27,50 +47,57 @@ function cacheGet(map, key, ttl) {
 }
 function cacheSet(map, key, val) { map.set(key, { t: Date.now(), v: val }); }
 
-// 中文 → 英文：Google 非官方端点（免 key）→ MyMemory 降级 → 失败返回 null
-async function translateZh(zh) {
-  const cached = cacheGet(transCache, zh, TTL_TRANS);
+const RATE_WINDOW = 60 * 1000;
+function rateLimited(ip) {
+  const now = Date.now();
+  rateGlobalTs = rateGlobalTs.filter(t => now - t < RATE_WINDOW);
+  if (rateGlobalTs.length >= RATE_GLOBAL) return true;
+  const arr = (rateIp.get(ip) || []).filter(t => now - t < RATE_WINDOW);
+  const limited = arr.length >= RATE_IP;
+  rateIp.set(ip, arr.concat([now]));
+  if (!limited) rateGlobalTs.push(now);
+  return limited;
+}
+
+// 单词翻译：统一链（GTX→MyMemory→Agnes→Zen），词级缓存 1h。
+// 链内 translate.js 自带按文本缓存与连续失败熔断，这里只做词粒度的调用与缓存。
+async function translateTerm(term) {
+  const cached = cacheGet(transCache, term, TTL_TRANS);
   if (cached !== undefined) return cached;
-  let en = null;
-  try {
-    const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&q=' + encodeURIComponent(zh);
-    const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
-    if (r.ok) {
-      const j = await r.json();
-      const t = (j[0] || []).map(x => x && x[0]).join('').trim();
-      if (t) en = t;
-      else console.error('[translate] Google 响应为空: zh=' + zh);
-    } else {
-      console.error('[translate] Google HTTP ' + r.status + ': zh=' + zh + ' body=' + (await r.text()).slice(0, 120));
-    }
-  } catch (e) { console.error('[translate] Google 异常: zh=' + zh + ' err=' + (e && e.message || e)); }
-  if (!en) {
-    try {
-      const u = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(zh) + '&langpair=zh-CN|en';
-      const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
-      if (r.ok) {
-        const j = await r.json();
-        const t = ((j.responseData || {}).translatedText || '').trim();
-        if (t) en = t;
-        else console.error('[translate] MyMemory 响应为空: zh=' + zh);
-        const warn = ((j.responseData || {}).translatedText || '').match(/MYMEMORY WARNING[^\n]*/i);
-        if (warn) console.error('[translate] MyMemory 警告: ' + warn[0]);
-      } else {
-        console.error('[translate] MyMemory HTTP ' + r.status + ': zh=' + zh + ' body=' + (await r.text()).slice(0, 120));
-      }
-    } catch (e) { console.error('[translate] MyMemory 异常: zh=' + zh + ' err=' + (e && e.message || e)); }
-  }
-  if (!en) console.error('[translate] 两个端点均失败: zh=' + zh);
-  cacheSet(transCache, zh, en);
+  const r = await translateWithFallback(term);
+  const en = (r && r.zh) ? String(r.zh).trim() : null;
+  cacheSet(transCache, term, en);
   return en;
 }
 
-// "中文 OR 英文"；含空格时加引号（GitHub 空格默认 AND）；翻译结果与原文相同 → 仅原词
-function buildQuery(zh, en) {
+// 查询档位序列：total=0 才降下一档（见文件头注释）。
+// 每词的最佳形态 = 翻译命中用翻译、否则原词（英文词本身就是"翻译"）——
+// 避免纯英文多词输入掉进引号短语档（实测召回塌陷）。
+function buildQueryPlan(zh, enMap) {
   const quote = s => /\s/.test(s) ? '"' + s + '"' : s;
-  if (!en || en.toLowerCase() === zh.toLowerCase()) return quote(zh);
-  return quote(zh) + ' OR ' + quote(en);
+  const zhTerms = zh.split(/\s+/).filter(Boolean);
+  const best = zhTerms.map(t => enMap.get(t) || t);
+  const enTerms = zhTerms.map(t => enMap.get(t)).filter(Boolean);
+  const plans = [];
+  if (zhTerms.length <= 1) {
+    const z = zhTerms[0] || zh;
+    const e = enMap.get(z);
+    plans.push(e && e.toLowerCase() !== z.toLowerCase() ? quote(z) + ' OR ' + quote(e) : quote(z));
+    return plans;
+  }
+  const hasTrans = enTerms.length > 0;
+  plans.push(best.join(' '));                                            // ① 逐词 AND（不加引号）
+  plans.push(quote(zh) + (enJoined(zhTerms, enMap) ? ' OR ' + quote(enJoined(zhTerms, enMap)) : '')); // ② 整串短语兜底
+  if (enTerms.length) plans.push(enTerms[0]);                            // ③ 仅英文主词
+  plans.push(zhTerms[0]);                                                // ④ 仅首个中文词
+  return plans;
 }
+function enJoined(zhTerms, enMap) {
+  const parts = zhTerms.map(t => enMap.get(t)).filter(Boolean);
+  return parts.length === zhTerms.length ? parts.join(' ') : '';
+}
+
+export { buildQueryPlan };
 
 async function githubSearch(q, sort, page) {
   const u = new URL('https://api.github.com/search/repositories');
@@ -78,7 +105,7 @@ async function githubSearch(q, sort, page) {
   u.searchParams.set('per_page', String(PER_PAGE));
   u.searchParams.set('page', String(page));
   if (sort !== 'best-match') { u.searchParams.set('sort', sort); u.searchParams.set('order', 'desc'); }
-  const r = await fetch(u, {
+  return fetch(u, {
     headers: {
       'Authorization': 'Bearer ' + process.env.GH_TOKEN,
       'Accept': 'application/vnd.github+json',
@@ -87,7 +114,6 @@ async function githubSearch(q, sort, page) {
     },
     signal: AbortSignal.timeout(15000),
   });
-  return r;
 }
 
 // 422（查询语法）：去掉引号与多余空白后重试一次
@@ -116,6 +142,13 @@ export default async function handler(req, res) {
     return;
   }
 
+  // 限流：key 是公开的（内联页面），防烧 GH_TOKEN 搜索配额（30 req/min）
+  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  if (rateLimited(ip)) {
+    res.status(429).json({ error: '搜索太频繁，请稍后再试' });
+    return;
+  }
+
   let body;
   try { body = await new Promise((resolve, reject) => { let d = ''; req.on('data', c => { d += c; if (d.length > 4096) { reject(new Error('too large')); req.destroy(); } }); req.on('end', () => resolve(JSON.parse(d || '{}'))); req.on('error', reject); }); }
   catch (e) { res.status(400).json({ error: '请求体格式错误' }); return; }
@@ -127,47 +160,61 @@ export default async function handler(req, res) {
   const page = Math.max(1, Math.min(parseInt(body.page, 10) || 1, MAX_PAGE));
 
   try {
-    // 含中文 → 翻译；纯英文/其他 → 原词直搜
     const hasZh = /[\u4e00-\u9fff]/.test(zh);
-    const en = hasZh ? await translateZh(zh) : null;
-    const translated = hasZh && !!en;
-    let query = buildQuery(zh, en) + (lang ? ' language:' + lang : '');
+    const zhTerms = zh.split(/\s+/).filter(Boolean);
+    const enMap = new Map();
+    if (hasZh) {
+      for (const t of zhTerms) enMap.set(t, await translateTerm(t));
+    }
+    const translated = hasZh && [...enMap.values()].some(Boolean);
+    const plans = buildQueryPlan(zh, enMap);
 
-    const ck = query + '|' + sort + '|' + page;
-    let data = cacheGet(searchCache, ck, TTL_SEARCH);
-    if (!data) {
+    let data = null, usedQuery = null;
+    for (const plan of plans) {
+      const query = plan + (lang ? ' language:' + lang : '');
+      const ck = query + '|' + sort + '|' + page;
+      const hit = cacheGet(searchCache, ck, TTL_SEARCH);
+      if (hit) { data = hit; usedQuery = query; break; }
       let r = await githubSearch(query, sort, page);
-      // 422：清洗后重试一次
       if (r.status === 422) {
-        query = sanitizeQ(query);
-        r = await githubSearch(query, sort, page);
+        r = await githubSearch(sanitizeQ(query), sort, page);
       }
       if (r.status === 403 || r.status === 429) {
+        // GitHub 侧限流是全局的，换查询档位没有意义——直接告知用户
         res.status(503).json({ error: '搜索太频繁，请稍后再试' });
         return;
       }
       if (!r.ok) {
-        // 不向上游调用者回显 GitHub 错误细节（防信息泄露），细节由 Vercel 日志记录
         res.status(502).json({ error: 'GitHub 搜索服务暂不可用' });
         return;
       }
       const j = await r.json();
-      data = {
-        query,
-        translated,
-        page,
-        total: j.total_count,
-        items: (j.items || []).map(x => ({
-          full_name: x.full_name,
-          desc: x.description,
-          language: x.language,
-          stars: x.stargazers_count,
-          updated_at: x.updated_at,
-          html_url: x.html_url,
-          topics: (x.topics || []).slice(0, 3),
-        })),
-      };
-      cacheSet(searchCache, ck, data);
+      if (j.total_count > 0 || plans.length === 1) {
+        data = {
+          query,
+          translated,
+          strategy: query,
+          page,
+          total: j.total_count,
+          items: (j.items || []).map(x => ({
+            full_name: x.full_name,
+            desc: x.description,
+            language: x.language,
+            stars: x.stargazers_count,
+            updated_at: x.updated_at,
+            html_url: x.html_url,
+            topics: (x.topics || []).slice(0, 3),
+          })),
+        };
+        cacheSet(searchCache, ck, data);
+        usedQuery = query;
+        break;
+      }
+      // total=0 → 降下一档
+    }
+    if (!data) {
+      res.status(200).json({ query: zh, translated, strategy: zh, page, total: 0, items: [] });
+      return;
     }
     res.status(200).json(data);
   } catch (e) {

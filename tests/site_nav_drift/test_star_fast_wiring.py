@@ -71,3 +71,14 @@ def test_fast_refresh_called_with_token():
 def test_timeout_cap_present():
     yml = _wf_text()
     assert re.search(r"timeout-minutes:\s*12", yml), "快车道超 12 分钟即无意义，必须封顶"
+
+
+def test_refresh_js_star_mode_dispatch():
+    """T5：api/refresh.js 的 ?mode=star 分流——白名单映射（防任意 workflow 注入）、
+    star → star-fast.yml、默认 → update.yml。"""
+    src = open(os.path.join(ROOT, "api", "refresh.js"), encoding="utf-8").read()
+    assert "WORKFLOW_BY_MODE" in src
+    assert re.search(r"star:\s*'star-fast\.yml'", src)
+    assert re.search(r"''\s*:\s*'update\.yml'", src)
+    assert "workflows/' + workflow" in src, "dispatch URL 必须用映射出的 workflow 名"
+    assert "未知 mode" in src, "未知 mode 必须 400 拒绝"
