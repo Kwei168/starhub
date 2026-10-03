@@ -1368,6 +1368,68 @@ gate B 本轮**未跑**（不写它的数）。推前 `prod_verify` 判 **WARN**
 `_looks_like_real_index=True`，占位体 698 B 判 False ⇒ 兜底有货且不会被自己的守卫误认；
 但**自然限流场至今没有样本**，这条仍属"分支已验、场景未遇"。
 
+### 8.21 Vercel 部署被 Blocked 的真因：我为压平 git 膨胀，拆掉了"每场都有 bot 提交"这个前提（2026-10-03 12:2x 定性，**修法待实施**）
+
+**一句话**：Vercel 账号（`guiyingyi2021`）与 GitHub 账号（`Kwei168`）不同名**从项目第一天就如此**，
+以前部署能成功，不是因为账号对得上，而是因为**每场构建都会以 `github-actions[bot]` 身份提交一次
+`chore: auto update stars`**，而 Vercel CLI 部署时读的是**工作树当前 HEAD 的 commit 作者**——
+那个 HEAD 恰好是 bot 刚推的。我把该提交的产生条件拆掉了。
+
+**拆它的正是 §8.16/8.17 那批压平膨胀的改动**：7 个跨场状态文件、4 个页面 HTML、`rss-data-*.js`、
+`daily-insight.json` 全部退出 `git add` 清单，构建日志改成每个北京日一次 ⇒ 绝大多数场次
+`git diff --cached --quiet` 为真 ⇒ 走 `echo "No changes, skip commit."` 分支 ⇒ **没有 bot 提交**
+⇒ Vercel 记的 commit 回到我推的那个 head ⇒ 授权检查落到 `Kwei168` 身上 ⇒ **Blocked**。
+面板原文（用户 12:1x 读到，我此前只能报"秒拒、原因未知"）：
+```
+Kwei168@users.noreply.github.com attempted to deploy a commit to guiyingyi2021's projects
+on Vercel through the Vercel CLI, but they're not a member of the team.
+```
+
+**硬对照（同一天三场，12:1x 现取）**：
+
+| 场次 | `Deploy to Vercel` | Commit 步日志证据 |
+|---|---|---|
+| 1592（01:00）| **success** | `chore: auto update stars 2026-10-03` + `-> main`（有 bot 提交）|
+| 1602（08:36）| failure | 无上述两行 ⇒ `No changes, skip commit.` |
+| 1607（11:28）| failure | 同上 |
+
+旁证两条：面板上 9 条 Ready 的部署（`c4731bd`/`2c6ad48`×2/`d0b80b6`/`8391557`/`b69fae5`/`b982031`/
+`b8ab1f2`/`79e52c3`）**全部**是 bot 提交，无一例外；CI 侧统计最近 40 场
+`MINE head × Vercel success = 20 场`——但逐场查日志后确认这 20 场**全都产生了 bot 提交**
+（run 的 `head_sha` 是触发时的检出，不等于部署时工作树的 HEAD，**别拿 head_sha 的 author 当判据**，
+我第一版就是这么误判的）。
+
+**我在这件事上给过的四次错因（都只解释了一部分症状，别再重复）**：
+① "CLI 原地等构建被并发掐" → 加 `timeout-minutes: 12`；② "Vercel 间歇秒拒" → 加 `--no-wait`；
+③ "同内容每小时重复部署撞配额" → 加内容哈希门（**这条最坏**：它让失败从"吵但会自愈"变成"安静且不修"）；
+④ "author 邮箱格式不对" → 改推送器身份。其中 ④ 部分有效：它把报错从
+`could not be matched to a GitHub account`（带 ID 前缀的 noreply 认不出）推进到"认出了，但不是团队成员"，
+所以 `COMMIT_IDENTITY`（`Kwei168@users.noreply.github.com`，判据
+`tests/tools/test_data_api_push_author_identity.py` + 变异 6/6）**要保留**，但它不是解药。
+
+**正确修法（用户已认可方向）**：CI 在 Vercel 部署之前，若本场没产生提交，就用 bot 身份补一个空提交
+（`git commit --allow-empty`）再推 ⇒ 恢复"部署挂 bot 提交"这个前提。
+为不与"压平膨胀"冲突，**只在真要部署时补**（配合现有哈希门：`api/**`、`lib/**`、`vercel.json`、
+`rss_sources.json` 变了才补+部署）⇒ 一年也就几次。
+验收标准是 **Vercel 面板那条新部署变 Ready**，不是 CI 绿、也不是线上 200（那只能证明旧版还活着）。
+
+**明确不需要的三条**（那是把我的自伤当成平台限制去迁就）：关掉 *Block deployments from unverified
+users*（拆授权检查，且没修前提）、升级 Pro 加 collaborator（花钱解决不需要花钱的问题）、
+把项目迁到 Kwei168 的 Vercel 账号（生产域名会变，四个页面与 `lib/` 里硬编码的
+`starhub-refresh.vercel.app` 全要改）。
+另两条已现取排除：仓库本来就是 public（`private=false`，Vercel 建议第三条不适用）；
+GitHub 上不存在 `guiyingyi2021` 这个账号（`gh api users/guiyingyi2021` = 404）。
+
+**当前生产状态**：没坏。线上 API 跑的是 bot 那版（`c4731bd`），而 `api/`、`lib/`、`vercel.json`
+自那以后一行未改 ⇒ 生产函数 = 当前代码；Pages 每小时正常发布（1602–1608 场 `Deploy to GitHub Pages`
+全 success）。**但在"补 bot 提交"落地之前，我改的任何 API 代码都上不了 Vercel**——这是硬停。
+
+**这条留在这里的最主要价值是排查顺序**（同样适用于任何外部平台的"间歇失败"）：
+先做**成功样本 vs 失败样本**的对照，把两者之间"我们这一侧变过的隐含前提"列全，
+再去拿平台侧的状态原文；**未证根因前不许叠第二层优化**。
+本轮我在没有这张对照表的情况下连着改了三层（timeout / `--no-wait` / 缓存门），
+每一层都让现象更难看清，最后那层还把告警捂住了。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
