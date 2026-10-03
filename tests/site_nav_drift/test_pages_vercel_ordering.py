@@ -383,3 +383,144 @@ def test_skipped_vercel_deploy_does_not_mark_the_run_red():
         assert any(h.startswith("vercel") for h in hits), (
             "Vercel=%s 时 run 体没有 vercel 那半（实得 %s）⇒ 未部署重新变静默" % (shape, hits))
     assert not _body_reds(body, ok), "一切正常的那场不许有 shell 命中"
+
+
+# ── Vercel 的授权判定看的是"部署时工作树 HEAD 的作者"（2026-10-03 定性，见手册 §8.21）──────
+BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
+BOT_NAME = "github-actions[bot]"
+# 按步名定位，**不要**拿 `--allow-empty` 当锚点：Commit 步的 push 重试分支里本来就有它
+# （update.yml:379），用它当锚点会把那条既有分支误认成这个守卫（判据第一版就是这么错的）。
+BOT_HEAD_GUARD = "Ensure Vercel sees a bot-authored commit"
+
+
+def _guard_step(steps):
+    hits = [s for s in steps if (s.get("name") or "").strip().startswith(BOT_HEAD_GUARD)]
+    assert len(hits) <= 1, "守卫步出现 %d 次 ⇒ 定位不作数" % len(hits)
+    return hits[0] if hits else None
+
+
+def test_a_bot_authored_commit_precedes_the_vercel_deploy():
+    """真要部署之前，工作树 HEAD 必须是 **bot 的提交**——否则 Vercel 判 Blocked。
+
+    现取因果（三场日志硬对照，同一天）：
+      run 1592 Commit 步有 `chore: auto update stars` + `-> main` ⇒ `Deploy to Vercel = success`；
+      run 1602 / 1607 只有 `No changes, skip commit.` ⇒ `Deploy to Vercel = failure`，
+      面板原文：`Kwei168@users.noreply.github.com attempted to deploy a commit to
+      guiyingyi2021's projects on Vercel through the Vercel CLI, but they're not a member of the team.`
+    机制：`npx vercel --prod` 把**当前工作树 HEAD 的 commit 作者**当作部署发起者。历史上每场构建
+    都会由 `Commit & push if changed` 以 bot 身份提交一次（那时状态文件、页面 HTML 还在 add 清单里），
+    所以部署永远挂 bot ⇒ 通过；而为了压平 git 膨胀把这些文件退出清单后，多数场次"无变化可提交"
+    ⇒ HEAD 停在我推的 commit 上 ⇒ 被拒。**Vercel 账号与 GitHub 账号不同名从项目第一天就如此**，
+    以前能成靠的就是这个 bot 提交，不是账号对得上。
+
+    位置与条件都要钉住：
+    - 必须在 `Detect API-relevant deploy state` 之后、`Deploy to Vercel` 之前（前面拿不到 cache-hit，
+      后面补了也来不及）；
+    - `if` 必须带 cache-hit 条件 ⇒ **只在真要部署时补**。写成无条件就等于把"每场一个提交"加回来，
+      §8.16/8.17 压平的曲线会原地复活（那是这批改动唯一的目的）。
+    """
+    steps = _steps()
+    det = _idx(steps, "Detect API-relevant deploy state")
+    ver = _idx(steps, VERCEL)
+    i = next((n for n, s in enumerate(steps)
+              if (s.get("name") or "").strip().startswith(BOT_HEAD_GUARD)), None)
+    assert i is not None, (
+        "没有「%s」这一步 ⇒ 只要那一场没有内容变化，Vercel 就会因为 HEAD 作者是 Kwei168"
+        "（非 guiyingyi2021 团队成员）而把部署判 Blocked" % BOT_HEAD_GUARD)
+    assert det < i < ver, (
+        "守卫步位置不对（实得 %d；Detect=%d，Deploy to Vercel=%d）"
+        "⇒ 放 Detect 之前拿不到 cache-hit，放 Deploy 之后补了也来不及" % (i, det, ver))
+    s = steps[i]
+    run = s.get("run") or ""
+    assert BOT_EMAIL in run and BOT_NAME in run, (
+        "补的提交必须是 bot 身份（缺 %r / %r）——用 Kwei168 的身份补，Vercel 照样拒" % (BOT_NAME, BOT_EMAIL))
+    assert "--allow-empty" in run, (
+        "守卫步里没有 --allow-empty ⇒ 无变化可提交时补不出东西来")
+    assert "git log -1" in run and "%ae" in run, (
+        "必须先读 HEAD 的 author email 再决定补不补 ⇒ 否则连「本来就是 bot 提交」的那场也白补一个提交")
+    assert "git push" in run, "补了不推上去，Vercel 读到的还是旧 HEAD，等于没修"
+    assert "cache-hit" in (s.get("if") or ""), (
+        "这一步没挂 cache-hit 条件 ⇒ 每场都补提交，把刚压平的 git 膨胀加回来（实得 if=%r）"
+        % (s.get("if"),))
+
+
+def test_the_bot_commit_step_cannot_block_pages():
+    """这一步失败**不许终止 job**——Pages 排在 Vercel 之后，本仓为"自己把部署冻掉"付过两次代价。
+
+    `continue-on-error` 会把失败遮成 success，所以必须同时有 `::warning::` 出声；
+    真正的失败可见性仍由 Vercel 那一步与末步负责（它们会红）。
+    """
+    steps = _steps()
+    s = _guard_step(steps)
+    assert s is not None, "守卫步不见了 ⇒ 这条防连坐判据不作数"
+    assert s.get("continue-on-error") is True, (
+        "补提交步没有 continue-on-error ⇒ push 一失败就终止 job，Pages 那场跟着不发"
+        "（§8.16 的连坐教训：A2 blocking + Deploy 无 if 曾把整场部署冻掉）")
+    assert "::warning" in (s.get("run") or ""), (
+        "补提交失败/跳过必须出声；continue-on-error 不加警告 = 把「部署上不去」重新捂回静默")
+
+
+def _git(cwd, *args):
+    import subprocess
+    # encoding 必须显式给：Windows 上 text=True 会按 GBK 解码，git 输出里的 UTF-8 中文
+    # （比如守卫 shell 里那两行 ::warning::）会直接把测试打崩成 UnicodeDecodeError。
+    r = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, "git %s 失败：%s%s" % (" ".join(args), r.stdout, r.stderr)
+    return (r.stdout or "").strip()
+
+
+def test_guard_shell_rewrites_head_to_bot_and_pushes(tmp_path):
+    """**真跑**那段 shell：HEAD 是别人提交时，它必须补出一个 bot 作者的空提交并推上去。
+
+    为什么必须有这条：前面两条判据读的是 yml 文本，文本对了不代表 shell 跑得通
+    （`git log -1 --pretty=%ae` 拼错、比较条件写反、push 少 refspec 都能让"守卫"形同不存在，
+    而 CI 上这一步是 continue-on-error ⇒ 它坏了只会静默）。
+    这里在临时目录里建一个**本地裸仓**当远端，全程不碰网络、不碰 GitHub。
+    反向那半同样重要：HEAD 本来就是 bot 时**不许再补**，否则每场白涨一个提交。
+    """
+    import shutil
+    import subprocess
+    if shutil.which("bash") is None:
+        pytest.skip("本机没有 bash：这段 shell 的行为只能到 CI 的 ubuntu 上验")
+    body = _step_by_name(_steps(), BOT_HEAD_GUARD)[0]["run"]
+    sh = tmp_path / "guard.sh"
+    sh.write_text(body, encoding="utf-8")
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    work = tmp_path / "work"
+    subprocess.run(["git", "clone", "-q", str(origin), str(work)], check=True)
+    w = str(work)
+    # 分支名必须对齐 CI：actions/checkout 检出出来就是 main 且跟踪 origin/main，
+    # 而 clone 一个空裸仓得到的是 init.defaultBranch（本机是 master）⇒ 守卫里那句无参数
+    # `git push` 在 simple 模式下会推去 master、被远端拒掉，测试就会报"没推到远端"。
+    _git(w, "checkout", "-q", "-b", "main")
+    # 身份必须自带：CI 的 ubuntu 上没有全局 user.name/email，缺身份会让 commit 直接失败
+    _git(w, "config", "user.name", "Kwei168")
+    _git(w, "config", "user.email", "83650072+Kwei168@users.noreply.github.com")
+    (work / "a.txt").write_text("hi\n", encoding="utf-8")
+    _git(w, "add", "a.txt")
+    _git(w, "commit", "-qm", "mine")
+    # 首次推送要建上游跟踪：CI 里 actions/checkout 得到的 main 本来就跟踪 origin/main，
+    # 守卫脚本用的是无参数 `git push`，没有 upstream 时它会直接报 "no upstream branch"。
+    _git(w, "push", "-q", "-u", "origin", "main")
+    assert _git(w, "log", "-1", "--pretty=%ae") != BOT_EMAIL, "前置条件不成立：HEAD 已经是 bot"
+
+    r = subprocess.run(["bash", str(sh)], cwd=w, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, "守卫 shell 非零退出：%s%s" % (r.stdout, r.stderr)
+    assert _git(w, "log", "-1", "--pretty=%ae") == BOT_EMAIL, (
+        "跑完之后 HEAD 作者仍不是 bot ⇒ Vercel 照旧按「非团队成员」拒绝")
+    assert _git(w, "ls-remote", "origin", "main").split()[0] == _git(w, "rev-parse", "HEAD"), (
+        "补出来的提交没推到远端 ⇒ Vercel 读到的还是旧 HEAD，等于没修")
+    assert _git(w, "diff", "HEAD^", "HEAD", "--name-only") == "", (
+        "补的不是空提交 ⇒ 会把内容变化混进来，膨胀与责任都说不清")
+
+    before = _git(w, "rev-parse", "HEAD")
+    r2 = subprocess.run(["bash", str(sh)], cwd=w, capture_output=True,
+                        text=True, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, "第二次跑（HEAD 已是 bot）非零退出：%s%s" % (r2.stdout, r2.stderr)
+    assert _git(w, "rev-parse", "HEAD") == before, (
+        "本来就是 bot 提交的那场又补了一个 ⇒ 每场白涨一个提交，压平的曲线会回来")
+    assert "已是 bot 提交" in (r2.stdout or ""), (
+        "不补的分支要留下可读的一行，否则日志里分不清「判过了不补」和「整步没跑」")

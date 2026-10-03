@@ -566,6 +566,36 @@ jobs:
           # prune 步不删这四类文件，所以 Vercel 之后重算哈希仍与这里一致。
           key: vercel-deployed-${{ hashFiles('api/**', 'lib/**', 'vercel.json', 'rss_sources.json') }}
 
+      # Vercel CLI 把「部署时工作树 HEAD 的 commit 作者」当成部署发起者。guiyingyi2021 那个 Vercel
+      # 团队只认 bot（GitHub 集成）身份：HEAD 停在我推的 commit 上时，面板直接判
+      #   "Kwei168@users.noreply.github.com attempted to deploy … but they're not a member of the team"
+      # ⇒ Blocked（run 1602/1607 实测；对照 run 1592 有 bot 提交 ⇒ success。见手册 §8.21）。
+      # 以前每场都有 bot 的 `chore: auto update stars` 顶着这个前提；压平 git 膨胀把状态文件与站点
+      # 产物退出 add 清单后，多数场次是 "No changes, skip commit." ⇒ 前提消失 ⇒ 部署连片被拒。
+      # 这里把前提补回来，且**只在真要部署时**（缓存未命中 ⇒ 下一步会执行）检查并按需补一个空提交：
+      # 空提交不含任何 blob（约 200 字节），一年也就几次，不会把刚压平的曲线弄回去。
+      # continue-on-error：这一步失败绝不许终止 job —— Pages 排在 Vercel 之后，本仓已为
+      # "A2 blocking + Deploy 无 if" 这类连坐付过两次代价。失败用 ::warning:: 出声，
+      # 真正的可见性仍由 Deploy to Vercel 那一步与末步负责（它们会红）。
+      # 判据：tests/site_nav_drift/test_pages_vercel_ordering.py
+      #       ::test_a_bot_authored_commit_precedes_the_vercel_deploy
+      #       ::test_the_bot_commit_step_cannot_block_pages
+      - name: Ensure Vercel sees a bot-authored commit
+        id: vercel_head_guard
+        if: steps.vercel_state.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          head_email=$(git log -1 --pretty=%ae)
+          if [ "$head_email" = "41898282+github-actions[bot]@users.noreply.github.com" ]; then
+            echo "HEAD 已是 bot 提交 ⇒ 不补（Vercel 认这个身份）"
+            exit 0
+          fi
+          echo "::warning::HEAD 作者是 $head_email，Vercel 会按「非团队成员」拒绝这次部署 ⇒ 补一个 bot 空提交"
+          git commit --allow-empty -q -m "chore: vercel deploy head marker $(TZ=Asia/Shanghai date '+%F %T')"
+          git push || echo "::warning::补提交推送失败 ⇒ 本场 Vercel 大概率仍被 Blocked（Pages 不受影响）"
+
       - name: Deploy to Vercel
         id: vercel
         # 只在 API 相关输入变化时部署；跳过时 outcome 是 skipped，末步刻意不因其 skipped 而红
