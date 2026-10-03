@@ -31,6 +31,18 @@ if __name__ == "__main__":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 API = "https://api.github.com"
 REPO = "repos/Kwei168/starhub"
+
+# 提交身份必须**显式**给，不能让 GitHub 按 token 自动填。
+# 自动填出来的是 `83650072+Kwei168@users.noreply.github.com`（GitHub 的"邮箱保密"新格式），
+# 而 Vercel 的 "Block deployments from unverified users" 拿部署所记 commit 的 author 邮箱去匹配
+# GitHub 账号，认不出这个带用户 ID 前缀的形式 —— 报错原文：
+#   The deployment was blocked because the commit email
+#   83650072+Kwei168@users.noreply.github.com could not be matched to a GitHub account.
+# 后果不是"日志难看"：现取 400 个提交里我经手的 137 个全是这个邮箱，
+# Vercel 面板里唯二两条 Ready 的部署都恰好挂在 bot 的 `chore: auto update stars` 提交上，
+# 其余一律 Blocked ⇒ 我改的 API 代码从没真正上过生产，而 CI 一路只表现为"Vercel 部署失败"。
+# 判据：tests/tools/test_data_api_push_author_identity.py
+COMMIT_IDENTITY = {"name": "Kwei168", "email": "Kwei168@users.noreply.github.com"}
 WF = ".github/workflows/update.yml"
 # 所有路径都相对仓库根解析（本文件在 <root>/tools/ 下），不依赖调用时的 CWD
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -536,7 +548,8 @@ def main():
         try:
             tree = req("POST", REPO + "/git/trees", {"base_tree": head, "tree": items})
             commit = req("POST", REPO + "/git/commits",
-                         {"message": a.msg, "tree": tree["sha"], "parents": [head]})
+                         {"message": a.msg, "tree": tree["sha"], "parents": [head],
+                          "author": COMMIT_IDENTITY, "committer": COMMIT_IDENTITY})
             if create_ref:
                 ref = req("POST", REPO + "/git/refs",
                           {"ref": "refs/heads/" + ref_name, "sha": commit["sha"]})
