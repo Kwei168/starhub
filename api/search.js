@@ -60,13 +60,19 @@ function rateLimited(ip) {
 }
 
 // 单词翻译：统一链（GTX→MyMemory→Agnes→Zen），词级缓存 1h。
-// 链内 translate.js 自带按文本缓存与连续失败熔断，这里只做词粒度的调用与缓存。
+// ⚠ 只缓存成功结果——失败（null）入缓存会把一次瞬时故障放大成 1 小时的
+// "translated:false"（部署后首轮撞 GTX 间歇 429 实测复现）。失败下次重试。
 async function translateTerm(term) {
   const cached = cacheGet(transCache, term, TTL_TRANS);
   if (cached !== undefined) return cached;
   const r = await translateWithFallback(term);
+  const engine = r ? r.engine : 'no-result';
   const en = (r && r.zh) ? String(r.zh).trim() : null;
-  cacheSet(transCache, term, en);
+  if (en) {
+    cacheSet(transCache, term, en);
+  } else {
+    console.log(JSON.stringify({ ts: new Date().toISOString(), type: 'search_trans_fail', term: term.slice(0, 30), engine }));
+  }
   return en;
 }
 
@@ -190,21 +196,31 @@ export default async function handler(req, res) {
       }
       const j = await r.json();
       if (j.total_count > 0 || plans.length === 1) {
+        let items = (j.items || []).map(x => ({
+          full_name: x.full_name,
+          desc: x.description,
+          language: x.language,
+          stars: x.stargazers_count,
+          updated_at: x.updated_at,
+          html_url: x.html_url,
+          topics: (x.topics || []).slice(0, 3),
+        }));
+        // 翻译不可用时的结果侧兜底：GitHub 对 CJK 分词过宽（原词直搜会匹配数万无关项），
+        // 在返回页内做一次关键词包含过滤，把"完全无关"的条目剔掉
+        if (!translated && hasZh) {
+          const words = zhTerms.map(t => t.toLowerCase());
+          const before = items.length;
+          items = items.filter(x => words.some(w =>
+            ((x.desc || '') + ' ' + (x.full_name || '')).toLowerCase().includes(w)));
+          console.log(JSON.stringify({ ts: new Date().toISOString(), type: 'search_local_filter', before, after: items.length }));
+        }
         data = {
           query,
           translated,
           strategy: query,
           page,
           total: j.total_count,
-          items: (j.items || []).map(x => ({
-            full_name: x.full_name,
-            desc: x.description,
-            language: x.language,
-            stars: x.stargazers_count,
-            updated_at: x.updated_at,
-            html_url: x.html_url,
-            topics: (x.topics || []).slice(0, 3),
-          })),
+          items,
         };
         cacheSet(searchCache, ck, data);
         usedQuery = query;
