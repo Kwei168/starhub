@@ -351,6 +351,20 @@ header{
   font-size:11px;font-weight:500;white-space:nowrap;
 }
 .cat-tag .dot{width:5px;height:5px;border-radius:0;background:currentColor;transform:rotate(45deg)}
+/* ── T7 卡片增强：健康徽章 / 久未维护置灰 / AI 点评 / 可点 topic·org 标签 / 语义角标 ── */
+.hb{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:2px;font-size:10.5px;font-weight:600;letter-spacing:.02em}
+.hb-green{color:#1a7f37;background:#1a7f371c}
+.hb-yellow{color:#9a6700;background:#9a67001c}
+.hb-red{color:#cf222e;background:#cf222e1c}
+.card.stale .body,.card.stale .foot{opacity:.55}
+.card.stale .cover-img{filter:grayscale(.7);opacity:.75}
+.note-line{margin-top:5px;font-size:12px;color:var(--muted);line-height:1.5}
+.topics{margin-top:6px;display:flex;flex-wrap:wrap;gap:5px}
+.tp{font-size:10.5px;font-family:var(--font-mono);color:var(--faint);border:1px solid var(--border);padding:1px 6px;border-radius:2px;cursor:pointer;transition:all .12s}
+.tp:hover{color:var(--brand);border-color:var(--brand)}
+.owner[data-act="orgtag"]{cursor:pointer}
+.owner[data-act="orgtag"]:hover{color:var(--brand);text-decoration:underline}
+.sem-badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:2px;font-size:10.5px;font-weight:600;color:#8250df;background:#8250df1c}
 .fav{
   position:absolute;top:10px;right:10px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
   border:0;background:transparent;border-radius:var(--radius);color:var(--faint);transition:all .15s;
@@ -832,8 +846,9 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
       <div class="sh-row">
         <div class="search">
           <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="q" type="search" placeholder="输入关键词实时过滤收藏池，2 个字符以上可搜全网…" autocomplete="off">
+          <input id="q" type="search" list="qHistory" placeholder="关键词 / 语法：stars:>1k · topic:rag · org:acme · license:mit…" autocomplete="off">
           <button class="clear" id="btnClear" aria-label="清空">×</button>
+          <datalist id="qHistory"></datalist>
         </div>
         <button class="btn primary hidden" id="btnSearchAll" title="在整个 GitHub 中搜索（跨语言）">搜全网</button>
         <div id="searchHint"></div>
@@ -865,8 +880,17 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
       <select id="sortSel">
         <option value="stars-desc"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 星标从高到低</option>
         <option value="stars-asc"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> 星标从低到高</option>
+        <option value="relevant">相关度（搜索时）</option>
+        <option value="starred">最近收藏</option>
         <option value="recent">最近更新</option>
         <option value="name">名称 A-Z</option>
+      </select>
+    </div>
+    <div class="sel">
+      <select id="updatedSel">
+        <option value="">任意时间更新</option>
+        <option value="week">本周有更新</option>
+        <option value="month">本月有更新</option>
       </select>
     </div>
     <div class="starsel" id="starSel">
@@ -1048,7 +1072,7 @@ try {
 }
 catch(e){ favs = new Set(DEFAULT_FAVS); }
 
-const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising', sideTab:'trend', searchSort:'best-match', searchLang:'', searchQuery:'' };
+const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising', sideTab:'trend', searchSort:'best-match', searchLang:'', searchQuery:'', updated:'', topic:'', sortTouched:false };
 
 // ---- 语言统计 ----
 const langCount = {};
@@ -1088,6 +1112,8 @@ function renderCats(){
     if(!n) return;
     const b = document.createElement('button');
     b.className = 'cat' + (state.cat===c.key?' on':'');
+    // 类目 AI 导览（构建时生成）：悬停即读，无需点进任何详情页
+    if(c.guide) b.title = c.guide;
     b.innerHTML = '<span class="dot" style="background:'+catColor(c.key)+'"></span>'+c.label+' <span class="n">'+n+'</span>';
     b.onclick = () => { state.cat = state.cat===c.key?'':c.key; renderCats(); renderList(); };
     cats.appendChild(b);
@@ -1108,6 +1134,48 @@ function renderLangSel(){
     langSorted.map(([l,n])=>'<option value="'+l.replace(/"/g,'&quot;')+'"'+(l===cur?' selected':'')+'>'+l+' ('+n+')</option>').join('');
 }
 
+// ---- 搜索语法（限定符 + 普通词）与相关性打分 ----
+// 设计：所有筛选语法化（stars:>1k / language:python / license:mit / pushed:>30d /
+// forks:>100 / org:acme / topic:rag / in:name / in:desc），卡片上的 owner/topic
+// 标签点击即写入对应限定符 —— 一个搜索框承载全部筛选，功能之间零耦合。
+function _unitNum(s){
+  const m = String(s).toLowerCase().match(/^(\d+(?:\.\d+)?)([km]?)$/);
+  if(!m) return NaN;
+  return Math.round(parseFloat(m[1]) * (m[2]==='k'?1e3:m[2]==='m'?1e6:1));
+}
+function parseQueryTokens(q){
+  const filters = {starsMin:null, starsMax:null, forksMin:null, lang:'', license:'', pushedDays:null, org:'', topic:'', inName:false, inDesc:false};
+  const words = [];
+  String(q||'').trim().split(/\s+/).filter(Boolean).forEach(t=>{
+    let m;
+    if((m=t.match(/^stars?:(>=?)(\d+(?:\.\d+)?[km]?)$/i))) filters.starsMin=_unitNum(m[2]);
+    else if((m=t.match(/^stars?:<(\d+(?:\.\d+)?[km]?)$/i))) filters.starsMax=_unitNum(m[1]);
+    else if((m=t.match(/^forks?:(>=?)(\d+(?:\.\d+)?[km]?)$/i))) filters.forksMin=_unitNum(m[2]);
+    else if((m=t.match(/^language:(\S+)$/i))) filters.lang=m[1];
+    else if((m=t.match(/^license:(\S+)$/i))) filters.license=m[1];
+    else if((m=t.match(/^pushed:>(\d+)d?$/i))) filters.pushedDays=parseInt(m[1],10);
+    else if((m=t.match(/^org:(\S+)$/i))) filters.org=m[1];
+    else if((m=t.match(/^topic:(\S+)$/i))) filters.topic=m[1];
+    else if(/^in:name$/i.test(t)) filters.inName=true;
+    else if(/^in:desc$/i.test(t)) filters.inDesc=true;
+    else words.push(t.toLowerCase());
+  });
+  return {filters, words};
+}
+function relevanceScore(d, words){
+  if(!words.length) return 0;
+  const name=(d.name||'').toLowerCase(), full=(d.full_name||'').toLowerCase();
+  const topics=(d.topics||[]).join(' ').toLowerCase(), desc=(d.desc||'').toLowerCase();
+  let s=0;
+  words.forEach(w=>{
+    if(name.includes(w)||full.includes(w)) s+=10;
+    else if(topics.includes(w)) s+=4;
+    else if(desc.includes(w)) s+=2;
+  });
+  if(words.length>1 && words.every(w=>name.includes(w)||full.includes(w))) s+=5;
+  return s;
+}
+
 // ---- 模糊搜索 ----
 function escHtml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1115,7 +1183,8 @@ function escHtml(s){
 function hl(s){
   const t = escHtml(s);
   if(!state.q) return t;
-  const tokens = state.q.split(/\s+/).filter(Boolean)
+  // 限定符（stars:>1k 等）不进高亮词表，只高亮普通关键词
+  const tokens = parseQueryTokens(state.q).words
     .map(x => escHtml(x).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
   if(!tokens.length) return t;
   tokens.sort((a,b)=>b.length-a.length);
@@ -1130,27 +1199,80 @@ function fuzzyMatch(d, q){
   return tokens.every(t => hay.includes(t));
 }
 
+function _withinDays(pushed, days){
+  if(!pushed) return false;
+  const t = new Date(pushed).getTime();
+  if(isNaN(t)) return false;
+  return (Date.now()-t) <= days*864e5;
+}
 function filterData(){
+  const {filters, words} = parseQueryTokens(state.q);
   let list = DATA.filter(d => {
-    if(state.q && !fuzzyMatch(d, state.q)) return false;
+    // 限定符过滤（stars:/forks:/language:/license:/pushed:/org:/topic:/in:）
+    if(filters.starsMin!=null && !(d.stars>=filters.starsMin)) return false;
+    if(filters.starsMax!=null && !(d.stars<filters.starsMax)) return false;
+    if(filters.forksMin!=null && !((d.forks||0)>=filters.forksMin)) return false;
+    if(filters.lang && (d.language||'').toLowerCase()!==filters.lang.toLowerCase()) return false;
+    if(filters.license && (d.license||'').toLowerCase()!==filters.license.toLowerCase()) return false;
+    if(filters.pushedDays!=null && !_withinDays(d.pushed_at, filters.pushedDays)) return false;
+    if(filters.org && (d.owner||'').toLowerCase()!==filters.org.toLowerCase()) return false;
+    if(filters.topic && !(d.topics||[]).some(t=>t.toLowerCase()===filters.topic.toLowerCase())) return false;
+    if(filters.inName && !words.every(w=>(d.name||'').toLowerCase().includes(w))) return false;
+    // topic 横切（点卡片 topic 标签设置）：跨类目过滤
+    if(state.topic && !(d.topics||[]).some(t=>t.toLowerCase()===state.topic.toLowerCase())) return false;
+    // 更新时间档
+    if(state.updated==='week' && !_withinDays(d.pushed_at,7)) return false;
+    if(state.updated==='month' && !_withinDays(d.pushed_at,30)) return false;
     if(state.cat && d.category !== state.cat) return false;
     if(state.lang && d.language !== state.lang) return false;
     if(state.star === 'lt1k' && d.stars >= 1000) return false;
     if(state.star === '1k10k' && (d.stars < 1000 || d.stars >= 10000)) return false;
     if(state.star === '10k100k' && (d.stars < 10000 || d.stars >= 100000)) return false;
     if(state.star === 'gt100k' && d.stars < 100000) return false;
+    if(words.length){
+      if(filters.inDesc){
+        // in:desc 已在上面钉了 name 词；这里要求描述也全含
+        if(!words.every(w=>(d.desc||'').toLowerCase().includes(w))) return false;
+      }
+      const hay = (d.name+' '+d.owner+' '+d.full_name+' '+(d.desc||'')+' '+(d.language||'')+' '+(d.categoryLabel||'')+' '+(d.topics||[]).join(' ')).toLowerCase();
+      if(!words.every(t => hay.includes(t))) return false;
+    }
     return true;
   });
+  // 相关性打分（q 非空时），供 relevant 排序档与语义扩展使用
+  if(words.length) list.forEach(d => { d._score = relevanceScore(d, words); });
+  // q 非空且用户未手动选过排序档 → 自动按相关度（显式选择过的用户不被打扰）
+  const effSort = (words.length && !state.sortTouched) ? 'relevant' : state.sort;
   const cmp = {
+    'relevant': (a,b)=>(b._score||0)-(a._score||0) || b.stars-a.stars,
+    'starred': (a,b)=>(b.starred_at||'').localeCompare(a.starred_at||''),
     'stars-desc': (a,b)=>b.stars-a.stars,
     'stars-asc': (a,b)=>a.stars-b.stars,
     'recent': (a,b)=>(b.pushed_at||'').localeCompare(a.pushed_at||''),
     'name': (a,b)=>a.name.localeCompare(b.name),
-  }[state.sort];
+  }[effSort] || ((a,b)=>b.stars-a.stars);
   list.sort(cmp);
+  // 语义扩展（T7c）：关键词命中太少且向量可用时，用命中集质心从未命中里召回语义近邻。
+  // 无 query 向量依赖（不需要给查询词做 embedding），零后端。
+  let semantic = [];
+  if(words.length && list.length>0 && list.length<6 && DATA.some(d=>d.emb)){
+    const withEmb = list.filter(d=>Array.isArray(d.emb)&&d.emb.length);
+    if(withEmb.length){
+      const dim = withEmb[0].emb.length;
+      const centroid = new Array(dim).fill(0);
+      withEmb.forEach(d=>d.emb.forEach((v,i)=>centroid[i]+=v/withEmb.length));
+      const seen = new Set(list.map(d=>d.full_name));
+      semantic = DATA.filter(d=>Array.isArray(d.emb)&&d.emb.length&&!seen.has(d.full_name))
+        .map(d=>({d, sim:d.emb.reduce((acc,v,i)=>acc+v*centroid[i],0)}))
+        .filter(x=>x.sim>0.3)
+        .sort((a,b)=>b.sim-a.sim)
+        .slice(0,5)
+        .map(x=>Object.assign({}, x.d, {_sem:true, _score:undefined}));
+    }
+  }
   const faved = list.filter(d=>favs.has(d.full_name));
   const rest = list.filter(d=>!favs.has(d.full_name));
-  return { faved, rest };
+  return { faved, rest, semantic };
 }
 
 function catColor(key){
@@ -1178,7 +1300,7 @@ function clampChroma(hex, lo, hi){
 
 function buildCard(d, isFav){
   const div = document.createElement('article');
-  div.className = 'card cover-card' + (isFav?' faved':'');
+  div.className = 'card cover-card' + (isFav?' faved':'') + (d.stale?' stale':'');
   const catColorVal = catColor(d.category);
   const coverSrc = d.cover_image || ('https://opengraph.githubassets.com/1/' + d.full_name);
   const relUpd = fmtRelTime(d.pushed_at);
@@ -1186,6 +1308,13 @@ function buildCard(d, isFav){
   const descHtml = desc.length > 60
     ? '<span class="desc-text">'+hl(desc)+'</span><button class="more" data-act="expand">展开</button>'
     : '<span class="desc-text">'+hl(desc)+'</span>';
+  const HB_LABEL = {green:'健康', yellow:'一般', red:'停滞'};
+  const healthBadge = (d.health && HB_LABEL[d.health])
+    ? '<span class="hb hb-'+d.health+'" title="仓库健康度（构建时按更新/社区/文档/归档状态计算）">'+HB_LABEL[d.health]+'</span>' : '';
+  const noteLine = d.note ? '<div class="note-line" title="AI 一句话点评">✦ '+hl(d.note)+'</div>' : '';
+  const semBadge = d._sem ? '<span class="sem-badge" title="按向量相似度扩展召回">语义相关</span>' : '';
+  const topicTags = (d.topics||[]).slice(0,3).map(t =>
+    '<span class="tp" data-act="topictag" data-topic="'+escHtml(t)+'" title="筛选该 topic">'+escHtml(t)+'</span>').join('');
   div.innerHTML =
     '<a class="cover" href="'+d.html_url+'" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">' +
       '<img class="cover-img" src="'+coverSrc+'" alt="" loading="lazy" decoding="async">' +
@@ -1195,18 +1324,21 @@ function buildCard(d, isFav){
     '<button class="fav'+(isFav?' on':'')+'" data-act="fav" title="收藏/取消收藏">'+(isFav?icon.starFilled:icon.star)+'</button>' +
     '<div class="body">' +
       '<div class="top"><div class="id">' +
-        '<div class="owner-line"><span class="owner">'+escHtml(d.owner)+'</span>' +
+        '<div class="owner-line"><span class="owner" data-act="orgtag" data-org="'+escHtml(d.owner)+'" title="筛选该作者">'+escHtml(d.owner)+'</span>' +
           (isFav ? '<span class="pin-chip">置顶</span>' : '') +
         '</div>' +
         '<a class="name" href="'+d.html_url+'" target="_blank" rel="noopener">'+hl(d.name)+'</a>' +
       '</div></div>' +
       '<div class="desc" data-act="desc">'+descHtml+'</div>' +
+      noteLine +
+      (topicTags ? '<div class="topics">'+topicTags+'</div>' : '') +
     '</div>' +
     '<div class="foot">' +
       '<div class="meta">' +
         (d.language ? '<span class="lg"><span class="c" style="background:'+(LANG_COLORS[d.language]||'#8b949e')+'"></span>'+d.language+'</span>' : '') +
         '<span class="st">'+icon.starFilled+fmtStars(d.stars)+'</span>' +
         '<span class="tm">'+(relUpd ? relUpd+' 更新' : '—')+'</span>' +
+        healthBadge + semBadge +
       '</div>' +
       '<div class="foot-row">' +
         '<a class="cat-tag" style="color:'+catColorVal+';background:'+catColorVal+'1f" href="javascript:void 0" data-act="cattag" data-cat="'+d.category+'">' +
@@ -1246,7 +1378,10 @@ function fmtStars(n){
 }
 
 function renderList(){
-  const { faved, rest } = filterData();
+  const { faved, rest, semantic } = filterData();
+  // 语义扩展条目追加在结果尾部（带"语义相关"角标，_sem 由 buildCard 渲染）
+  const semBadged = (semantic||[]).map(d=>{ const c=Object.assign({},d); c._sem=true; return c; });
+  const restAll = rest.concat(semBadged);
   const pinnedWrap = $('#pinnedWrap'), pinned = $('#pinned'), grid = $('#grid'), empty = $('#empty');
   const isList = getView() === 'list';
   const build = isList ? buildRow : buildCard;
@@ -1263,19 +1398,19 @@ function renderList(){
 
   // 主列表
   grid.innerHTML='';
-  rest.forEach(d => grid.appendChild(build(d, false)));
+  restAll.forEach(d => grid.appendChild(build(d, false)));
   // 只改标题文本节点（firstChild），保留 span#listCount 子节点：
   // textContent 整体赋值会销毁子节点，使 #listCount 从 DOM 消失、下次查询为 null
   const titleEl = $('#listTitle'), countEl = $('#listCount');
   if(titleEl.firstChild) titleEl.firstChild.textContent = state.cat
     ? (CATS.find(c=>c.key===state.cat)||{}).label || '全部项目'
     : '全部项目';
-  if(countEl) countEl.textContent = '('+rest.length+')';
+  if(countEl) countEl.textContent = '('+restAll.length+')';
 
-  const hasFilter = state.cat || state.lang || state.star !== 'all';
-  empty.style.display = (faved.length + rest.length === 0) ? 'block' : 'none';
-  if(faved.length + rest.length === 0){
-    $('#emptyHint').textContent = hasFilter ? '当前有分类 / 语言 / 星标筛选在生效，可能挡住了结果' : '试试换一个关键词';
+  const hasFilter = state.cat || state.lang || state.star !== 'all' || state.updated || state.topic || state.q;
+  empty.style.display = (faved.length + restAll.length === 0) ? 'block' : 'none';
+  if(faved.length + restAll.length === 0){
+    $('#emptyHint').textContent = hasFilter ? '当前有筛选在生效，可能挡住了结果（试试限定符 topic:xxx 或换关键词）' : '试试换一个关键词';
     $('#btnResetAll').style.display = hasFilter ? 'inline-flex' : 'none';
   }
 
@@ -1828,6 +1963,22 @@ function bindEvents(){
       }
     });
   });
+  // 搜索历史（localStorage 最近 8 条，datalist 原生下拉）
+  const HIST_KEY = 'starhub_search_history';
+  function loadHistory(){ try{ return JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); }catch(e){ return []; } }
+  function renderHistoryDatalist(){
+    $('#qHistory').innerHTML = loadHistory().map(x=>'<option value="'+escHtml(x)+'">').join('');
+  }
+  function saveHistory(q){
+    q = (q||'').trim();
+    if(q.length < 2) return;
+    const h = [q].concat(loadHistory().filter(x=>x!==q)).slice(0,8);
+    try{ localStorage.setItem(HIST_KEY, JSON.stringify(h)); }catch(e){}
+    renderHistoryDatalist();
+  }
+  renderHistoryDatalist();
+
+  let _qTimer = null;
   $('#q').addEventListener('input', e => {
     state.q = e.target.value;
     $('#btnClear').style.display = state.q ? 'block':'none';
@@ -1837,8 +1988,11 @@ function bindEvents(){
       renderCats(); renderLangSel();
       document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x.dataset.v==='all'));
     }
-    renderSearchHint();
-    renderList();
+    clearTimeout(_qTimer);
+    _qTimer = setTimeout(() => {   // 120ms 防抖：条目增长后输入不至于每键全量重渲染
+      renderSearchHint(); renderList();
+      if(state.q.trim()) saveHistory(state.q);
+    }, 120);
   });
   $('#q').addEventListener('keydown', e => {
     if(e.key === 'Enter' && state.q.trim().length >= 2){ e.preventDefault(); openSearchModal(); }
@@ -1846,15 +2000,18 @@ function bindEvents(){
   $('#btnClear').onclick = () => { $('#q').value=''; state.q=''; $('#btnClear').style.display='none'; renderSearchHint(); renderList(); $('#q').focus(); };
   $('#btnSearchAll').onclick = openSearchModal;
   $('#btnResetAll').onclick = () => {
-    state.q=''; state.cat=''; state.lang=''; state.star='all';
+    state.q=''; state.cat=''; state.lang=''; state.star='all'; state.updated=''; state.topic='';
     $('#q').value=''; $('#btnClear').style.display='none';
+    const us = $('#updatedSel'); if(us) us.value='';
     renderSearchHint();
     renderCats(); renderLangSel();
     document.querySelectorAll('#starSel button').forEach(x=>x.classList.toggle('on', x.dataset.v==='all'));
     renderList();
   };
   $('#langSel').addEventListener('change', e => { state.lang = e.target.value; renderList(); });
-  $('#sortSel').addEventListener('change', e => { state.sort = e.target.value; renderList(); });
+  $('#sortSel').addEventListener('change', e => { state.sort = e.target.value; state.sortTouched = true; renderList(); });
+  const updatedSel = $('#updatedSel');
+  if(updatedSel) updatedSel.addEventListener('change', e => { state.updated = e.target.value; renderList(); });
   $('#starSel').addEventListener('click', e => {
     const b = e.target.closest('button'); if(!b) return;
     state.star = b.dataset.v;
@@ -1870,6 +2027,17 @@ function bindEvents(){
     const fn = (nameEl && ownerEl) ? (ownerEl.textContent + '/' + nameEl.textContent) : '';
     if(act === 'fav') toggleFav(fn);
     if(act === 'cattag'){ state.cat = el.dataset.cat; renderCats(); renderList(); }
+    // topic/org 标签点击 = 写入限定符（所有筛选语法化进搜索框，功能零耦合）
+    if(act === 'topictag'){
+      const t = 'topic:'+el.dataset.topic;
+      $('#q').value = ($('#q').value.trim()+' '+t).trim(); state.q = $('#q').value;
+      $('#btnClear').style.display='block'; renderSearchHint(); renderList();
+    }
+    if(act === 'orgtag'){
+      const o = 'org:'+el.dataset.org;
+      $('#q').value = ($('#q').value.trim()+' '+o).trim(); state.q = $('#q').value;
+      $('#btnClear').style.display='block'; renderSearchHint(); renderList();
+    }
     if(act === 'expand'){ const d = card ? card.querySelector('.desc') : null; if(!d) return; const expanded = d.classList.toggle('expand'); el.textContent = expanded ? '收起' : '展开'; }
     if(act === 'copy'){
       const nameA = card ? card.querySelector('a.name') : null;
