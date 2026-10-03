@@ -546,8 +546,25 @@ jobs:
           echo "Pruned. Remaining size:"
           du -sh .
 
+      # 「同一份 API 代码每小时重复部署」是 1593 那五次 `Please retry later` 的直接来源；
+      # 用内容哈希当键：命中 = 这些输入与上次被 Vercel 接受的完全一致 ⇒ 跳过部署。
+      # 不给 restore-keys —— 近似命中就跳过部署会静默把 API 停在旧版，必须精确相等才省这一次。
+      - name: Detect API-relevant deploy state
+        id: vercel_state
+        uses: actions/cache@v4
+        with:
+          path: .vercel-deployed/
+          # 这四类就是"函数运行需要什么"的全部：api/**（9 个函数）、lib/**（被 require 的共享码）、
+          # vercel.json（functions/maxDuration）、rss_sources.json（loadSources() 直接 readFileSync，无兜底）。
+          # 清单漏项的危险方向比"多部署一次"大得多：改了它也不部署 ⇒ API 静默停在旧版。
+          # 判据：tests/site_nav_drift/test_pages_vercel_ordering.py::test_vercel_deploy_is_gated_on_api_relevant_changes
+          key: vercel-deployed-${{ hashFiles('api/**', 'lib/**', 'vercel.json', 'rss_sources.json') }}
+
       - name: Deploy to Vercel
         id: vercel
+        # 只在 API 相关输入变化时部署；跳过时 outcome 是 skipped，末步刻意不因其 skipped 而红
+        # （见 test_vercel_step_is_not_silenced 与"正常发布不许误红"那条反向判据）。
+        if: steps.vercel_state.outputs.cache-hit != 'true'
         # 封顶 12 分钟：现取正常场只用 0.5–0.7 分钟，而 1578/1585/1586 三次分别挂到 38.8 分钟与 42 分钟，
         # 最后是被下一场的并发取消 —— 整场撑爆的代价由 Pages 上线时间与 Vercel 部署一起付。
         # 12 分钟 ≈ 正常用时的 20 倍，够 5 次退避重试（sleep 15+30+45+60=150s 加四次上传）。
@@ -584,6 +601,11 @@ jobs:
             echo "::error::Vercel deploy failed after 5 attempts"
             exit 1
           fi
+          # 只有被 Vercel 接受才留标记；post-job 会按上面的内容哈希存进缓存，下一场同内容 ⇒ 跳过。
+          # 反过来（先留标记再部署失败）会让下一场误判"已部署过"而静默跳过。
+          mkdir -p .vercel-deployed
+          printf '%s %s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .vercel-deployed/marker
+          echo "已记录部署状态标记：$GITHUB_SHA"
 
       - name: Log deploy result
         if: always()

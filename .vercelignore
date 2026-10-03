@@ -77,3 +77,5 @@ actions-step5-*.png
 # Vercel 运行不需要 workflow（那是 GitHub Actions 的），排除它不伤部署。
 .github/
 
+# 部署状态标记（哪个 commit 的 API 内容已被 Vercel 接受）：CI 内部状态，不该进部署包
+.vercel-deployed/

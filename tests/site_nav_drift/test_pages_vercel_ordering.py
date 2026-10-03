@@ -271,3 +271,40 @@ def test_vercel_step_does_not_wait_for_the_server_build():
         "Vercel 步仍在等部署构建完成 ⇒ 它一定会被下一场的 cancel-in-progress 掐掉，"
         "生产上的表现就是 API 主机长期停在旧版而 CI 每场看着都'快成功了'")
     assert "--prod" in run, "--no-wait 不该顺手把生产发布也去掉"
+
+
+# ── 只在 API 相关输入变化时才部署（2026-10-03 02:00 起 Vercel 开始秒拒重复部署）──────────
+API_INPUTS = ("api/", "lib/", "vercel.json", "rss_sources.json")
+
+
+def _step_by_name(steps, want):
+    return [s for s in steps if (s.get("name") or "").startswith(want)]
+
+
+def test_vercel_deploy_is_gated_on_api_relevant_changes():
+    """Vercel 步必须带条件：只有 API 相关输入变了才部署。
+
+    读数（现取 1592/1593）：1592 用 34 秒部署成功，1593 五次尝试全被
+    `Error: Your deployment failed. Please retry later.` 秒拒 —— 而这两场**都没碰过
+    api/ 或 lib/ 或 vercel.json**（逐提交 files[] 查过）⇒ 我们在用同一份代码每小时重复请求部署，
+    撞上 Vercel 的并发/配额就变成每场一红。条件部署同时解决"噪声红"和"配额浪费"。
+    """
+    steps = _steps()
+    ver = _step_by_name(steps, VERCEL)[0]
+    cond = ver.get("if") or ""
+    assert "cache-hit" in cond, (
+        "Deploy to Vercel 没有 `cache-hit` 类前置条件（实得 %r）⇒ 每场都重复部署同一份 API 代码" % cond)
+    marker = _step_by_name(steps, "Detect API-relevant deploy state")
+    assert marker, "缺了提供 cache-hit 的缓存步 ⇒ 上面的 if 永远为假，等于永久不部署（更糟）"
+    key = (marker[0].get("with") or {}).get("key") or ""
+    for token in API_INPUTS:
+        assert token in key, (
+            "API 输入清单漏了 %s（实得 key=%r）⇒ 改了它也不部署，API 主机静默停在旧版 —— "
+            "这比重复部署危险得多" % (token, key))
+
+
+def test_deploy_marker_dir_stays_out_of_the_package():
+    """.vercelignore 必须排掉 marker 目录，否则它会被打进部署包（多一个公开文件）。"""
+    body = open(os.path.join(ROOT, ".vercelignore"), encoding="utf-8").read()
+    assert ".vercel-deployed/" in body, (
+        ".vercelignore 没排 .vercel-deployed/ ⇒ 记录「上次部署了什么」的标记会被上传到生产")
