@@ -19,7 +19,9 @@
 本文件因此钉的是**现状不变量**（顺序 + 两道 if 守卫 + Vercel 不许被静默），
 这样将来谁要动这两步，会先看到这里的理由，而不是把不变量悄悄改掉。
 """
+import ast
 import os
+import re
 
 import pytest
 
@@ -128,3 +130,110 @@ def test_unsuccessful_vercel_is_marked_red_at_the_end():
     assert "exit 1" in (mark.get("run") or ""), "标红步没真的 exit 1，写了 if 也不会红"
     assert ver.get("continue-on-error") is not True, (
         "Vercel 又被加了 continue-on-error ⇒ 与 test_vercel_step_is_not_silenced 冲突，二选一")
+
+
+# ── 2026-10-03 新增：整场被取消那种"Pages 没发"也得出声 ──────────────────────────
+# 实证（现取 run 1590，2026-10-03 00:06）：GitHub 把一个迟到的 `schedule` 事件补发，
+# 撞上正在跑的 dispatch 场，concurrency.cancel-in-progress 把它掐掉 ⇒
+# 第 18 步 cancelled，21–34 步（含 Commit / Stage / Upload Pages / Deploy Pages）**全 skipped**，
+# 站点整整一小时没更新，而末步的 if 只认 `stage.outcome == 'failure'`，
+# 于是它自己也是 skipped —— 没有一行 ::error:: 说"本场未发布"。
+# 只看 run 结论是 cancelled 也不算"出声"：没人会把每小时的颜色当告警读。
+_IF_TEST = re.compile(r"steps\.(\w+)\.outcome\s*(==|!=)\s*'(\w+)'")
+_BODY_TEST = re.compile(r"\[\s*\"\$\{\{\s*steps\.(\w+)\.outcome\s*\}\}\"\s*(=|!=)\s*\"(\w+)\"\s*\]")
+
+
+def _eval(cond, outcomes):
+    """按 outcome 组合求真值：先把每个 `steps.X.outcome == 'v'` 换成布尔，
+    再交给**只认布尔代数的小求值器**（不用 eval —— 一行 yml 不该拿到执行任意表达式的权限）。
+
+    这条判据要的是"组合实跑"，不是 grep 文本：grep 看得见 skipped 这个词，
+    看不见它是不是绑在 stage 上、也看不见正常那场会不会被误红。
+    """
+    expr = _IF_TEST.sub(lambda m: str(_one(m.group(1), m.group(2), m.group(3), outcomes)), cond)
+    expr = expr.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+    expr = re.sub(r"!(?!=)", " not ", expr)
+    return _bool_tree(ast.parse(expr, mode="eval").body)
+
+
+def _bool_tree(node):
+    if isinstance(node, ast.Constant):
+        if not isinstance(node.value, bool):
+            raise AssertionError("末步 if 里出现非布尔字面量 %r ⇒ 判据拒绝求值" % (node.value,))
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return not _bool_tree(node.operand)
+    if isinstance(node, ast.BoolOp):
+        vals = [_bool_tree(v) for v in node.values]
+        return all(vals) if isinstance(node.op, ast.And) else any(vals)
+    raise AssertionError("末步 if 里出现布尔代数之外的写法（%s），判据不敢替你求值" % type(node).__name__)
+
+
+def _one(sid, op, val, outcomes):
+    got = outcomes.get(sid)
+    assert got is not None, "末步 if 引用了 steps.%s，但测试没给这一步的 outcome" % sid
+    return (got == val) if op == "==" else (got != val)
+
+
+def _body_reds(mark_run, outcomes):
+    """run 体里哪几条 shell 判断会命中（命中即 ::error:: + exit 1）。"""
+    hits = []
+    for m in _BODY_TEST.finditer(mark_run):
+        if _one(m.group(1), "=" if m.group(2) == "=" else "!=", m.group(3), outcomes):
+            hits.append(m.group(1) + m.group(2) + m.group(3))
+    return hits
+
+
+def test_cancelled_run_also_marks_pages_unpublished():
+    """整场被取消时 Stage 是 skipped 而不是 failure —— 那种"Pages 没发"也必须出声。
+
+    覆盖面要说清（不然这条会被当成"发布链的总闸"）：它只管 **stage / vercel 两个 outcome 的组合**。
+    还剩一种它管不到的形状：Stage 与 Vercel 都 success，但 `Upload Pages artifact` 或
+    `Deploy to GitHub Pages` 自己失败/被跳过 —— 那要钉就得给 Deploy 步加 id 再引用它，
+    是另一处改动（17:00 那场静默失败正是靠 upload/deploy 的 skipped 揪出来的，
+    见 memory: pages-publish-silent-skip-on-star-ratelimit）。
+    """
+    steps = _steps()
+    mark = steps[_idx(steps, RED_FLAG)]
+    cond = (mark.get("if") or "")
+    body = mark.get("run") or ""
+    ok = {"stage": "success", "vercel": "success", "pages_upload": "success"}
+    # 反向那半与正向同权重：正常发布的那场绝不许红
+    assert not _eval(cond, ok), "正常成功的一场末步就红了 ⇒ 条件写成了无条件，末步在制造假失败"
+    # 1590 的真实形状：整场被取消，Stage 没跑成
+    cancelled = {"stage": "skipped", "vercel": "skipped", "pages_upload": "skipped"}
+    assert _eval(cond, cancelled), (
+        "Stage 被跳过（整场取消、或前置 blocking 判红）时末步不执行 ⇒ Pages 未发布继续静默；"
+        "实得条件 %r" % cond)
+    assert _eval(cond, {"stage": "failure", "vercel": "success", "pages_upload": "success"}), (
+        "缺件那半被改丢了：Stage 判 failure 必须仍然红")
+    assert _eval(cond, {"stage": "success", "vercel": "cancelled", "pages_upload": "success"}), (
+        "封顶那半被改丢了：Vercel 被掐（cancelled）必须仍然红")
+    # 出声的**内容**也要对：被取消那场得说"Pages 未发布"，不能只报 Vercel
+    hits = _body_reds(body, cancelled)
+    assert any(h.startswith("stage") for h in hits), (
+        "末步跑了但没有 Pages 那半的 ::error::（实得命中 %s）⇒ 读日志的人只知道 Vercel 没成，"
+        "不知道站点这一小时没更新" % hits)
+
+
+def test_vercel_step_does_not_wait_for_the_server_build():
+    """CI 不许站在原地等 Vercel 构建完成 —— 那是"连续 6 场部署失败"的直接原因。
+
+    现取读数（2026-10-03 00:22，最近 8 场的步级 conclusion）：只有 18:00 那场 Vercel=success，
+    1585–1589 全是 `cancelled`、1590 `skipped`；两域指纹也证实
+    （Pages 已发到 07:08=1589，Vercel 停在 02:07=1584 ⇒ API 主机在生产上已停更 6 小时）。
+    机制：`vercel --prod` 会**等部署构建完成**才退出，而构建要 40 分钟（实测上传只用 1.5 秒），
+    workflow 每小时一次且 `cancel-in-progress: true` ⇒ 每一场都在等待途中被下一场掐掉，
+    于是"永远等不到终点"。官方口径就是那条 `--no-wait`：
+    "does not wait for a deployment to finish before exiting from the deploy command"。
+
+    代价必须一起钉（否则这条改动会把失败遮起来）：加了 --no-wait 之后 CI **当场看不出部署成没成**，
+    所以必须另有一步去生产取"每场必变的指纹"（Vercel 域首页内嵌构建时间）确认上一场有没有落地
+    —— 那条判据等那个改动落地时一起写，不在这里假装已覆盖。
+    """
+    ver = _steps()[_idx(_steps(), VERCEL)]
+    run = ver.get("run") or ""
+    assert "--no-wait" in run, (
+        "Vercel 步仍在等部署构建完成 ⇒ 它一定会被下一场的 cancel-in-progress 掐掉，"
+        "生产上的表现就是 API 主机长期停在旧版而 CI 每场看着都'快成功了'")
+    assert "--prod" in run, "--no-wait 不该顺手把生产发布也去掉"

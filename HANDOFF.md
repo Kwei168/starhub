@@ -1275,12 +1275,16 @@ W1/W2/W3/C1–C2/R1–R5 全按期望，问题条目 0。
 **命令**（逐路径点名，别用目录展开）：
 `py -3.11 tools/data_api_push.py --wait-window --msg-file .deploy-tmp/_msg.txt` + 上面 **13** 个路径
 （含 `.github/workflows/update.yml` 与 `tests/site_nav_drift/test_pages_vercel_ordering.py`）。
-`--wait-window` 是必需项：本仓每小时 `:00:29` 触发且 `cancel-in-progress: true` ⇒ :40 之后推会造出注定被掐掉的 run
-（见 memory: starhub-push-window）。
+`--wait-window` 当时被当成必需项：本仓每小时 `:00:29` 触发且 `cancel-in-progress: true`，
+旧守门判的是"有没有 run 没跑完"，而 Vercel 步连场挂 40+ 分钟 ⇒ 它恒拒（2026-10-02 实测四轮 × 30 分钟白等，4 小时推不出去）。
+**现已按"这一场还会不会写 main"判**（`tools/data_api_push.py:will_write_main()`，看 `Commit & push if changed` 那一步的步级状态，
+判不了就拒）⇒ 真实空档只剩开场那几分钟，不再需要外部重试循环；`--wait-window` 保留但通常几十秒就满足。
 
-**推完缺一条就不算验收**：
-1. A2 计数 ≥429 且 0 failed、A3 含新增 4 条、gate B 0 failed；
-2. `[growth] verdict=ok`（这批不该改斜率；跳大格先逐文件看构成）；
+**推完缺一条就不算验收**（"改前值"一律现取 CI 日志，不写推算 —— 我第一版把 A2 写成"≥429"就是推算留下的错）：
+1. A2 计数 392 → **393** 且 0 failed（+1 只来自 `tests/rss_history/test_pages_deploy_wiring.py`，其余新增都在 A3 或未接闸的 `tests/tools/`）、
+   A3 计数 29 → **38**、gate B 保持 **425 / 0 failed**（B 只收 `tests/daily_insight/`）；
+2. `[growth]`：**落地首场会是 14 blobs ≈0.28 MiB 的一次性成本**（= 本批 14 个路径合计 295,354 B，每个改动永久多一份副本），
+   之后回落到 ~1 blob/场；把上一场的 `2 blobs / 0.126 MiB` 当预期读数，就会把正常一次性成本报成"斜率反弹"；
 3. `Deploy to GitHub Pages` = `Reported success!`；
 4. 线上二次 GET：16 个根级名字 + `.github/workflows/update.yml` + `tools/daily_commit_gate.sh` **转 404**，
    四页与 `/api/rss`、`/api/news`、`/api/translate` **仍 200**
