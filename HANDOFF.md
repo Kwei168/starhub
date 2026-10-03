@@ -1312,6 +1312,61 @@ W1/W2/W3/C1–C2/R1–R5 全按期望，问题条目 0。
   无权限）。②要查得进 Vercel 项目面板看那 40 分钟卡在哪。
 - 一条操作层面的连带后果：**每场挂 40 分钟 ⇒ 一天里只有 xx:43→xx:59 那十几分钟没有 run 在飞**，
   而 `data_api_push.py --wait-window` 只等 30 分钟 ⇒ 在这个状态下推送会反复白等。封顶落地后这个空档才恢复正常。
+  ⚠ 这条窗口口径**已作废**：推送闸改成按 `Commit & push if changed` 那一步是否结束来判（见 §8.20 与
+  `tests/tools/test_push_gate_ref_write.py`），不再存在"只有十几分钟能推"的限制。
+
+### 8.20 Vercel 部署门的两次返工：连红 6 场的定性、正确形状与残余风险（2026-10-03 16:30 BJT，已推 `f901db52f9`）
+
+**现象**：run **1595–1600 连红 6 场**（head 全是 `a4596261e5`，即上一批刚加的"没变化就不部署"门），
+每场 `Deploy to Vercel` 的 5 次尝试都被 Vercel 侧打回
+`Error: Your deployment failed. Please retry later. (https://err.sh/vercel/deployment-error)`，
+末步每场 `exit 1`。用户看到的是"连续构建失败"。
+
+**定性=假警，有读数**：这 6 场里 Vercel 的输入 `api/ lib/ vercel.json rss_sources.json`
+**一个字节都没变**（`compare/80518a18d9...a4596261e5`，5 个提交 15 个改动文件逐条筛过）；
+线上四个页面全 200（index 293,919 B / ai-daily 66,634 B / rss-aggregator 3,094,874 B /
+daily-insight-history 305,649 B），`/api/rss`、`/api/news` 全 200，
+首页内嵌构建时间照常每小时推进 ⇒ Pages 一场没漏，API 主机仍是活着的那一版。
+**红的是"重复部署同一份代码被拒"，不是站点坏**。
+
+**两处缺陷都是上一批（`a4596261e5`）引入的**：
+1. 门用一体 `actions/cache@v4` ⇒ 它的**保存发生在 job 收尾的 post 阶段**，而部署失败让 job 变红，
+   post 就被跳过（实测 6 场 `Post Detect API-relevant deploy state = skipped`）。
+   缓存键从没落过 ⇒ 每场 miss ⇒ 每场重撞 5 次 ⇒ **门在它唯一该起作用的场景里退化成本想消除的那个动作**。
+2. 末步 run 体写的是 `!= "success"`，外层 `if:` 却是精确的 `failure`/`cancelled`
+   ⇒ 门一旦真生效，命中缓存那场的 outcome 是 `skipped`，**门每生效一场就红一场**。
+   更难看的是当时在判据注释里把这种口径差异写成"两者本就不一样"——那句是错的定性，已改。
+
+**修成的形状**（判据 `test_deploy_gate_survives_a_failed_deploy` 三条 + `test_skipped_vercel_deploy_does_not_mark_the_run_red`）：
+① 读用 `actions/cache/restore@v4`；② 写用**显式** `actions/cache/save@v4` + `if: always()` + key 与 restore **逐字相同** + 排在 Vercel 之后；
+③ marker 写在失败路径 `exit 1` **之前**，语义随之从"已被接受"改成"**已尝试**"，成败一起写进文件（`attempt=accepted|rejected`）；
+④ 末步 vercel 分支拆成 `= failure` / `= cancelled` 两条，与外层同口径。
+`cache/save` 对已存在的 primary key 只打印 "not saving cache" 不报错，所以命中场重复 save 无害。
+
+**变异自证 6/6**：M1 丢 `if: always()`、M2 save 的 key 差一个字节、M3 退回 `cache@v4`、
+M4 marker 挪到 `exit 1` 之后、M5 末步改回 `!= "success"` 全部被抓；G1（什么都不改）绿。
+过程中又踩到判据自己的坑一次：第一版用 `run.find("exit 1")` 定位，被**注释里那句"排在 exit 1 之前"**骗出假红
+⇒ 改成只扫可执行行（注释行剔除）。
+
+**本地读数**：A2 **398 passed / 0 failed**（原样照 CI 那条命令跑）、A3 **45 passed**（43+2）、
+Vercel 那段 shell 抽出后 `bash -n` 通过、marker 两分支实跑输出 `accepted`/`rejected`、
+`mut_pages_missing_report` 与 `mut_state_cache` 两块电池"问题条目：无"。
+gate B 本轮**未跑**（不写它的数）。推前 `prod_verify` 判 **WARN**「Vercel 连续 7 场（1594–1600）未落地」
+⇒ 上一批上线的生产验证门槛第一次实际发挥作用就抓到了这件事，warn 级放行、blocking 级才拦。
+
+**收敛预期与验收**：新 head 首场（09:00Z）仍会撞一次并红——那是键第一次落；
+第二场（10:00Z）起应 `Detect=success + 日志含 Cache hit` ⇒ `Deploy to Vercel = skipped` ⇒ 末步 skipped ⇒ 整场绿。
+验收读数定在 10:35Z 取，**不看 CI 颜色，看步级 conclusion 与日志里的 primary key 命中行**。
+
+**残余风险（如实，不是已解决）**：若某天真的改了 API 而那一场恰好被 Vercel 拒绝，同内容**不再自动重试**，
+只有那一场红一次；重试靠改这四类文件（哈希变）或人工 dispatch。Vercel 为什么从 1593 起持续拒绝仍未知
+——被拒部署的专属域名一律 302 跳 SSO（Deployment Protection），无面板权限，只报读数不报机制。
+
+**仍等点头、本轮没动**：`lib/*.js` 函数源码明文公开（一条 `vercel.json` 路由即可关）、
+`fetch_and_build` 的确定性限流演练（要加 force 入参，属新增机制）。
+首页限流兜底这次拿到了**生产侧真取读数**：本地取 `kwei168.github.io/starhub/index.html` 得 264,603 B、
+`_looks_like_real_index=True`，占位体 698 B 判 False ⇒ 兜底有货且不会被自己的守卫误认；
+但**自然限流场至今没有样本**，这条仍属"分支已验、场景未遇"。
 
 ## 九、技术栈总结
 
