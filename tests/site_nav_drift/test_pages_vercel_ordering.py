@@ -185,13 +185,14 @@ def test_body_evaluator_is_not_backwards():
     否则它算反时，所有下游断言都会因为"两边都错"而静默通过。
     """
     body = ('if [ "${{ steps.stage.outcome }}" = "skipped" ]; then\n  exit 1\nfi\n'
-            'if [ "${{ steps.vercel.outcome }}" != "success" ]; then\n  exit 1\nfi\n')
+            'if [ "${{ steps.pages_upload.outcome }}" != "success" ]; then\n  exit 1\nfi\n')
     hit = lambda o: sorted(m.split("=")[0].split("!")[0] for m in _body_reds(body, o))
-    assert hit({"stage": "skipped", "vercel": "success"}) == ["stage"], "`=` 方向算反了"
-    assert hit({"stage": "success", "vercel": "success"}) == [], "都成功时不该有任何命中"
-    assert hit({"stage": "success", "vercel": "cancelled"}) == ["vercel"], "`!=` 方向算反了"
-    assert hit({"stage": "success", "vercel": "skipped"}) == ["vercel"], (
-        "vercel=skipped 会让 body 那半出声（这是 run 结论那半刻意不红的形状，两者口径本就不一样）")
+    assert hit({"stage": "skipped", "pages_upload": "success"}) == ["stage"], "`=` 方向算反了"
+    assert hit({"stage": "success", "pages_upload": "success"}) == [], "都成功时不该有任何命中"
+    assert hit({"stage": "success", "pages_upload": "cancelled"}) == ["pages_upload"], "`!=` 方向算反了"
+    assert hit({"stage": "success", "pages_upload": "skipped"}) == ["pages_upload"], (
+        "`!=` 把 skipped 也算命中——求值器必须照实算：真实末步正是靠这条性质才不许对 vercel=skipped 出声"
+        "（见 test_skipped_vercel_deploy_does_not_mark_the_run_red），口径由 yml 决定，不由这里决定")
 
 
 def _body_reds(mark_run, outcomes):
@@ -308,3 +309,77 @@ def test_deploy_marker_dir_stays_out_of_the_package():
     body = open(os.path.join(ROOT, ".vercelignore"), encoding="utf-8").read()
     assert ".vercel-deployed/" in body, (
         ".vercelignore 没排 .vercel-deployed/ ⇒ 记录「上次部署了什么」的标记会被上传到生产")
+
+
+# ── 门本身必须是"试过就留痕"，否则失败场每小时重撞（2026-10-03 现取：连红 6 场）──────────
+def test_deploy_gate_survives_a_failed_deploy():
+    """留痕必须在**部署失败的那场**也写进缓存，否则条件门等于没有门。
+
+    现取读数（run 1595–1600，head 全部是加了门的 a4596261e5）：`Deploy to Vercel` 连 6 场 failure，
+    每场 5 次尝试都被 `Error: Your deployment failed. Please retry later.` 秒拒；
+    而 `Post Detect API-relevant deploy state` 每场 **skipped** ⇒ 缓存从未落过一个键 ⇒
+    下一场 restore 必然 miss ⇒ 再撞 5 次。第一版门把"部署成功后才留痕"当成了前提，
+    于是它在唯一需要它的场景（持续失败）里退化成"每场重复部署"——比没有门更糟，
+    因为它同时让整场每场一红。
+    三条形状要求（都是这条判据的内容）：
+    ① 提供 cache-hit 的步用 `cache/restore@v4`（一体 `cache@v4` 的 post-save 在失败场不跑）；
+    ② 另有一个**显式** `cache/save@v4` 步、key 与 ① 完全一致、带 `always()`、排在 Vercel 之后
+       —— 显式步跑在 job 结论之前，不受"post 被跳过"影响；
+    ③ run 体里写 marker 的那两行必须早于任何 `exit 1`：先留痕，再决定要不要红。
+    """
+    steps = _steps()
+    gate = _step_by_name(steps, "Detect API-relevant deploy state")
+    assert gate, "门步不见了"
+    uses = gate[0].get("uses") or ""
+    assert "cache/restore@v4" in uses, (
+        "门步用的是 %r（post-save 在失败场被跳过）⇒ 失败场不落键，下一场照样重撞 5 次" % uses)
+    key = (gate[0].get("with") or {}).get("key") or ""
+
+    ver_i = _idx(steps, VERCEL)
+    savers = [(i, s) for i, s in enumerate(steps)
+              if "cache/save@v4" in (s.get("uses") or "")
+              and ".vercel-deployed" in str((s.get("with") or {}).get("path") or "")]
+    assert savers, (
+        "没有显式保存 marker 目录的 cache/save 步 ⇒ 门只有读、没有写，等于永久 miss")
+    i, save = savers[0]
+    assert i > ver_i, (
+        "显式保存步排在 Vercel 之前 ⇒ 它存的是本场开始前的旧内容，永远记不住刚试过的那次")
+    assert ((save.get("with") or {}).get("key") or "") == key, (
+        "save 的 key（%r）与 restore 的 key（%r）不一致 ⇒ 存的键和读的键不是同一个，门永不命中"
+        % ((save.get("with") or {}).get("key"), key))
+    assert "always()" in (save.get("if") or ""), (
+        "显式保存步没带 always() ⇒ Vercel 失败让 job 变红后这一步被跳过，正好在最需要留痕的那场没留痕")
+
+    run = steps[ver_i].get("run") or ""
+    # 只数会执行的 shell 行：第一版用 run.find(...)，被注释里那句"排在 exit 1 之前"骗了 ⇒ 判据假红。
+    code = [(n, s) for n, s in enumerate(run.splitlines())
+            if s.strip() and not s.strip().startswith("#")]
+    at_mark = next((n for n, s in code if "mkdir -p .vercel-deployed" in s), None)
+    at_exit = next((n for n, s in code if "exit 1" in s), None)
+    assert at_mark is not None, "Vercel 步不再写 marker ⇒ 门没有可保存的内容"
+    assert at_exit is None or at_mark < at_exit, (
+        "写 marker 排在 exit 1 之后 ⇒ 失败路径直接退出、不留痕，下一场重撞（现得 mark=%s exit=%s）"
+        % (at_mark, at_exit))
+
+
+def test_skipped_vercel_deploy_does_not_mark_the_run_red():
+    """条件门生效后「跳过部署」是正常状态，末步的 run 体不许把它报成 Vercel 未部署。
+
+    外层 `if:` 早已精确到 failure/cancelled（见上一条判据的反向那半），但 run 体当时写的是
+    `!= "success"`——那在"每场都部署"的年代等价，在门生效后不等价：命中缓存的那场
+    `steps.vercel.outcome` 是 skipped ⇒ body 走到那半就 `exit 1` ⇒ **门每生效一场就红一场**，
+    把"消除噪声红"的改动本身变成新的恒红源。两处口径必须一致，这是同一条判据的两半。
+    """
+    steps = _steps()
+    mark = steps[_idx(steps, RED_FLAG)]
+    body = mark.get("run") or ""
+    ok = {"stage": "success", "vercel": "success", "pages_upload": "success"}
+
+    hit = _body_reds(body, {"stage": "success", "vercel": "skipped", "pages_upload": "success"})
+    assert not hit, (
+        "Vercel 因内容未变被跳过时，末步 run 体仍出声（命中 %s）⇒ 条件门一生效就每场一红" % hit)
+    for shape in ("failure", "cancelled"):
+        hits = _body_reds(body, {"stage": "success", "vercel": shape, "pages_upload": "success"})
+        assert any(h.startswith("vercel") for h in hits), (
+            "Vercel=%s 时 run 体没有 vercel 那半（实得 %s）⇒ 未部署重新变静默" % (shape, hits))
+    assert not _body_reds(body, ok), "一切正常的那场不许有 shell 命中"

@@ -547,17 +547,23 @@ jobs:
           du -sh .
 
       # 「同一份 API 代码每小时重复部署」是 1593 那五次 `Please retry later` 的直接来源；
-      # 用内容哈希当键：命中 = 这些输入与上次被 Vercel 接受的完全一致 ⇒ 跳过部署。
+      # 用内容哈希当键：命中 = 这些输入与上次**已尝试**部署的完全一致 ⇒ 跳过部署。
       # 不给 restore-keys —— 近似命中就跳过部署会静默把 API 停在旧版，必须精确相等才省这一次。
+      # 必须是 restore@v4 而不是 cache@v4：一体版的 post-save 在 job 变红的那场被跳过（实测 run 1595–1600
+      # 连续 6 场 `Post Detect API-relevant deploy state` = skipped ⇒ 一个键都没落），于是门每场都 miss、
+      # 每场重撞 5 次。留痕改由下面那个显式 `if: always()` 的 cache/save 步负责。
+      # 判据：tests/site_nav_drift/test_pages_vercel_ordering.py::test_deploy_gate_survives_a_failed_deploy
       - name: Detect API-relevant deploy state
         id: vercel_state
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .vercel-deployed/
           # 这四类就是"函数运行需要什么"的全部：api/**（9 个函数）、lib/**（被 require 的共享码）、
           # vercel.json（functions/maxDuration）、rss_sources.json（loadSources() 直接 readFileSync，无兜底）。
           # 清单漏项的危险方向比"多部署一次"大得多：改了它也不部署 ⇒ API 静默停在旧版。
           # 判据：tests/site_nav_drift/test_pages_vercel_ordering.py::test_vercel_deploy_is_gated_on_api_relevant_changes
+          # 注意 key 表达式在 restore 与下面的 save 两处**必须逐字相同**（同一条判据守着）；
+          # prune 步不删这四类文件，所以 Vercel 之后重算哈希仍与这里一致。
           key: vercel-deployed-${{ hashFiles('api/**', 'lib/**', 'vercel.json', 'rss_sources.json') }}
 
       - name: Deploy to Vercel
@@ -597,15 +603,32 @@ jobs:
             if npx --yes vercel --prod --yes --no-wait --token "$VERCEL_TOKEN"; then ok=1; break; fi
             if [ "$i" != "5" ]; then sleep $((i*15)); fi
           done
+          # 先留痕、再判红：这两行排在 exit 1 之前，就是"门在失败场也生效"的全部保证（判据 ③）。
+          # 语义是「这批 API 内容已经试过部署」，不是「已被接受」——成败一起写进 marker 供日志读。
+          # 为什么失败也要留痕：Vercel 的秒拒是持续性外部故障，不留痕就变成每小时撞 5 次 + 每小时一红
+          # （实测 run 1595–1600 连红 6 场、30 次失败尝试，而这期间 api/ lib/ vercel.json 一个字节没变）；
+          # 留痕后同一内容只撞一场。要强制重试就改这四类文件之一 ⇒ 哈希变 ⇒ 门自动放行。
+          mkdir -p .vercel-deployed
+          printf '%s %s attempt=%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$([ "$ok" = "1" ] && echo accepted || echo rejected)" > .vercel-deployed/marker
           if [ "$ok" != "1" ]; then
-            echo "::error::Vercel deploy failed after 5 attempts"
+            echo "::error::Vercel deploy failed after 5 attempts（同内容下一场不再重撞；API 有变更时改这四类文件即重新部署）"
             exit 1
           fi
-          # 只有被 Vercel 接受才留标记；post-job 会按上面的内容哈希存进缓存，下一场同内容 ⇒ 跳过。
-          # 反过来（先留标记再部署失败）会让下一场误判"已部署过"而静默跳过。
-          mkdir -p .vercel-deployed
-          printf '%s %s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .vercel-deployed/marker
           echo "已记录部署状态标记：$GITHUB_SHA"
+
+      - name: Save API-relevant deploy state
+        # 显式保存，不依赖 actions/cache 的 post 阶段——post-save 在 job 变红的那场会被跳过（实测 skipped），
+        # 那正是唯一需要留痕的场景。`if: always()` 保证失败场也把这个键落进缓存。
+        # `continue-on-error`：留痕失败最坏是下一场多重撞一次，绝不许连坐 Pages 发布
+        # （本仓两次"自己把自己的部署冻掉"的教训都在 prune/Stage 那一段）。
+        # key 必须与上面 restore 逐字相同，否则存的键和读的键不是一个 ⇒ 门永不命中；由判据钉住。
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: .vercel-deployed/
+          key: vercel-deployed-${{ hashFiles('api/**', 'lib/**', 'vercel.json', 'rss_sources.json') }}
 
       - name: Log deploy result
         if: always()
@@ -679,7 +702,11 @@ jobs:
             echo "::error::本场未发布 Pages（Stage 已完成但 Upload Pages artifact 没执行，制品没进部署；站点停在上一份）"
             exit 1
           fi
-          if [ "${{ steps.vercel.outcome }}" != "success" ]; then
-            echo "::error::本场 Vercel 未部署成功（outcome=${{ steps.vercel.outcome }}）；Pages 不受影响，但 API 主机停在上一版"
+          if [ "${{ steps.vercel.outcome }}" = "failure" ]; then
+            echo "::error::本场 Vercel 未部署成功（failure）；Pages 不受影响。API 主机停在上一版——只有 api/ lib/ vercel.json rss_sources.json 真的变了时这才要人管，同内容已在上一场试过并留痕"
+            exit 1
+          fi
+          if [ "${{ steps.vercel.outcome }}" = "cancelled" ]; then
+            echo "::error::本场 Vercel 部署被掐（cancelled）；Pages 不受影响，但 API 主机停在上一版"
             exit 1
           fi
