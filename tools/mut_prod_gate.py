@@ -27,6 +27,13 @@ DEAD_PAGE = "test_dead_page_is_blocking"
 EMPTY = "test_empty_readings_are_blocking_not_ok"
 FRESH = "test_stamp_shape_and_freshness"
 OK = "test_healthy_production_is_ok"
+SEL1 = "test_internal_selector_keeps_only_real_exposure"
+SEL2 = "test_internal_selector_is_not_silently_empty"
+MISS = "test_missing_baseline_is_not_read_as_closed"
+INFLIGHT = "test_in_flight_run_is_not_blamed_for_not_publishing"
+ONLYFLIGHT = "test_only_in_flight_run_is_not_ok"
+CHANNEL_API = "test_channel_blocked_is_not_read_as_broken"
+CHANNEL_PAGES = "test_channel_blocked_pages_still_block"
 
 pv = open(PV_SRC, encoding="utf-8").read()
 dp = open(DP_SRC, encoding="utf-8").read()
@@ -52,7 +59,7 @@ CASES = [
     ("P3 站点 404 只降级成 warn（拦不住坏站点）",
      ("pv", sub(pv, '            return "blocking", "站点页面 %s 是 %s',
                        '            return "warn", "站点页面 %s 是 %s')),
-     "red", [DEAD_PAGE]),
+     "red", [DEAD_PAGE, CHANNEL_PAGES]),
     ("P4 空读数判 ok（网络一抖就放行）",
      ("pv", sub(pv, '    if not (r.get("pages") and r.get("api")):\n        return "blocking"',
                   '    if not (r.get("pages") and r.get("api")):\n        return "ok"')),
@@ -65,13 +72,33 @@ CASES = [
      ("dp", sub(dp, '        return False, "生产验证判为 blocking：%s" % stamp.get("why", "（没时间戳里的理由）")',
                   '        return False, "生产验证判为 blocking"')),
      "red", [BLOCKING]),
+    ("P7 内部项筛法一条都不挑（公开面被假报成已关）",
+     ("pv", sub(pv, '            if v == "200" and not k.startswith(RUNTIME_KEEP)',
+                  '            if False and not k.startswith(RUNTIME_KEEP)')),
+     "red", [SEL1, SEL2]),
+    ("P8 改前基线缺失时返回空（问不出来=没问题）",
+     ("pv", sub(pv, '        return ["(改前基线缺失：无法核对公开面，先重跑 _verify_build 的枚举再谈收口)"]',
+                  "        return []")),
+     "red", [MISS]),
+    ("P9 把在飞的场当已结束（Pages 结论 null 也拿去判）",
+     ("pv", sub(pv, "    done = [x for x in runs if x.get(\"pages\") is not None]",
+                  "    done = runs")),
+     "red", [INFLIGHT, ONLYFLIGHT]),
+    ("P10 全场都在跑时判 ok（没有发布事实却说没事）",
+     ("pv", sub(pv, '    if not done:\n        return "blocking"',
+                  '    if not done:\n        return "ok"')),
+     "red", [ONLYFLIGHT]),
     # ── 反向控制：不该拦的别拦，否则门槛明天就被绕过 ──
     ("G1 一切正常仍判 ok（必须绿：门槛不许误伤）",
-     ("pv", pv.replace('    stuck = [x for x in runs if x.get("vercel") != "success"]',
-                       '    stuck = [x for x in runs if x.get("vercel") not in ("success", "skipped")]', 1)),
+     ("pv", pv.replace('    stuck = [x for x in finished_vercel if x.get("vercel") != "success"]',
+                       '    stuck = [x for x in finished_vercel if x.get("vercel") not in ("success", "skipped")]', 1)),
      "green", ""),
     ("G2 文案改词（必须绿：判据钉的是行为不是措辞）",
      ("dp", sub(dp, "生产验证时间戳已过期", "生产验证已经过期很久")),
+     "green", ""),
+    ("G3 运行时白名单多列一项（必须绿：放宽清单不该误红）",
+     ("pv", sub(pv, 'RUNTIME_KEEP = PAGES + API + ("rss_sources.json",)',
+                  'RUNTIME_KEEP = PAGES + API + ("rss_sources.json", "hot_snapshot.json")')),
      "green", ""),
 ]
 

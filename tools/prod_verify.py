@@ -14,9 +14,9 @@
 import io
 import json
 import os
+import subprocess
 import sys
 import time
-import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAMP = os.path.join(ROOT, ".deploy-tmp", "_prod_verify.json")
@@ -34,26 +34,45 @@ def verdict(r):
         if code != 200:
             return "blocking", "站点页面 %s 是 %s（站点现在是坏的，先修它再谈推送）" % (name, code)
     for name, code in sorted((r.get("api") or {}).items()):
+        if code is None:
+            # 403 = Vercel Bot Protection 拦本机 curl（01:49 实跑撞上：api/news 被判成"API 坏了"）。
+            # 读不到既不能算坏（假警会永久卡住推送），也不能算好（那就是我一路在防的假绿）。
+            continue
         if code not in (200, 400):        # api/rss 无参时按 400 也算活着
             return "blocking", "Vercel 函数 %s 是 %s（API 主机坏了）" % (name, code)
+    unread = sorted(k for k, v in (r.get("api") or {}).items() if v is None)
     if not (r.get("pages") and r.get("api")):
         return "blocking", "取数失败：页面或 API 一条读数都没有 ⇒ 取不到不等于没问题"
     runs = r.get("last_runs") or []
     if not runs:
-        return "blocking", "取数失败：读不到任何构建场次"
-    latest = runs[-1]
+        return "blocking", "取数失败：一场都读不到 ⇒ 没有可判的依据"
+    # `pages is None` = 那场**还没走到** Pages（在飞、或刚被触发），不是"没发布"。
+    # 把在飞的场读成未发布会造成假警（01:44 实跑撞上：我刚触发 1593，门槛立刻报它未发布），
+    # 而假警的下一站就是有人给门槛加绕过开关。
+    done = [x for x in runs if x.get("pages") is not None]
+    if not done:
+        return "blocking", "取数失败：读到的场都还在跑（没有 Pages 结论）⇒ 没有可判的发布事实"
+    inflight = [x.get("num") for x in runs if x.get("pages") is None]
+    latest = done[-1]
     warns = []
     if latest.get("pages") != "success":
-        warns.append("上一场 %s 未发布 Pages（=%s）⇒ 站点停在更早的产物" % (
+        warns.append("上一场已结束的构建 %s 未发布 Pages（=%s）⇒ 站点停在更早的产物" % (
             latest.get("num"), latest.get("pages")))
-    stuck = [x for x in runs if x.get("vercel") != "success"]
-    if len(stuck) >= 3 and stuck == runs[-len(stuck):]:
+    finished_vercel = [x for x in done if x.get("vercel") is not None]
+    stuck = [x for x in finished_vercel if x.get("vercel") != "success"]
+    if len(stuck) >= 3 and stuck == finished_vercel[-len(stuck):]:
         warns.append("Vercel 连续 %d 场（%s–%s）未落地 ⇒ 依赖 Vercel 部署的改动在生产上还没生效" % (
             len(stuck), stuck[0].get("num"), stuck[-1].get("num")))
     if r.get("public_internal"):
         warns.append("Vercel 域仍公开 %d 个内部项：%s" % (
             len(r["public_internal"]), ", ".join(r["public_internal"][:6])))
-    return ("warn", "；".join(warns)) if warns else ("ok", "站点与 API 都活着，上一场已发布，公开面已关")
+    if unread:
+        warns.append("Vercel 函数这条通道读不到（多半是 Bot Protection 拦本机）：%s ⇒ 算未验证，不算过"
+                     % ", ".join(unread))
+    note = "（最新一场 %s 仍在跑，不计入判断）" % inflight[-1] if inflight else ""
+    if warns:
+        return "warn", "；".join(warns) + (("；" + note) if note else "")
+    return "ok", "站点与 API 都活着，上一场已发布，公开面已关" + ("；" + note if note else "")
 
 
 def stamp_is_fresh(stamp, now=None):
@@ -63,40 +82,53 @@ def stamp_is_fresh(stamp, now=None):
 
 
 # ── 取数（真跑时才会用到；判据不碰这一层）──────────────────────────────────────
-def _http(url):
-    for k in range(3):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "curl/8"})
-            with urllib.request.urlopen(req, timeout=45) as f:
-                body = f.read()
-            return body, 200
-        except Exception as exc:
-            last = exc
-    return str(last), 0
-
-
 def _code(url):
-    body, code = _http(url)
-    if code != 200:
-        try:
-            import subprocess
-            return int(subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-                                       "--max-time", "25", url],
-                                      capture_output=True, text=True).stdout.strip() or 0)
-        except Exception:
-            return 0
-    return 200
+    """状态码；**403 与取不到都返回 None（=未知），不当成"坏"也不当成"没暴露"**。
+
+    必须用 curl 而不是 urllib：这台机器只有 curl 会读 `*_PROXY`（01:52 实踩 —— 我把它改成
+    urllib 之后，17 个内部项从"探得到"集体退化成"读不到"，门槛当场失去依据）。
+    403 有两种成因且状态码分不开：Vercel Bot Protection 判本机为挑战、或我们自己的
+    `api/events.js` 对缺失 Origin 返回 403 ⇒ 只能老实说"读不到"。
+    """
+    p = subprocess.run(["curl", "-s", "-o", os.devnull, "-w", "%{http_code}",
+                        "--max-time", "25", url], capture_output=True, text=True)
+    try:
+        code = int((p.stdout or "").strip())
+    except ValueError:
+        return None
+    return None if code in (0, 403) else code
 
 
 def read_public_internal():
-    """改前基线里那些"要靠 Vercel 部署才关掉"的名字，现在有几个还开着。"""
+    """改前基线里"本来 200、且不该公开"的名字，现在还有几个仍开着。"""
     base = os.path.join(ROOT, ".deploy-tmp", "_vercel_pre_baseline.json")
     if not os.path.exists(base):
-        return []
-    keep = PAGES + API + ("rss_sources.json", "vendor_qrcode.min.js")
-    names = [k for k, v in json.load(io.open(base, encoding="utf-8")).items()
-             if v == "200" and not k.startswith(keep) and not k.startswith(("api/", "lib/"))]
-    return [n for n in names if _code(VERCEL_BASE + n) == 200]
+        # 不能返回空：空 = verdict 里的"公开面已关" ⇒ 基线一丢门槛就假报 OK（这正是要防的空集形状）
+        return ["(改前基线缺失：无法核对公开面，先重跑 _verify_build 的枚举再谈收口)"]
+    names = internal_names(json.load(io.open(base, encoding="utf-8")))
+    probed = [(n, _code(VERCEL_BASE + n)) for n in names]
+    out = [n for n, c in probed if c == 200]
+    unk = [n for n, c in probed if c is None]
+    if unk:
+        # 读不到 ≠ 已关。这一条若沉默，门槛会把"我探测不到"报成"公开面已收口"（假绿）。
+        out.append("(%d 条读不到、未验证：%s)" % (len(unk), ", ".join(unk[:4])))
+    return out
+
+
+# 这些名字公开是**应该**的：四页与 rss_sources.json 是壳页/数据源，api/ 与 lib/ 是函数本体和被 require 的共享码。
+# 把它们算进"暴露清单"会让门槛天天报假警，而假警的下一站就是有人把门槛关掉。
+RUNTIME_KEEP = PAGES + API + ("rss_sources.json",)
+
+
+def internal_names(baseline):
+    """纯函数：从"改前状态存档"里挑出本来 200、且属于不该公开的名字。
+
+    抽出来是因为筛法一旦写错（漏项或把运行时当暴露），网络层没法测：
+    判据 = tests/tools/test_prod_verify_verdict.py::test_internal_selector_keeps_only_real_exposure。
+    改前就已经 404 的一律不算 —— 那是 Vercel 平台自带的排除，不能冒充我们的功劳。
+    """
+    return [k for k, v in baseline.items()
+            if v == "200" and not k.startswith(RUNTIME_KEEP) and not k.startswith(("api/", "lib/"))]
 
 
 def read_runs(n=8):

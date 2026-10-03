@@ -142,3 +142,75 @@ def test_pusher_allows_warn_but_shows_the_reason(tmp_path, monkeypatch, capsys):
                                              "why": "Vercel 连续 6 场（1585–1590）未落地"})
     assert rc == 0, "warn 被判成拒绝 ⇒ 门槛在 #27 修好之前会一直挡路，明天就有人加 --skip"
     assert "1585" in capsys.readouterr().out, "放行时没带上 warn 的原文 ⇒ 推送日志里没有生产状态"
+
+
+# ── 取数层的形状也要钉：探哪些名字是"内部暴露"，哪些是"本来就该公开" ──────────────
+# 这层如果哪天悄悄返回空集，verdict() 会把"公开面已关"报成 OK —— 网络代码没法测，
+# 所以把"名单怎么筛"抽成纯函数，判据钉它，网络层只负责照着探。
+def test_internal_selector_keeps_only_real_exposure():
+    baseline = {
+        "HANDOFF.md": "200", ".github/workflows/update.yml": "200",
+        "tools/daily_commit_gate.sh": "200", "template.html": "200",
+        "index.html": "200", "rss-aggregator.html": "200",          # 站点页：本该公开
+        "api/rss.js": "200", "lib/rss_cover.js": "200",             # 运行时：函数要它
+        "rss_sources.json": "200",                                   # 硬依赖
+        "README.md": "404", "package.json": "404",                   # 改前就已 404 ⇒ 不算我们的功劳
+    }
+    got = sorted(V.internal_names(baseline))
+    assert got == sorted(["HANDOFF.md", ".github/workflows/update.yml",
+                          "tools/daily_commit_gate.sh", "template.html"]), (
+        "筛出来的内部项不对：%s ⇒ 要么把站点页/运行时依赖当成暴露（误报），"
+        "要么把文档与 CI 管线漏掉（假阴性）" % got)
+
+
+def test_internal_selector_is_not_silently_empty():
+    """反向那半：有 200 的内部项却筛出空集 ⇒ 必须炸，不能让门槛拿空集去报 OK。"""
+    assert V.internal_names({"HANDOFF.md": "200"}) == ["HANDOFF.md"]
+    assert V.internal_names({"index.html": "200", "api/rss.js": "200"}) == [], (
+        "全是合法公开项时该返回空 —— 空集本身不是错，错的是把空集当成『一定已收口』")
+
+
+def test_missing_baseline_is_not_read_as_closed(tmp_path, monkeypatch):
+    """改前基线文件不在的时候，取数层不许返回空集（空 = 门槛会读成"公开面已关"）。"""
+    monkeypatch.setattr(V, "ROOT", str(tmp_path))
+    got = V.read_public_internal()
+    assert got, "基线缺失却返回空 ⇒ 门槛会报 OK；这是把『问不出来』读成『没问题』"
+
+
+def test_in_flight_run_is_not_blamed_for_not_publishing():
+    """刚触发的场还没走到 Pages ⇒ conclusion 是 null，那不是"未发布"。
+
+    2026-10-03 01:44 实跑撞上：我 01:41 手动触发 1593，门槛立刻报
+    "上一场 1593 未发布 Pages（=None）"⇒ 假警。假警的下一站就是有人把门槛关掉。
+    """
+    runs = [{"num": 1592, "pages": "success", "vercel": "success"},
+            {"num": 1593, "pages": None, "vercel": None}]
+    level, why = V.verdict(_readings(last_runs=runs))
+    assert level == "ok", "上一场（1592）明明发了，只因最新一场还在跑就报 warn：%s" % why
+    assert "1593" in why and "跑" in why, "忽略在飞的场次要说清楚忽略了谁（实得 %r）" % why
+
+
+def test_only_in_flight_run_is_not_ok():
+    """一场都没跑完 ⇒ 没有可判的发布事实，按"取不到"处理，不许读成 ok。"""
+    level, why = V.verdict(_readings(last_runs=[{"num": 1593, "pages": None, "vercel": None}]))
+    assert level == "blocking", "只有还在跑的一场却报 ok ⇒ 门槛在最需要它的时候没有依据"
+
+
+def test_channel_blocked_is_not_read_as_broken():
+    """403 = Vercel Bot Protection 拦住了本机 curl，不是函数坏了（01:49 实跑撞上）。
+
+    门槛因此必须能表达"我读不到"：读不到 ⇒ warn 并点名是哪一条通道，
+    既不许把它当成"坏了"（假警会永久卡住所有推送），也不许当成"没问题"（那是假绿）。
+    """
+    level, why = V.verdict(_readings(api={"api/rss": None, "api/news": 200}))
+    assert level == "warn", "通道被拦却被读成没事 ⇒ %s" % why
+    assert "api/rss" in why and ("读不到" in why or "被拦" in why), (
+        "warn 里必须点名哪条读不到（实得 %r）" % why)
+
+
+def test_channel_blocked_pages_still_block():
+    """站点页读不到就是真出事：Pages 域没有 Bot Protection，读不到只可能是没发出来。"""
+    level, why = V.verdict(_readings(pages={"index.html": None, "ai-daily.html": 200,
+                                             "rss-aggregator.html": 200,
+                                             "daily-insight-history.html": 200}))
+    assert level == "blocking", "首页读不到还放行 ⇒ 站点停了也可能推东西上去（实得 %s）" % why
