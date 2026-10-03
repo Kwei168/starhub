@@ -1,0 +1,130 @@
+name: Star Fast Refresh
+
+# 15 分钟新星快车道（SPEC 2026-10-02 §4-T3/T4）。
+#
+# ── 架构原则（用户裁决 2026-10-03）：功能解耦 ─────────────────────────────
+# star 页是独立功能单元：本 workflow 只产出/发布 index.html，
+# 不依赖 RSS 的任何数据文件、缓存或构建产物（rss-data-*.js 已退役，永不引用）。
+# 不变量：发布后站点 = 发布前线上现状 + 新 index.html —— 绝不比线上少，
+# 也不替任何其他功能做主。其他功能（RSS/晨报/洞察）单独部署、单独下架，
+# 均不影响本车道；本车道对它们的唯一动作是「线上有就原样带回，没有就跳过」。
+#
+# 触发：cron-job.org 每 15 分钟 POST /api/refresh?mode=star（主力，§7.1 schedule 漂移不可信）；
+# GitHub schedule 兜底。mode=star 由 api/refresh.js 分流到本 workflow。
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # star 功能私有状态（known_categories/known_notes/descriptions_zh）有新星时提交
+  pages: write
+  id-token: write
+
+concurrency:
+  group: starhub-fast   # 独立于 starhub-update：快车道绝不取消小时场
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12   # 超 12 分钟即失去意义（下一场 15 分钟就来）
+    env:
+      AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+      AGNES_API_KEYS: ${{ secrets.AGNES_API_KEYS }}
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      LIVE_BASE: https://kwei168.github.io/starhub
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1   # 只读工作树文件；三缓存提交是窄 pathspec，不需要全历史
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Quality gate — syntax (blocking)
+        run: python -m py_compile fast_refresh.py fetch_and_build.py
+
+      - name: Fast refresh
+        id: fast
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python fast_refresh.py | tee fast.log
+
+      - name: Commit star state if changed
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if grep -q "no change, skip write" fast.log; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # star 功能的私有状态，只按具体路径提交（手册硬规：禁 add -A / add .）
+          git add known_categories.json known_notes.json descriptions_zh.json
+          git commit -m "chore: fast refresh stars $(TZ=Asia/Shanghai date +%F' '%H:%M)" \
+            -- known_categories.json known_notes.json descriptions_zh.json || {
+            echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          if ! git push; then
+            # 小时场 bot 并发提交 → merge 远端重试一次；再失败放弃提交（下场重新 diff 补判，
+            # 数据不丢）。放弃优于阻塞发布。
+            git fetch origin main --depth=1 || true
+            git merge origin/main --no-edit || true
+            git push || echo "::warning::[fast] star 状态提交被拒，本场放弃（下一场补）"
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # ── 制品策略：新 index.html + 「线上有什么就带回什么」（解耦版）──────────
+      # 与旧 update.yml 整站必点名的本质区别：
+      # ① index.html 是唯一硬必在项（本场新生成，缺了就没有"快"可言）；
+      # ② 其他功能入口页带回时 404 容忍 —— 那是「该功能已单独下架」的正常状态，
+      #    绝不让已下架的功能把 star 车道拖成永久红；网络抖动靠重试区分。
+      # ③ 不引用任何 rss-data-*.js（已退役）；hot_snapshot/rss_sources 归 RSS 单元，
+      #    线上有就带回（RSS 页侧栏用），没有就跳过（RSS 页前端自己降级）。
+      - name: Stage star page over live site
+        id: stage
+        continue-on-error: true
+        run: |
+          mkdir -p _pages
+          cp -f index.html _pages/
+          if [ ! -s "_pages/index.html" ]; then
+            echo "::error::index.html 缺失（fast_refresh 未产出）——本场不发"
+            exit 1
+          fi
+          # 带回线上现存的非 star 入口（重试 2 次区分网络抖动与真下架；404 跳过）。
+          # 清单是「入口页 + 其数据 JSON」的并集，与功能注册表一一对应：
+          # 下架某功能 = 从这张表删它的行，其他行不受影响。
+          for f in ai-daily.html rss-aggregator.html daily-insight-history.html \
+                   hot_snapshot.json rss_sources.json rss-data-0.js; do
+            ok=""
+            for attempt in 1 2 3; do
+              if curl -fsS --max-time 90 "$LIVE_BASE/$f" -o "_pages/$f" && [ -s "_pages/$f" ]; then
+                ok=1; echo "fetched $f ($(wc -c < _pages/$f) B)"; break
+              fi
+              sleep 2
+            done
+            [ -n "$ok" ] || echo "::warning::线上无 $f（下架或 CDN 未及）——跳过带回"
+          done
+          echo "Staged site size:"; du -sh _pages
+
+      - name: Upload Pages artifact
+        id: pages_upload
+        if: always() && steps.fast.outcome == 'success' && steps.stage.outcome == 'success'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _pages
+          if-no-files-found: error   # 空制品"绿发布"= 抹平站点（§8.15 教训）
+
+      - name: Deploy to GitHub Pages
+        id: deploy_pages
+        if: always() && steps.fast.outcome == 'success' && steps.pages_upload.outcome == 'success'
+        uses: actions/deploy-pages@v4
+
+      - name: Mark the run red when fast did not run
+        if: always() && steps.fast.outcome == 'failure'
+        run: |
+          echo "::error::[fast] fast_refresh 失败，本场未发布"
+          exit 1

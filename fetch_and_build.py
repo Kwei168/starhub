@@ -5,6 +5,7 @@ GitHub Star 收藏台 —— 自动更新脚本
 在 GitHub Actions 中每天运行：拉取 Kwei168 的 star 列表 → 智能分类 → 重新生成 index.html。
 仅依赖 Python 标准库，无需安装第三方包。
 """
+import hashlib
 import json
 import os
 import re
@@ -19,13 +20,15 @@ USER = "Kwei168"
 
 CATS = [
     {"key": "agent",     "label": "AI Agent & Skills",      "color": "#0550ae", "dark": "#4493f8"},
-    {"key": "distill",   "label": "思维蒸馏 & 认知",        "color": "#8250df", "dark": "#a371f7"},
-    {"key": "video",     "label": "AI 视频创作",            "color": "#cf222e", "dark": "#f85149"},
-    {"key": "coding",    "label": "AI 编程 & 工具链",       "color": "#1a7f37", "dark": "#3fb950"},
-    {"key": "content",   "label": "内容创作 & 排版",        "color": "#d33982", "dark": "#e577b2"},
-    {"key": "learning",  "label": "AI 学习 & 教程",         "color": "#b58400", "dark": "#d4a72c"},
     {"key": "assistant", "label": "AI 助手 & 应用",         "color": "#1b7c83", "dark": "#39c5cf"},
-    {"key": "tools",     "label": "实用工具 & 资源",        "color": "#57606a", "dark": "#8b949e"},
+    {"key": "coding",    "label": "AI 编程 & 工具链",       "color": "#1a7f37", "dark": "#3fb950"},
+    {"key": "video",     "label": "AI 视频创作",            "color": "#cf222e", "dark": "#f85149"},
+    {"key": "content",   "label": "内容创作 & 排版",        "color": "#d33982", "dark": "#e577b2"},
+    {"key": "distill",   "label": "思维蒸馏 & 认知",        "color": "#8250df", "dark": "#a371f7"},
+    {"key": "learning",  "label": "学习 & 教程",            "color": "#b58400", "dark": "#d4a72c"},
+    {"key": "info",      "label": "资讯聚合 & 信息抓取",    "color": "#0969da", "dark": "#58a6ff"},
+    {"key": "tools",     "label": "效率工具",               "color": "#57606a", "dark": "#8b949e"},
+    {"key": "media",     "label": "影音 & IPTV",            "color": "#bf3989", "dark": "#db61a2"},
     {"key": "finance",   "label": "金融 & 交易",            "color": "#c29700", "dark": "#e3b341"},
     {"key": "business",  "label": "商业 · 一人公司与知产",  "color": "#d4600a", "dark": "#f0883e"},
     {"key": "frontend",  "label": "前端 & 设计系统",        "color": "#0a7ea4", "dark": "#39a0c5"},
@@ -104,9 +107,13 @@ def translate_to_zh(text):
 
 def classify_new(fn, desc, lang, topics):
     """对未知新项目做关键词规则分类（已有项目走 known_categories.json 保持稳定）。
-    规则要点：避免泛词子串误伤（如「蒸馏」「思维」「chat」），用语义更明确的短语。"""
+    规则要点：避免泛词子串误伤（如「蒸馏」「思维」「chat」），用语义更明确的短语。
+    点名式补丁词已删（查表与 LLM 接管）；末尾的 "agent" 仅代表"规则未命中"，
+    统一入口 classify_repo 会把它收口为默认 tools。"""
     text = (fn + " " + (desc or "") + " " + " ".join(topics or [])).lower()
-    if any(k in text for k in ["trading", "finance", "fincept", "quant", "金融", "交易", "bloomberg"]):
+    # 不再用裸 "quant"：它会子串误伤 quantization（NVIDIA/Model-Optimizer 实锤进 finance），
+    # 模型量化归入 coding；真·量化交易项目仍由 trading/金融/交易 等通用词覆盖。
+    if any(k in text for k in ["trading", "finance", "金融", "交易", "bloomberg"]):
         return "finance"
     if any(k in text for k in ["tvbox", "iptv", "直播", "电视", "crawler", "爬虫", "download", "下载",
                                "translator", "翻译", "汉化", "网盘", "pan", "mpv", "userscript"]):
@@ -127,14 +134,13 @@ def classify_new(fn, desc, lang, topics):
                                "typeset", "editor"]):
         return "content"
     if any(k in text for k in ["book", "书籍", "教程", "guide", "指南", "from-scratch", "llms",
-                               "learning", "入门", "weekly", "hellogithub", "实践", "tutorial",
+                               "learning", "入门", "weekly", "实践", "tutorial",
                                "dive-into"]):
         return "learning"
-    if any(k in text for k in ["code-review", "officecli", "reasonix", "sub2api", "freellmapi",
-                               "2api", "中转", "mimo", "cc-connect", "coding", "编程"]):
+    if any(k in text for k in ["code-review", "quantization", "中转", "coding", "编程"]):
         return "coding"
     if any(k in text for k in ["chatbot", "chatgpt", "assistant", "助手", "librechat", "astrbot",
-                               "qwenpaw", "nuwax", "opensquilla", "workspace", "desktop", "agent-os"]):
+                               "workspace", "desktop", "agent-os"]):
         return "assistant"
     if any(k in text for k in ["opc", "one-person", "一人公司", "创业", "startup", "growth", "增长",
                                "business", "软著", "copyright", "专利", "patent", "合规",
@@ -143,12 +149,346 @@ def classify_new(fn, desc, lang, topics):
     return "agent"
 
 
+# ==================== LLM 智能分类（Agnes，§8.14 key 池惯例）====================
+_LLM_API_URL = "https://apihub.agnes-ai.com/v1/chat/completions"
+_LLM_MODEL = "agnes-2.5-flash"
+_LLM_TIMEOUT_SEC = 30
+_NOTE_MAX_CHARS = 30
+
+
+def _agnes_key_pool():
+    """AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加）合并成 key 池（去重保序）。"""
+    keys = [k.strip() for k in (os.environ.get("AGNES_API_KEY") or "").split(",") if k.strip()]
+    keys += [k.strip() for k in (os.environ.get("AGNES_API_KEYS") or "").split(",") if k.strip()]
+    pool, seen = [], set()
+    for k in keys:
+        if k not in seen:
+            seen.add(k)
+            pool.append(k)
+    return pool
+
+
+def _parse_llm_json(content):
+    """解析模型回复里的 JSON 对象；容忍 ```json 围栏与前后寒暄，失败返回 None。"""
+    if not content:
+        return None
+    text = content.strip()
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if m:
+        text = m.group(1)
+    # 直接解析失败时退回正则抽最外层 {...}（容忍 JSON 前后的寒暄文字）
+    try:
+        obj = json.loads(text)
+        return obj if isinstance(obj, dict) else None
+    except Exception:  # noqa: BLE001
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        obj = json.loads(text[start:end + 1])
+        return obj if isinstance(obj, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def classify_llm(fn, desc, lang, topics, cats):
+    """LLM 智能分类：成功返回 {"category": "<类目key>", "note": "<≤30字中文点评>"}，失败返回 None。
+
+    Agnes chat completions（URL/headers/payload 形状对齐 build_daily_insight 的 _LLM 惯例，
+    不 import 该文件）。单次尝试不重试不阻塞（构建侧熔断兜底由后续任务接入）：
+    - key 池先建后判空，池空直接 None、一个请求都不发；
+    - 429 换池内下一个 key（单轮轮转，全限流则 None）；
+    - 401/403 key 无效：换 key 无意义，立即停；
+    - payload 带 enable_thinking:false，要求模型只回 JSON，解析失败返回 None。"""
+    pool = _agnes_key_pool()
+    if not pool:
+        return None
+    valid_keys = {c["key"] for c in (cats or [])}
+    cats_desc = "；".join("%s=%s" % (c["key"], c["label"]) for c in (cats or []))
+    payload = {
+        "model": _LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": (
+                "你是 GitHub 仓库分类器。根据仓库信息从给定类目中选一个最合适的类目key，"
+                "并用不超过%d字的中文给一句点评。只输出一个 JSON 对象，"
+                '格式：{"category": "<类目key>", "note": "<点评>"}，'
+                "禁止解释、禁止 markdown 代码块。可选类目key：%s" % (_NOTE_MAX_CHARS, cats_desc))},
+            {"role": "user", "content": (
+                "仓库名：%s\n简介：%s\n主语言：%s\nTopics：%s"
+                % (fn, desc or "（无）", lang or "（未知）", "、".join(topics or []) or "（无）"))},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 200,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    data = json.dumps(payload).encode("utf-8")
+    for key in pool:
+        req = urllib.request.Request(
+            _LLM_API_URL, data=data,
+            headers={"Content-Type": "application/json", "Authorization": "Bearer %s" % key},
+            method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=_LLM_TIMEOUT_SEC) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            content = body["choices"][0]["message"]["content"] or ""
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                continue  # 限流：换下一个 key（单轮，不等待）
+            if exc.code in (401, 403):
+                return None  # key 无效：直接停
+            print("[classify_llm] HTTP %s" % exc.code, file=sys.stderr)
+            return None
+        except Exception as e:  # noqa: BLE001
+            print("[classify_llm] 请求失败: %s" % e, file=sys.stderr)
+            return None
+        parsed = _parse_llm_json(content)
+        if parsed is None:
+            print("[classify_llm] 回复解析失败: %s" % (content[:80],), file=sys.stderr)
+            return None
+        cat = str(parsed.get("category") or "").strip()
+        if not cat or (valid_keys and cat not in valid_keys):
+            return None  # 类目 key 必须落在给定类目内，否则交给规则兜底
+        note = str(parsed.get("note") or "").strip()[:_NOTE_MAX_CHARS]
+        return {"category": cat, "note": note}
+    return None  # 池内所有 key 都被限流
+
+
+# LLM 分类熔断：连续失败暂停（与翻译熔断同款形状）——LLM 侧故障不得拖垮构建
+_LLM_FAIL_STREAK = 0
+_LLM_BLOCK_UNTIL = 0.0
+_LLM_FAIL_LIMIT = 3
+_LLM_COOLDOWN = 300
+
+
+def _llm_available():
+    """熔断窗口内返回 False（跳过 LLM 直走规则）。"""
+    return time.time() >= _LLM_BLOCK_UNTIL
+
+
+def _llm_record(ok):
+    """记录一次 LLM 分类成败；连续失败达限触发暂停，成功即清零。"""
+    global _LLM_FAIL_STREAK, _LLM_BLOCK_UNTIL
+    if ok:
+        _LLM_FAIL_STREAK = 0
+        return
+    _LLM_FAIL_STREAK += 1
+    if _LLM_FAIL_STREAK >= _LLM_FAIL_LIMIT:
+        _LLM_BLOCK_UNTIL = time.time() + _LLM_COOLDOWN
+        print("[LLM熔断] 连续 %d 次分类失败，暂停 LLM 分类 %d 分钟（期间走规则兜底）"
+              % (_LLM_FAIL_STREAK, _LLM_COOLDOWN // 60), file=sys.stderr)
+
+
+def classify_repo(fn, desc, lang, topics, known):
+    """统一分类入口（重分类工具与快车道复用）：查表 → LLM → 规则 → 默认 ("tools", "")。
+
+    - 查表命中直接返回（known_categories.json 的存量映射保持稳定，不烧 LLM）；
+    - LLM 结果采信条件：返回 dict 且 category 落在 CATS 内；
+    - 规则兜底用 classify_new，其 "agent" 返回仅代表"规则未命中"，这里按 SPEC T1
+      收口为默认 tools（agent 只能由查表/LLM 给出）；
+    - 任何异常不向上抛：单个仓库的分类失败绝不拖垮构建。"""
+    try:
+        cat = (known or {}).get(fn)
+        if cat:
+            return (cat, "")
+        if _llm_available():
+            llm = classify_llm(fn, desc, lang, topics, CATS)
+            _llm_record(bool(llm and llm.get("category")))
+            if llm and llm.get("category"):
+                return (llm["category"], (llm.get("note") or "")[:_NOTE_MAX_CHARS])
+        cat = classify_new(fn, desc, lang, topics)
+        if cat != "agent":
+            return (cat, "")
+        return ("tools", "")
+    except Exception as e:  # noqa: BLE001
+        print("[classify_repo] %s 分类异常: %s" % (fn, e), file=sys.stderr)
+        return ("tools", "")
+
+
+def health_score(repo):
+    """收藏健康分（github-search-mirror 四维借鉴，数据全部来自已拉取字段）：
+    活跃度=pushed_at 距今（≤90 天 green / ≤365 yellow / 其余 red）、
+    安全=archived 直接 red、社区=stars+forks 降档、文档=desc+topics 降档。
+    缺 pushed_at 或解析异常 → unknown（不渲染徽章）；stale = 距今 >365 天。"""
+    now = datetime.now(timezone.utc)
+    try:
+        pushed = (repo.get("pushed_at") or "").strip()
+        if not pushed:
+            return {"tier": "unknown", "stale": False}
+        dt = datetime.fromisoformat(pushed.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age_days = (now - dt).days
+    except Exception:  # noqa: BLE001
+        return {"tier": "unknown", "stale": False}
+    stale = age_days > 365
+    if age_days > 365:
+        tier = "red"
+    elif age_days > 90:
+        tier = "yellow"
+    else:
+        tier = "green"
+    if bool(repo.get("archived")):
+        return {"tier": "red", "stale": stale}
+    stars = repo.get("stargazers_count") or 0
+    forks = repo.get("forks") or 0
+    if stars < 50 and forks < 5 and tier != "red":
+        tier = "yellow" if tier == "green" else "red"
+    if not (repo.get("description") or "") and not (repo.get("topics") or []) and tier != "red":
+        tier = "yellow" if tier == "green" else "red"
+    return {"tier": tier, "stale": stale}
+
+
+def embed_texts(texts):
+    """SiliconFlow bge-m3 批量 embedding（1024 维）。成功返回与输入等长的向量数组；
+    key 未配置 / 请求失败 / 返回长度不符 → None（调用方降级，语义搜索整体缺省）。"""
+    key = (os.environ.get("SILICONFLOW_API_KEY") or "").strip()
+    if not key or not texts:
+        return None
+    payload = json.dumps({"model": "BAAI/bge-m3", "input": list(texts)}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.siliconflow.cn/v1/embeddings", data=payload,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer %s" % key},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        items = sorted(body.get("data", []), key=lambda d: d.get("index", 0))
+        vecs = [d.get("embedding") for d in items]
+        if len(vecs) != len(texts) or any(not isinstance(v, list) or not v for v in vecs):
+            print("[embed] 返回长度/形状不符: %d vs %d" % (len(vecs), len(texts)), file=sys.stderr)
+            return None
+        return vecs
+    except Exception as e:  # noqa: BLE001
+        print("[embed] 请求失败: %s" % e, file=sys.stderr)
+        return None
+
+
+def quantize_normalized(vec):
+    """向量 L2 归一化后线性映射到 int8（[-1,1]→[-127,127]）。
+    归一化后余弦相似度 == 点积，前端无需存 scale；1024 维下量化误差 ~2%，语义匹配够用。"""
+    norm = (sum(v * v for v in vec) ** 0.5) or 1.0
+    return [max(-127, min(127, round(v / norm * 127))) for v in vec]
+
+
+def embed_star_entries(entries, batch=64):
+    """对条目数组分批补 emb 键（int8 归一化向量，供前端语义搜索）。
+    embedding 任一环节失败保持原数组不变（键缺省 = 前端退化纯关键词）。"""
+    try:
+        texts = [(e.get("desc") or e.get("full_name") or "")[:512] for e in entries]
+        vecs = [None] * len(entries)
+        for i in range(0, len(texts), batch):
+            part = embed_texts(texts[i:i + batch])
+            if not part:
+                print("[embed] 批 %d 失败，整组降级（无 emb 键）" % (i // batch + 1), file=sys.stderr)
+                return entries
+            vecs[i:i + batch] = part
+        for e, v in zip(entries, vecs):
+            e["emb"] = quantize_normalized(v)
+        print("[embed] %d 条向量已内联（int8 归一化，%d 批）" % (len(entries), (len(texts) + batch - 1) // batch))
+    except Exception as e:  # noqa: BLE001
+        print("[embed] 降级: %s" % e, file=sys.stderr)
+    return entries
+
+
+def _agnes_generate(system, user, max_tokens=300):
+    """通用 Agnes 生成（单轮 key 池轮转，形状与 classify_llm 一致）；失败返回 None。"""
+    pool = _agnes_key_pool()
+    if not pool:
+        return None
+    payload = {
+        "model": _LLM_MODEL,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "temperature": 0.4,
+        "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    data = json.dumps(payload).encode("utf-8")
+    for key in pool:
+        req = urllib.request.Request(
+            _LLM_API_URL, data=data,
+            headers={"Content-Type": "application/json", "Authorization": "Bearer %s" % key},
+            method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=_LLM_TIMEOUT_SEC) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            content = body["choices"][0]["message"]["content"] or ""
+            return content.strip() or None
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                continue
+            print("[agnes_generate] HTTP %s" % exc.code, file=sys.stderr)
+            return None
+        except Exception as e:  # noqa: BLE001
+            print("[agnes_generate] 请求失败: %s" % e, file=sys.stderr)
+            return None
+    return None
+
+
+_GUIDES_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "category_guides.json")
+
+
+def build_category_guides(cats, known, cache_path=None):
+    """类目 AI 导览：每个类目按成员清单生成 2-3 句选型导览。
+    成员清单 md5 未变的类目直接吃 category_guides.json 缓存（13 次调用只在类目内容变化时发生）。
+    LLM 失败的类目跳过（guide 缺省，前端静默不渲染）；永不抛出、永不阻塞构建。"""
+    cache_path = cache_path or _GUIDES_CACHE_PATH
+    cache = {}
+    try:
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding="utf-8") as f:
+                cache = json.load(f)
+    except Exception:  # noqa: BLE001
+        cache = {}
+    by_cat = {}
+    for fn, cat in (known or {}).items():
+        by_cat.setdefault(cat, []).append(fn)
+    changed = False
+    out = {}
+    for c in (cats or []):
+        key = c.get("key")
+        members = sorted(by_cat.get(key, []))
+        if not members:
+            continue
+        digest = hashlib.md5("\n".join(members).encode("utf-8")).hexdigest()
+        hit = cache.get(key)
+        if hit and hit.get("members_hash") == digest and hit.get("text"):
+            out[key] = hit["text"]
+            continue
+        sample = "、".join(m.replace("/", "/ ") for m in members[:25])
+        text = _agnes_generate(
+            "你是技术选型顾问。下面是一个 GitHub 收藏类目和它包含的仓库，"
+            "用不超过 120 字的中文写一段该类目的选型导览：这类工具适合什么场景、"
+            "挑选时看什么、如有明显代表项目可以点名（只点仓库名）。直接输出正文，不要标题和列表。",
+            "类目：%s\n包含仓库：%s" % (c.get("label", key), sample))
+        if text:
+            out[key] = text[:400]
+            cache[key] = {"members_hash": digest, "text": out[key]}
+            changed = True
+        time.sleep(0.8)
+    if changed:
+        try:
+            tmp = cache_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cache, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, cache_path)
+        except Exception as e:  # noqa: BLE001
+            print("[guides] 缓存写回失败: %s" % e, file=sys.stderr)
+    return out
+
+
 def fetch_stars(token=None):
+    """拉取全部 star。请求带 Accept: application/vnd.github.star+json 换取收藏时间：
+    响应元素从 repo dict 变成 {"starred_at": ..., "repo": {...}} 包装，这里拆包成
+    repo dict 并附 starred_at 键（ISO 串；取不到为 ""）。上游若忽略该头返回旧结构
+    （无包装），按原样保留并补 starred_at=""。失败返回 None（由 stars_ok 兜底）。"""
     repos = []
     page = 1
     while True:
         url = "https://api.github.com/users/%s/starred?per_page=100&page=%d" % (USER, page)
-        req = urllib.request.Request(url, headers=_api_headers(token))
+        headers = _api_headers(token)
+        headers["Accept"] = "application/vnd.github.star+json"  # 覆盖默认 Accept
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 data = json.loads(r.read().decode("utf-8"))
@@ -157,7 +497,14 @@ def fetch_stars(token=None):
             return None
         if not data:
             break
-        repos.extend(data)
+        for item in data:
+            if isinstance(item, dict) and isinstance(item.get("repo"), dict):
+                repo = dict(item["repo"])  # 拆包装层，main 的二级取值路径不变
+                repo["starred_at"] = item.get("starred_at") or ""
+            else:
+                repo = dict(item)  # 旧结构（无包装）：原样保留
+                repo.setdefault("starred_at", "")
+            repos.append(repo)
         if len(data) < 100:
             break
         page += 1
@@ -761,6 +1108,91 @@ def _safe_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
+def build_index_html(repos, cats, trending=None, feed=None, updated=None, ai_summary_html=""):
+    """把组装好的 star 条目渲染成完整 index.html 文本（纯字符串函数：不写文件、不发网络）。
+
+    repos 是 main 流程组装好的条目数组（含 desc/category/categoryLabel 等），不是原始
+    API 响应；cats 是 CATS。trending/feed/updated/ai_summary_html 由调用方注入，缺省渲染
+    空态 —— 快车道（fast_refresh）与重分类工具复用同一渲染出口，首页只有一种生成方式。
+    文件写出与 stars_ok 兜底判断留在 main（拉取失败不得用旧模板覆盖站点）。"""
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.html")
+    with open(template_path, encoding="utf-8") as fh:
+        template = fh.read()
+    if updated is None:
+        updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+    return (template
+            .replace("__DATA__", _safe_json(repos))
+            .replace("__CATS__", _safe_json(cats))
+            .replace("__LANGS__", _safe_json(LANG_COLORS))
+            .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
+            .replace("__TRENDING__", _safe_json(trending or {}))
+            .replace("__FEED__", _safe_json(feed or []))
+            .replace("__UPDATED__", updated)
+            .replace("__AI_SUMMARY__", ai_summary_html or ""))
+
+
+def assemble_entries(repos, known, desc_zh, cat_label, token):
+    """把原始 star 响应组装成 DATA 条目数组（main 与快车道 fast_refresh 共用的唯一组装出口）。
+
+    行为与抽取前逐字一致：classify_repo 分类（查表不烧 LLM）→ 简介回退链
+    （缓存 → 描述 → FALLBACK_DESC → README 摘要）→ 空白归一 → 英文翻译并持久化
+    → health/stale → 注入 note/health/stale/starred_at。known/desc_zh 原地更新
+    （调用方负责写回持久化）。"""
+    out = []
+    for r in repos:
+        fn = r.get("full_name")
+        if not fn:
+            continue
+        cat, note = classify_repo(fn, r.get("description"), r.get("language"), r.get("topics"), known)
+        known[fn] = cat
+        desc = (desc_zh.get(fn) or r.get("description") or FALLBACK_DESC.get(fn, "")).strip()
+        # 无简介项目：从 README 提取一句简介，结果持久化到 desc_zh 避免重复抓取
+        if not desc and fn not in desc_zh:
+            summary = fetch_readme_summary(fn, token)
+            if summary:
+                if not has_cn(summary):
+                    translated = translate_to_zh(summary)
+                    if translated:
+                        summary = translated
+                desc = summary
+                desc_zh[fn] = summary
+                print("[README简介] %s -> %s" % (fn, summary[:60]))
+        if desc:
+            desc = " ".join(desc.split())
+        # 新项目英文简介自动翻译为中文，并持久化到 desc_zh 避免重复翻译
+        if desc and not has_cn(desc) and fn not in desc_zh:
+            translated = translate_to_zh(desc)
+            if translated:
+                desc = translated
+                desc_zh[fn] = translated
+                print("[翻译] %s -> %s" % (fn, translated[:60]))
+            else:
+                print("[翻译失败-保留原文] %s" % fn)
+        _hs = health_score(r)
+        out.append({
+            "id": fn,
+            "name": r.get("name"),
+            "owner": fn.split("/")[0],
+            "full_name": fn,
+            "html_url": r.get("html_url"),
+            "desc": desc,
+            "language": r.get("language"),
+            "stars": r.get("stargazers_count"),
+            "forks": r.get("forks") or 0,
+            "license": ((r.get("license") or {}).get("spdx_id") or ""),
+            "topics": r.get("topics", []),
+            "pushed_at": (r.get("pushed_at") or "")[:10],
+            "updated_today": _cn_date(r.get("pushed_at")) == _today_cn(),
+            "category": cat,
+            "categoryLabel": cat_label.get(cat, cat),
+            "note": note,
+            "health": _hs["tier"],
+            "stale": _hs["stale"],
+            "starred_at": r.get("starred_at") or "",
+        })
+    return out
+
+
 def main(mode="full"):
     global AI_TOPICS, AI_MIN_STARS, NEW_MIN_STARS, TREND_TOP, TREND_MAX_STARS
     cfg = load_build_config()
@@ -790,51 +1222,7 @@ def main(mode="full"):
               "其余栏目照常产出；这句 error 是给 CI 看的，不影响本场发布")
 
     cat_label = {c["key"]: c["label"] for c in CATS}
-    out = []
-    for r in (repos or []):
-        fn = r.get("full_name")
-        if not fn:
-            continue
-        cat = known.get(fn) or classify_new(fn, r.get("description"), r.get("language"), r.get("topics"))
-        known[fn] = cat
-        desc = (desc_zh.get(fn) or r.get("description") or FALLBACK_DESC.get(fn, "")).strip()
-        # 无简介项目：从 README 提取一句简介，结果持久化到 desc_zh 避免重复抓取
-        if not desc and fn not in desc_zh:
-            summary = fetch_readme_summary(fn, token)
-            if summary:
-                if not has_cn(summary):
-                    translated = translate_to_zh(summary)
-                    if translated:
-                        summary = translated
-                desc = summary
-                desc_zh[fn] = summary
-                print("[README简介] %s -> %s" % (fn, summary[:60]))
-        if desc:
-            desc = " ".join(desc.split())
-        # 新项目英文简介自动翻译为中文，并持久化到 desc_zh 避免重复翻译
-        if desc and not has_cn(desc) and fn not in desc_zh:
-            translated = translate_to_zh(desc)
-            if translated:
-                desc = translated
-                desc_zh[fn] = translated
-                print("[翻译] %s -> %s" % (fn, translated[:60]))
-            else:
-                print("[翻译失败-保留原文] %s" % fn)
-        out.append({
-            "id": fn,
-            "name": r.get("name"),
-            "owner": fn.split("/")[0],
-            "full_name": fn,
-            "html_url": r.get("html_url"),
-            "desc": desc,
-            "language": r.get("language"),
-            "stars": r.get("stargazers_count"),
-            "topics": r.get("topics", []),
-            "pushed_at": (r.get("pushed_at") or "")[:10],
-            "updated_today": _cn_date(r.get("pushed_at")) == _today_cn(),
-            "category": cat,
-            "categoryLabel": cat_label[cat],
-        })
+    out = assemble_entries(repos or [], known, desc_zh, cat_label, token)
 
     if stars_ok:
         trending = build_trending(token, desc_zh)
@@ -849,7 +1237,6 @@ def main(mode="full"):
 
         feed = fetch_following_events(token)
 
-        template = open("template.html", encoding="utf-8").read()
         updated = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
         # AI 摘要占位符替换：非空则渲染为带样式的摘要条，空则不显示
         if ai_summary:
@@ -858,15 +1245,16 @@ def main(mode="full"):
                                '<span class="ai-summary-text">' + ai_summary + '</span></div>')
         else:
             ai_summary_html = ""
-        html = (template
-                .replace("__DATA__", _safe_json(out))
-                .replace("__CATS__", _safe_json(CATS))
-                .replace("__LANGS__", _safe_json(LANG_COLORS))
-                .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
-                .replace("__TRENDING__", _safe_json(trending))
-                .replace("__FEED__", _safe_json(feed))
-                .replace("__UPDATED__", updated)
-                .replace("__AI_SUMMARY__", ai_summary_html))
+        # 数据面增强（全部失败降级、不阻塞发布）：语义向量内联 + 类目导览附加进 CATS 副本
+        embed_star_entries(out)
+        try:
+            guides = build_category_guides(CATS, known)
+        except Exception as e:  # noqa: BLE001
+            print("[guides] 生成失败，本场无导览: %s" % e, file=sys.stderr)
+            guides = {}
+        cats_with_guides = [dict(c, guide=guides.get(c["key"], "")) for c in CATS]
+        html = build_index_html(out, cats_with_guides, trending=trending, feed=feed,
+                                updated=updated, ai_summary_html=ai_summary_html)
 
         open("index.html", "w", encoding="utf-8").write(html)
         json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
