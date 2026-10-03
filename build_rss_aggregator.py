@@ -502,6 +502,7 @@ RETENTION_FLOOR_MAX_H = RETENTION_MAX_WINDOW_H
 RETENTION_MAX_ITEMS = 120                 # 每源条数上限：防高频源把全站可见性吃光
 RETENTION_MIN_SAMPLES = 3                 # 样本不足 3 条不放宽 —— 两条间隔不构成「本就来得慢」
 RETENTION_EPOCH_YEAR = 1971               # 0001-01-01 这类占位值不是发布时间
+RETENTION_OVER_NAME_CAP = 5               # 超龄条目点名上限：破口成百时不许把构建日志刷爆（计数仍全量）
 
 # 缓存侧只有一条体积约束：**72h 时间窗**。2026-09-20 曾加过一道"每源上限 400 条"，
 # 当天就撤销，三条理由全部来自生产实测（台账 §13）：
@@ -589,6 +590,7 @@ def _apply_retention(sources, offsets=None, now_bj=None):
     now_bj = now_bj or _now_bj()
     before = after = undatable = widened = floored = capped = 0
     b_le72 = b_mid = b_over = 0
+    over_names = []             # 超龄条目的身份 + 两把尺的读数，见 RETENTION_OVER_NAME_CAP 与 A2 判据
     emptied = []
     out = []
     for src in sources:
@@ -640,6 +642,19 @@ def _apply_retention(sources, offsets=None, now_bj=None):
                 b_mid += 1
             else:
                 b_over += 1
+                if len(over_names) < RETENTION_OVER_NAME_CAP:
+                    # 两把尺各读多少都要留下：出厂分项按出厂那串算，闸门判龄走 _retention_ref_dt，
+                    # 一条超龄条目能出厂就说明这两者对不上 —— 对上在哪断的，才是 ② 要改的地方。
+                    _ref = _retention_ref_dt(_t[2], offsets, src.get("key"))
+                    over_names.append({
+                        "link": _t[2].get("link") or "?",
+                        "src": src.get("key") or "?",
+                        "ship": _t[2].get("pub_date") or "",
+                        "ship_age_h": round(_dage, 1),
+                        "ref_age_h": None if _ref is None
+                        else round((now_bj - _ref).total_seconds() / 3600.0, 1),
+                        "dfb": bool(_t[2].get("date_fallback")),
+                    })
         if items and not kept:
             emptied.append(src.get("name") or src.get("key", "?"))
         src["items"] = kept
@@ -649,7 +664,7 @@ def _apply_retention(sources, offsets=None, now_bj=None):
              "undatable": undatable, "widened": widened,
              "floored": floored, "capped": capped, "emptied": emptied,
              "sources_after": sum(1 for s in out if s.get("items")),
-             "le72": b_le72, "mid": b_mid, "over": b_over}
+             "le72": b_le72, "mid": b_mid, "over": b_over, "over_names": over_names}
     print("[留存] 出口闸门：进 %d 条 → 留 %d 条（丢弃 %d，其中判不了龄 %d）"
           "｜窗口放宽 %d 源｜保底 %d 源｜封顶 %d 源" % (
               before, after, stats["dropped"], undatable, widened, floored, capped))
@@ -659,6 +674,12 @@ def _apply_retention(sources, offsets=None, now_bj=None):
         RETENTION_BASE_H, b_le72, RETENTION_BASE_H, RETENTION_MAX_WINDOW_H, b_mid,
         RETENTION_MAX_WINDOW_H, b_over))
     if b_over:
+        # 点名先于 warning：只报一个数字的告警查不动 —— 一天里往往就 0~1 条，等它再冒出来时
+        # 产物里已经找不到那条了（10-03 实测：04:11 场 >168h 1 条，16:4x 现取 rss-data-6.js 已 0 命中）。
+        for _i, _n in enumerate(over_names, 1):
+            _r = "-" if _n["ref_age_h"] is None else "%.1f" % _n["ref_age_h"]
+            print("[留存] 超龄点名 %d/%d: %s｜源 %s｜出厂串 %s｜出厂龄 %.1fh｜判龄基准龄 %sh｜dfb=%s" % (
+                _i, b_over, _n["link"], _n["src"], _n["ship"], _n["ship_age_h"], _r, _n["dfb"]))
         # 不变量破了要出声。沉默的 0 和沉默的非 0 一样没人看见 —— 本仓库为这类"静默退化"
         # 付过两次代价（每日洞察连败数天、72h 存档断两天）。
         print("::warning title=RSS 留存超硬上限::出厂内容里有 %d 条龄期超过 %dh（7 天硬上限被绕过）"
