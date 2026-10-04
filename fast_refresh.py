@@ -64,9 +64,22 @@ def main():
     # 页面上的提醒就会在"有新星"那场静默消失（两边共用 build_index_html，所以两处都得传）。
     attention_html = fab.render_star_attention(
         fab.star_attention_items(repos, known, notes, desc_zh))
-    html = fab.build_index_html(out, fab.CATS, attention_html=attention_html)
-    with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8") as f:
-        f.write(html)
+    # 侧栏快照：小时场每整点重算的 trending / feed / AI 摘要。快车道生成的是**整页**，
+    # 拿不到这三块就会按"缺省渲染空态"把小时场那版覆盖掉（2026-10-04 18:01 线上实锤
+    # `const TRENDING = {};`），所以这里必须回填。
+    sidebar = _load_json(os.path.join(ROOT, fab.SIDEBAR_SNAPSHOT), None)
+    if sidebar:
+        html = fab.build_index_html(out, fab.CATS, trending=sidebar.get("trending"),
+                                    feed=sidebar.get("feed"),
+                                    ai_summary_html=sidebar.get("ai_summary_html") or "",
+                                    attention_html=attention_html)
+        with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+    else:
+        # 缺快照 = 这一族的缓存冷启动。此时宁可不发页面：新星照常入库，等下一个小时场
+        # 带完整侧栏发布。发空态版是"看起来更新了、其实排行榜被清空"，比晚 45 分钟更糟。
+        print("[fast] 无侧栏快照（缓存冷启动）⇒ 本场不发布首页，新星只入库；"
+              "等下一个小时场带完整排行榜上线")
 
     # 新星点评沉淀（classify_repo 对老星查表命中 note=""，只有新星带点评）
     for e in out:
@@ -76,7 +89,8 @@ def main():
     _atomic_write_json(KC_PATH, known)
     _atomic_write_json(NOTES_PATH, notes)
     _atomic_write_json(DESC_PATH, desc_zh)
-    print("[fast] wrote %d（index.html 已重生成，缓存已写回，待 CI 提交）" % len(new_repos))
+    print("[fast] wrote %d（%s，缓存已写回，待 CI 提交）" % (
+        len(new_repos), "index.html 已重生成" if sidebar else "index.html 未生成"))
     return 0
 
 

@@ -49,6 +49,19 @@ jobs:
       - name: Quality gate — syntax (blocking)
         run: python -m py_compile fast_refresh.py fetch_and_build.py
 
+      - name: Restore sidebar snapshot
+        # 必须在 Fast refresh 之前：快车道生成的是整页，拿不到小时场那份 trending/feed/AI 摘要
+        # 就会把首页覆盖成空榜（2026-10-04 18:01 线上实锤 `const TRENDING = {};`）。
+        # 完全键必然 miss（快车道不 save）⇒ 靠 restore-keys 前缀命中小时场最新那份；
+        # 真取不到时 fast_refresh 主动不写 index.html，宁可不发也不覆盖，新星仍入库等整点场。
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: sidebar_snapshot.json
+          key: starhub-sidebar-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            starhub-sidebar-${{ runner.os }}-
+
       - name: Fast refresh
         id: fast
         env:
@@ -98,7 +111,7 @@ jobs:
           # 干净跳过发布（线上保持上一版制品）。缺文件是信号不是缺陷——
           # 不许让 cp 当探测员（set -e 下它先炸，每 15 分钟刷一条吓人的红错）。
           if [ ! -s index.html ]; then
-            echo "::notice::[fast] 无新星，index.html 未重生成——本场跳过发布"
+            echo "::notice::[fast] index.html 未重生成（无新星，或有新星但缺侧栏快照）——本场跳过发布"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

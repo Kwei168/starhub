@@ -122,17 +122,45 @@ def test_orphan_names_are_html_escaped():
     assert "&quot;" in html or "&#34;" in html, "名字里的双引号必须实体化，否则能闭掉属性"
 
 
+def _call_blocks(src, name):
+    """取出 name( … ) 的完整调用（括号配平、跨行），跳过 def 签名。
+
+    为什么不用 `build_index_html\\([^)]*attention_html` 这种正则：调用里一旦出现
+    `sidebar.get("trending")` 这类带右括号的实参，`[^)]*` 就会提前断掉，把"传了参数"
+    误报成"没传"（2026-10-04 侧栏快照改动就把它打成假红，而假红的下一站是有人去放宽判据）。
+    """
+    out = []
+    for m in re.finditer(re.escape(name) + r"\(", src):
+        i = m.start()
+        if src[max(0, i - 5):i].rstrip().endswith("def"):
+            continue
+        depth = 0
+        for j in range(m.end() - 1, len(src)):
+            if src[j] == "(":
+                depth += 1
+            elif src[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    out.append(src[i:j + 1])
+                    break
+    return out
+
+
 def test_both_render_exits_inject_attention():
-    """主链与快车道共用 build_index_html ⇒ 两边都必须传 attention，缺一边就静默不一致。"""
+    """主链与快车道共用 build_index_html ⇒ 每一处调用都必须传 attention，缺一处就静默不一致。"""
     src = io.open(os.path.join(ROOT, "fetch_and_build.py"), encoding="utf-8").read()
     fast = io.open(os.path.join(ROOT, "fast_refresh.py"), encoding="utf-8").read()
     tpl = io.open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
     assert "__ATTENTION__" in tpl, "模板里要有 __ATTENTION__ 占位符"
-    assert re.search(r"build_index_html\([^)]*attention_html", src, re.S), \
-        "主链调用 build_index_html 没传 attention_html"
+    main_calls = _call_blocks(src, "build_index_html")
+    assert main_calls, "主链里找不到 build_index_html 的调用点"
+    assert all("attention_html=" in b for b in main_calls), \
+        "主链有调用没传 attention_html ⇒ 那一版页面会缺提醒条"
     # 注释里提一次不算传参：先剔掉 # 开头行再找调用点
     fast_code = "\n".join(l for l in fast.splitlines() if not l.strip().startswith("#"))
-    assert re.search(r"build_index_html\([^)]*attention_html", fast_code, re.S), \
+    fast_calls = _call_blocks(fast_code, "build_index_html")
+    assert fast_calls, "快车道里找不到 build_index_html 的调用点"
+    assert all("attention_html=" in b for b in fast_calls), \
         "快车道没传 attention_html ⇒ 有新星那场生成的页面会缺提醒条"
 
 

@@ -41,6 +41,12 @@ def env(tmp_path, monkeypatch):
     known = {"old/one": "coding", "old/two": "video"}
     (tmp_path / "known_categories.json").write_text(json.dumps(known), encoding="utf-8")
     (tmp_path / "descriptions_zh.json").write_text("{}", encoding="utf-8")
+    # 侧栏快照现在是快车道的**前置条件**（缺它就不发布首页，见 test_sidebar_snapshot_wiring.py），
+    # 所以这里给一份合法的：本文件继续测自己的主题（新星重生成整页 + 三缓存写回），
+    # 而不是被前置缺失牵着走——注意这是补条件，不是放松任何一条断言。
+    (tmp_path / "sidebar_snapshot.json").write_text(json.dumps({
+        "trending": {"rising": [{"full_name": "old/one", "stars": 5}], "total": [], "new": []},
+        "feed": [{"full_name": "someone/event"}], "ai_summary_html": ""}), encoding="utf-8")
     return tmp_path
 
 

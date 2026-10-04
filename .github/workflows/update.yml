@@ -395,6 +395,20 @@ jobs:
         run: |
           python tools/history_growth.py --cur HEAD --prev HEAD^1 --log "build_logs/$(TZ=Asia/Shanghai date +%F).jsonl"
 
+      - name: Save sidebar snapshot for the fast lane
+        # 快车道每 15 分钟重生成**整页**，必须拿这份回填 trending/feed/AI 摘要——缺了它
+        # fast_refresh 会主动不写 index.html（见 star-fast.yml 的 Restore sidebar snapshot）。
+        # 为什么是独立一族而不是加进 starhub-state 的 path 清单：改那份清单＝换族＝当场冷启动，
+        # translations.json 丢了要重译 ~8400 条、analysis_snapshot.json 丢了每场重跑 LLM 分析。
+        # 必须在 Trim 那步之前存：先存后修剪，这一族才稳定在 trim 里给 sidebar 定的那份。
+        # 键含 run_attempt：同 run 重跑时"键已存在→静默不保存"（rss 那步实测过两条都补齐才生效）。
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: sidebar_snapshot.json
+          key: starhub-sidebar-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Trim Actions cache keys (keep newest per family)
         # 实测 09-20：缓存 9.97 / 10 GB 已用满、79 个键 —— emb-cache 45 键 9.64GB 是元凶，
         # rss-history 34 键仅 0.33GB。键里带 run_id ⇒ 每场新增一键从不覆盖，而既有测试又要求
@@ -409,7 +423,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python tools/trim_actions_cache.py --repo "$GITHUB_REPOSITORY" \
-            --keep emb-cache=4 --keep rss-history=5 --keep starhub-state=3 --run-id "$GITHUB_RUN_ID"
+            --keep emb-cache=4 --keep rss-history=5 --keep starhub-state=3 \
+            --keep starhub-sidebar=1 --run-id "$GITHUB_RUN_ID"
 
       - name: Save embedding cache (before prune deletes .npy)
         # 无 continue-on-error 时这一步会红掉整个作业、连 Commit 与部署一起跳过；
