@@ -86,12 +86,19 @@ jobs:
       #    线上有就带回（RSS 页侧栏用），没有就跳过（RSS 页前端自己降级）。
       - name: Stage star page over live site
         id: stage
-        continue-on-error: true
         run: |
           mkdir -p _pages
+          # 无新星 = fast_refresh 零写入 = 工作区无 index.html：这是【正常路径】，
+          # 干净跳过发布（线上保持上一版制品）。缺文件是信号不是缺陷——
+          # 不许让 cp 当探测员（set -e 下它先炸，每 15 分钟刷一条吓人的红错）。
+          if [ ! -s index.html ]; then
+            echo "::notice::[fast] 无新星，index.html 未重生成——本场跳过发布"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           cp -f index.html _pages/
           if [ ! -s "_pages/index.html" ]; then
-            echo "::error::index.html 缺失（fast_refresh 未产出）——本场不发"
+            echo "::error::index.html 拷贝后缺失（工作区异常）——本场不发"
             exit 1
           fi
           # 带回线上现存的非 star 入口（重试 2 次区分网络抖动与真下架；404 跳过）。
@@ -109,10 +116,11 @@ jobs:
             [ -n "$ok" ] || echo "::warning::线上无 $f（下架或 CDN 未及）——跳过带回"
           done
           echo "Staged site size:"; du -sh _pages
+          echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload Pages artifact
         id: pages_upload
-        if: always() && steps.fast.outcome == 'success' && steps.stage.outcome == 'success'
+        if: steps.fast.outcome == 'success' && steps.stage.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: _pages

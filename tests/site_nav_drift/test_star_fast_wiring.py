@@ -52,13 +52,30 @@ def test_decoupling_no_retired_rss_chunks():
 
 
 def test_index_html_is_the_only_hard_requirement():
+    """无新星 = fast_refresh 零写入 = 工作区无 index.html——这是【正常路径】，
+    必须以 publish=false 干净跳过发布（线上保持上一版制品），而不是 cp 报错 +
+    continue-on-error 吞一场红字（2026-10-04 用户在 Actions 看到的每 15 分钟噪音）。"""
     yml = _wf_text()
     stage = yml.split("Stage star page over live site", 1)[1]
-    assert "index.html 缺失" in stage and "exit 1" in stage, "index.html 缺失必须硬失败"
+    # 缺 index.html 的路径：先存在性检查（不许 cp 先炸）、notice 语义、置 publish=false、exit 0
+    assert re.search(r"\[ ! -s index.html \]", stage), "必须先做存在性检查，不许让 cp 当探测员（set -e 下 cp 先炸）"
+    assert "::notice::" in stage and "publish=false" in stage, "无新星必须 notice + publish=false 干净跳过"
+    assert "continue-on-error: true" not in stage, "不再需要兜底吞错——缺文件走正常 false 路径，真缺陷应当场红"
     # 带回文件失败是 warning（下架容忍），不是 error
     assert re.search(r'::warning::线上无 \$f', stage), "带回失败必须走 warning（下架不拖死车道）"
     for f in ("ai-daily.html", "rss-aggregator.html", "daily-insight-history.html"):
         assert f in stage, "入口页带回清单缺 %s（下架语义覆盖不了它了）" % f
+
+
+def test_upload_depends_on_publish_flag():
+    """upload 只在 stage 真产出时跑（publish=true 门），deploy 依旧依赖 upload outcome——
+    双闸保住 §8.15「空制品绿发布抹平站点」的红线。"""
+    yml = _wf_text()
+    upload = yml.split("Upload Pages artifact", 1)[1].split("Deploy to GitHub Pages", 1)[0]
+    assert "steps.stage.outputs.publish == 'true'" in upload, "upload 必须被 publish 标志门住"
+    assert "if-no-files-found: error" in yml, "空制品防线不撤"
+    deploy = yml.split("Deploy to GitHub Pages", 1)[1].split("Mark the run red", 1)[0]
+    assert "steps.pages_upload.outcome == 'success'" in deploy, "deploy 必须依赖 upload outcome"
 
 
 def test_fast_refresh_called_with_token():
