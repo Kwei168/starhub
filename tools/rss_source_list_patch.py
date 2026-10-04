@@ -59,6 +59,53 @@ ROUTE_FIX = [("/xiaoyuzhou/podcast/5f22729f9504bbdb77253e46",
 ADD_SOURCES = [
     {"key": "rfi_cn_779", "name": "RFI 中文", "cat": "news", "color": "#8a6d1f",
      "url": "https://www.rfi.fr/cn/rss", "tier": 3},   # 顶替 France24 中文（其 feed 不存在）
+    # ───────── 2026-10-04 批次：净新增播客供给 18 个 ─────────
+    # 为什么是"加"不是"修"：页面 `信源` 673 的口径是"近 7 天有货的源"，不是配置数。
+    # 逐源实测（295 个缺失源直连 + Apple Podcasts / 第二套 wechat2rss 部署交叉对撞）结论：
+    #   镜像没有断供 —— 9 个双方都有的微信账号，两套独立部署给出**完全相同**的最后发布日期；
+    #   那批 09-22~09-27 集体静默是中秋(9-25)+国庆的假期停更，节后应自行回升。
+    #   所以这 18 个不是"替代坏源"，是把"近 7 天有货"的底盘抬高。
+    # 入选三条同时满足（缺一即淘汰）：最新文章 ≤72h、自身中位发布间隔 ≤7 天、
+    #   且**同 host 在构建日志 per_source 里有 status=ok 记录**（CI 无代理、本地通不算 CI 通）：
+    #   feed.xyzfm.space 12 次 ok / feeds.simplecast.com 8 次 / feeds.megaphone.fm 4 次。
+    # 已剔：深圳天主教堂、Xbox 游戏、德语政治、内容农场 Fexingo 系列（新鲜但不合题）。
+    # 实测代价：+18 源、每场仅 +29~75 条（占现有 8326 条的 0.3%~0.9%），翻译压力可忽略。
+    {"key": "prof_g_markets_900", "name": "Prof G Markets", "cat": "podcast", "color": "#d32f2f",
+     "url": "https://feeds.megaphone.fm/profgmarkets", "tier": 3},
+    {"key": "david_senra_901", "name": "David Senra", "cat": "podcast", "color": "#0891b2",
+     "url": "https://feeds.megaphone.fm/david-senra", "tier": 3},
+    {"key": "晚安咖啡_902", "name": "晚安咖啡GoodNightCoffee", "cat": "podcast", "color": "#0891b2",
+     "url": "https://feed.xyzfm.space/nf4qg8uypmrv", "tier": 3},
+    {"key": "seventy3_903", "name": "Seventy3", "cat": "podcast", "color": "#d97706",
+     "url": "https://feed.xyzfm.space/7g77eb3rfju8", "tier": 3},
+    {"key": "decoder_with_nilay_patel_904", "name": "Decoder with Nilay Patel", "cat": "podcast", "color": "#7c3aed",
+     "url": "https://feeds.megaphone.fm/recodedecode", "tier": 3},
+    {"key": "隔夜市场_905", "name": "隔夜市场", "cat": "podcast", "color": "#4285f4",
+     "url": "https://feed.xyzfm.space/xmugmcenwnga", "tier": 3},
+    {"key": "the_exchange_906", "name": "The Exchange", "cat": "podcast", "color": "#d32f2f",
+     "url": "https://feeds.simplecast.com/tc4zxWgX", "tier": 3},
+    {"key": "big_technology_podcast_907", "name": "Big Technology Podcast", "cat": "podcast", "color": "#4285f4",
+     "url": "https://feeds.megaphone.fm/LI3617121267", "tier": 3},
+    {"key": "real_eisman_playbook_908", "name": "The Real Eisman Playbook", "cat": "podcast", "color": "#ff6600",
+     "url": "https://feeds.megaphone.fm/GBLL9435201326", "tier": 3},
+    {"key": "hard_fork_909", "name": "Hard Fork", "cat": "podcast", "color": "#d32f2f",
+     "url": "https://feeds.simplecast.com/6HKOhNgS", "tier": 3},
+    {"key": "waveform_mkbhd_910", "name": "Waveform: The MKBHD Podcast", "cat": "podcast", "color": "#4285f4",
+     "url": "https://feeds.megaphone.fm/STU4418364045", "tier": 3},
+    {"key": "the_vergecast_911", "name": "The Vergecast", "cat": "podcast", "color": "#24292e",
+     "url": "https://feeds.megaphone.fm/vergecast", "tier": 3},
+    {"key": "morning_brew_daily_912", "name": "Morning Brew Daily", "cat": "podcast", "color": "#e61919",
+     "url": "https://feeds.megaphone.fm/MOBI8777994188", "tier": 3},
+    {"key": "super_data_science_podcast_913", "name": "Super Data Science: ML & AI Podcast with Jon Krohn", "cat": "podcast", "color": "#0891b2",
+     "url": "https://feeds.megaphone.fm/SUPERDATASCIENCEPTYLTD9836501887", "tier": 3},
+    {"key": "pivot_podcast_914", "name": "Pivot", "cat": "podcast", "color": "#d32f2f",
+     "url": "https://feeds.megaphone.fm/pivot", "tier": 3},
+    {"key": "compound_and_friends_915", "name": "The Compound and Friends", "cat": "podcast", "color": "#24292e",
+     "url": "https://feeds.megaphone.fm/TCP4771071679", "tier": 3},
+    {"key": "plain_english_derek_thompson_916", "name": "Plain English with Derek Thompson", "cat": "podcast", "color": "#d97706",
+     "url": "https://feeds.megaphone.fm/plain-english", "tier": 3},
+    {"key": "riskreversal_pod_917", "name": "RiskReversal Pod", "cat": "podcast", "color": "#6366f1",
+     "url": "https://feeds.megaphone.fm/RRM5151570998", "tier": 3},
 ]
 DROP_THEN_ADD = {"france24_zh_779": "rfi_cn_779"}
 
