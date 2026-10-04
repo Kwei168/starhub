@@ -89,8 +89,13 @@ def test_health_ages_are_last_success_not_last_run():
     assert "/actions/workflows/" in src, "必须走 workflow runs API"
     assert re.search(r"lastSuccessAgeMinutes\(\s*'update\.yml'\s*\)", src), "必须查小时场 run"
     assert re.search(r"lastSuccessAgeMinutes\(\s*'star-fast\.yml'\s*\)", src), "必须查快车道 run"
-    assert re.search(r"set\(\s*'status'\s*,\s*'success'\s*\)", src), \
-        "年龄口径必须是最近【成功】构建（失败场不算活）"
+    # 幻影读数复盘（2026-10-04 两次实锤，锚点都是 09-24T18:00Z=#1361）：
+    # 服务端 status=success 过滤视图会间歇性停在 9 天前 ⇒ 必须【不过滤】拉最近
+    # 30 场、客户端按 conclusion 挑最新 success——不信任服务端过滤索引。
+    assert not re.search(r"set\(\s*'status'\s*,\s*'success'\s*\)", src), \
+        "禁止服务端 status=success 过滤（幻影视图源头，两次实锤）"
+    assert re.search(r"per_page'\s*,\s*'30'", src), "必须拉最近 30 场（覆盖 ≥24h，保证页内有 success）"
+    assert re.search(r"conclusion\s*===?\s*'success'", src), "必须客户端按 conclusion 挑最新 success"
     assert "Authorization" in src, "runs 查询要带 token（匿名 60/h 会被探活自己烧穿）"
 
 

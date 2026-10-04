@@ -38,12 +38,13 @@ function ageMinutes(iso) {
   return Number.isFinite(ms) ? Math.max(0, Math.round(ms / 60000)) : null;
 }
 
-// 最近【成功】构建的年龄：status=success 过滤由 GitHub API 侧完成，
-// 失败/进行中的场不算"活"——否则一场连红会把健康读数冻结在红场之前。
+// 最近【成功】构建的年龄：不过滤地拉最近 30 场、客户端按 conclusion 挑最新 success。
+// ⚠ 幻影读数复盘（2026-10-04 两次实锤，锚点都是 09-24T18:00Z 的 #1361）：
+// 服务端 `status=success` 过滤视图会间歇性返回停在 9 天前的陈旧列表（未过滤视图
+// 始终正确）⇒ 不信任服务端过滤索引，客户端裁决。30 场覆盖 ≥24h，页内必有 success。
 async function lastSuccessAgeMinutes(workflow) {
   const u = new URL('https://api.github.com/repos/' + REPO + '/actions/workflows/' + workflow + '/runs');
-  u.searchParams.set('status', 'success');
-  u.searchParams.set('per_page', '1');
+  u.searchParams.set('per_page', '30');
   const headers = {
     'Accept': 'application/vnd.github+json',
     'User-Agent': 'starhub-refresh',
@@ -52,7 +53,17 @@ async function lastSuccessAgeMinutes(workflow) {
   const r = await fetch(u, { headers, signal: AbortSignal.timeout(GH_TIMEOUT) });
   if (!r.ok) return null;
   const j = await r.json();
-  return ageMinutes(j.workflow_runs && j.workflow_runs[0] && j.workflow_runs[0].created_at);
+  const runs = (j.workflow_runs || []);
+  let newest = null;
+  for (const run of runs) {
+    if (run.conclusion === 'success' && run.created_at && (!newest || run.created_at > newest)) {
+      newest = run.created_at;
+    }
+  }
+  if (!newest) {
+    console.log(JSON.stringify({ ts: new Date().toISOString(), type: 'health_no_success_in_page', workflow, got: runs.length }));
+  }
+  return ageMinutes(newest);
 }
 
 async function pagesProbeOk() {
