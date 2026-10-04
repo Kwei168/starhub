@@ -59,7 +59,7 @@ def main():
     print("[fast] 新星 %d 条：%s" % (len(new_repos), ", ".join(r["full_name"] for r in new_repos[:8])))
 
     cat_label = {c["key"]: c["label"] for c in fab.CATS}
-    out = fab.assemble_entries(repos, known, desc_zh, cat_label, token)
+    out = fab.assemble_entries(repos, known, desc_zh, cat_label, token, notes=notes)
     html = fab.build_index_html(out, fab.CATS)
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)

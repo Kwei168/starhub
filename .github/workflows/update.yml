@@ -249,6 +249,10 @@ jobs:
 
       - name: Fetch stars & build
         id: build
+        env:
+          # fetch_and_build.py:1217 消费（fetch_stars/assemble_entries/build_trending）；
+          # 缺失 = 小时场 stars 拉取全程匿名共享 60 req/h 配额，是间歇性拉星失败的隐性来源（T5）
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python fetch_and_build.py $MODE
 
       - name: Cleanup old build logs

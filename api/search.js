@@ -59,13 +59,13 @@ function rateLimited(ip) {
   return limited;
 }
 
-// 单词翻译：统一链（GTX→MyMemory→Agnes→Zen），词级缓存 1h。
+// 单词翻译：统一链（→en 方向：GTX→MyMemory，LLM 腿 prompt 硬编码译成中文故跳过），词级缓存 1h。
 // ⚠ 只缓存成功结果——失败（null）入缓存会把一次瞬时故障放大成 1 小时的
 // "translated:false"（部署后首轮撞 GTX 间歇 429 实测复现）。失败下次重试。
 async function translateTerm(term) {
   const cached = cacheGet(transCache, term, TTL_TRANS);
   if (cached !== undefined) return cached;
-  const r = await translateWithFallback(term);
+  const r = await translateWithFallback(term, { to: 'en' });
   const engine = r ? r.engine : 'no-result';
   const en = (r && r.zh) ? String(r.zh).trim() : null;
   if (en) {

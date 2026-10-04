@@ -140,6 +140,43 @@ def test_data_injection_tolerates_missing_new_fields():
     assert '"acme/demo"' in html
 
 
+# ──────────────────── 存量点评：assemble_entries 必须读 known_notes ────────────────────
+# 端到端验收（2026-10-04）实锤：T2 重分类写库的 289 条点评，构建侧从不读取——
+# classify_repo 查表命中恒 ("cat", "")，线上 DATA 的 note 全空。点评必须在组装层回填。
+
+def _raw_repo(fn="acme/x"):
+    owner, name = fn.split("/")
+    return {"full_name": fn, "name": name, "owner": owner, "description": "d",
+            "language": "Python", "stargazers_count": 5, "forks": 1, "topics": ["ai"],
+            "html_url": "https://github.com/%s" % fn, "pushed_at": "2026-09-01T00:00:00Z"}
+
+
+def test_assemble_entries_fills_note_from_notes_file_for_table_hits(monkeypatch):
+    """查表命中（存量仓主路径）note 必须从 known_notes 回填——T2 写库不读取 = 白写。"""
+    monkeypatch.setattr(fab, "classify_repo", lambda *a, **k: ("tools", ""))
+    got = fab.assemble_entries([_raw_repo("acme/x")], {}, {}, {}, None,
+                               notes={"acme/x": "存量点评"})
+    assert got[0]["note"] == "存量点评"
+
+
+def test_assemble_entries_prefers_fresh_llm_note_over_file(monkeypatch):
+    """LLM 新鲜点评优先：刚分类的新星带 note 时不被文件旧值覆盖。"""
+    monkeypatch.setattr(fab, "classify_repo", lambda *a, **k: ("tools", "新鲜点评"))
+    got = fab.assemble_entries([_raw_repo("acme/x")], {}, {}, {}, None,
+                               notes={"acme/x": "文件旧点评"})
+    assert got[0]["note"] == "新鲜点评"
+
+
+def test_assemble_entries_notes_none_or_missing_key_tolerated(monkeypatch):
+    """notes 缺参/键缺失不炸不虚填（旧调用方 source 兼容）。"""
+    monkeypatch.setattr(fab, "classify_repo", lambda *a, **k: ("tools", ""))
+    got = fab.assemble_entries([_raw_repo("acme/x")], {}, {}, {}, None)
+    assert got[0]["note"] == ""
+    got2 = fab.assemble_entries([_raw_repo("acme/y")], {}, {}, {}, None,
+                                notes={"acme/x": "别的仓的"})
+    assert got2[0]["note"] == ""
+
+
 # ──────────────────── 语义向量：量化与批量注入 ────────────────────
 
 def test_quantize_normalized_round_trip_direction():

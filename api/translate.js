@@ -112,8 +112,8 @@ async function translateOne(text, keys) {
 
 // Google GTX 免费端点（server-to-server；模式参考 api/search.js translateZh）。
 // 注意：Vercel DC 出口 IP 会被该端点频率限流（线上实测 gtx 429），故 bulk 侧以其尽力而为 + Agnes 限量兜底
-async function translateGtx(text) {
-  const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + encodeURIComponent(String(text).slice(0, 1200));
+async function translateGtx(text, to = 'zh-CN') {
+  const u = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=' + to + '&dt=t&q=' + encodeURIComponent(String(text).slice(0, 1200));
   const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, signal: AbortSignal.timeout(6000) });
   if (!r.ok) throw new Error(`gtx ${r.status}`);
   const j = await r.json();
@@ -123,9 +123,9 @@ async function translateGtx(text) {
 }
 
 // GTX 失败退避 600ms 重试一次（共享出口 IP 偶发频率限流）
-async function translateGtxRetry(text) {
-  try { return await translateGtx(text); }
-  catch (e) { await new Promise((r) => setTimeout(r, 600)); return await translateGtx(text); }
+async function translateGtxRetry(text, to) {
+  try { return await translateGtx(text, to); }
+  catch (e) { await new Promise((r) => setTimeout(r, 600)); return await translateGtx(text, to); }
 }
 
 // ── OpenCode Zen 免费模型轮询 ──
@@ -189,14 +189,18 @@ function detectLang(text) {
   return 'en';
 }
 
-async function translateMyMemory(text) {
+async function translateMyMemory(text, to = 'zh-CN') {
   const src = detectLang(text);
-  const u = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(String(text).slice(0, 500))}&langpair=${src}|zh-CN`;
+  const u = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(String(text).slice(0, 500))}&langpair=${src}|${to}`;
   const r = await fetch(u, { signal: AbortSignal.timeout(6000) });
   if (!r.ok) throw new Error(`mymemory ${r.status}`);
   const j = await r.json();
+  // responseStatus 非 200 时 translatedText 会是错误文案（同语言对返回
+  // "PLEASE SELECT TWO DISTINCT LANGUAGES" 实测），必须横幅黑名单一起拦——
+  // 否则垃圾串被当成功译文缓存，组进 GitHub 查询全是无关仓库（2026-10-04 实锤）
+  if (j.responseStatus !== undefined && Number(j.responseStatus) !== 200) throw new Error('mymemory status ' + j.responseStatus);
   const out = (j.responseData && j.responseData.translatedText || '').trim();
-  if (!out || out.startsWith('MYMEMORY')) throw new Error('mymemory empty/bad');
+  if (!out || /^(MYMEMORY|PLEASE SELECT|QUERY LENGTH LIMIT|INVALID (SOURCE|TARGET|LANGUAGE))/i.test(out)) throw new Error('mymemory empty/bad');
   return out;
 }
 
@@ -213,38 +217,46 @@ function recordTransFailure() {
 
 // ── 统一降级链：GTX → MyMemory → Agnes(多key) → Zen(3模型) ──
 // 快优先：GTX/MyMemory 通常 1-3s 完成，LLM 需 10-25s 仅作兜底
-async function translateWithFallback(text) {
+// to：目标方向（默认 zh-CN，既有 RSS/翻译按钮行为零变化）。search.js 传 to:'en'
+// 做 中→英 查询词翻译——Agnes/Zen 两腿的 prompt 硬编码"译成简体中文"，非 zh
+// 方向必须跳过（否则中文输入进 →中文 的链 = 同语言对，MyMemory 直接回错误横幅）。
+async function translateWithFallback(text, { to = 'zh-CN' } = {}) {
   if (isTransBlocked()) return { zh: '', engine: 'blocked' };
+  // 缓存键带方向；zh-CN 保持无后缀的旧键形（handler 的 getCache 按裸文本查）
+  const ck = to === 'zh-CN' ? text.slice(0, 200) : text.slice(0, 200) + '|' + to;
   // 1) Google GTX（快，1-3s，免费无限制）
   try {
-    const zh = await translateGtxRetry(text);
-    setCache(text.slice(0, 200), zh);
+    const zh = await translateGtxRetry(text, to);
+    setCache(ck, zh);
     recordTransSuccess();
     return { zh, engine: 'gtx' };
   } catch (e) { /* 降级 */ }
   // 2) MyMemory（快，1-3s，免费兜底）
   try {
-    const zh = await translateMyMemory(text);
-    setCache(text.slice(0, 200), zh);
+    const zh = await translateMyMemory(text, to);
+    setCache(ck, zh);
     recordTransSuccess();
     return { zh, engine: 'mymemory' };
   } catch (e) { /* 降级 */ }
-  // 3) Agnes（LLM，10-15s，有配额限制）
-  if (AGNES_KEYS.length) {
+  // 3)+4) LLM 腿只在 zh 方向可用（prompt 是"翻译成简体中文"）
+  if (to === 'zh-CN') {
+    // 3) Agnes（LLM，10-15s，有配额限制）
+    if (AGNES_KEYS.length) {
+      try {
+        const zh = await translateOne(text, AGNES_KEYS);
+        setCache(ck, zh);
+        recordTransSuccess();
+        return { zh, engine: 'agnes' };
+      } catch (e) { /* 降级 */ }
+    }
+    // 4) OpenCode Zen（LLM，15-25s，免费模型可能被封）
     try {
-      const zh = await translateOne(text, AGNES_KEYS);
-      setCache(text.slice(0, 200), zh);
+      const zh = await translateZen(text);
+      setCache(ck, zh);
       recordTransSuccess();
-      return { zh, engine: 'agnes' };
-    } catch (e) { /* 降级 */ }
+      return { zh, engine: 'zen' };
+    } catch (e) { /* 全败 */ }
   }
-  // 4) OpenCode Zen（LLM，15-25s，免费模型可能被封）
-  try {
-    const zh = await translateZen(text);
-    setCache(text.slice(0, 200), zh);
-    recordTransSuccess();
-    return { zh, engine: 'zen' };
-  } catch (e) { /* 全败 */ }
   recordTransFailure();
   return { zh: '', engine: 'fail' };
 }

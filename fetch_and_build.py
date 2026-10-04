@@ -1131,19 +1131,24 @@ def build_index_html(repos, cats, trending=None, feed=None, updated=None, ai_sum
             .replace("__AI_SUMMARY__", ai_summary_html or ""))
 
 
-def assemble_entries(repos, known, desc_zh, cat_label, token):
+def assemble_entries(repos, known, desc_zh, cat_label, token, notes=None):
     """把原始 star 响应组装成 DATA 条目数组（main 与快车道 fast_refresh 共用的唯一组装出口）。
 
     行为与抽取前逐字一致：classify_repo 分类（查表不烧 LLM）→ 简介回退链
     （缓存 → 描述 → FALLBACK_DESC → README 摘要）→ 空白归一 → 英文翻译并持久化
     → health/stale → 注入 note/health/stale/starred_at。known/desc_zh 原地更新
-    （调用方负责写回持久化）。"""
+    （调用方负责写回持久化）。
+    notes = known_notes.json 的存量点评表：查表命中（存量仓主路径）时 classify_repo
+    恒返回 note=""，不回填它 T2 写库的 289 条点评就永远不会上线（2026-10-04 端到端
+    验收实锤）。LLM 新鲜点评优先，文件值只补空。"""
     out = []
     for r in repos:
         fn = r.get("full_name")
         if not fn:
             continue
         cat, note = classify_repo(fn, r.get("description"), r.get("language"), r.get("topics"), known)
+        if not note:
+            note = (notes or {}).get(fn) or ""
         known[fn] = cat
         desc = (desc_zh.get(fn) or r.get("description") or FALLBACK_DESC.get(fn, "")).strip()
         # 无简介项目：从 README 提取一句简介，结果持久化到 desc_zh 避免重复抓取
@@ -1214,6 +1219,12 @@ def main(mode="full"):
     except Exception:  # noqa: BLE001
         pass
 
+    notes = {}
+    try:
+        notes = json.load(open("known_notes.json", encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        pass
+
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     repos = fetch_stars(token)
     stars_ok = repos is not None
@@ -1222,7 +1233,7 @@ def main(mode="full"):
               "其余栏目照常产出；这句 error 是给 CI 看的，不影响本场发布")
 
     cat_label = {c["key"]: c["label"] for c in CATS}
-    out = assemble_entries(repos or [], known, desc_zh, cat_label, token)
+    out = assemble_entries(repos or [], known, desc_zh, cat_label, token, notes=notes)
 
     if stars_ok:
         trending = build_trending(token, desc_zh)
