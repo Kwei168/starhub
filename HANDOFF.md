@@ -1430,6 +1430,57 @@ GitHub 上不存在 `guiyingyi2021` 这个账号（`gh api users/guiyingyi2021` 
 本轮我在没有这张对照表的情况下连着改了三层（timeout / `--no-wait` / 缓存门），
 每一层都让现象更难看清，最后那层还把告警捂住了。
 
+### 8.22 bot-marker 守卫的生产确证 + 两条新发现的判断（2026-10-04 08:1x BJT，run 1610 / 1621）
+
+**① 守卫在真实构建里两种分支各走过 ≥1 次**（13 场逐场步级读数，1610–1622 全 `success`）：
+
+| run | created(UTC) | head | Detect | 守卫 | Deploy to Vercel | 末步 |
+|---|---|---|---|---|---|---|
+| 1610 | 10-03 13:26 | `bcc68d19` | success | **success（补了）** | **success** | skipped |
+| 1611–1620 | 14:00–22:00 | 五个不同 head | success | skipped | skipped | skipped |
+| 1621 | 10-03 23:00 | `32e30a73` | success | **success（补了）** | **success** | skipped |
+| 1622 | 10-03 23:27 | `ca76aa37` | success | skipped | skipped | skipped |
+
+1610 的日志原文（这条就是 §8.21 那张"补 bot 提交"方案的验收证据）：
+```
+13:42:41 ##[warning]HEAD 作者是 Kwei168@users.noreply.github.com，
+         Vercel 会按「非团队成员」拒绝这次部署 ⇒ 补一个 bot 空提交
+13:42:42 Vercel deploy attempt 1/5...
+13:42:57 Deploying team_iovvEy0us9KkCNkuMRLQrIeA/starhub-refresh
+13:42:59 ▲ Production  https://starhub-refresh-kejanbs5y-…vercel.app
+```
+**没有** `Error: Your deployment failed`（此前是 5 次全拒）。1621 是第二次独立确证：那期间
+缓存键从 `vercel-deployed-4255f0c7…` 变成 `d80e8b4c…`（有人改了那四类文件之一）⇒ 守卫再次自动
+补上 ⇒ 部署再次成功。⇒ **"以后真改 API 也能上得去"不再是推测。**
+⚠ 更正一处并发记录：另一会话的笔记把"首个成功样本"记成 23:00Z 那场，实际**首个是 1610（13:26Z）**，
+且别名切换有内容级证据（见下 ③），不需要 token 也能判。
+
+**② Vercel 那条 `ESM→CommonJS` 警告：判断是"不要修"**。现取模块语法统计：
+`api/` 8 个文件里 **7 个用 ESM `import/export`**、`lib/` 3 个全是 CommonJS，
+而 **`api/rss.js` 同一文件里混用 `import` 与 `require('../lib/…')`** ⇒ 只有按 CommonJS 解释才跑得通。
+`package.json` 在 Vercel 域现取 **404**（#33 那批的验收目标，符合设计），所以 Vercel 读不到
+`"type": "module"`、自行推断成 CJS——**恰好是让 rss.js 能跑的那个方向**：若把 package.json 放回部署包
+并声明 ESM，反而会把它改崩。现取 `/api/rss`、`/api/news` 均 200 ⇒ 这条警告目前是噪音。
+**但它指出一个真实隐患：函数的模块系统由 Vercel 推断决定，不由我们决定**（Node 24.x 下更偏 ESM，
+默认一变 rss.js 就崩）。最小防法是把 `api/rss.js` 的混用改成单一风格（1 个文件，本地 node 可验），等点单。
+
+**③ 判"部署有没有落地"的字段口径（我自己刚踩的）**：要 grep **带空格的北京时间构建戳**
+（`2026-10-04 07:09`），**不是带 `T` 的 ISO 串**——后者在 `index.html` 里抓到的是 RSS 条目的
+`pub_date`，我因此差点把一次成功部署误判成"没生效"。现取两域对照：
+Vercel 域 `rss-aggregator.html` = `2026-10-04 07:09`、Pages 域同一文件 = `2026-10-04 07:35`
+⇒ **Vercel 落后 Pages 一场**，这是设计使然（1622 那场键命中 ⇒ 不重部署，Vercel 停在 1621 的包），
+不是缺陷；但要知道：**从 Vercel 域读页面会看到旧一小时的内容**，页面只应以 Pages 为准。
+
+**④ 与另一条工作线并发（同一工作目录）**：13:24:58 另一会话推了 star 分类引擎那批
+（`bcc68d19`），1621/1623 的 head 也是他们的提交。核对结论：**没有互相吞**——
+逐个 blob 取回远端 main 上 10 个文件、25 个特征标记（守卫步、显式 save、`over_names`、
+`COMMIT_IDENTITY`、`prod_gate`、首页兜底、§8.20/§8.21、5 个判据文件）= **丢失 0 个**；
+`compare/856f33c517...bcc68d19b6` = `ahead_by=1 / behind_by=0` ⇒ 他们基于我的版本推。
+防住这件事的是推送器两条既有机制：只推**点名路径**，以及"本地落后远端就不推"
+（推 #36 时它当场报过 `fetch_and_build.py 本地干净但落后远端`）。
+⚠ 顺带解释一个我此前没查明的读数：A3 目录计数 45→94 与我的改动无关，
+是他们那批带进 `test_star_classify`(17) + `test_star_enrich`(24) 两个判据文件。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
