@@ -100,6 +100,10 @@ def test_sidebar_snapshot_transition_is_gone():
         txt = _code_only(_t(path))
         assert "sidebar_snapshot" not in txt, "%s 里还留着 sidebar_snapshot（过渡态没拆干净）" % name
         assert "starhub-sidebar" not in txt, "%s 里还留着 starhub-sidebar 缓存族" % name
+        # 中文名也要钉：前两条只搜英文字面，结果 fast_refresh 拆掉之后 star-fast.yml 的
+        # ::notice:: 还在写"或有新星但缺侧栏快照"，判据全绿而日志在讲一个已经不存在的分支
+        # ⇒ 读日志的人（包括下一轮的 agent）会以为"有新星也可能不发页面"。
+        assert "侧栏快照" not in txt, "%s 的可见内容还写着已删掉的『侧栏快照』分支" % name
     assert not os.path.exists(os.path.join(ROOT, "tests", "site_nav_drift",
                                            "test_sidebar_snapshot_wiring.py")), \
         "旧过渡态判据还在 A3 里，会跟着已删的机制一起变成噪音"

@@ -108,7 +108,7 @@ jobs:
           # 干净跳过发布（线上保持上一版制品）。缺文件是信号不是缺陷——
           # 不许让 cp 当探测员（set -e 下它先炸，每 15 分钟刷一条吓人的红错）。
           if [ ! -s index.html ]; then
-            echo "::notice::[fast] index.html 未重生成（无新星，或有新星但缺侧栏快照）——本场跳过发布"
+            echo "::notice::[fast] index.html 未重生成（本场无新星）——跳过发布"
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
