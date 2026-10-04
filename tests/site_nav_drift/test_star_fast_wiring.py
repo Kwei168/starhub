@@ -99,3 +99,21 @@ def test_refresh_js_star_mode_dispatch():
     assert re.search(r"''\s*:\s*'update\.yml'", src)
     assert "workflows/' + workflow" in src, "dispatch URL 必须用映射出的 workflow 名"
     assert "未知 mode" in src, "未知 mode 必须 400 拒绝"
+
+
+def test_commit_step_adds_only_tracked_state_files():
+    """descriptions_zh.json 已进 starhub-state 缓存家族（.gitignore + 出 git 树）——
+    star-fast 的 git add 还按旧"三件套"清单 ⇒ set -e 下当场红，且新星场的分类结果
+    提交不出去 ⇒ 每 15 分钟循环炸（下一场重新检测同一新星再炸，白烧 LLM）。
+    2026-10-04 03:0x 实锤。钉：add 清单只许仍被跟踪的两个状态文件，
+    且任何 .gitignore 排除的名字不得出现（泛化守卫，防下一批摘名再犯）。"""
+    yml = _wf_text()
+    ign = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read()
+    commit = yml.split("Commit star state if changed", 1)[1].split("- name: Stage star page", 1)[0]
+    all_added = " ".join(re.findall(r"git add (.+)", commit))
+    assert "known_categories.json" in all_added and "known_notes.json" in all_added, \
+        "两个仍被跟踪的状态文件必须在 add 清单"
+    assert "descriptions_zh.json" not in all_added, "descriptions_zh.json 已出 git 树，add 它必红"
+    ignored = {l.strip() for l in ign.splitlines() if l.strip() and not l.strip().startswith("#")}
+    for path in re.findall(r"[\w./-]+\.\w+", all_added):
+        assert path not in ignored, "%s 在 .gitignore 里，不得出现在 star-fast 的 add 清单" % path

@@ -63,10 +63,12 @@ jobs:
           if grep -q "no change, skip write" fast.log; then
             echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # star 功能的私有状态，只按具体路径提交（手册硬规：禁 add -A / add .）
-          git add known_categories.json known_notes.json descriptions_zh.json
+          # star 功能的私有状态，只按具体路径提交（手册硬规：禁 add -A / add .）。
+          # descriptions_zh.json 已进 starhub-state 缓存家族（.gitignore + 出树）——
+          # add 它必被拒，新星场的分类结果会提交不出去（03:0x 实锤，15 分钟循环炸）
+          git add known_categories.json known_notes.json
           git commit -m "chore: fast refresh stars $(TZ=Asia/Shanghai date +%F' '%H:%M)" \
-            -- known_categories.json known_notes.json descriptions_zh.json || {
+            -- known_categories.json known_notes.json || {
             echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
           if ! git push; then
             # 小时场 bot 并发提交 → merge 远端重试一次；再失败放弃提交（下场重新 diff 补判，
