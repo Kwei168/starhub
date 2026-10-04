@@ -1700,6 +1700,56 @@ depth=10  rc=0 远端拿到本场提交=True  报了放弃=False  unrelated=Fals
 index.html，代价是下一场重新 diff 出同一批新星、重烧一次 LLM 分类（数据不丢，成本重复）。
 要不要改成"放弃时 changed=false"是另一个决定，没在本次范围内擅动。
 
+### 8.27 快车道把首页侧栏覆盖成空态：根因是单体页面，本轮的快照只是过渡态（2026-10-04 18:4x–19:3x BJT，推送 `cb78a41eb`，run 1638 / 快车道 45 验收）
+
+**症状**（用户截图）：star 页右侧「每日 AI 排行榜」显示"首次运行正在建立基线"，涨星榜空。
+现网读数：`const TRENDING = {};`、`let FEED = [];`，而 17:00 小时场日志是 `[AI摘要] enabled, rising=20`
+⇒ 数据本来有，是被覆盖没的。
+
+**根因不是快车车道写错了什么**：`index.html` 是**单体文件**，`const DATA`（star 列表）/`const CATS`/
+`const TRENDING`/`let FEED` 四块全部构建期内联，而这四块的更新节奏与数据源完全不同
+（star 列表 15 分钟、排行榜与关注动态每小时、AI 动态那栏已是前端直连）。
+`fast_refresh.py` 只拥有 star 列表，却被要求重建整页 ⇒ 拿不到另三块时 `build_index_html` 按
+"缺省渲染空态"处理 ⇒ **每有一次带新星的快车道发布，就把小时场那版覆盖成空榜**，直到下一个整点自愈。
+它一直存在，只是快车道今天才第一次真正发布（§8.26 的无新星崩溃路径修好之后）——**我修 A 把 B 照出来了**。
+
+**本轮做的是过渡态**（用户裁定：先保留补丁，下一轮做注入化）：小时场在成功分支写
+`sidebar_snapshot.json`（`{trending, feed, ai_summary_html}`），走**独立缓存族 `starhub-sidebar`**；
+快车道在 Fast refresh 之前 restore 并回填。两个"不能走的路"已查实并写进注释：
+· 不能加进 `starhub-state` 的 path 清单——改那份清单＝换族＝当场冷启动，
+  `translations.json` 丢了要重译 ~8400 条、`analysis_snapshot.json` 丢了每场重跑 LLM 分析；
+· 不能复用 `trending_snapshot.json`——它是 `{全名: 今日星数}` 的**基线**，不是榜单结果。
+键含 run_id + `trim --keep starhub-sidebar=1`：GitHub 的 `cache/save` 对已存在键是**跳过不是覆盖**，
+所以"新覆盖旧"只能靠键随场变化 + 修剪保留一份。
+**缺快照时的语义**：`fast_refresh` 主动不写 index.html ⇒ Stage 现成的 `publish=false` 干净跳过
+（不新增判断分支），新星仍入三张表；发空态版比晚 15 分钟更糟。Stage 的 notice 文案同步改中性，
+否则缺快照会被日志误报成"无新星"。
+
+**判据 7 条**（A3 `tests/site_nav_drift/test_sidebar_snapshot_wiring.py`）+ 变异 3 项各被靶挡住
+（trim 改 3、删 restore-keys、快车道不传参数）。⚠ 其中"删 restore-keys"这一项**是变异抓出来的判据缺口**：
+第一版判据只钉了"restore 步存在 + 位置在前"，删掉前缀命中后快车道会永远取不到快照、
+永远不发布首页，而 `continue-on-error` 让这事全程静默——补了 `restore-keys` 断言才拦住。
+另两条回归也都是我自己的判据问题：`test_fast_refresh` 的 env fixture 补一份合法快照
+（补前置条件，不是放宽断言）；上一批那条 A2 blocking 用的正则 `build_index_html\([^)]*attention_html`
+被 `sidebar.get("trending")` 里的右括号打断，把"传了参数"误报成"没传"，换成括号配平提取调用块。
+
+**验收读数**：A3 151 passed、A2 438 passed、0 failed；8 个文件远端 blob 与本地逐一相同，
+推送器构建后复查"内容不同=0"（并发有另一个 agent 同时在推，`force:False` 的 PATCH 保证非快进必拒）。
+线上 19:06 版 `TRENDING` 与 `FEED` 均非空、涨星榜 28 个条目回来；`starhub-sidebar` 族键数 **1**
+（`starhub-sidebar-Linux-37197240787-1`，6342 B）；快车道 45 日志 `Cache hit for restore-key` +
+`Cache restored successfully` ⇒ **跨 workflow 前缀命中成立**。
+⚠ 一条时序常识：快车道 44（19:15:3x）报 `Cache not found` 不是故障——那份快照 19:19:59 才被
+小时场写出，它跑在数据前面。别把"第一场必然 miss"当成链路坏了。
+**还缺的样本**：带新星的快车道那一场是否回填成功（restore 已命中、回填由本地实跑判据支撑，
+但线上那一版页面还没产出过）。
+
+**下一轮的正解（已立项，未实施）**：把 TRENDING/FEED 改成**运行时注入**——每个区块各自一个数据出口、
+页面分别取，这样"只拥有一块"的生成器永远碰不到别的块。做完要**整块拆除本轮过渡态**：
+`sidebar_snapshot.json`、`starhub-sidebar` 族（save 步 + trim 那条 + restore 步）、
+`sidebar_payload` 与快车道回填分支、随之失效的判据。已知代价：侧栏首屏多 1–2 个请求（要骨架占位，
+否则观感更空）、首页第一次走 Pages 域取 Vercel 数据的跨域路径（RSS 页已有先例）。
+项目里 `api/` 已有 9 个函数，这不是新机制，是把已有做法补到落后的两栏上。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
