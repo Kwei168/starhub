@@ -1656,6 +1656,50 @@ A3 141 passed、gate B success、整场 success 且 `Deploy to GitHub Pages = su
 
 参见 §8.23（存量点评回填）、§8.24（白屏与 `test_template_js_syntax`）。
 
+### 8.26 快车道"撞车重试"从来不具备成功可能：浅 fetch 让 merge 报 unrelated histories（2026-10-04 16:3x–16:5x BJT，推送 `2d05fa7df`，run 32 已过）
+
+**这是补判据补出来的，不是先修再写测试。** `star-fast.yml` 的 Commit 步一直写着"小时场 bot 并发
+提交 → merge 远端重试一次"，看起来有防护，实际那句 `git fetch origin main --depth=1` 在浅检出
+（actions/checkout 默认 depth=1）的仓库上会把远端 tip 变成 **grafted** 历史，于是紧随的
+`git merge origin/main` 报 `fatal: refusing to merge unrelated histories`，被下一行 `|| true` 吞掉，
+二次 `git push` 照旧 non-fast-forward ⇒ **只要真撞车，必然落到"放弃提交"分支**。生产至今没有一次
+真实撞车样本（两场快车道 push 都一次成功），所以这条路径坏了也全程静默。
+
+按 fetch 深度实跑对照（本地裸仓，不碰网络）：
+```
+depth=1   rc=0 远端拿到本场提交=False 报了放弃=True   unrelated=True
+depth=2   rc=0 远端拿到本场提交=True  报了放弃=False  unrelated=False
+depth=10  rc=0 远端拿到本场提交=True  报了放弃=False  unrelated=False
+```
+改成 `--depth=10`（留并发余量），并把这组数据写进 yml 注释——**别改回 1，那不是性能参数**。
+
+**三条行为判据**（A3 `tests/site_nav_drift/test_star_fast_wiring.py`，做法沿用
+`test_pages_vercel_ordering.py::test_guard_shell_rewrites_head_to_bot_and_pushes`：本地裸仓当远端、
+自带 git 身份、`bash -e` 复现 CI、clone 空裸仓后要把裸仓 `symbolic-ref HEAD refs/heads/main`，
+否则 clone 出来是空工作树、`git add` 报 pathspec 找不到文件——我第一次就栽在这儿）：
+① 不冲突撞车 ⇒ 重试必须真把本场提交送进远端、远端表含新星、不许报警；
+② 同一个 `known_categories.json` 冲突 ⇒ 整步零退出 + 留"提交被拒"可读警告 + 远端不被污染
+（防每 15 分钟连片红）；③ 无人抢推 ⇒ 一次 push 走完，不许走重试、**不许多出 merge 提交**
+（反向那半，防"永远重试"把历史膨胀带回）。
+电池 `tools/mut_push_retry.py` 6 个变异各被靶判据挡住 + 未变异对照组全绿；判据靠
+`STAR_FAST_YML` 注入点读副本，真实文件不动。
+⚠ 电池第一版把"只给 push 加 `--force`"当缺陷——merge 已成功时 force 与普通 push 等价，
+判据**正确地放行**了它；有破坏力的是"跳过 merge 直接 force 覆盖远端"，换成那个形态才拦住。
+
+**读数**：本地 A3 141→144（+3 即本批）、A2 415 passed 未变；远端三文件 blob 与本地一致；
+快车道 run 32（head `2d05fa7df`）completed success ⇒ 新 yml 已在生产执行过一场。
+
+**顺带发现一处读数的坑（未动，属 `tools/prod_verify.py` 那条线）**：`read_public_internal()` 在
+"探测读不到"时会 `append("(N 条读不到、未验证…)")`，于是 `len()` 变 1，verdict 文案就打成
+"Vercel 域仍公开 **1** 个内部项"。我按它列的名字重探三条（两个 `daily-deep-*.json` 与
+`failed-run-364-final.png`）**全是 404** ⇒ 实际没有项仍开着，那个"1"是占位说明被当成了计数。
+"读不到 ≠ 已关"这个原则是对的（防假绿），但**计数方式会让人误读成真有一个文件暴露**——
+要改的话应该把"未验证"单独成一句、不要塞进暴露列表里。我没动它。
+
+**放弃分支的语义没改**：两次 push 都失败时仍写 `changed=true` ⇒ Pages 会发布一个状态表未入库的
+index.html，代价是下一场重新 diff 出同一批新星、重烧一次 LLM 分类（数据不丢，成本重复）。
+要不要改成"放弃时 changed=false"是另一个决定，没在本次范围内擅动。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
