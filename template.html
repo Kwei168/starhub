@@ -1272,6 +1272,7 @@ function filterData(){
         .sort((a,b)=>b.sim-a.sim)
         .slice(0,5)
         .map(x=>Object.assign({}, x.d, {_sem:true, _score:undefined}));
+      }
     }
   }
   const faved = list.filter(d=>favs.has(d.full_name));
