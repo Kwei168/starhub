@@ -1612,9 +1612,10 @@ prompt；然后对边界簇（FDE + 下次发现的）跑一次定向 reclassify
   `opensquilla/opensquilla`→`TokenRhythm/opensquilla`(1231170332)、`ourongxing/newsnow`→`newsnext/newsnow`(861790708)、
   `santifer/career-ops`→`career-ops-hq/career-ops`(1201476594)。**改名可能只换 owner、只换仓库名、或两个都换**，
   所以"按末段名匹配"会漏判——这条正是用户提醒我的那件事。
-- **2 条旧路径 404**（不是改名：GitHub 对改名保留旧路径 301）：`Sliverkiss/workbuddy2api`、
-  `Vincentwei1021/video-shotcraft` ⇒ 删除或转私有，只有人眼能定。
-- **1 条 `tonhowtf/omniget` 未定案**：匿名限额（60/h）被我这轮查询烧穿，没拿到 id。
+- **3 条旧路径 404**（不是改名：GitHub 对改名保留旧路径 301）：`Sliverkiss/workbuddy2api`、
+  `Vincentwei1021/video-shotcraft`、`tonhowtf/omniget`。第三条起初因匿名限额（60/h 被我这轮烧穿）
+  没定案，后用 **gh 认证通道**复核同样是 404 ⇒ 它不是换名。**教训：拿不到证据时先说"未定案"，
+  别顺着对方的假设归进"改名"那一类。**
 
 **落地：首页顶部提醒块**（`fetch_and_build.py`，run 1631 生产验收）
 - 两个纯函数：`star_attention_items`（表键集 − 当前收藏 full_name 集，每条带 `kind`/`hint`，
@@ -1642,9 +1643,16 @@ A3 141 passed、gate B success、整场 success 且 `Deploy to GitHub Pages = su
 - **不自动定性**：CI 不逐场探测 301/404（那要再存一份结论=新造状态），改为每条挂 GitHub 旧名链接让人一眼定。
 - **快车道的线上样本还缺**：注入由 A2 判据钉住，但快车道只在有新星时重生成 index.html，
   今天 12:00 之后没有新星 ⇒ 那一版带提醒块的页面还没真实产出过（下一个有新星的场补验）。
-- **11 个孤儿名未清理**：`known_*` 三张表都以 `full_name` 为键，改名后新名下会重抓中文简介
-  （`RealReplicaBench` 那条译文就跟着旧名失效了）；若旧名将来被他人占用重建会误命中旧分类。
-  删表项属于动用户内容，等点单。
+- **11 个旧名已按用户裁定清掉（同日 15:0x BJT，推送 `e2b31a6b9`，run 1633 验收）**：
+  `known_categories.json` **304→293**（与现役收藏对齐）、`known_notes.json` 命中 0 个（未变、故未推）、
+  `descriptions_zh.json` 本地删 8 个死键但它已退出 git、由 starhub-state 缓存供给 ⇒ CI 侧等缓存轮转，
+  那些键永不命中，只是占几 KB。**清理脚本的校验先把我的一个 bug 挡住了**：断言写成"删完再数命中"
+  恒为 0 ⇒ 必然报"条数对不上"，表没被写坏（教训：校验式要在动作前取基准，别在动作后数同一批）。
+  推前三条不变量实测：表仍是 `dict[str,str]`、**现役 293 个名字全部仍在表里**（少一个下一场就会被当
+  新星重分类烧 LLM）、条数恰减 11。线上读数：构建戳 15:06、`data-attention` 节点 **0**（无待办即零痕迹）、
+  远端表 293 且无旧名回潮。
+  ⚠ 一处值得知道的副作用：改名后新名的分类是 CI 重新判的，与旧名可能不同
+  （`ourongxing/newsnow` 旧判 agent，`newsnext/newsnow` 现判 info）⇒ 提醒块当初报出来的价值之一就是这个。
 
 参见 §8.23（存量点评回填）、§8.24（白屏与 `test_template_js_syntax`）。
 
