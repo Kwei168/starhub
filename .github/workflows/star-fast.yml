@@ -73,7 +73,11 @@ jobs:
           if ! git push; then
             # 小时场 bot 并发提交 → merge 远端重试一次；再失败放弃提交（下场重新 diff 补判，
             # 数据不丢）。放弃优于阻塞发布。
-            git fetch origin main --depth=1 || true
+            # ⚠ fetch 的深度不是可有可无的参数：actions/checkout 是浅检出，`--depth=1` 只取远端
+            # tip 一层、把它变成 grafted 历史 ⇒ merge 报 "refusing to merge unrelated histories"
+            # 并被下面的 || true 吞掉 ⇒ 二次 push 照旧 non-fast-forward ⇒ 重试永远走放弃分支
+            # （判据 test_star_fast_lands_after_a_clean_collision 实测：depth=1 推不上去，2/10 可以）。
+            git fetch origin main --depth=10 || true
             git merge origin/main --no-edit || true
             git push || echo "::warning::[fast] star 状态提交被拒，本场放弃（下一场补）"
           fi
