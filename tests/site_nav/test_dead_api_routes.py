@@ -28,9 +28,15 @@ API_DIR = os.path.join(ROOT, "api")
 # 只有当某天真的让端点可用（数据能读到 + 有前端调用方）时，才把它从这里移除。
 DEAD_ROUTES = ["api/build_log.js"]
 
-# 允许"没有页面调用方"的 api 函数（当前为空）。要往里加必须先写清谁在调它——
+# 允许"没有页面调用方"的 api 函数。要往里加必须先写清谁在调它——
 # 例如只被另一个函数内部调用的话，调用方应写在那个函数里，而不是豁免。
-ALLOWED_UNCALLED = set()
+ALLOWED_UNCALLED = {
+    # health：只读探活端点（T5，2026-10-04）——调用方是**外部** uptime 监控
+    # （UptimeRobot 类：30 分钟 GET，非 2xx 告警），页面 JS 永远不打它。
+    # 它存在的理由就是把"静默退化"变成主动报警，豁免"无页面调用方"检查；
+    # 除此之外的死重量仍然红。
+    "health",
+}
 
 # 认两种写法：同源 `'/api/x'`，以及**我们自己域名**的绝对写法 `'https://starhub-refresh.vercel.app/api/x'`。
 # 只认同源是错的：站点的真调用（`_API_BASE`、translate、article 那几处）全是绝对写法，
