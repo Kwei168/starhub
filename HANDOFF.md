@@ -1818,6 +1818,36 @@ trim 的 `--keep starhub-sidebar=1`、`fetch_and_build.sidebar_payload` 与写�
 
 **读数**：A2 460 passed、A3 150 passed、0 failed；`mut_attention` 9/9、`mut_push_retry` 6/6 各被靶挡住。
 
+### 8.29 补：过渡态的最后一条痕迹，以及"本地计数≠CI 计数"（2026-10-04 22:31，commit `3f777d68b9`）
+
+`fast_refresh` 拆完之后，`star-fast.yml` 的 `::notice::` 还在写
+`index.html 未重生成（无新星，或有新星但缺侧栏快照）`。后半句指向的分支已经被删（有新星就一定写得出整页，
+取不到出口件只是内联为空，前端照样 fetch），于是每 15 分钟一条的日志在讲一个不存在的机制。
+
+**为什么判据没拦住**：防回潮那条 `test_sidebar_snapshot_transition_is_gone` 只搜 `sidebar_snapshot`
+和 `starhub-sidebar` 两个**英文字面**，中文"侧栏快照"整族漏网 ⇒ A3 一路绿灯而日志在撒谎。
+补了同族中文断言（仍走 `_code_only`，注释里讲历史不算残留）。RED 用的是真实历史状态而不是人造变异：
+旧文案下该条失败、同文件其余 5 条通过；改后本地 A2 460 / A3 150 全绿。文案改为 `（本场无新星）`。
+
+**CI 口径必须单列**：run 37207662423（headSha `3f777d68b9`，18m55s，success）实测
+**A2 415 / A3 150 / B 425**。A2 比本地少 45 条，原因不是回归也不是漏跑，而是共享工作树里
+**另有 3 个只存在本地的测试文件**（`tests/rss_history/test_body_html_exits.py`、
+`test_body_html_normalize.py`、`tests/site_nav/test_body_rules_parity.py`，属另一条线本地提交
+`2df174e` 的在制品，尚未推送）+ `tools/rss_coverage_prepush_check.py`。
+⇒ 以后报 A2 一律分开写"本地口径 / CI 口径"，直接拿本地数当 CI 数会得出错误的"回归了 45 条"。
+A3 能确认新断言真在 CI 跑过：`tests/site_nav_drift/` 本地与远端文件数都是 17，且计数 150 相同
+（漏收集的话计数会掉）。
+
+**发布链与线上读数**：`Upload Pages artifact` + `Deploy to GitHub Pages` 均 success，末步标红 skipped
+（=没有未发布）；`Deploy to Vercel` skipped 是正常门（本轮只动 yml/测试/文案，`Detect API-relevant
+deploy state` 判定无 API 变更）。Pages 出口件 `updated=2026-10-04 22:06`、trending 键
+`[rising,total,new,source]`、rising 20 条；首页内联 `TRENDING` 与出口件**逐字节相同**
+（`json.dumps(sort_keys=True)` 相等），出口件 `ai_summary_html`（135 字符）完整出现在页面里——
+中途量到"内联 129 / 出口件 135"的差是我自己那条 `.*?</div>` 非贪婪正则截断的假差异，不是数据分叉。
+Vercel 域 `/trending_board.json` 404、`/api/rss` 200、四页 200。快车道 22:30 那场日志：新文案已生效、
+`sidebar` 命中 0、真实告警 0 条（先前正则里的两条"提交被拒/取不到"是带 ANSI 码的**脚本源码回显**，
+不是事件——筛告警要排掉含 `0m` 的行）。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
