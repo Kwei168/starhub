@@ -768,6 +768,21 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
   *,*::before,*::after{transition:none !important;animation-duration:.01ms !important;animation-iteration-count:1 !important}
   .back-top{transition:none}
 }
+/* 「待人工判定」提醒条：由 fetch_and_build.render_star_attention 生成，无待办时整块不输出
+   （页面里没有 .attn 才是正常态）。折叠用原生 <details>，零新增 JS。 */
+.attn{margin:0 0 14px;padding:10px 13px;border:1px solid var(--border);border-radius:12px;
+      background:var(--star-bg);color:var(--text);font-size:13px;line-height:1.65}
+.attn-sum{cursor:pointer;font-weight:600;list-style:none}
+.attn-sum::-webkit-details-marker{display:none}
+.attn-sum::before{content:"▸ ";color:var(--faint)}
+.attn[open] .attn-sum::before{content:"▾ "}
+.attn-list{margin:8px 0 0;padding-left:16px}
+.attn-row{margin:3px 0}
+.attn-name{text-decoration:none;font-weight:600;color:var(--brand)}
+.attn-name:hover{text-decoration:underline}
+.attn-meta{color:var(--muted);margin-left:8px;font-size:12px}
+.attn-same{display:block;color:var(--faint);font-size:12px}
+.attn-note{margin:9px 0 0;color:var(--faint);font-size:12px}
 </style>
 <script>try{var _t=localStorage.getItem('wb_starhub_theme_v1')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=_t;}catch(e){}</script>
 </head>
@@ -856,6 +871,7 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
     </div>
   </section>
   <div class="main">
+  __ATTENTION__
   <h2 class="main-title">我的收藏</h2>
   <div class="stats">
     <div class="stat"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><div><div class="v" id="stTotal">0</div><div class="l">收藏项目总数</div></div></div>

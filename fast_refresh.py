@@ -60,7 +60,11 @@ def main():
 
     cat_label = {c["key"]: c["label"] for c in fab.CATS}
     out = fab.assemble_entries(repos, known, desc_zh, cat_label, token, notes=notes)
-    html = fab.build_index_html(out, fab.CATS)
+    # 提醒条必须与小时场同版：快车道只在有新星时重生成 index.html，这一版若缺块，
+    # 页面上的提醒就会在"有新星"那场静默消失（两边共用 build_index_html，所以两处都得传）。
+    attention_html = fab.render_star_attention(
+        fab.star_attention_items(repos, known, notes, desc_zh))
+    html = fab.build_index_html(out, fab.CATS, attention_html=attention_html)
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
 

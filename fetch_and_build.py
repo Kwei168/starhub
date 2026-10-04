@@ -1130,7 +1130,96 @@ def _safe_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
-def build_index_html(repos, cats, trending=None, feed=None, updated=None, ai_summary_html=""):
+# ==================== 首页顶部「待人工判定」提醒条 ====================
+# 来由（2026-10-04 实测）：known_categories.json 有 304 个键，而 GitHub 公开 starred 全集与
+# 线上 DATA 都是 293 条、双向零差 ⇒ 多出的 11 个是**旧名残留**（仓库改名/转移后真身 id 仍在
+# 收藏，或旧路径已消失），不是收藏缺失。判同一性只能用 repository id，名字只能当线索，
+# 所以这里只把"表里有、收藏里没有"如实列出来交给人判定：不猜结论，也不写"丢了"。
+ATTENTION_KIND_STAR_ORPHAN = "star_orphan"
+ATTENTION_TITLE = "分类表里有 %d 个名字不在你当前的收藏列表中——点开确认是改了名还是仓库已消失"
+ATTENTION_SAME_HINT = "同名候选（仅参考，同名不等于同一仓库）"
+# 页面层最多列几条：index.html 每场重写进 git，无上限的清单就是把体积增长留在历史里。
+ATTENTION_MAX_ROWS = 25
+
+
+def star_attention_items(repos, known, notes=None, desc_zh=None):
+    """列「表里有而当前收藏没有」的旧名。
+
+    repos 传原始 API 响应或已组装条目都行（只取 full_name）；纯函数，不发网络、不做定性——
+    区分"改名"与"已删除"要问 GitHub，那是人工这一步的活，不在构建里每场重问。
+    """
+    notes = notes or {}
+    desc_zh = desc_zh or {}
+    live = {(r.get("full_name") or "") for r in repos}
+    live.discard("")
+    if not live:
+        # 收藏为空 = 拉取异常（正常路径下 fetch_stars 失败会让 stars_ok=False 而不发布首页，
+        # 但这里不能指望调用方）：此时「表−收藏」= 整张表，会把三百多个名字全报成待办 ——
+        # 那是比无警更糟的假警风暴，所以一律不报。
+        return []
+    by_base = {}
+    for fn in live:
+        by_base.setdefault(fn.split("/")[-1].lower(), []).append(fn)
+    items = []
+    for fn in sorted(set(known) - live):
+        base = fn.split("/")[-1].lower()
+        same = sorted(x for x in by_base.get(base, []) if x != fn)
+        items.append({
+            "kind": ATTENTION_KIND_STAR_ORPHAN,
+            "item": fn,
+            "hint": {
+                "category": known.get(fn) or "",
+                "has_note": bool((notes.get(fn) or "").strip()),
+                "has_desc": bool((desc_zh.get(fn) or "").strip()),
+                "same_base_name_live": same,
+            },
+        })
+    return items
+
+
+def render_star_attention(items):
+    """把提醒条目渲染成 HTML 片段；空清单返回空串，页面上不留任何节点。
+
+    折叠用原生 <details> ⇒ 零新增内联 JS（首页上次白屏就是内联 JS 少一个闭括号整段坏死，
+    这块能不用 JS 就不用）。名字一律转义：它们原样来自表键，既进文本也进 href。
+    """
+    if not items:
+        return ""
+    from html import escape as esc
+    shown = items[:ATTENTION_MAX_ROWS]
+    rest = len(items) - len(shown)
+    rows = []
+    for it in shown:
+        h = it.get("hint") or {}
+        name = it.get("item") or ""
+        bits = []
+        if h.get("category"):
+            bits.append("分类 " + str(h["category"]))
+        bits.append("点评" + ("有" if h.get("has_note") else "无"))
+        bits.append("中文简介" + ("有" if h.get("has_desc") else "无"))
+        same = h.get("same_base_name_live") or []
+        same_html = ""
+        if same:
+            same_html = ('<span class="attn-same">%s：%s</span>'
+                         % (esc(ATTENTION_SAME_HINT, quote=False),
+                            esc(", ".join(same), quote=False)))
+        rows.append('<li class="attn-row"><a class="attn-name" href="https://github.com/%s"'
+                    ' target="_blank" rel="noopener">%s</a>'
+                    '<span class="attn-meta">%s</span>%s</li>'
+                    % (esc(name), esc(name), esc(" · ".join(bits), quote=False), same_html))
+    more = ('<p class="attn-more">另有 %d 条未列出——清单再长下去会把体积写进每场重写的首页。</p>'
+            % rest) if rest else ""
+    return ('<details class="attn" data-attention="star">'
+            '<summary class="attn-sum">%s</summary>'
+            '<ul class="attn-list">%s</ul>%s'
+            '<p class="attn-note">本页只列名字、不下结论：改名与删除在 GitHub 上点开一眼可辨。'
+            '收藏条数另有对账，当前收藏与本页条目双向零差。</p>'
+            '</details>'
+            % (esc(ATTENTION_TITLE % len(items), quote=False), "".join(rows), more))
+
+
+def build_index_html(repos, cats, trending=None, feed=None, updated=None, ai_summary_html="",
+                     attention_html=""):
     """把组装好的 star 条目渲染成完整 index.html 文本（纯字符串函数：不写文件、不发网络）。
 
     repos 是 main 流程组装好的条目数组（含 desc/category/categoryLabel 等），不是原始
@@ -1149,6 +1238,7 @@ def build_index_html(repos, cats, trending=None, feed=None, updated=None, ai_sum
             .replace("__FAVS__", _safe_json(DEFAULT_FAVS))
             .replace("__TRENDING__", _safe_json(trending or {}))
             .replace("__FEED__", _safe_json(feed or []))
+            .replace("__ATTENTION__", attention_html)
             .replace("__UPDATED__", updated)
             .replace("__AI_SUMMARY__", ai_summary_html or ""))
 
@@ -1286,8 +1376,16 @@ def main(mode="full"):
             print("[guides] 生成失败，本场无导览: %s" % e, file=sys.stderr)
             guides = {}
         cats_with_guides = [dict(c, guide=guides.get(c["key"], "")) for c in CATS]
+        # 提醒块与页面同源：条目算完了再算旧名。软失败——它只是提示，不许挡住首页发布。
+        try:
+            attention_html = render_star_attention(
+                star_attention_items(out, known, notes, desc_zh))
+        except Exception as e:  # noqa: BLE001
+            print("[attention] 提醒条生成失败，本场无提醒: %s" % e, file=sys.stderr)
+            attention_html = ""
         html = build_index_html(out, cats_with_guides, trending=trending, feed=feed,
-                                updated=updated, ai_summary_html=ai_summary_html)
+                                updated=updated, ai_summary_html=ai_summary_html,
+                                attention_html=attention_html)
 
         open("index.html", "w", encoding="utf-8").write(html)
         json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
