@@ -1592,6 +1592,62 @@ temperature 0.2 压不住语义边界题的方差（FDE 同时像课程/工程�
 prompt；然后对边界簇（FDE + 下次发现的）跑一次定向 reclassify 出对照表交用户确认。⇒ 别只改 prompt 不重判：
 存量是冻结的，prompt 改了存量也不会变。
 
+### 8.25 star 页账目定案 + 首页「待人工判定」提醒块（2026-10-04 13:5x–14:1x BJT，推送 `e8dc9d48f`，run 1631）
+
+**起因是用户三次纠正我的口径**，都记下来，别再犯：
+
+1. 我先报"线上 320 个仓库里有 27 条没分类"——**错**：那是拿整页正则数 `"full_name"`/`category`，
+   把 `FEED`、`aihotItems` 等别的数组一起算进来了。正确做法是按括号配平解析 `const DATA`，
+   实测 **293 条，无分类 0、无点评 0**。
+2. 我再把多出的 11 条表项说成"已取消收藏的历史项"——**也没有证据**，用户一句"我从来没取消过收藏"否掉。
+3. 用户又指出"**同名仓库不等于就是一样的仓库**"，于是判同一性一律改用 **repository id**
+   （`/repos/<旧名>` 的 301 响应直接给 id），名字只当线索。这是本节全部结论的口径基础。
+
+**定案账目（现取）**：GitHub 公开 starred 全集 **293** 条（100+100+93 三页），与线上 DATA **双向零差**。
+`known_categories.json` 304 条里多出的 11 条分三类：
+- **8 条是仓库改名/转移，真身 id 仍在收藏**，页面上以新名正常显示：`Accio-org/RealReplicaBench`→
+  `CommerceAgentBench`(1319855210)、`AdamPlatin123/awesome-dsh-plugins`→`dsh-plugin-radar`(1323404274)、
+  `anywhere-labs/deepseek-harness-desktop`→`dsh-desktop`(1333321333)、`danny-avila/LibreChat`→
+  `LibreChat-AI/LibreChat`(600596928)、`huangmingche/first-principles-skill`→`justinhuangai/…`(1213588821)、
+  `opensquilla/opensquilla`→`TokenRhythm/opensquilla`(1231170332)、`ourongxing/newsnow`→`newsnext/newsnow`(861790708)、
+  `santifer/career-ops`→`career-ops-hq/career-ops`(1201476594)。**改名可能只换 owner、只换仓库名、或两个都换**，
+  所以"按末段名匹配"会漏判——这条正是用户提醒我的那件事。
+- **2 条旧路径 404**（不是改名：GitHub 对改名保留旧路径 301）：`Sliverkiss/workbuddy2api`、
+  `Vincentwei1021/video-shotcraft` ⇒ 删除或转私有，只有人眼能定。
+- **1 条 `tonhowtf/omniget` 未定案**：匿名限额（60/h）被我这轮查询烧穿，没拿到 id。
+
+**落地：首页顶部提醒块**（`fetch_and_build.py`，run 1631 生产验收）
+- 两个纯函数：`star_attention_items`（表键集 − 当前收藏 full_name 集，每条带 `kind`/`hint`，
+  `kind` 是留给 RSS 超龄等信号并进来的口）、`render_star_attention`（HTML 片段，折叠用原生
+  `<details>` ⇒ **零新增内联 JS**，故意的：§8.24 那起白屏就是内联 JS 少一个闭括号整段坏死）。
+- **主链与快车道两个 `build_index_html` 出口都注入**：只接一边，有新星那场的页面会静默缺这块。
+- 三道口径防护（都有判据+变异）：① **空 live 一律不报**——收藏被拉空时"表−收藏"=整表，
+  会把三百多个名字全报成待办，那是比无警更糟的假警风暴；② **页面层截到 `ATTENTION_MAX_ROWS=25`**
+  并如实报剩余条数——index.html 每场重写，无上限就是把体积写进 git 历史；③ **名字一律 `html.escape`**
+  （既进文本也进 href）。
+- 文案禁词钉死：不许出现"丢失/漏拉/少了/已删除/缺失收藏"。收藏实测一条没少，说这些就是假警。
+- 隐私面已排除：CI 拉 star 用 `secrets.GITHUB_TOKEN`（bot 身份），看不到任何私有仓库 ⇒ 提醒块
+  不可能泄露私有名。
+
+**验证读数（三层）**：判据 `tests/site_nav/test_star_attention_bar.py` 12 条进 A2 blocking；
+电池 `tools/mut_attention.py` 9 个变异（集合算反、假警措辞、空清单留容器、不转义、同名当定论、
+快车道漏注入、新仓库被当待办、空收藏报整表、页面不截断）**各被自己的靶判据挡住**，且每轮从
+干净副本重打，变异不互相掩盖。CI 侧 A2 **403→415**（差 12 恰是本批判据条数，证明它们在 CI 真跑）、
+A3 141 passed、gate B success、整场 success 且 `Deploy to GitHub Pages = success`。
+线上：构建戳 14:05、`data-attention` 1 次、条目 11 行、5 行带"仅参考"同名标注、无禁词；
+现网 DATA 仍 293 与收藏双向零差；四页 200、`/api/rss` `/api/news` 200、`/api/rss.js` `/lib/rel_time.js` 仍 404；
+两块内联 JS 过 `node --check`。提醒块 2979 B，而 DATA 本身几乎没变（−4 字符）⇒ 涨幅可归因。
+
+**没做的，别误以为已做**：
+- **不自动定性**：CI 不逐场探测 301/404（那要再存一份结论=新造状态），改为每条挂 GitHub 旧名链接让人一眼定。
+- **快车道的线上样本还缺**：注入由 A2 判据钉住，但快车道只在有新星时重生成 index.html，
+  今天 12:00 之后没有新星 ⇒ 那一版带提醒块的页面还没真实产出过（下一个有新星的场补验）。
+- **11 个孤儿名未清理**：`known_*` 三张表都以 `full_name` 为键，改名后新名下会重抓中文简介
+  （`RealReplicaBench` 那条译文就跟着旧名失效了）；若旧名将来被他人占用重建会误命中旧分类。
+  删表项属于动用户内容，等点单。
+
+参见 §8.23（存量点评回填）、§8.24（白屏与 `test_template_js_syntax`）。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
