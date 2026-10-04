@@ -155,6 +155,27 @@ _LLM_MODEL = "agnes-2.5-flash"
 _LLM_TIMEOUT_SEC = 30
 _NOTE_MAX_CHARS = 30
 
+# 13 类判定准则（2026-10-04 定版，用户裁决 FDE 归 learning/tools 两档）。
+# 背景：此前 prompt 只给 key=label 裸表，语义边界题（FDE/awesome 合集/书籍）方差极大——
+# 实测 FDE 15 仓散 8 类、awesome 14 仓散 7 类。注入准则后 classify_llm 与
+# tools/reclassify_all.py（同函数）两条路径共用同一把尺子。
+# 总原则：**内容形态优先于主题**——同一主题，可运行软件归能力类，资料归 learning，资讯归 info。
+_CAT_CRITERIA = """判定准则（与类目标签冲突时以本准则为准）：
+- agent：Agent 框架/运行时/编排/多智能体系统/MCP 服务端等【可运行软件】。Agent 主题的教程/书/清单不归此类。
+- coding：AI 编程助手/CLI 工具/开发工具链/脚手架/代码生成。
+- learning：教程/路线图/学习指南/实战手册/书籍/wiki/课程/面试题/知识库型 README。FDE、Agent、RAG 等任何主题的"学习资料"一律归此类。
+- info：资讯/周刊/Newsletter/博客/新闻聚合/资源导航/awesome 合集/导航站/书签集。
+- tools：通用效率工具/下载器/解析器/转换器/文件处理/浏览器插件等实用工具（不限 AI）。
+- assistant：面向最终用户的 AI 助手/聊天客户端/桌面或移动 AI 应用。
+- video：AI 视频生成/剪辑/数字人/口播/字幕/图像生成工作流（ComfyUI/SD/Flux）。
+- media：播客/音频/TTS/语音识别/音乐生成与处理。
+- content：内容创作与排版/写作辅助/公众号运营/文档排版/营销素材。
+- distill：思维模型/认知方法论/决策框架/个人知识管理/笔记方法。
+- business：一人公司/独立开发变现/商业化方法论/知识产权/出海。
+- finance：量化交易/投资/股票/加密货币/金融数据。
+- frontend：前端框架/组件库/设计系统/UI 工程。
+总裁决：①内容形态优先于主题（软件→能力类，资料→learning，资讯合集→info）；②awesome/合集/导航一律 info；③教程属性压过工具属性——讲"怎么用 X"的仓库跟 X 走，讲"怎么学 X"的归 learning。"""
+
 
 def _agnes_key_pool():
     """AGNES_API_KEY（主，可逗号分隔）+ AGNES_API_KEYS（逗号分隔附加）合并成 key 池（去重保序）。"""
@@ -213,7 +234,8 @@ def classify_llm(fn, desc, lang, topics, cats):
                 "你是 GitHub 仓库分类器。根据仓库信息从给定类目中选一个最合适的类目key，"
                 "并用不超过%d字的中文给一句点评。只输出一个 JSON 对象，"
                 '格式：{"category": "<类目key>", "note": "<点评>"}，'
-                "禁止解释、禁止 markdown 代码块。可选类目key：%s" % (_NOTE_MAX_CHARS, cats_desc))},
+                "禁止解释、禁止 markdown 代码块。可选类目key：%s\n%s"
+                % (_NOTE_MAX_CHARS, cats_desc, _CAT_CRITERIA))},
             {"role": "user", "content": (
                 "仓库名：%s\n简介：%s\n主语言：%s\nTopics：%s"
                 % (fn, desc or "（无）", lang or "（未知）", "、".join(topics or []) or "（无）"))},
