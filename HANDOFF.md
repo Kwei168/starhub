@@ -1790,6 +1790,34 @@ A3 `PUBLISH`），`.gitignore` 加该件。
 `fetch_and_build.sidebar_payload`、`fast_refresh` 的回填与"缺快照不发布"分支、
 `tests/site_nav_drift/test_sidebar_snapshot_wiring.py` 里随之失效的判据。
 
+### 8.29 过渡态已拆：快车道的回填源改成与浏览器同一份 trending_board.json（2026-10-04 21:0x–21:2x BJT）
+
+**没有"纯删"**：直接删掉回填的话，内联兜底就退化成 `const TRENDING = {}`，只剩"浏览器 fetch 成功"
+一条路——那是把兜底从"有数据"降级成"空对象"。所以回填源换成**同一个出口件**：
+`star-fast.yml` 在 Fast refresh 之前 `curl "$LIVE_BASE/trending_board.json"`（`continue-on-error`，
+取不到只留 warning、页面照发），`fast_refresh` 读它回填 trending 与摘要。
+CI 与浏览器读同一份文件 ⇒ 单一真相；`FEED` 不再回填（它本来就有 `refreshFeed()` 走 `/api/events`）。
+
+**整条 `starhub-sidebar` 族消失**：`update.yml` 的 save 步、`star-fast.yml` 的 restore 步、
+trim 的 `--keep starhub-sidebar=1`、`fetch_and_build.sidebar_payload` 与写盘、
+`fast_refresh` 的"缺快照不发布"分支、`test_sidebar_snapshot_wiring.py` 整个文件、`.gitignore` 行，
+以及那个已经没人写的孤儿缓存键（`8481736689` 已 DELETE，族内剩 0）。
+"restore 不到 ⇒ 整页不发布"这个单点一并消失——它是我 §8.27 为修空榜引入的，本轮拆掉。
+`test_fast_refresh` 的 fixture 也**撤掉**了那份快照：本文件要证明的是"有新星就一定交得出整页"。
+
+**两个坑，都是我自己的工具骗我**：
+① 防回潮判据用裸文本搜 `starhub-sidebar`，结果被**我写的解释性注释**（"这里原本是那条族"）判成
+  "没拆干净"。本仓第三次踩这个（前两次是 `_needs_rsync` 被注释里的 rsync 骗、以及 §8.24 那起）。
+  修法是判据先剔注释行再匹配（`_code_only`），**不是**把有用的历史注释删掉。
+  ⚠ 我第一版 `_code_only` 写成 `l.strip().lstrip("#").startswith("#")`，对整行注释根本不生效。
+② `tools/mut_attention.py` 报"M1 打了坏改动却全绿 ⇒ 判据空转"——**手工重放同一变异是 6 failed**，
+  真凶是电池自己：M1 紧跟基线那一跑，`shutil.copyfile` 写回的源文件与上一轮 pyc 记录的 mtime
+  落在同一时间戳里 ⇒ 子进程复用旧字节码 ⇒ 变异没生效。修法：`_run` 的 env 加
+  `PYTHONDONTWRITEBYTECODE=1`，之后 9/9 全挡住。
+  ⇒ 教训：**电池报"判据空转"时先怀疑电池**，别照着它的结论去删一条好判据。
+
+**读数**：A2 460 passed、A3 150 passed、0 failed；`mut_attention` 9/9、`mut_push_retry` 6/6 各被靶挡住。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |

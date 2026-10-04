@@ -49,18 +49,15 @@ jobs:
       - name: Quality gate — syntax (blocking)
         run: python -m py_compile fast_refresh.py fetch_and_build.py
 
-      - name: Restore sidebar snapshot
-        # 必须在 Fast refresh 之前：快车道生成的是整页，拿不到小时场那份 trending/feed/AI 摘要
-        # 就会把首页覆盖成空榜（2026-10-04 18:01 线上实锤 `const TRENDING = {};`）。
-        # 完全键必然 miss（快车道不 save）⇒ 靠 restore-keys 前缀命中小时场最新那份；
-        # 真取不到时 fast_refresh 主动不写 index.html，宁可不发也不覆盖，新星仍入库等整点场。
+      - name: Fetch trending board for inline fallback
+        # 必须在 Fast refresh 之前：快车道重建的是**整页**，排行榜要用与浏览器同一份出口件回填内联。
+        # 取不到不阻断——内联留空即可，前端仍会 fetch 同一个文件（回填只是让首屏也有数据）。
+        # 这里原本是 actions/cache 的 starhub-sidebar 族：出口件（§8.28）落地后那份状态
+        # 既冗余又是单点（restore 不到 ⇒ 整页不发布），2026-10-04 拆掉，改走同源 curl。
         continue-on-error: true
-        uses: actions/cache/restore@v4
-        with:
-          path: sidebar_snapshot.json
-          key: starhub-sidebar-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            starhub-sidebar-${{ runner.os }}-
+        run: |
+          curl -fsS --max-time 60 "$LIVE_BASE/trending_board.json" -o trending_board.json \
+            || echo "::warning::线上取不到 trending_board.json——本场首页内联兜底为空（前端仍会 fetch）"
 
       - name: Fast refresh
         id: fast

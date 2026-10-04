@@ -68,3 +68,38 @@ def test_board_is_published_not_just_cached():
              ("A3 PUBLISH", os.path.join(ROOT, "tests", "site_nav_drift", "test_pages_artifact_scope.py")))
     for name, path in files:
         assert BOARD in _t(path), "%s 里没有 %s ⇒ 前端 fetch 会 404" % (name, BOARD)
+
+
+def test_fast_lane_reuses_the_same_board_file_as_inline_value():
+    """快车道重建整页时，内联那份排行榜要取自**同一个出口件**。
+
+    为什么不能省：删掉回填、只留"浏览器 fetch"的话，trending_board.json 万一取不到就是空榜——
+    等于把兜底从"有数据"降级成"空对象"。让 CI 与浏览器读同一份文件才是单一真相。
+    """
+    fr = _t(os.path.join(ROOT, "fast_refresh.py"))
+    assert "TRENDING_BOARD" in fr or BOARD in fr, \
+        "快车道没把 %s 当回填源 ⇒ 内联兜底会退化成空榜" % BOARD
+    fast = _t(WF_FAST)
+    assert BOARD in fast, "star-fast.yml 没在生成页面之前把 %s 取回工作目录" % BOARD
+
+
+def _code_only(txt):
+    """剔掉注释行——判据要读行为，不能读关键词。
+
+    本仓第三次踩这个坑了：`_needs_rsync` 被注释里那句"换成 cp 而不是继续 rsync"骗过，
+    这次又被我自己写的"这里原本是 starhub-sidebar 族"骗成"没拆干净"。
+    """
+    return "\n".join(l for l in txt.splitlines() if not l.strip().startswith("#"))
+
+
+def test_sidebar_snapshot_transition_is_gone():
+    """防回潮：过渡态整条链必须消失（只看代码行，注释里讲历史不算残留）。"""
+    for name, path in (("star-fast.yml", WF_FAST), ("update.yml", WF_UPDATE),
+                       ("fetch_and_build.py", FAB),
+                       ("fast_refresh.py", os.path.join(ROOT, "fast_refresh.py"))):
+        txt = _code_only(_t(path))
+        assert "sidebar_snapshot" not in txt, "%s 里还留着 sidebar_snapshot（过渡态没拆干净）" % name
+        assert "starhub-sidebar" not in txt, "%s 里还留着 starhub-sidebar 缓存族" % name
+    assert not os.path.exists(os.path.join(ROOT, "tests", "site_nav_drift",
+                                           "test_sidebar_snapshot_wiring.py")), \
+        "旧过渡态判据还在 A3 里，会跟着已删的机制一起变成噪音"

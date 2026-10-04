@@ -41,8 +41,7 @@ MUTATIONS = [
      'ATTENTION_SAME_HINT = "已改名为"',
      "test_same_base_name_candidate_is_hint_not_verdict"),
     ("M6 快车道漏注入", "fast_refresh.py",
-     "html = fab.build_index_html(out, fab.CATS, attention_html=attention_html)",
-     "html = fab.build_index_html(out, fab.CATS)",
+     "                                attention_html=attention_html)", "                                )",
      "test_both_render_exits_inject_attention"),
     ("M7 新仓库被当待办", "fetch_and_build.py",
      "for fn in sorted(set(known) - live):",
@@ -71,8 +70,12 @@ def _run(tmp, name=None):
     cmd = [sys.executable, "-m", "pytest", tf, "-q"]
     if name:
         cmd += ["-k", name]
+    # 必须禁写字节码：M1 紧跟基线那一跑，copyfile 写回的源文件与上一轮 pyc 记录的 mtime
+    # 落在同一时间戳里 ⇒ 子进程直接复用旧 pyc ⇒ 变异没生效、判据"照样绿"（实测手工重放是
+    # 6 failed）。这是电池自己的缺陷，曾被它误报成"判据空转"。
     r = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
+                       encoding="utf-8", errors="replace",
+                       env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 

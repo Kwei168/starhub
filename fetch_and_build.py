@@ -1218,7 +1218,6 @@ def render_star_attention(items):
             % (esc(ATTENTION_TITLE % len(items), quote=False), "".join(rows), more))
 
 
-SIDEBAR_SNAPSHOT = "sidebar_snapshot.json"
 TRENDING_BOARD = "trending_board.json"
 
 
@@ -1231,17 +1230,6 @@ def trending_board_payload(trending, ai_summary_html, updated):
     """
     return {"trending": trending or {}, "ai_summary_html": ai_summary_html or "",
             "updated": updated or ""}
-
-
-def sidebar_payload(trending, feed, ai_summary_html):
-    """把小时场算好的三块侧栏数据打包成跨场快照，供快车道回填整页。
-
-    为什么要单独存这一份：`trending_snapshot.json` 是 {全名: 今日星数} 的**基线**，不是榜单结果；
-    而快车道每 15 分钟重生成整个 index.html，拿不到 trending/feed/摘要时渲染函数就按"缺省渲染
-    空态"处理 ⇒ 把小时场那版覆盖成空榜（2026-10-04 18:01 线上实锤 `const TRENDING = {};`）。
-    """
-    return {"trending": trending or {}, "feed": feed or [],
-            "ai_summary_html": ai_summary_html or ""}
 
 
 def build_index_html(repos, cats, trending=None, feed=None, updated=None, ai_summary_html="",
@@ -1414,9 +1402,6 @@ def main(mode="full"):
                                 attention_html=attention_html)
 
         open("index.html", "w", encoding="utf-8").write(html)
-        # 侧栏快照：只在这条成功分支里写（拉取失败那版数据不可信，写下去会污染下一场快车道）
-        json.dump(sidebar_payload(trending, feed, ai_summary_html),
-                  open(SIDEBAR_SNAPSHOT, "w", encoding="utf-8"), ensure_ascii=False)
         # 排行榜数据出口：浏览器同源 fetch 它（见 template.html 的 refreshTrendingBoard）。
         # 有了它，快车道重建整页就伤不到排行榜——内联那份只是首屏兜底。
         json.dump(trending_board_payload(trending, ai_summary_html, updated),
