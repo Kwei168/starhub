@@ -948,7 +948,7 @@ mark{background:var(--mark);color:inherit;border-radius:1px;padding:0 1px}
     <div class="trending on">
       <h2>每日 AI 排行榜</h2>
       <div class="trend-sub" id="trendUpdated"></div>
-      __AI_SUMMARY__
+      <div id="aiSummarySlot">__AI_SUMMARY__</div>
       <div class="trend-tabs" id="trendTabs">
         <button class="trend-tab on" data-tab="rising">涨星榜</button>
         <button class="trend-tab" data-tab="total">总星标榜</button>
@@ -1033,7 +1033,7 @@ const SEARCH_API = 'https://starhub-refresh.vercel.app/api/search';
 // 全网搜索复用同一弱防护密钥（静态公开，隔离无意义）
 const SEARCH_KEY = REFRESH_KEY;
 const UPDATED = '__UPDATED__';
-const TRENDING = __TRENDING__;
+let TRENDING = __TRENDING__;
 let FEED = __FEED__;
 // 实时关注动态：Vercel 代理聚合 GitHub Events API（近 24 小时），打开页面即拉取 + 每 30 分钟轮询
 const EVENTS_API = 'https://starhub-refresh.vercel.app/api/events';
@@ -1764,6 +1764,23 @@ async function refreshFeed(){
   }catch(e){ /* 静默降级：网络异常时保持静态数据 */ }
 }
 
+// 排行榜数据出口（同源站点件，由小时场写）：成功替换 TRENDING 重渲染，失败静默保留内联兜底。
+// 为什么必须有它：index.html 是单体文件，快车道每 15 分钟重建整页时并不拥有排行榜
+// （它只算 star 列表），拿不到就把内联值写成 {} ⇒ 2026-10-04 18:01 线上空榜的根因。
+// 有了这条注入路径，页面里那份内联就只是首屏兜底，覆盖不再伤人。
+async function refreshTrendingBoard(){
+  try{
+    const r = await fetch('trending_board.json', {cache:'no-store'});
+    if(!r.ok) return;
+    const j = await r.json();
+    if(!j || !j.trending) return;
+    TRENDING = j.trending;
+    const slot = document.getElementById('aiSummarySlot');
+    if(slot && j.ai_summary_html) slot.innerHTML = j.ai_summary_html;
+    renderTrending();
+  }catch(e){ /* 静默降级：取不到就继续用内联那份，不许把榜单清空 */ }
+}
+
 // ---- AI 动态流（AIHOT 公开 API + /api/news 多源代理，浏览器直连，无需 Key） ----
 let aihotLoaded = false;
 let aihotLoading = false;
@@ -2285,6 +2302,7 @@ renderList();
 renderTrending();
 renderFeed();
 refreshFeed(); // 打开页面即拉取实时关注动态（静默失败，静态数据兜底）
+refreshTrendingBoard(); // 排行榜走同源数据出口（内联那份只是首屏兜底）
 startFeedPolling(); // 每 30 分钟轮询（页面不可见时暂停）
 switchSideTab(state.sideTab);
 bindEvents();

@@ -505,7 +505,7 @@ jobs:
           # lib/ 那 4 项是用自测过的解析器在旧场清单里抓出来的。Vercel 从仓库根部署、不读 _pages，
           # 所以关这些不影响 API 主机（18:13 现取：api/rss 200、api/news 200、api/translate 405）。
           MISS=""
-          for f in index.html ai-daily.html rss-aggregator.html daily-insight-history.html                    hot_snapshot.json rss_sources.json; do
+          for f in index.html ai-daily.html rss-aggregator.html daily-insight-history.html                    hot_snapshot.json rss_sources.json trending_board.json; do
             if [ -e "$f" ]; then cp -f "$f" _pages/; else MISS="$MISS $f"; fi
           done
           # 分块按名字模式补进来（rss-data-1+ 已停止提交，git 里那份是停在旧流程的过期副本

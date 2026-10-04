@@ -1750,6 +1750,46 @@ index.html，代价是下一场重新 diff 出同一批新星、重烧一次 LLM
 否则观感更空）、首页第一次走 Pages 域取 Vercel 数据的跨域路径（RSS 页已有先例）。
 项目里 `api/` 已有 9 个函数，这不是新机制，是把已有做法补到落后的两栏上。
 
+### 8.28 排行榜注入化落地：TRENDING 有了同源数据出口，内联降级为首屏兜底（2026-10-04 19:5x–20:1x BJT，推送见本节末，判据 4 条）
+
+**先记两处范围修正**（我 §8.27 的诊断说过头了，别再引用错的那版）：
+· `FEED` 早就有运行时路径——`refreshFeed()` 拉 `/api/events`，成功替换、失败静默保留内联，
+  所以它被覆盖成 `[]` 并不会真的空；**真正没有运行时路径的只有 `TRENDING`**（外加内联的 AI 摘要那句）。
+· "首页第一次走跨域"也不成立：首页已有 7 处运行时 fetch，其中 4 个就是 Vercel 域
+  （`/api/search`、`/api/events`、`/api/news`、`/api/refresh`）。
+
+**落地形状**：`fetch_and_build.trending_board_payload()` 是出口形状的**单一出处**，主链在成功分支写
+`trending_board.json = {trending, ai_summary_html, updated}`（数据是 `build_trending()` 算好的，
+不重算 ⇒ 零 GitHub 配额）；`template.html` 里 `TRENDING` 由 `const` 改 `let`，新增
+`refreshTrendingBoard()`（与 `refreshFeed` 同构），AI 摘要包进 `#aiSummarySlot` 供注入。
+**内联兜底刻意保留**：注入是加一层，不是把首屏换成一次网络等待——判据里专门有一条反向钉住
+`__TRENDING__` 不许删。发布面三处清单同步加名（update.yml 的 Stage 清单、A2 `STAGE_ALLOWLIST`、
+A3 `PUBLISH`），`.gitignore` 加该件。
+
+**新鲜度语义变了，这是有意的**：排行榜从"每次重建页面时冻结一份"变成"最多滞后一个整点"
+（出口件由小时场写）。它本来就是每小时算一次的东西，快车道去刷新它反而是错的。
+
+**过程中我自己错了三处，都记下来**：
+① 判据第 4 条第一版写成"该件要进缓存族的 save/restore 两侧"——前提错了，它是**浏览器读的站点件**，
+  快车道根本不该拿它，进缓存只会多一个没人读的文件；改成钉"发布三清单一致"。
+② 把 `TRENDING` 改 `let` 之后，§8.27 那条过渡态判据的正则 `const TRENDING = ` 失配变红。
+  过渡态还在服役，所以修的是它的**抓手**（`(?:const|let)`），不是删判据。
+③ 新增站点件会让**两处合成树 fixture** 缺件（`test_pages_artifact_scope`、`test_pages_missing_report`），
+  Stage 正文在合成树上直接报"缺件"、4 条判据一起 error。加站点件＝三处清单 + 两处 fixture，一个都不能漏。
+
+**读数**：A2 443 passed、A3 155 passed（151→155 即本批 4 条）、0 failed。
+`.vercelignore` 也加了该件——前端是从 Pages 同源取它的，Vercel 域不必再公开一份
+（与 `hot_snapshot.json`、`trending_snapshot.json` 的既有处理一致）。
+行为验证（把注入函数抽出来用 node 真跑，不是只看文本）：成功→榜单换成出口数据且 `renderTrending()`
+调用 1 次且摘要注入；HTTP 404→内联兜底保留且未重渲染；fetch reject→兜底保留；
+返回体缺 `trending` 键→不清空。四种情形全对。
+
+**过渡态还没拆**：`sidebar_snapshot.json` 那条链（快车道 restore/回填、缺快照不发布、`starhub-sidebar` 族）
+仍在服役，**要等本批线上验到 `trending_board.json` 可取之后**再拆，否则中间会出现"两条路都没有"的窗口。
+拆的时候记得一并清掉：`star-fast.yml` 的 restore 步、`update.yml` 的 save 步与 `--keep starhub-sidebar=1`、
+`fetch_and_build.sidebar_payload`、`fast_refresh` 的回填与"缺快照不发布"分支、
+`tests/site_nav_drift/test_sidebar_snapshot_wiring.py` 里随之失效的判据。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |

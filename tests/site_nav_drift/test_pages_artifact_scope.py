@@ -33,7 +33,8 @@ WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "work
 # 18:12 现取核过：`known_categories.json` 从这份名单里删掉了 —— 它只被 build_daily_insight.py
 # 在构建期读，4 个入口的正文里 0 引用；留着它会逼 Stage 把一个非运行时文件发上线。
 SITE = ["index.html", "ai-daily.html", "rss-aggregator.html", "daily-insight-history.html",
-        "rss-data-0.js", "rss-data-1.js", "hot_snapshot.json", "rss_sources.json"]
+        "rss-data-0.js", "rss-data-1.js", "hot_snapshot.json", "rss_sources.json",
+        "trending_board.json"]
 NON_SITE = ["build_rss_aggregator.py", "fetch_and_build.py", "insight_engine.py",
             "tests/rss_history/test_pages_deploy_wiring.py",
             "tools/data_api_push.py",
@@ -55,7 +56,7 @@ NON_SITE = ["build_rss_aggregator.py", "fetch_and_build.py", "insight_engine.py"
 # 站点运行时真正需要的全集（18:12 现取：4 个入口的同源请求只有这些；
 # qrcode 走 jsDelivr/unpkg 绝对 URL，starhub-share.png 是 a.download 的文件名不是请求）。
 PUBLISH = {"index.html", "ai-daily.html", "rss-aggregator.html", "daily-insight-history.html",
-           "hot_snapshot.json", "rss_sources.json"}
+           "hot_snapshot.json", "rss_sources.json", "trending_board.json"}
 
 API_SOURCES = ["api/agihunt.js", "api/article.js", "api/events.js", "api/news.js",
                "api/refresh.js", "api/rss.js", "api/search.js", "api/translate.js"]

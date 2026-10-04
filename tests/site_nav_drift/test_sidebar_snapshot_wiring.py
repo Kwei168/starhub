@@ -113,7 +113,8 @@ def test_fast_lane_backfills_trending_and_feed(tmp_path):
     page = tmp_path / "index.html"
     assert page.exists(), "有新星却没生成 index.html"
     h = page.read_text(encoding="utf-8")
-    m = re.search(r"const TRENDING = (.{0,60})", h)
+    # 不钉 const/let：TRENDING 已改成 let（注入化要能替换它），抓手只认赋值本身。
+    m = re.search(r"(?:const|let) TRENDING = (.{0,60})", h)
     assert m and m.group(1).strip().startswith('{"'), "TRENDING 仍是空对象：%s" % (m and m.group(1))
     assert "x/one" in h, "快照里的排行榜条目没进页面"
     assert re.search(r"let FEED = \[\{", h), "FEED 没回填（关注动态仍会空）"

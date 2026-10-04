@@ -35,6 +35,7 @@ STAGE_ALLOWLIST = (
     "rss-data-*.js",
     "hot_snapshot.json",
     "rss_sources.json",
+    "trending_board.json",
 )
 
 STATE_ONLY_ARTIFACTS = (    # 纯跨场态：退出 git、进缓存，且**不许**被发布

@@ -1219,6 +1219,18 @@ def render_star_attention(items):
 
 
 SIDEBAR_SNAPSHOT = "sidebar_snapshot.json"
+TRENDING_BOARD = "trending_board.json"
+
+
+def trending_board_payload(trending, ai_summary_html, updated):
+    """排行榜数据出口的**单一形状**：{trending, ai_summary_html, updated}。
+
+    为什么单独一个函数：出口由 CI 写、由前端读、还要被 Stage 拷进制品——三处各拼一份
+    迟早分叉（运行时翻译判据就是为这种分叉补的）。这里不重算任何数据，榜单是
+    `build_trending()` 已经算好的结果，所以零 GitHub 配额。
+    """
+    return {"trending": trending or {}, "ai_summary_html": ai_summary_html or "",
+            "updated": updated or ""}
 
 
 def sidebar_payload(trending, feed, ai_summary_html):
@@ -1405,6 +1417,10 @@ def main(mode="full"):
         # 侧栏快照：只在这条成功分支里写（拉取失败那版数据不可信，写下去会污染下一场快车道）
         json.dump(sidebar_payload(trending, feed, ai_summary_html),
                   open(SIDEBAR_SNAPSHOT, "w", encoding="utf-8"), ensure_ascii=False)
+        # 排行榜数据出口：浏览器同源 fetch 它（见 template.html 的 refreshTrendingBoard）。
+        # 有了它，快车道重建整页就伤不到排行榜——内联那份只是首屏兜底。
+        json.dump(trending_board_payload(trending, ai_summary_html, updated),
+                  open(TRENDING_BOARD, "w", encoding="utf-8"), ensure_ascii=False)
         json.dump(known, open("known_categories.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         json.dump(desc_zh, open("descriptions_zh.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 

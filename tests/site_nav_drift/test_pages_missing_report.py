@@ -31,7 +31,7 @@ WF = os.environ.get("STARHUB_UPDATE_YML") or os.path.join(ROOT, ".github", "work
 
 SITE = ["index.html", "ai-daily.html", "rss-aggregator.html", "daily-insight-history.html",
         "template.html", "rss-data-0.js", "rss-data-1.js", "hot_snapshot.json",
-        "rss_sources.json", "known_categories.json"]
+        "rss_sources.json", "trending_board.json", "known_categories.json"]
 
 
 def _stage_body():
