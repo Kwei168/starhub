@@ -1256,13 +1256,17 @@ function filterData(){
   // 无 query 向量依赖（不需要给查询词做 embedding），零后端。
   let semantic = [];
   if(words.length && list.length>0 && list.length<6 && DATA.some(d=>d.emb)){
-    const withEmb = list.filter(d=>Array.isArray(d.emb)&&d.emb.length);
-    if(withEmb.length){
-      const dim = withEmb[0].emb.length;
-      const centroid = new Array(dim).fill(0);
-      withEmb.forEach(d=>d.emb.forEach((v,i)=>centroid[i]+=v/withEmb.length));
-      const seen = new Set(list.map(d=>d.full_name));
-      semantic = DATA.filter(d=>Array.isArray(d.emb)&&d.emb.length&&!seen.has(d.full_name))
+    const emb0 = list.find(d=>Array.isArray(d.emb)&&d.emb.length);
+    if(emb0){
+      const dim = emb0.emb.length;
+      // 维度守卫必须是 ===dim：一条长度不符的向量会把质心越界项累成 NaN，
+      // 所有 sim 静默归零（整段语义扩展消失）——两处过滤都按精确维度收
+      const withEmb = list.filter(d=>Array.isArray(d.emb)&&d.emb.length===dim);
+      if(withEmb.length){
+        const centroid = new Array(dim).fill(0);
+        withEmb.forEach(d=>d.emb.forEach((v,i)=>centroid[i]+=v/withEmb.length));
+        const seen = new Set(list.map(d=>d.full_name));
+        semantic = DATA.filter(d=>Array.isArray(d.emb)&&d.emb.length===dim&&!seen.has(d.full_name))
         .map(d=>({d, sim:d.emb.reduce((acc,v,i)=>acc+v*centroid[i],0)}))
         .filter(x=>x.sim>0.3)
         .sort((a,b)=>b.sim-a.sim)

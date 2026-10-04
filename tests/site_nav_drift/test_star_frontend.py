@@ -46,6 +46,15 @@ def test_semantic_expand_uses_centroid_not_query_vector():
     assert "DATA.some(d=>d.emb)" in js
 
 
+def test_semantic_centroid_filters_by_exact_dim():
+    """P3 修复判据：维度守卫必须是【精确等于 dim】，不是"长度非 0"。
+    一条维度不符的长向量会把 centroid 越界项累成 NaN ⇒ 所有 sim=NaN ⇒
+    语义扩展整体静默归零（2026-10-04 对抗性审查发现）。命中集与候选集两处都要守。"""
+    js = _tpl()
+    assert js.count("emb.length===dim") >= 2, \
+        "命中集与候选集两处过滤都必须用 emb.length===dim（长度非 0 的过滤挡不住维度不符）"
+
+
 def test_debounce_and_history():
     js = _tpl()
     assert "setTimeout(" in js and "clearTimeout(_qTimer)" in js

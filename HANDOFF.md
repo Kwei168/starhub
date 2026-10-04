@@ -1481,6 +1481,48 @@ Vercel 域 `rss-aggregator.html` = `2026-10-04 07:09`、Pages 域同一文件 = 
 ⚠ 顺带解释一个我此前没查明的读数：A3 目录计数 45→94 与我的改动无关，
 是他们那批带进 `test_star_classify`(17) + `test_star_enrich`(24) 两个判据文件。
 
+### 8.23 T5 收尾 + T6 修正3 + 存量点评回填 + 质心维度守卫（2026-10-04 00:3x–02:1x，推送 `180eaf88f`/`ce7cf434a`，run 1624/1625/1626）
+
+**T5 三个落点**：`api/health.js`（只读探活：最近【成功】构建年龄按 `status=success` 口径——失败场不算活；
+Secret 只回布尔，判据钉"payload 组装区禁 env 拼接"；不健康回 **503**——外部探活按"30 分钟 GET 非 2xx 告警"
+才能抓住静默退化，恒 200 抓不住；60s 实例缓存防轮询烧配额）；update.yml 的 `Fetch stars & build` 步补
+`GITHUB_TOKEN`（此前小时场 stars 拉取全程匿名 60 req/h，`fetch_and_build.py:1217` 消费）；vercel.json 声明 health。
+**#1624 判红事故（本轮最贵）**：health.js 一上线就被 A2 blocking 的 `test_dead_api_routes` 判"无调用方死重量"——
+我推送前跑了 A3/rss_translate/star 判据 + node --check，**独独没跑 A2 目录** ⇒ 部署整场被挡、站点停更约 1 小时，
+靠手动 dispatch 1625 恢复。修法走判据自带的 `ALLOWED_UNCALLED` 豁免表（写明外部 uptime 监控理由）。
+⇒ **新增 `api/` 文件时，本地必须按 A2 完整命令跑一遍**（A2 的 `tests/site_nav/` 正是管 api 面）。
+
+**T6 修正3（线上实测才抓得到的根因）**：中文多词搜索"修好了但结果驴唇不对马嘴"——`translated:true` 且
+strategy 全是 `PLEASE SELECT TWO DISTINCT LANGUAGES`。根因：统一链是**一切→中文**的链（GTX `tl=zh-CN`、
+MyMemory `langpair=${src}|zh-CN` 都写死目标语），search 拿它做 中→英 ⇒ 中文输入 = `zh-CN|zh-CN` 同语言对，
+MyMemory 把错误横幅当 `translatedText` 返回，旧校验只拦 `MYMEMORY` 前缀拦不住这句 ⇒ 垃圾译文进缓存、
+`translated:true` 还把结果侧 CJK 兜底也关了。修法：`translateWithFallback(text, { to = 'zh-CN' } = {})` 方向参数
+（默认值零变化），`to:'en'` 跳过 Agnes/Zen 两腿（prompt 硬编码译成中文），链内缓存键带方向（zh 保持旧裸键，
+handler 的 getCache 不动）；MyMemory 加 `responseStatus!==200` 检查 + 横幅黑名单。
+线上复测：`机器 学习 → machine study`（19877 条全相关）、`视频 创作 工具 → video creation tool`（872 条全相关）。
+
+**存量点评回填（T8 端到端验收的实锤战果）**：T2 把 289 条点评写进 `known_notes.json`，但
+`classify_repo` 查表命中恒 `("cat","")` 且 **fetch_and_build 从不读这个文件** ⇒ 线上 DATA 的 note 全空
+（289 条带 emb、带 health、0 条带 note）。修法：`assemble_entries` 加 `notes=None` 参数回填
+（LLM 新鲜点评优先，文件值只补空），main 与 fast_refresh 两个调用方都传。**写库不读 = 白写**——
+"数据已落盘"和"数据在上线"之间隔着一整条消费链路，验收必须看线上产物。
+
+**质心维度守卫（P3 清账）**：语义扩展的 centroid 按 `withEmb[0].emb.length` 建维，两处过滤只查"长度非 0"
+不查"等于 dim" ⇒ 一条维度不符的长向量把 `centroid[i]` 越界项累成 NaN，全部 sim 静默归零。改 `===dim` 精确守卫。
+⚠ 过程中自己踩了 CLAUDE.md 那条老坑的现行版：用 `git checkout -- template.html` 撤变异，把**未提交的修复**
+一起冲掉（靠 grep 复查抓到）。⇒ 变异类操作一律走字节快照恢复（mut 电池的形状），永不用 checkout。
+
+**health 端点的瞬态假读数（记录在案，未修）**：上线头 ~10 分钟 `last_build_age_minutes` 报过 13441
+（≈9 天，不对应任何 run 的时间窗），本地 node 复刻同查询同解析全对；随后自愈并正确跟踪（39→41 分钟随时间走）。
+怀疑 GitHub runs 索引在 workflow 刚被新函数首查时的一致性窗口 + 60s 实例缓存放大，**未证根因前没叠第二层防御**
+（预案：top-3 取最新 + 原始响应落日志）。若 UptimeRobot 在那个窗口探到过 503，属误报一次，自愈。
+
+**触发链现状**：cron-job.org 已加 `?mode=star` 15 分钟任务（用户 02:0x 前配好，star-fast run #4/#5 workflow_dispatch
+确认生效，`star_fast_age_minutes` 回落到个位数）；GitHub 侧 */15 schedule 三天只自发 3 次再次坐实 §7.1。
+变异电池 `tools/mut_star_pipeline.py` 15/15 抓住 0 逃逸；**复原基线 = 电池启动时的工作树字节快照，不是 git HEAD**
+（HEAD 基线会把"未提交的合法改动"误报成复原失败）。与并行会话的协作：共享工作树，双方点名路径推送 +
+force:false，零吞档（对方 routes 随我方 vercel.json 批次落地，判据提交互引）。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
