@@ -1523,6 +1523,25 @@ handler 的 getCache 不动）；MyMemory 加 `responseStatus!==200` 检查 + �
 （HEAD 基线会把"未提交的合法改动"误报成复原失败）。与并行会话的协作：共享工作树，双方点名路径推送 +
 force:false，零吞档（对方 routes 随我方 vercel.json 批次落地，判据提交互引）。
 
+**star-fast 无新星场刷红错（用户 02:3x 从 Actions 看到并报来）**：无新星 = fast_refresh 零写入（判据钉死）
+= 工作区无 index.html，但 Stage 步让 `cp` 当探测员——`set -e` 下 cp 先炸出 `cannot stat 'index.html'`，
+写了句体面的 `::error::缺失` 检查根本执行不到，靠 `continue-on-error: true` 吞成 success。功能无损
+（upload/deploy 被 outcome 条件正确跳过），但每 15 分钟刷一条红错。修法（`523a33da9`）：缺文件走
+`::notice:: + publish=false + exit 0` 的正常路径干净跳过，撤 continue-on-error（真缺陷当场红），
+upload 改由 `steps.stage.outputs.publish == 'true'` 门住；wiring 判据改钉新语义 + 2 变异自证。
+
+**分类随机性诊断（用户 02:4x 报"FDE 挂在不同分类"，下会话待办，未动手）**：实测 15 个 FDE 仓库散在
+8 个类（learning 5 / agent 3 / tools 2 / business content distill frontend info 各 1）。根因三层：
+① `classify_llm` 的 system prompt 只给 `key=label` 裸表，**没有任何"什么进哪类"的判定准则**，
+temperature 0.2 压不住语义边界题的方差（FDE 同时像课程/工程实践/AI 应用）；
+② known_categories 冻结首次判定——15 个仓在不同时期经不同机制入表（旧 11 类关键词规则 → 一次 LLM
+重分类），批内互斥裁决没人复核边界簇；
+③ 双分类路径（fetch_and_build.classify_llm vs tools/reclassify_all.py）prompt 若不一致则同仓不同判。
+**修法预案（需用户先确认 FDE 的目标类）**：建一份 13 类判定准则表（每类一行：收什么/不收什么/边界裁决，
+如"教程/路线图/wiki/指南 → learning，即使主题是 FDE/Agent；工具运行时 → tools"），同时注入两条路径的
+prompt；然后对边界簇（FDE + 下次发现的）跑一次定向 reclassify 出对照表交用户确认。⇒ 别只改 prompt 不重判：
+存量是冻结的，prompt 改了存量也不会变。
+
 ## 九、技术栈总结
 
 | 层 | 技术 |
