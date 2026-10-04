@@ -1291,7 +1291,57 @@ W1/W2/W3/C1–C2/R1–R5 全按期望，问题条目 0。
    （第 4 项要等一场**成功的** Vercel 部署才生效 —— 该步连场挂起时部署会整场丢失）；
 5. `mut_vercel_ignore` 与 `mut_artifact_scope` 问题条目仍为 0（防止判据被"绕过"而不是被"修好"）。
 
-**这次修掉的一处自伤**：两次"看着是空操作"的 Edit 中有一次真的把 `## 九、技术栈总结` 与下一行的表头 `| 层 | 技术 |`
+**这次修掉的一处自伤**：两次"看着是空操作"的 Edit 中有一次真的把 `### 8.24 白屏事故：门禁盲区（template 内联 JS 无人查语法）+ 本会话全量移交（2026-10-04 04:3x BJT 收尾）
+
+**白屏事故（我造成的第二起，接 §8.23 的 #1624 之后）**：质心维度守卫的 Edit 给语义扩展
+加了第三层 `if(emb0){` 嵌套，却只保留了原两层的闭括号——少一个 `}`，template.html 内联
+JS 整段解析失败（`Unexpected end of input`）⇒ 页面纯 JS 渲染 ⇒ **白屏约 1 小时**
+（d7fce992c 02:27 推入 → 03:26 随 #1627 上线 → 04:0x 用户报告）。定位路径：Playwright 打开
+线上页抓到 `PAGEERROR: Unexpected end of input` + `DATA 未定义`；线上/本地模板拆 `<script>`
+块逐个 node --check，双双 1279 行处报错 ⇒ 同源 ⇒ 我的 Edit。**门禁盲区**：gate A 只查
+`api/*.js`，div 配平测试不管 JS 括号，template 内联 JS 全程无人查语法。修法：
+① 补括号；② 新 A2 blocking 判据 `tests/site_nav/test_template_js_syntax.py`——
+template 每个 `<script>` 块喂 node --check + 开闭标签数对账（防 JS 字符串里裸 `</script>`），
+白屏级故障以后进不了线。⇒ **凡改 template.html 的 JS，本地必须跑
+`py -3.11 -m pytest tests/site_nav/test_template_js_syntax.py`**。
+
+**分类随机性治理（用户 02:5x 报"FDE 挂在不同类"，拍板全量重判）**：根因是 classify_llm
+prompt 只有 `key=label` 裸表无判定准则（FDE 15 仓散 8 类、awesome 14 仓散 7 类、agent 主题
+21 仓散 6 类）。修法三件套：① `_CAT_CRITERIA` 判定准则表注入 classify_llm（`9752f6f56`，
+reclassify 与线上同函数一注入点全覆盖），核心原则**内容形态优先于主题**：可运行软件→能力类、
+资料→learning、资讯/awesome 合集→info、教程属性压过工具属性；FDE 裁决=教程/路线图/wiki→
+learning、运行时→tools。② 全量 dry-run（断点 state 先挪开否则复用旧 prompt 结果零重判）→
+**变动 107 / 维持 182**，FDE 15/15 收敛 learning、awesome 12/13 归 info → 用户确认"按表执行"
+→ `--apply` 写库 → 推送 `c43786141`。③ 写库后 2 分钟用户连 star 4 个新仓，star-fast 自动按
+新准则入类（远端 304 条、notes 293、同键零覆盖）——增量链路实战验证通过。
+
+**star-fast 两起修复（用户从 Actions 看到报错）**：① 无新星场 Stage 让 cp 当探测员，
+`set -e` 下先炸 `cannot stat 'index.html'` 靠 continue-on-error 吞成红字噪音（`523a33da9`：
+存在性检查前置 → `::notice:: + publish=false + exit 0` 干净跳过，撤 continue-on-error，
+upload 由 publish 标志门住）；② Commit 步还按旧"三件套" add——descriptions_zh.json 已进
+starhub-state 缓存家族（.gitignore+出树），新星场 add 必被拒 ⇒ **15 分钟循环炸**
+（`97150175b`：add 清单摘到两个仍跟踪文件 + 泛化判据 add 清单∩.gitignore=∅）。
+两起都在推送后一个新星周期内实战验证（bot 提交 643ca5ec8/36d9fe387）。
+
+**health 幻影读数根因修复（`d3a2481c7`）**：§8.23 记录的"自愈"定性作废——再次实锤
+（两次锚点都= 09-24T18:00:34Z 的 **#1361**）：GitHub **服务端 `status=success` 过滤视图**
+间歇性返回停在 9 天前的陈旧列表（未过滤视图始终正确）。修法：不过滤拉 per_page=30、
+客户端按 conclusion 挑最新 success（30 场覆盖 ≥24h 必有 success）；判据反向钉死
+"禁止服务端 status=success 过滤"。未过滤视图若哪天也陈旧则无解（当前无证据）。
+
+**验证任务遗留（下会话开工先查）**：
+① 白屏修复已推但**等 05:00Z 自然场或手动 dispatch 才上线**——开工先 Playwright 打开
+线上 index.html 确认白屏已愈（卡片数>0、无 PAGEERROR），没愈就 `gh api -X POST
+repos/Kwei168/starhub/actions/workflows/update.yml/dispatches -f ref=main` 手动恢复；
+② star-fast **无新星 notice 路径**尚未被真实走到（新星一直来），找一场无新星 run 看
+Stage 日志应出现 `::notice::[fast] 无新星`；
+③ 11:41 的轮询自动化（automation-a813cb6c）已发过一次报告，结论以它的输出为准；
+④ 本会话推送链：180eaf88f(T5+T6修正3+点评回填) → ce7cf434a(A2豁免) → d7fce992c
+(质心守卫+§8.23) → 523a33da9(无新星跳过) → 9752f6f56(准则表) → 97150175b(Commit步摘
+descriptions_zh) → c43786141(重分类写库) → 189851d1e(§8.23补遗) → d3a2481c7(health根因)
+→ [本条+白屏修复待推]。每批守门+blob复查零回滚。
+
+`## 九、技术栈总结` 与下一行的表头 `| 层 | 技术 |`
 并成了一行 —— 正是记忆里那条"少个换行会把下一行挤进来"。⇒ 手册这类长文档改完必须**结构化复核**：
 本次做法是 `grep -n '^## '` 数一遍节名，并做与远端的删行对账（`HANDOFF.md` 应为 0 删行）。
 
