@@ -1549,8 +1549,8 @@ def test_summary_exit_still_strips_tags_but_never_decodes_twice(tmp_path):
     # ── 反空转：把 shipSummary 退回「只截断」（= 我这批刚犯过的形状），上面的断言必须真红 ──
     seg = _rss_pipeline_src()
     old_body = (u"  const t = String(x || '').replace(/<[^>]+>/g, '')"
-                u".replace(/<[^>]*$/, '').trim();" + chr(10) +
-                u"  return truncate(t, 200);")
+                u".replace(/<[^>]*$/, '');" + chr(10) +
+                u"  return truncate(collapseRuns(t), 200);")
     weak_body = u"  return truncate(x || '', 200);"
     assert old_body in seg, "shipSummary 的函数体形状与判据锚点不符 ⇒ 这条反证会是空的"
     weak = seg.replace(old_body, weak_body, 1)
@@ -1561,3 +1561,52 @@ def test_summary_exit_still_strips_tags_but_never_decodes_twice(tmp_path):
         "退回只截断后竟然也剥了标签 ⇒ 上面那条剥标签断言没牙：%r" % bad[0])
     print("[R67] 出口剥标签与 Python 后两步同形（3 形状）；`&amp;copy;` 原样留着（不第二遍）；"
           "把函数体退回只截断 ⇒ 同一批样本立刻保留 <a>，判据有牙")
+
+# 样本用 chr() 拼出来，不在源码里写反斜杠转义：本仓记过 js-in-python-string-escapes 这个坑
+# （生成器里的反斜杠 n 会先被 Python 吃掉，判据就变成在测自己的转义而不是测形状）。
+_SHAPE_SAMPLES = [
+    u'a' + chr(10) + chr(10) + u'b   c',
+    u'x' + chr(160) + u'y' + chr(160) + u'z',
+    u'尾巴' + u' ' * 8 + u'少一句' + u' ' * 8 + u'被吃到这里',
+    u'前半<a href="x">链</a>后半',
+]
+_ENTITY_SAMPLE = u'&copy; 2026 版权所有'   # 已经过单趟解码的出厂输入（不是 feed 原文）
+
+
+def test_summary_exit_shape_equals_the_pre_batch_exit(tmp_path):
+    """R67b：除"不再吃实体"这一件，出口必须与**改动前**逐字节同形。
+
+    我一度把 collapseRuns 连同第二遍解码一起删了。现取本地真快照 9,308 条 s 实测：
+    与改动前的出厂值不同 **2,064 条（22%）**，其中 **21 条变短** —— 未折叠的连行与连续空格
+    吃掉 200 字预算，尾巴少一句。补回 collapseRuns 后同一批实测 **diff=0**。
+    这条判据钉的就是"形状不许顺手改"，另附反空转：把折叠摘掉必须真红。
+    """
+    old = _seg_product(tmp_path, "prebatch",
+                       "function (s) { return truncate(stripHtml(s), 200); }", _SHAPE_SAMPLES)
+    now = _seg_product(tmp_path, "nowshape",
+                       "function (s) { return shipSummary(s); }", _SHAPE_SAMPLES)
+    assert old == now, (
+        "出口形状与改动前不一致（本批只该删第二遍解码）：" + chr(10) +
+        chr(10).join("  进 %r / 改动前 %r / 现在 %r" % (x, o, n)
+                     for x, o, n in zip(_SHAPE_SAMPLES, old, now)))
+    # 折叠/剥标签必须真做了，否则"两边都没干活"也会相等
+    assert now[0] == u"a b c", "换行与连续空格没被折叠：%r" % now[0]
+    assert now[1] == u"x y z", "NBSP 没被折叠：%r" % now[1]
+    assert now[3] == u"前半链后半", "标签没被剥：%r" % now[3]
+    # 唯一该出现的差异：双编码实体那一格，改动前被吃成空串，现在原样留着
+    e_old = _seg_product(tmp_path, "prebatch_e",
+                         "function (s) { return truncate(stripHtml(s), 200); }",
+                         [_ENTITY_SAMPLE])[0]
+    e_now = _seg_product(tmp_path, "now_e",
+                         "function (s) { return shipSummary(s); }", [_ENTITY_SAMPLE])[0]
+    assert u"&copy;" in e_now and u"&copy;" not in e_old, (
+        "实体那格应当**只在这里**出现差异：改动前 %r / 现在 %r" % (e_old, e_now))
+    # 反空转：把 collapseRuns 从 shipSummary 摘掉 ⇒ 与改动前同形这条必须真红
+    seg = _rss_pipeline_src()
+    stripped = seg.replace(u"  return truncate(collapseRuns(t), 200);",
+                           u"  return truncate(t, 200);", 1)
+    assert stripped != seg, "控制没打上：shipSummary 折叠那步的形状变了"
+    bad = _seg_product(tmp_path, "nocollapse",
+                       "function (s) { return shipSummary(s); }", _SHAPE_SAMPLES, seg=stripped)
+    assert bad != old, "摘掉 collapseRuns 后竟然仍与改动前同形 ⇒ 这条判据没牙"
+    print("[R67b] 4 形状与改动前逐字节同形；实体格保留 &copy;；摘掉折叠 ⇒ 立刻不同形")

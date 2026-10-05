@@ -551,15 +551,24 @@ MUTATIONS = [
      u"s: truncate(stripHtml(it.s), 200),",
      u"test_summary_exits_decode_exactly_once"),
 
-    # R64（2026-10-05 自查，任务 #31）：把 shipSummary 的函数体退回"只截断"。
+    # R64（2026-10-05 自查，任务 #31）：只删掉 shipSummary 的**剥标签**那一半（折叠留着），以此和 R65 各管一半。
     # 这一格和我这批刚犯过的错逐字相同（把 stripHtml 的两半边一起删了），旧三条出口判据全都
     # 抓不到 —— 实测 R64 下 test_summary_exits_decode_exactly_once / 接线 / 反证 三条仍全绿，
     # 只有新加的 test_summary_exit_still_strips_tags_but_never_decodes_twice 会红。
-    # 锚点是定义体两行连成一个**连续**串（中间不跨注释），注释改写不会让靶失效。
+    # 锚点是函数体那两行连成的**连续**串；函数体一改就要重核锚点（本批 R64 因我改体被电池当场报"命中判据 0 条"两次 ⇒ 空靶由电池自己抓出来，不是人看出来的）。
     ("R64 出厂摘要不再剥标签（防御被我删过头）", COPIES[2],
-     u"  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '').trim();" + chr(10) +     u"  return truncate(t, 200);",
-     u"  return truncate(x || '', 200);",
-     u"test_summary_exit_still_strips_tags_but_never_decodes_twice"),]
+     u"  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
+     u"  const t = String(x || '');" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
+     u"test_summary_exit_still_strips_tags_but_never_decodes_twice"),
+
+    # R65：把 shipSummary 里的折叠那步摘掉（= 我 R67 之前一次删过头的另一种形状）。
+    # 只有 test_summary_exit_shape_equals_the_pre_batch_exit 守得住：它拿"改动前那条出口写法"
+    # 当参照物逐条比字节，本地真快照 9,308 条实测当前形状与改动前 diff=0，摘掉折叠就会散开。
+    # 锚点已对真源码断言命中 1 次（登记靶之后立刻核，别让空靶活到下一批）。
+    ("R65 出厂摘要不再折叠空白（形状漂回改动前之外）", COPIES[2],
+     u"  return truncate(collapseRuns(t), 200);",
+     u"  return truncate(t, 200);",
+     u"test_summary_exit_shape_equals_the_pre_batch_exit"),]
 
 
 def _stage(tmp, rel_list):

@@ -587,8 +587,11 @@ function shipSummary(x) {
   // 只有解实体那件是缺陷。两半的切法照 Python `_strip_html`(build_rss_aggregator.py:1145) 的后两步：
   // `<[^>]+>`→空、`<[^>]*$`→空、再 trim；**不许**改用 stripTagsKeepLines —— 它还整块删
   // `<script>` 内容，而 Python 不删，那会把已登记的 P1-5 分叉搬进入口。
-  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '').trim();
-  return truncate(t, 200);
+  // 剥标签 + 压空白两样都保持改动前的形状，只删掉"第二遍解实体"那一件：
+  // 现取本地真快照 9,308 条 `s` 实测，若连 collapseRuns 一起删 ⇒ 新旧出厂不同 2,064 条(22%)、
+  // 其中 21 条**变短**：未折叠的连续换行与连续空格会吃掉 200 字预算，尾巴少一句
+  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');
+  return truncate(collapseRuns(t), 200);
 }
 
 
