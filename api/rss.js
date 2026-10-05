@@ -578,7 +578,7 @@ function toCardItem(it) {
   const obj = {
     t: it.title,
     u: it.link,
-    s: truncate(cleanSummary(it.summaryRaw || '', it.link), 200),
+    s: truncate(cleanSummary(it.summaryRaw || '', it.link), SUMMARY_CAP),
     d: it.pub_date,
   };
   // 无 pubDate 时 d 是抓取时刻（datedOrCapture 给的），必须带出降级标记，
@@ -597,9 +597,18 @@ function toCardItem(it) {
 // 走的是旧顺序级联 `legacyEntityCascade` —— 它有一支 `&[a-z]+;`→空串，于是
 // `&amp;copy; 2026 版权所有` 单趟得 `&copy; 2026 版权所有`（= 构建期答案），再解一趟就被吃成
 // ` 2026 版权所有`。实测四条出口（?batch= / 快照服务 / refresh 合并 T1 / 快照 T2T3）各抄了一份
-// 这个第二遍 ⇒ 同一篇文章在两条通道显示不同。长度口径**保持原行为**（照旧封顶 200），
+// 这个第二遍 ⇒ 同一篇文章在两条通道显示不同。长度口径已按裁定统一到构建期那一侧（见 SUMMARY_CAP），
 // 只把第二趟解码删掉；标题那一格 `t: stripHtml(...)` 是同一族的另一处，见上方
 // `legacyEntityCascade` 的"已知挂起"，本批不动它（改了要连带动他人线 harness 的 parseFeed 口径）。
+/* 摘要长度口径：与构建期**同一个数**，不再各截一刀。
+ * 参照物 = build_rss_aggregator.py:2274 `def _truncate(s, maxlen=500)`，两条解析出口(:3198 Atom / :3304 RSS)都用这个默认值；
+ * 旧写法在这里写死 200 ⇒ 同一条摘要两条通道两个长度（现取 659 条里 209 条长度不同，页面上是"抽屉里完整、列表刷新后剩半句"）。
+ * 代价现取读数（7,184 条真条目）：摘要 >200 字 2,596 条、>500 字 524 条，出口 200⇒500 让运行时摘要文本量 +69.2%（750,577⇒1,270,102 字符）；
+ * 卡片可见布局不变：`.card-summary` 本来就 `-webkit-line-clamp:4` + overflow:hidden（产物那 500 字一直进的是同一批卡片）。
+ * 判据不许把 500 再抄一遍：test_summary_exit_cap_matches_buildtime_default 直接读 `_truncate` 的默认值当参照物。
+ */
+const SUMMARY_CAP = 500;
+
 function shipSummary(x) {
   // 剥标签这半边**必须留着**：被替换掉的旧行 `truncate(stripHtml(x),200)` 里的 `stripHtml`
   // 干两件事，剥标签那件是原注释写明的"对快照数据做 HTML 清理（防御性）"（:1050），
@@ -613,7 +622,7 @@ function shipSummary(x) {
   // 少了它，下面 `<[^>]+>` 会把 `<![CDATA[正文]]>` 整段当一个标签吃掉 ⇒ 正文直接消失（复评第 4 轮
   // 2026-10-05 拿合成样本量到：旧留「正文」、新出厂空串）。
   const t = unwrapCdata(String(x || '')).replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');
-  return truncate(collapseRuns(t), 200);
+  return truncate(collapseRuns(t), SUMMARY_CAP);
 }
 
 
@@ -665,7 +674,7 @@ function parseFeed(xml, sourceKey, maxItems) {
           title: stripHtml(title),
           link: link || '#',
           summaryRaw: summary || '',
-          summary: truncate(stripHtml(summary), 200),
+          summary: truncate(stripHtml(summary), SUMMARY_CAP),
           pub_date: _dt.pub_date,
         };
         if (_dt.date_fallback) item.date_fallback = true;
@@ -720,7 +729,7 @@ function parseFeed(xml, sourceKey, maxItems) {
         // B1（与 Atom 分支同一格，理由见上面那段登记）：**只取 `<description>`**，
         // 缺失就是缺失 —— 拿正文顶上等于让同一份正文在阅读器里出现两遍。
         summaryRaw: desc,
-        summary: truncate(stripHtml(desc), 200),
+        summary: truncate(stripHtml(desc), SUMMARY_CAP),
         pub_date: _dt.pub_date,
       };
       if (_dt.date_fallback) result.date_fallback = true;

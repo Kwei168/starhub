@@ -125,6 +125,35 @@ function extractGeneric(dom, rawHtml) {
   return { title: article.title || title, content: article.content, source: 'readability', degraded: degraded };
 }
 
+/* 现抓通道的"可执行面"剥离 —— 对抗审查两轮点名的唯一未修 P0（用户裁定 ④：接）。
+ * 这条通道把远端站点的 HTML 段直接交给阅读器 `innerHTML`，所以原文站点本来可以在我们的
+ * 页面里跑脚本（读 localStorage 里的收藏/已读、伪造界面）。这里在**出口这一格**清掉能执行的
+ * 东西：成对的危险标签 + 残留的孤标签、`on*=` 内联事件、`javascript:`/`data:text/html` 之类的
+ * 伪协议 URL。文字、图片、链接一律保留（不吃正文）。
+ * 为什么是纯文本刀而不是 DOM/白名单：
+ *   ① CI 没有 `npm ci` ⇒ 这个文件（require jsdom）在闸里跑不起来，只有纯文本刀能被 node 判据实跑；
+ *   ② 复用 `api/rss.js` 那份白名单要把它搬出 parseFeed 的切片，而
+ *      `tests/site_nav/test_article_contract.py:233` 明确要求 `function sanitizeHtml(` 留在切片里
+ *      （它同时钉着"deepClean 的唯一调用点在 sanitize 之后"那格死刀）⇒ 不在这里顺手动它。
+ * 已知代价（写明白，不静默）：`iframe`（含 YouTube/Vimeo）在这条通道会被丢，而构建期产物里
+ * 那一份按白名单放行。两通道这一格不同判，等白名单合并时一起收。
+ * 判据：tests/site_nav/test_reader_fulltext_errors.py 的行为格（node 实跑切出来的本函数）
+ *      + 接线格 + tools/mut_reader.py 的靶 R78。
+ */
+const _EXEC_TAGS_RE_PAIR = /<\s*(script|style|object|embed|form|iframe|link|meta|base)\b[\s\S]*?<\s*\/\s*\1\s*>/gi;
+const _EXEC_TAGS_RE_LONE = /<\s*\/?\s*(script|style|object|embed|form|iframe|link|meta|base)\b[^>]*>/gi;
+const _EVENT_ATTR_RE = /\son[a-z0-9._-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+const _PSEUDO_URL_RE = /\s(src|href|action|xlink:href|data-src|poster)\s*=\s*("[\s]*(?:javascript|vbscript|data:text\/html|data:application)[^"]*"|'[\s]*(?:javascript|vbscript|data:text\/html|data:application)[^']*')/gi;
+
+function stripRemoteExecutables(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(_EXEC_TAGS_RE_PAIR, '')
+    .replace(_EXEC_TAGS_RE_LONE, '')
+    .replace(_EVENT_ATTR_RE, '')
+    .replace(_PSEUDO_URL_RE, ' ');
+}
+
 // ── /api/article 返回契约（Task 6 的前端 _FT_NOTES 按这份表写文案，字段名与码一个都不许改）──
 //   成功 {ok:true, url, title, content, source:'rss_fulltext'|'readability'|'youtube'|'github',
 //         degraded?:'paywall'|'short'}
@@ -225,7 +254,7 @@ module.exports = async (req, res) => {
     // **必须在 cap 之前**，否则截断尾巴上可能留半枚脱链产物。
     // 只搬 2.5 这一把刀：2.6（空锚点整枚删）与逐块推广那两把在构建期锚的是 feed 正文形状，
     // Readability 的产物里没有那些形状（登记为遗留顾虑，不静默扩大范围）。
-    const content = BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url)));
+    const content = stripRemoteExecutables(BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url))));
     const out = { ok: true, url, title: result.title, content: content, source: result.source };
     // degraded 只在这三格里取值（paywall / short / 不带这个字段）—— 判定住在 body_rules
     if (result.degraded) out.degraded = result.degraded;

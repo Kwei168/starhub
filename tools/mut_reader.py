@@ -7,7 +7,7 @@
 （`COPIES` 列表、`MUTATIONS` 五元组、`main()` 的三重门），不自创第二套框架。
 
 三重门（与 mut_attention 逐条同形，第三门按派工收窄到具名判据）：
-  1. **baseline 必须绿** —— 开跑前把 13 个判据文件整场跑一遍（2026-10-05 现取 283 passed），副本没搭对
+  1. **baseline 必须绿** —— 开跑前把 13 个判据文件整场跑一遍（2026-10-05 现取 287 passed），副本没搭对
      时后面全不算数，直接退出 1；这一跑同时保证每条具名判据在打变异前都是绿的；
   2. `s.count(old) != 1` ⇒ 报"锚点失效"（变异根本没打上，判据绿是假的）；
   3. 打了坏改动之后：**只跑 `-k <那条具名判据>`，它必须变红**，而且 pytest 报告里要有真的
@@ -443,17 +443,19 @@ MUTATIONS = [
     # F01 = 审查 ⑤ 的缺陷形状（脱链刀零调用）；F02 = 派工点名的原样变异（算过但不落到出口）；
     # F03 = cap 从出口摘掉（中途算过不算，产物仍是 50029 字符）。
     ("F01 article 现抓通道摘掉脱链刀", COPIES[3],
-     u"    const content = BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url)));",
-     u"    const content = BODY.capBody(BODY.normalizeBodyHtml(result.content, url));",
+     u"    const content = stripRemoteExecutables(BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url))));",
+     u"    const content = stripRemoteExecutables(BODY.capBody(BODY.normalizeBodyHtml(result.content, url)));",
      u"test_article_live_channel_delinks_insite_nav_links"),
+    # 注：裁定 ④ 之后出口那一行外面多了一层 `stripRemoteExecutables(...)` ⇒ 两条靶的锚点跟着走，
+    # 坏改动里**保留**那层壳，这样 F02/F03 各自量的还是它们本来的那一格（丢规范化 / 不截断）。
     ("F02 article 规范化算了但丢弃", COPIES[3],
-     u"    const content = BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url)));",
+     u"    const content = stripRemoteExecutables(BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url))));",
      (u"    const _normalized = BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url));\n"
-      u"    const content = BODY.capBody(result.content);"),
+      u"    const content = stripRemoteExecutables(BODY.capBody(result.content));"),
      u"test_article_output_is_normalized_and_capped"),
     ("F03 article 出口没截断", COPIES[3],
-     u"    const content = BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url)));",
-     u"    const content = BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url));",
+     u"    const content = stripRemoteExecutables(BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url))));",
+     u"    const content = stripRemoteExecutables(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url)));",
      u"test_article_output_is_normalized_and_capped"),
 
     # ── 25 派工 F2：空转刀闸以前只认 `re.sub(r"…", …)`，编译型 `_X.sub('', text)` 两侧隐形。
@@ -492,8 +494,8 @@ MUTATIONS = [
     # 钉**行为对账**那条（三面量：参照物 summary / parseFeed 的 summary / 出厂卡片的 s），
     # 不钉 grep 形状 —— 那行改回退后字符串仍然"像对的"。
     ("B04 RSS 摘要又回退到正文", COPIES[2],
-     u"        summary: truncate(stripHtml(desc), 200),",
-     u"        summary: truncate(stripHtml(desc || contentEncoded), 200),",
+     u"        summary: truncate(stripHtml(desc), SUMMARY_CAP),",
+     u"        summary: truncate(stripHtml(desc || contentEncoded), SUMMARY_CAP),",
      u"test_realtime_rss_exit_matches_python_summary_shape_by_shape"),
     # 同一对缺陷在 **RSS 那一半**：摘要回退那一格（B04）本批收了，靶跟着登记在这里；
     # **门槛那一格仍然没有靶**（实测 py `s=''` / js `fc` 门槛比的是两个原始标签长度，
@@ -558,8 +560,8 @@ MUTATIONS = [
     # 只有新加的 test_summary_exit_still_strips_tags_but_never_decodes_twice 会红。
     # 锚点是函数体那两行连成的**连续**串；函数体一改就要重核锚点（本批 R64 因我改体被电池当场报"命中判据 0 条"两次 ⇒ 空靶由电池自己抓出来，不是人看出来的）。
     ("R64 出厂摘要不再剥标签（防御被我删过头）", COPIES[2],
-     u"  const t = unwrapCdata(String(x || '')).replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
-     u"  const t = unwrapCdata(String(x || ''));" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
+     u"  const t = unwrapCdata(String(x || '')).replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');" + chr(10) +     u"  return truncate(collapseRuns(t), SUMMARY_CAP);",
+     u"  const t = unwrapCdata(String(x || ''));" + chr(10) +     u"  return truncate(collapseRuns(t), SUMMARY_CAP);",
      u"test_summary_exit_still_strips_tags_but_never_decodes_twice"),
 
     # R65：把 shipSummary 里的折叠那步摘掉（= 我 R67 之前一次删过头的另一种形状）。
@@ -567,8 +569,8 @@ MUTATIONS = [
     # 当参照物逐条比字节，本地真快照 9,308 条实测当前形状与改动前 diff=0，摘掉折叠就会散开。
     # 锚点已对真源码断言命中 1 次（登记靶之后立刻核，别让空靶活到下一批）。
     ("R65 出厂摘要不再折叠空白（形状漂回改动前之外）", COPIES[2],
-     u"  return truncate(collapseRuns(t), 200);",
-     u"  return truncate(t, 200);",
+     u"  return truncate(collapseRuns(t), SUMMARY_CAP);",
+     u"  return truncate(t, SUMMARY_CAP);",
      u"test_summary_exit_shape_equals_the_pre_batch_exit"),
 
     # ── 29 复评第 2/1 条（2026-10-05 补判据之后新长的三把牙）────────────────────
@@ -661,7 +663,28 @@ MUTATIONS = [
     ("B05 RSS 门槛退回原始标签长度", COPIES[2],
      u"    const fullContent = cleanedBody.length > descPlain.length ? cleanedBody : '';",
      u"    const fullContent = contentEncoded.length > desc.length ? cleanedBody : '';",
-     u"test_realtime_rss_exit_matches_python_s_and_fc_shape_by_shape"),]
+     u"test_realtime_rss_exit_matches_python_s_and_fc_shape_by_shape"),
+
+    # R77：把出口上限退回写死 200 ⇒ 与构建期 `_truncate` 默认不同数
+    ("R77 出口上限退回写死 200（与构建期又分叉）", COPIES[2],
+     u"const SUMMARY_CAP = 500;",
+     u"const SUMMARY_CAP = 200;",
+     u"test_summary_exit_cap_matches_buildtime_default"),
+
+    # R78：裁定 ④ 的可执行面刀写成恒等（非空输入原样吐回）。
+    # 行为判据必须红 —— 它跑的是**真切出来的那段刀**，所以这条量的是刀本身。
+    # 注：api/article.js 是 CRLF ⇒ 锚点一律取单行，别拿跨行字面量去绑。
+    ("R78 可执行面刀变恒等", COPIES[3],
+     u"  if (!html) return '';",
+     u"  if (html) return String(html);",
+     u"test_article_exit_strips_executable_surface"),
+
+    # R79：刀还在、但出口那一行不接（= "定义了不调用"那一族，本仓点过两次名）。
+    # 这一条只能由接线判据咬住：行为判据切片自跑，看不见调用点。
+    ("R79 现抓出口不接可执行面刀", COPIES[3],
+     u"const content = stripRemoteExecutables(BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url))));",
+     u"const content = BODY.capBody(BODY.delinkNavLinks(BODY.normalizeBodyHtml(result.content, url)));",
+     u"test_article_exit_wires_the_scrub_at_the_single_choke_point"),]
 
 
 def _stage(tmp, rel_list):

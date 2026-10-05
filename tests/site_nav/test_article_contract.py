@@ -153,16 +153,21 @@ def _article_exit_src():
 
 
 def _article_exit_product(tmp_path, content, url=_ARTICLE_URL):
-    """拿**真** lib 跑**真**出口那几行，返回出厂的成功载荷（dict）。"""
+    """拿**真** lib 跑**真**出口那几行，返回出厂的成功载荷（dict）。
+
+    出口那一行自裁定 ④ 起会调用 `stripRemoteExecutables`，而刀定义在切片区间的**前面** ⇒
+    必须把刀从同一个源文件里一起切进来喂给它（桩只补"同文件里的另一半"，不自己重写一遍，
+    否则就是本仓点过名的"桩越权替被测文件声明依赖"⇒ 删掉定义的变异反而全绿）。
+    """
     runner = tmp_path / "article_exit_product.js"
     runner.write_text(
         "const BODY = require(%s);\n"
         "const url = %s;\n"
         "const result = {title: 'T', content: %s, source: 'readability', degraded: 'short'};\n"
-        "%s\n"
+        "%s\n%s\n"
         "process.stdout.write(JSON.stringify(out));\n"
         % (json.dumps(LIB_BODY.replace("\\", "/")), json.dumps(url), json.dumps(content),
-           _article_exit_src()),
+           _exec_knife_src(), _article_exit_src()),
         encoding="utf-8", newline="\n")
     r = subprocess.run([_node(), str(runner)], capture_output=True,
                        text=True, encoding="utf-8", errors="replace", cwd=ROOT, timeout=300)
@@ -206,6 +211,89 @@ def test_rss_exit_keeps_the_buildtime_order_normalize_sanitize_deepclean_cap():
     # base 用的是条目自己的 link（局部变量），不是被 `|| '#'` 兜过的那份
     assert re.search(r"normalizeBodyHtml\(\s*fullContent\s*,\s*link\s*\)", src), \
         "base 不该取 result.link（它已被写成 link || '#'，'#' 不是 base）"
+
+
+# ── 裁定 ④（2026-10-05）：现抓通道的可执行面剥离 —— 两轮审查唯一未修的那格 P0 ──────────
+# 这条通道把远端站点的 HTML 交给阅读器 `innerHTML` ⇒ 原文站点可以在我们页面里跑脚本。
+# 刀必须**切函数来跑**：api/article.js require jsdom，CI 没有 npm ci ⇒ 整文件跑不起来，
+# 但那把刀是纯文本正则，切出来就能在 node 里实跑（所以它设计成纯文本，不是 DOM）。
+_EXEC_ANCHOR = "const _EXEC_TAGS_RE_PAIR"
+_CONTRACT_ANCHOR = "// ── /api/article 返回契约"
+
+
+def _exec_knife_src():
+    src = _read(API_ARTICLE)
+    i = src.find(_EXEC_ANCHOR)
+    j = src.find(_CONTRACT_ANCHOR)
+    assert 0 < i < j, "切不出可执行面剥离那一段：锚点变了 ⇒ 这条判据会是空的"
+    seg = src[i:j]
+    for name in ("function stripRemoteExecutables", "_EXEC_TAGS_RE_LONE",
+                 "_EVENT_ATTR_RE", "_PSEUDO_URL_RE"):
+        assert name in seg, "切出的段里缺 %s ⇒ 刀不完整" % name
+    return seg
+
+
+def _exec_products(tmp_path, samples):
+    node = _node()
+    fn = tmp_path / "exec_knife.js"
+    fn.write_text(_exec_knife_src() + "\nmodule.exports = stripRemoteExecutables;\n",
+                  encoding="utf-8", newline="\n")
+    runner = tmp_path / "exec_run.js"
+    runner.write_text("const f = require(%r);\nprocess.stdout.write(JSON.stringify(%s.map(f)));\n"
+                      % (str(fn).replace("\\", "/"), json.dumps(samples, ensure_ascii=False)),
+                      encoding="utf-8", newline="\n")
+    r = subprocess.run([node, str(runner)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", cwd=ROOT, timeout=120)
+    assert r.returncode == 0, "node 跑可执行面刀崩了：\n%s\n%s" % (
+        (r.stdout or "")[-300:], (r.stderr or "")[-800:])
+    return json.loads(r.stdout)
+
+
+_EXEC_HOSTILE = [
+    '<img src="x" onerror="alert(1)">',
+    '<script>alert(1)</script>',
+    '<scr<script>ipt>alert(1)</scr</script>ipt>',       # 嵌套骗过成对匹配的那一类
+    '<a href="javascript:alert(1)">点我</a>',
+    '<iframe src="https://player.vimeo.com/x/1"></iframe>',
+    '<svg onload="alert(1)"><circle r="2"/></svg>',
+    '<form action="https://evil/"><input name="a"></form>',
+    '<object data="data:text/html;base64,PHNjcmlwdD4="></object>',
+    '<link rel="stylesheet" href="https://evil/c.css">',
+    '<style>@import url("https://evil/x.css");</style>',
+]
+# 良性那一半与敌意那一半同权重：刀要是把正文/图/链接一起吞了，就是"用一个新故障换旧故障"。
+_EXEC_BENIGN = [
+    '<p>正文<strong>加粗</strong>与<a href="https://x.test/1">链接</a></p>',
+    '<img src="https://a.test/b.png" alt="图">',
+    '<img src="data:image/svg+xml,%3Csvg%3E%3C/svg%3E">',
+    '<video src="https://m.test/a.mp4" controls></video>',
+]
+
+
+def test_article_exit_strips_executable_surface(tmp_path):
+    """行为：敌意样本里"能执行"的一样不许活；良性内容必须**逐字**不动。"""
+    out = _exec_products(tmp_path, _EXEC_HOSTILE + _EXEC_BENIGN)
+    for i, got in enumerate(out[:len(_EXEC_HOSTILE)]):
+        low = got.lower()
+        assert "onerror" not in low and "onload" not in low and " onclick" not in low, (
+            "内联事件活下来了：进 %r ⇒ 出 %r" % (_EXEC_HOSTILE[i], got))
+        assert "javascript:" not in low, "伪协议 URL 活下来了：%r" % got
+        for tag in ("script", "style", "iframe", "object", "embed", "form", "link", "meta", "base"):
+            assert "<" + tag not in low, "危险标签 %s 没剥掉：%r" % (tag, got)
+    for i, got in enumerate(out[len(_EXEC_HOSTILE):]):
+        assert got == _EXEC_BENIGN[i], "良性内容被吃掉了：进 %r ⇒ 出 %r" % (_EXEC_BENIGN[i], got)
+    print("[可执行面] 敌意 %d 条全清、良性 %d 条逐字不动" % (len(_EXEC_HOSTILE), len(_EXEC_BENIGN)))
+
+
+def test_article_exit_wires_the_scrub_at_the_single_choke_point():
+    """接线：三条现抓支路汇成的那**一行**必须过刀；快照那条（构建期已过白名单）不许再过。"""
+    src = _read(API_ARTICLE)
+    assert src.count("stripRemoteExecutables(") == 2, (
+        "刀应当是【定义 1 + 唯一调用点 1】，实得 %d" % src.count("stripRemoteExecutables("))
+    assert "const content = stripRemoteExecutables(BODY.capBody(" in src, (
+        "出口那一行没接上刀 ⇒ 现抓通道仍可出厂可执行 HTML")
+    assert re.search(r"content:\s*BODY\.capBody\(entry\.content\)", src), (
+        "快照那条出口的形状变了（这条接线判据的前提，别让它被顺手接上第二遍清洗）")
 
 
 def test_article_snapshot_channel_is_capped_but_not_normalized_again():
@@ -444,9 +532,9 @@ ATOM_PARITY_SHAPES = [
         u"\nPoints: 254\n# Comments: 162", _cdata(ATOM_BODY))),
 ]
 
-# 语料自检：每条摘要都短于 JS 的 200 字截断，也短于 Python `_truncate` 的 500 字默认，
+# 语料自检：每条摘要都短于两侧共同的 500 字上限（JS SUMMARY_CAP = Python `_truncate` 默认），
 # 这样 `s` 比的是**同一个字符串**，不是"两侧各自截了一刀之后刚好相等"。
-# （200 与 500 这个长度差是另一笔既有的账，本条判据不把它混进来。）
+# （长度口径那一格另有判据：test_summary_exit_cap_matches_buildtime_default。）
 for _n, _x in ATOM_PARITY_SHAPES:
     assert 0 < len(re.sub(r"<[^>]+>", "", _x)) < 200, "语料 %s 超出 200 字，s 对账会失真" % _n
 
@@ -684,7 +772,7 @@ RSS_NOFALLBACK_SHAPES = [
     (u"摘要带 &amp; 实体（两侧同圈解码）", _rss_shape(u"Tom &amp; Jerry", RSS_BODY)),
 ]
 
-# 与 Atom 语料同一条自检：摘要必须短于 JS 的 200 字截断、也短于 Python `_truncate` 的 500 字默认，
+# 与 Atom 语料同一条自检：摘要必须短于两侧共同的 500 字上限（SUMMARY_CAP = `_truncate` 默认），
 # 这样三格比的是**同一个字符串**，不是"两侧各自截了一刀之后刚好相等"。
 for _n, _x in RSS_NOFALLBACK_SHAPES:
     assert 0 < len(re.sub(r"<[^>]+>", "", _x)) < 200, "RSS 语料 %s 超出 200 字，s 对账会失真" % _n
@@ -1326,7 +1414,7 @@ def test_strip_html_split_keeps_the_old_output_shape(tmp_path):
 # 的字面量吃掉名字**（实测两条通道的产物因此不同判）：
 #     `&amp;copy; 2026 版权所有` → 单趟 `&copy; 2026 版权所有`（= 构建期答案）
 #                          → 第二趟 `2026 版权所有`
-# 修法是收进唯一一份 `shipSummary(x) = truncate(x || '', 200)`：**长度口径一字未改**（照旧 200 封顶
+# 修法是收进唯一一份 `shipSummary(x)`：当时**长度口径一字未改**（照旧 200 封顶
 # + 既有省略号），只是不再二次解码。**标题那一格 `t: stripHtml(...)` 本批故意没动**（它是
 # `legacyEntityCascade` 上方登记的"已知挂起"，牵动他人线 harness）⇒ 下面所有断言只碰 `s`。
 # 三条判据的分工：`test_summary_exits_decode_exactly_once` 是**行为**（真 `shipSummary` + 真出口
@@ -1443,14 +1531,46 @@ def _wiring_violations(code):
     return v
 
 
+def test_summary_exit_cap_matches_buildtime_default(tmp_path):
+    """②「放宽出口」的口径闸：JS 的上限必须等于 Python `_truncate` 的默认上限（参照物是读出来的）。
+
+    裁定前那四处出口各自写死 200、构建期是 `_truncate(..., 500)` ⇒ 同一条摘要两条通道两个长度
+    （现取 659 条里 209 条长度不同）。这一格把"两个数必须同一个"钉住：
+    谁只改一边（或把 500 又抄成第二处写死的数），当场红。
+    """
+    dflt = _build_module()._truncate.__defaults__
+    assert dflt and len(dflt) == 1, "Python `_truncate` 的默认值形状变了：%r" % (dflt,)
+    cap_py = int(dflt[0])
+    src = _read(API_RSS)
+    m = re.search(r"const SUMMARY_CAP = (\d+);", src)
+    assert m, "api/rss.js 里没有 SUMMARY_CAP ⇒ 出口长度又回到各写各的"
+    cap_js = int(m.group(1))
+    assert cap_js == cap_py, (
+        "出口上限 %d 与构建期 `_truncate` 默认 %d 不同数（裁定：两边用同一个数）" % (cap_js, cap_py))
+    assert src.count("SUMMARY_CAP") >= 5, "SUMMARY_CAP 的引用数掉了：%d" % src.count("SUMMARY_CAP")
+    assert u", 200)" not in src, "api/rss.js 又出现写死的 200 字上限：%r" % [
+        ln for ln in src.split(chr(10)) if u", 200)" in ln][:2]
+    # 行为那一格：正好到上限不许被削，超过才截（截出 cap 字 + 既有省略号）
+    at_cap, over = u"y" * cap_py, u"y" * (cap_py + 20)
+    out_at, out_over = _seg_product(tmp_path, "capgate",
+                                    "function (s) { return shipSummary(s); }",
+                                    [at_cap, over])
+    assert out_at == at_cap, "正好 %d 字被削了一格（不该截）：%d 字" % (cap_py, len(out_at))
+    assert (len(out_over) == cap_py + 1 and out_over.endswith(u"\u2026")
+            and out_over[:-1] == u"y" * cap_py), (
+        "超过上限的形状不对：%d 字，尾 %r" % (len(out_over), out_over[-6:]))
+    print("[出口上限] py `_truncate` 默认=%d js SUMMARY_CAP=%d；%d 字原样、%d 字截到 %d+省略号"
+          % (cap_py, cap_js, cap_py, cap_py + 20, cap_py))
+
+
 def test_summary_exits_decode_exactly_once(tmp_path):
-    """判据 2（行为）：出口只截断、**不再解第二遍**；长度口径照旧 200 封顶。"""
+    """判据 2（行为）：出口只截断、**不再解第二遍**；长度口径由下一格 `..._cap_matches_buildtime_default` 管。"""
     # ── (1) 单趟 vs 第二趟：同一份输入，两个形状必须给出**不同**答案，且单趟那个等于构建期 ──
     once = _seg_product(tmp_path, "onepass",
                         "function (s) { return shipSummary(BODY.decodeEntities(s)); }",
                         [u"&amp;copy; 2026 版权所有"])[0]
     twice = _seg_product(tmp_path, "twopass",
-                         "function (s) { return truncate(stripHtml(BODY.decodeEntities(s)), 200); }",
+                         "function (s) { return truncate(stripHtml(BODY.decodeEntities(s)), 500); }",
                          [u"&amp;copy; 2026 版权所有"])[0]
     build = _build_module()._strip_html(u"&amp;copy; 2026 版权所有")
     assert u"&amp;copy;" not in once and u"&copy;" in once, (
@@ -1459,16 +1579,16 @@ def test_summary_exits_decode_exactly_once(tmp_path):
     assert u"&copy;" not in twice and twice != once, (
         "对照那一格失效：旧的第二趟写法竟然与单趟同形（%r / %r）⇒ 输入样本不再能分辨两遍解码"
         % (twice, once))
-    # ── (2) 长度口径不变：240 字仍然只留 200 字 + 既有省略号 ──
-    long_in = u"y" * 240
+    # ── (2) 长度口径 = 构建期那一侧：520 字留 500 字 + 既有省略号 ──
+    long_in = u"y" * 520
     long_out = _seg_product(tmp_path, "cap",
                             "function (s) { return shipSummary(s); }", [long_in])[0]
-    assert len(long_out) == 201 and long_out.endswith(u"…") and long_out[:-1] == u"y" * 200, (
-        "`shipSummary` 的截断口径变了（本批只删第二趟、不许动长度）：%d 字，尾 %r"
+    assert len(long_out) == 501 and long_out.endswith(u"…") and long_out[:-1] == u"y" * 500, (
+        "`shipSummary` 的截断口径与 SUMMARY_CAP 不符（长度口径见下一条判据）：%d 字，尾 %r"
         % (len(long_out), long_out[-6:]))
     short_out = _seg_product(tmp_path, "short", "function (s) { return shipSummary(s); }",
                              [_SNAPSHOT_ONCE])[0]
-    assert short_out == _SNAPSHOT_ONCE, "200 字以内被动了：%r" % short_out
+    assert short_out == _SNAPSHOT_ONCE, "上限以内被动了：%r" % short_out
     # ── (3) 四条出口的**真行**逐条实跑：每条都只许截断，不许再解一遍 ──
     lines = _ship_exit_line_specs()
     assert len(lines) == 4, "四条出口应当抠出 4 行，实得 %d：%s" % (
@@ -1478,7 +1598,7 @@ def test_summary_exits_decode_exactly_once(tmp_path):
         for want, got in zip(_SNAPSHOT_SAMPLES, col):
             assert got == want, ("某条出口又解了第二遍：%r\n  进 %r\n  出 %r" % (ln, want, got))
     # ── (4) 反空转：这批样本在**旧写法**下必须确实会坏（否则 (3) 是在数空气）──
-    old = _seg_product(tmp_path, "oldshape", "function (s) { return truncate(stripHtml(s), 200); }",
+    old = _seg_product(tmp_path, "oldshape", "function (s) { return truncate(stripHtml(s), %d); }" % _buildtime_cap(),
                        _SNAPSHOT_SAMPLES)
     broke = [w for w, g in zip(_SNAPSHOT_SAMPLES, old) if g != w]
     assert len(broke) == len(_SNAPSHOT_SAMPLES), (
@@ -1578,8 +1698,8 @@ def test_summary_exit_still_strips_tags_but_never_decodes_twice(tmp_path):
     seg = _rss_pipeline_src()
     old_body = (u"  const t = unwrapCdata(String(x || '')).replace(/<[^>]+>/g, '')"
                 u".replace(/<[^>]*$/, '');" + chr(10) +
-                u"  return truncate(collapseRuns(t), 200);")
-    weak_body = u"  return truncate(x || '', 200);"
+                u"  return truncate(collapseRuns(t), SUMMARY_CAP);")
+    weak_body = u"  return truncate(x || '', SUMMARY_CAP);"
     assert old_body in seg, "shipSummary 的函数体形状与判据锚点不符 ⇒ 这条反证会是空的"
     weak = seg.replace(old_body, weak_body, 1)
     assert weak != seg
@@ -1605,6 +1725,12 @@ _SHAPE_SAMPLES = [
 _ENTITY_SAMPLE = u'&copy; 2026 版权所有'   # 已经过单趟解码的出厂输入（不是 feed 原文）
 
 
+def _buildtime_cap():
+    """构建期那一侧的摘要上限：从 Python `_truncate` 的默认值**读**出来，不在测试里抄数字。"""
+    d = _build_module()._truncate.__defaults__
+    assert d and len(d) == 1, "`_truncate` 默认值形状变了：%r" % (d,)
+    return int(d[0])
+
 def test_summary_exit_shape_equals_the_pre_batch_exit(tmp_path):
     """R67b：除"不再吃实体"这一件，出口必须与**改动前**逐字节同形。
 
@@ -1614,7 +1740,7 @@ def test_summary_exit_shape_equals_the_pre_batch_exit(tmp_path):
     这条判据钉的就是"形状不许顺手改"，另附反空转：把折叠摘掉必须真红。
     """
     old = _seg_product(tmp_path, "prebatch",
-                       "function (s) { return truncate(stripHtml(s), 200); }", _SHAPE_SAMPLES)
+                       "function (s) { return truncate(stripHtml(s), %d); }" % _buildtime_cap(), _SHAPE_SAMPLES)
     now = _seg_product(tmp_path, "nowshape",
                        "function (s) { return shipSummary(s); }", _SHAPE_SAMPLES)
     assert old == now, (
@@ -1627,7 +1753,7 @@ def test_summary_exit_shape_equals_the_pre_batch_exit(tmp_path):
     assert now[3] == u"前半链后半", "标签没被剥：%r" % now[3]
     # 唯一该出现的差异：双编码实体那一格，改动前被吃成空串，现在原样留着
     e_old = _seg_product(tmp_path, "prebatch_e",
-                         "function (s) { return truncate(stripHtml(s), 200); }",
+                         "function (s) { return truncate(stripHtml(s), %d); }" % _buildtime_cap(),
                          [_ENTITY_SAMPLE])[0]
     e_now = _seg_product(tmp_path, "now_e",
                          "function (s) { return shipSummary(s); }", [_ENTITY_SAMPLE])[0]
@@ -1635,8 +1761,8 @@ def test_summary_exit_shape_equals_the_pre_batch_exit(tmp_path):
         "实体那格应当**只在这里**出现差异：改动前 %r / 现在 %r" % (e_old, e_now))
     # 反空转：把 collapseRuns 从 shipSummary 摘掉 ⇒ 与改动前同形这条必须真红
     seg = _rss_pipeline_src()
-    stripped = seg.replace(u"  return truncate(collapseRuns(t), 200);",
-                           u"  return truncate(t, 200);", 1)
+    stripped = seg.replace(u"  return truncate(collapseRuns(t), SUMMARY_CAP);",
+                           u"  return truncate(t, SUMMARY_CAP);", 1)
     assert stripped != seg, "控制没打上：shipSummary 折叠那步的形状变了"
     bad = _seg_product(tmp_path, "nocollapse",
                        "function (s) { return shipSummary(s); }", _SHAPE_SAMPLES, seg=stripped)
