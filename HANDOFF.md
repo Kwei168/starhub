@@ -1864,7 +1864,7 @@ Vercel 域 `/trending_board.json` 404、`/api/rss` 200、四页 200。快车道 
 | RSS 架构 | 1005 源三层分级（T1=6 实时/T2=204/T3=795 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放；快照已出仓（gitignore；**也不随 Vercel 上传** —— `.vercelignore:5` 排除 `rss_api_snapshot*.json`，2026-10-02 20:46 实测 `starhub-refresh.vercel.app/rss_api_snapshot.json` 404，`loadSnapshot()` 有 try/catch 走"实时抓取"降级） |
 | 洞察引擎 | insight_engine：LlamaIndex + RAGAS-inspired 自纠错 + 话题聚类 + 关键词生命周期 + 14 天趋势滚动；每日深度洞察：RAG 混合检索 + 多级 Phase（去重/核查/自审/硬过滤）+ RAGAS 四维阈值闭环 + 破茧栏 + 30 天跨天关联 |
 
-### 8.30 阅读器正文可靠性 7 项批次：规范层收口成两份实现 + 诚实降级（2026-10-04 15:2x–10-05 00:1x BJT，**本会话尚未推送，推送后请续写线上读数**）
+### 8.30 阅读器正文可靠性 7 项批次：规范层收口成两份实现 + 诚实降级（2026-10-04 15:2x–10-05 02:30 BJT，**已推送并线上验收**）
 
 **用户三项裁定（当面确认，别再翻）**：① 分享卡内嵌图**整条摘掉不动**（跨域图污染 canvas，`toDataURL` 必抛）；
 ② 抓不到正文只做**诚实降级 + 明确标注**，不加域名白名单、不加抓取通道、**不给 `/api/article` 加重试**
@@ -1900,6 +1900,31 @@ HN 模板行残留 **1,069 → 21**（余下是整字段仅剩一行的截断块
    实测工作副本与远端 main **逐字节相同**。任何归属/发布面判断前，先 `gh api .../contents/<path>?ref=main` 打远端。
    同一工作树被多会话共用时，HEAD 是共享的——本会话切了分支，就接走过别人一条提交（`c88c61c`），
    所以所有 diff 一律**按路径限定**。
+
+### 8.30 补：推送与线上读数
+
+**推送与线上读数（2026-10-05 00:29–02:27 BJT 实测）**：三次按路径限定推送，远端 main 依次 `b0270fbfa7 → 2d34ae1102 → 0d7a00b2fa`，
+每次推前用 `gh api .../contents/<path>?ref=main` 与基线逐字节对账（全部 `内容不同=0`，他人线的 `rss_sources.json` 等一律排除）。
+- **接口层（Vercel 函数，run 37249682925 已部署）**：`/api/article` 对死域与 NodeSeek 返回 `ok:false, error:'fetch_failed'`（不再静默）；
+  虎嗅 3403 字、财新 1472 字均为真实正文 ⇒ **WAF 挑战页当天没触发**，`challenge_page`/`degraded` 两条分支的线上读数因此**未被证实**，
+  只有单元/合成判据覆盖（这是诚实结论，不算已验）。
+- **实时出口三把刀（`/api/rss?source=`）**：`hn_newest_56` 出厂摘要为 `1 分 · 0 评论 · Hacker News`；
+  `人民日报_261` 4 条样本正文共 **31 张 `<img>`，全部带 http src、全部带 referrerpolicy、只剩懒加载属性 = 0**；
+  `nodeseek_54` 无一条摘要以 http 开头。
+- **页面层（Pages 已发布）**：线上 `rss-aggregator.html` 的 `__CHUNKS` 共 **15,632 条**条目里
+  `Article URL:/Comments URL:` 模板残留 = **0**、粘连摘要 = **0**；产物含 `_FT_NOTES`(7 码) / `_hardenBodyImages`(定义且被 `div` 调用) / `_isHnDiscussion`，
+  旧的 `if(d.ok&&d.content) _insertFulltext(...)` 静默形状已消失。
+- **UI 行为（jsdom 跑线上产物原函数）**：`challenge_page` 显示"该站点要求浏览器人机验证…"、失败写入缓存数 = **0**、
+  `_isHnDiscussion` 4/4 正确（含子域与 query 冒充两个反例）、讨论页渲染摘要 + 单一"在 Hacker News 查看讨论 ↗"出口。
+- **门禁末态**：四目录 A2 **670 passed / 0 failed**；常驻电池 `tools/mut_reader.py` **66/66 全被抓**；
+  `test_body_rules_parity.py` 端到端行为对账（Python 真函数 vs JS 真函数）不一致 **0**。
+
+**仍未闭合（下一步的账，不是"已完成"）**
+- RSS 分支的 `fc` **门槛**仍比原始标签长度（CDATA 白送 12 字符），方向是"少产 fc、实时通道只显摘要"；
+  修它要把"先清洗再定门槛"搬过去，而那会给 `parseFeed` 引入 `BODY` 调用，实测打红两条只注入 `COVER` 的他人线 harness
+  （`tests/rss_cover/test_realtime_cover_js.py`、`tests/rss_source_coverage/test_dateless_source_guard.py`）⇒ 前置条件是那两个 harness 先注 `BODY`。摘要回退那半已在 `cc3db5d` 收掉。
+- `lib/body_rules.js` 在 `tests/site_nav_drift/*` 的登记（远端 != 工作树，属他人线）。
+- `challenge_page` 与 `degraded` 的**生产触发样本**当天未出现 ⇒ 需在有 WAF/付费墙的条目上补一次线上读数。
 
 **已知挂起（有意留的账，不是"没问题"）**
 - `lib/body_rules.js` 未登记进 `tests/site_nav_drift/{test_pages_artifact_scope,test_vercel_source_routes}.py`：
