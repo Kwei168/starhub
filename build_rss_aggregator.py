@@ -5173,6 +5173,13 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     h+='<span class="src-dot" style="--sc:'+a.sc+'"></span><span>'+esc(a.src)+'</span>';
     h+='<span>\u00b7</span><span title="'+esc(a.date||'')+'">'+_dynTime(a)+'</span><span>\u00b7</span><span>'+estRead(a)+'</span></div>';
     if(a.s){
+      /* 症状③的最后一条通道：互方把同一段话既塞进 description 又塞进 content:encoded 时，
+         下面 _insertFulltext(a.fc) 还会再渲染一遍 ⇒ 同一段话屏幕上出现两遍。
+         已发布产物 15,632 条里这样的 191 条（1.22%），其中 151 条正文里还带图 ⇒
+         不能丢正文，只能把这块重复的摘要隐掉；翻译/原文按钮在正文那块上仍然在。
+         口径只看剥标签后的可见文字逐字相等，不引入第三套正文规则。 */
+      var _dupFt = _summaryDuplicatedByFulltext(a.s, a.fc);
+      if(!_dupFt){
       // Auto-format summary into paragraphs
       var formattedSummary = formatSummary(a.s);
       h+='<div class="r2-summary">'+formattedSummary+'</div>';
@@ -5180,6 +5187,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         h+='<div class="r2-lang-toggle">';
         h+='<button class="active" id="btnOrig">\u539f\u6587</button>';
         h+='<button id="btnTrans">\u7ffb\u8bd1</button></div>';
+      }
       }
     } else {
       h+='<div class="fallback-card"><div class="fb-ico">🔗</div>';
@@ -5207,6 +5215,15 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   }
 
   // Format summary text into readable paragraphs
+  /* 摘要是否已被内嵌全文逐字重复（只比可见文字，不做正文规范）。
+     判据：tests/site_nav/test_reader_summary_dedupe.py */
+  function _summaryDuplicatedByFulltext(sum, fc){
+    if(!sum || !fc) return false;
+    var vis = function(x){ return String(x).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); };
+    var a = vis(sum);
+    return a.length > 24 && vis(fc) === a;
+  }
+
   function formatSummary(text){
     if(!text) return '';
     // Step 1: Normalize line endings

@@ -329,16 +329,25 @@ function stripTagsKeepLines(text) {
 }
 
 /** 审查 ③（裁定 R50 收窄后）：摘要出口的实体这一格走 `BODY.decodeEntities` —— **单趟**、
- *  只认"预定义 5 个（`&amp; &lt; &gt; &quot; &#39;`，含可省分号与大写的 legacy 形态）
- *  + 数字/十六进制引用"，其余一律**整枚原样留着**。修前这里是**顺序级联**（`&amp;` 先解
+ *  只认表内那 **10 个名字**（legacy 四个 `&amp; &lt; &gt; &quot;` 含可省分号与大写形态，
+ *  加 2026-10-05 按原始 feed 普查补的 nbsp/apos/rsquo/rarr/ldquo/rdquo；键一共 14 个）
+ *  **+ 数字/十六进制引用**，其余一律**整枚原样留着**。"只认预定义 5 个"是普查前的旧口径、已作废。
+ *  修前这里是**顺序级联**（`&amp;` 先解
  *  ⇒ `&amp;lt;` 被二次解成真 `<`）+ `&[a-z]+;`→空串 + `&#\d+;`→空串，四条实测形状：
  *    `价格 A &amp;amp; B 折扣`          现 `价格 A &amp; B 折扣`（= py）  / 旧 js `价格 A  B 折扣`
  *    `&copy; 2026`                      现 `&copy; 2026`（字面量）        / 旧 js ` 2026`
  *    `&amp;lt;script&amp;gt;alert(1)`   现 `&lt;script&gt;alert(1)`（= py）/ 旧 js 整条摘要没了
  *    `&#20998;&#25968;`                 现 `分数`（= py）                 / 旧 js 空（汉字被整枚吃掉）
  *  与 Python `html.unescape` 唯一分叉那一格：表外的命名实体（`&copy;` → py `©`）这里留字面量，
- *  两侧**都**不再把实体名吃成空串 —— 那才是本批要修的缺陷；分叉面按**原始 feed**普查（89 个上游源、`&名字;` 共 10 种；既往用"已解码语料"测零暴露是在空集上取读数，永远绿）；除 amp/lt/gt/quot 外真出现的 nbsp(241)/apos(31)/rsquo(21)/rarr(6)/ldquo(2)/rdquo(2)共 303 处已进 BODY 表，表外（`&copy;` 这类今天零出现）才留字面量，并被
- *  `tests/site_nav/test_body_rules_parity.py::test_corpus_named_entity_sentinel` 钉住。
+ *  两侧**都**不再把实体名吃成空串 —— 那才是本批要修的缺陷；分叉面按**原始 feed**普查（89 个上游源、
+ *  抽样 89/957 源 = 9.3%，`&名字;` 共 10 种；既往用"已解码语料"测零暴露是在空集上取读数，永远绿）；
+ *  除 amp/lt/gt/quot 外真出现的 nbsp(241)/apos(31)/rsquo(21)/rarr(6)/ldquo(2)/rdquo(2)共 303 处已进
+ *  BODY 表，表外（`&copy;` 与"只认特定大小写形态"的 `&Rarr;/&rArr;/&Larr;/&hArr;`，今天零出现）
+ *  才留字面量 = **已声明分叉**，钉在 CI 每场必跑的两条判据上：
+ *  tests/site_nav/test_body_rules_parity.py::test_entity_name_matrix_matches_python_per_form（名字 ×
+ *  形态矩阵，含 title-case 那一档）与 ::test_runtime_entity_exit_gate_runs_without_any_corpus
+ *  （真出口 + `_SYN_OFFTABLE` 样本）；::test_corpus_named_entity_sentinel 只是**本地可选度量**
+ *  （没有大语料就 skip ⇒ 从不作为 CI 上的闸），不许拿它当"零暴露"的出处。
  *  反例同样钉住：正文里合法存在的 `&amp;lt;img&amp;gt;`（要展示的代码字面量）解一层之后
  *  仍然是字面量，不会被激活成真标签。判据：
  *  tests/site_nav/test_body_rules_parity.py §审查③（同面对账 + 分叉声明 + 语料哨兵 + 真出口对照）。 */
@@ -541,11 +550,21 @@ function extractMediaFromEntry(entry) {
 // 已经过了 `stripHtml` 那一格（**旧顺序级联**，见上方 `legacyEntityCascade` 的"已知挂起"），
 // 再解一遍就是**双重解码**（`&amp;amp;` → `&amp;` → `&`），与构建期"实体只走一趟"的口径分叉。
 // 摘要这一格现在走 `BODY.decodeEntities`：**单趟**、认不出的一律整枚原样留着，与构建期
-// `_strip_html` 的 `html.unescape` 在"预定义 5 + 数字/十六进制"这一圈上逐字节同形（裁定 R50：
-// 只对齐这一圈，不搬整张 html5 表）。唯一分叉：表外的命名实体（`&copy;` → py `©`）这里留
-// 字面量 —— 两侧都不再把实体名吃成空串，那正是本批修的缺陷。分叉面 2026-10-05 实测真语料
-// （18,037 条 / 41,763 个 `&` token）零暴露，并由哨兵判据钉住"以后有了会被发现"：
-// tests/site_nav/test_body_rules_parity.py::test_corpus_named_entity_sentinel
+// `_strip_html` 的 `html.unescape` 在"表内 10 个名字 + 数字/十六进制"这一圈上逐字节同形
+// （裁定 R50：只对齐这一圈，不搬整张 html5 表；"预定义 5 个"是普查前的旧口径、已作废）。
+// 唯一分叉：表外的命名实体（`&copy;` → py `©`）这里留字面量 —— 两侧都不再把实体名吃成空串，
+// 那正是本批修的缺陷。
+// 这一格的账（2026-10-05 复评改口，别再写成"全体零暴露"）：分叉面是在 **89 个上游源的原始
+// feed** 上普查的（抽样 89/957 源 = 9.3%，957 取 `rss_sources.json`），`&名字;` 共 **10 种**、
+// 全部已进表；表外**仍有** Python 会解的名字 —— `&copy;` 与"只认特定大小写形态"的
+// `&Rarr;`/`&rArr;`/`&Larr;`/`&hArr;`（带分号才解，分别给 U+21A0/U+21D2/U+219E/U+21D4）——
+// 它们在这 89 个源的普查里今天零出现 ⇒ 那是**已声明分叉**（按 R50 不扩表），由
+// tests/site_nav/test_body_rules_parity.py::test_entity_name_matrix_matches_python_per_form
+// （名字 × 形态矩阵，含 title-case 那一档）与同一文件的 `_SYN_OFFTABLE` 样本
+// （真出口 + CI 每场必跑的合成闸）钉住。
+// 旧版这里写的是"18,037 条真语料 / 41,763 个 token 零暴露，并由哨兵判据钉住"：那批字段
+// **入库前已经过 `html.unescape`**，在它上面数命名 token 正是本批点名的**空集读数**（恒绿），
+// 而 ::test_corpus_named_entity_sentinel 没有大语料就 skip ⇒ 它从来不是 CI 上的闸。
 // （同面的逐字节对账与 `double_encoded_amp`、`&amp;lt;img&amp;gt;` 那批代码字面量样本在同文件）。
 function cleanSummary(raw, link) {
   return collapseRuns(BODY.stripGluedUrl(BODY.rewriteHnSummary(stripHtmlKeepLines(raw), link)));

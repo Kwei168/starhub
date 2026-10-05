@@ -568,7 +568,47 @@ MUTATIONS = [
     ("R65 出厂摘要不再折叠空白（形状漂回改动前之外）", COPIES[2],
      u"  return truncate(collapseRuns(t), 200);",
      u"  return truncate(t, 200);",
-     u"test_summary_exit_shape_equals_the_pre_batch_exit"),]
+     u"test_summary_exit_shape_equals_the_pre_batch_exit"),
+
+    # ── 29 复评第 2/1 条（2026-10-05 补判据之后新长的三把牙）────────────────────
+    # 编号说明：账本里 R66/R67 已被占（R67 = "出厂摘要不再剥标签"那一半，落在此处电池靶 R64，
+    # docstring 见 tests/site_nav/test_article_contract.py 的 R67/R67b 两条），所以本轮三条从
+    # R68 起编，不占用已被账本记过的号。三条的锚点登记后立刻对真源码数过一遍：**各命中 1 次**
+    # （现取读数：R68=1、R69=1、R70=1，坏改动串在真源码里 0 次 ⇒ 不是"改了个已经存在的东西"）。
+    #
+    # R68：把表里 nbsp 的值改成空串（解成""而不是 U+00A0）。这一格旧判据是**软的**——复评实测
+    # 旧的两条断言（产物里不含 &nbsp 字面量 / 产物非空且不等于输入）全部穿过：他说+NBSP+好 变成
+    # 他说好，两条都满足。判据改成**比产物**（参照物 _strip_html 的产物再把 NBSP 折成普通空格）
+    # 之后，本轮现取对照（.deploy-tmp 的一次性场景脚本，读数抄在这儿）：
+    #   S1 新判据 ⇒ 1 failed（点名 nbsp 出口那一格与参照物不同形）
+    #   S2 同一坏改动、把比产物那三行摘掉（= 改前判据）⇒ 1 passed（这就是复评说的那半）
+    ("R68 nbsp 解成空串（旧软判据抓不到）", COPIES[1],
+     u't["nbsp"] = "' + chr(160) + u'";',
+     u't["nbsp"] = "";',
+     u"test_runtime_entity_exit_gate_runs_without_any_corpus"),
+
+    # R69：出口那步折叠空白的字符类里去掉 NBSP（只认 ASCII 空白那一串）。同一格旧判据也穿过
+    # （产物留着 U+00A0，既不含 &nbsp 又非空又不等于输入）⇒ 现取对照：
+    #   S3 新判据 ⇒ 1 failed（同一名话：与参照物不同形）
+    #   S4 同一坏改动、改前判据 ⇒ 1 passed
+    # 注：这条测的是**空白口径**那一格，与实体口径的差已在 parity 注释里登记；把它打进电池是因为
+    # 复评点名的坏形状②正是"从 collapseRuns 的空白类里删掉 NBSP"。
+    ("R69 出口折叠空白不再吃 NBSP", COPIES[2],
+     u"  return text.replace(/\\s+/g, ' ').trim();",
+     u"  return text.replace(/[ \\t\\r\\n\\f\\v]+/g, ' ').trim();",
+     u"test_runtime_entity_exit_gate_runs_without_any_corpus"),
+
+    # R70：把实体正则的 flags 从 "gu" 改成 "giu"（= 把"逐名大小写"当成一条全局规则来"修"，
+    # 正是复评第 1 条点名的错法：大写对 nbsp/apos/rsquo/ldquo/rdquo 不解、对 legacy 四个解、
+    # 对 Lt/Gt/Rarr 这些**另外的实体**又解）。加了 i 之后交替支能命中 `&Amp;` 这类名字，
+    # 而 `_ENT_MIN` 里没有这些键 ⇒ 回调给出 undefined、正文里被塞进字符串 "undefined"（吃内容），
+    # 名字 × 形态矩阵当场红。现取读数：S6 ⇒ 1 failed，"实体矩阵分叉 72 条，首条 = 名=amp
+    # 形态=Title; in='&Amp;' py='&Amp;' js='undefined'"。这一格的裁定是**不扩表**，
+    # 已声明分叉写死在 parity 的 `_ENT_DECLARED_TITLECASE` 与 `_ENT_OFF_TABLE_NAMES` 里。
+    ("R70 实体正则改成大小写不敏感（逐名口径被当成全局规则）", COPIES[1],
+     u'rdquo);?", "gu");',
+     u'rdquo);?", "giu");',
+     u"test_entity_name_matrix_matches_python_per_form"),]
 
 
 def _stage(tmp, rel_list):
