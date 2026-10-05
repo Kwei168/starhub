@@ -1507,3 +1507,57 @@ def test_summary_exit_probe_dies_without_the_shipsummary_definition(tmp_path):
     assert "shipSummary is not defined" in raised, (
         "崩是崩了，但不是崩在那个字上（说明出口行根本没用 shipSummary）：%s" % raised[-400:])
     print("[判据2 反证] 删定义 ⇒ node 真崩在 `shipSummary is not defined`")
+
+def _strip_tags_only_reference(x):
+    """Python 侧参照物：`_strip_html` 的**后两步**（剥标签 + 剥尾部半截标签）再 trim。
+
+    故意**不含** `html.unescape`：出口拿到的是已经单趟解码过的值，再解一遍就是本批判掉的缺陷
+    （`&copy;` 会被旧级联吃成空串）。所以这条参照物表达的是「出口应当只做的那半边」，
+    而不是把构建期整条链抄第二份。
+    """
+    t = re.sub(r"<[^>]+>", "", x)
+    t = re.sub(r"<[^>]*$", "", t)
+    return t.strip()
+
+
+_TAG_SHAPES = [
+    u'前<a href="https://x.test/a">链</a>后',
+    u'尾部半个标签<div',
+    u'纯文本，没有标签',
+]
+_ENTITY_MUST_SURVIVE = u'&amp;copy; 不该被再解'
+
+
+def test_summary_exit_still_strips_tags_but_never_decodes_twice(tmp_path):
+    """R67：我把 `truncate(stripHtml(x),200)` 整行换掉时，把「防御性剥标签」一起带走了。
+
+    旧行里的 `stripHtml` 干两件事：剥标签（`api/rss.js:1050` 原注释写明「对快照数据做 HTML
+    清理（防御性）」）与解实体（这一件才是缺陷，实测吃掉 98/1060 条摘要里的文字）。
+    `shipSummary` 必须只补回前一件，后一件保持「绝不第二遍」。
+    """
+    got = _seg_product(tmp_path, "tagshapes", "function (s) { return shipSummary(s); }",
+                       _TAG_SHAPES + [_ENTITY_MUST_SURVIVE])
+    want = [_strip_tags_only_reference(x) for x in _TAG_SHAPES]
+    assert got[:3] == want, (
+        "出口剥标签这半边没与构建期同形｜进 %r｜出 %r｜参照 %r" % (_TAG_SHAPES, got[:3], want))
+    assert u"<a" not in got[0] and u"链" in got[0], "标签没剥掉或把文字也剥掉了：%r" % got[0]
+    assert u"<div" not in got[1], "尾部半截标签没剥掉：%r" % got[1]
+    assert got[2] == u"纯文本，没有标签", "无标签样本被动了：%r" % got[2]
+    # 另外半边：实体必须**原样**留着（这正是本批删第二遍的理由，不许被「补防御」顺手带回来）
+    assert got[3] == _ENTITY_MUST_SURVIVE, (
+        "出口又解了第二遍实体：进 %r 出 %r" % (_ENTITY_MUST_SURVIVE, got[3]))
+    # ── 反空转：把 shipSummary 退回「只截断」（= 我这批刚犯过的形状），上面的断言必须真红 ──
+    seg = _rss_pipeline_src()
+    old_body = (u"  const t = String(x || '').replace(/<[^>]+>/g, '')"
+                u".replace(/<[^>]*$/, '').trim();" + chr(10) +
+                u"  return truncate(t, 200);")
+    weak_body = u"  return truncate(x || '', 200);"
+    assert old_body in seg, "shipSummary 的函数体形状与判据锚点不符 ⇒ 这条反证会是空的"
+    weak = seg.replace(old_body, weak_body, 1)
+    assert weak != seg
+    bad = _seg_product(tmp_path, "weakbody", "function (s) { return shipSummary(s); }",
+                       _TAG_SHAPES, seg=weak)
+    assert bad[0] == _TAG_SHAPES[0] and u"<a" in bad[0], (
+        "退回只截断后竟然也剥了标签 ⇒ 上面那条剥标签断言没牙：%r" % bad[0])
+    print("[R67] 出口剥标签与 Python 后两步同形（3 形状）；`&amp;copy;` 原样留着（不第二遍）；"
+          "把函数体退回只截断 ⇒ 同一批样本立刻保留 <a>，判据有牙")

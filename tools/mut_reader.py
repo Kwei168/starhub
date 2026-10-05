@@ -550,7 +550,16 @@ MUTATIONS = [
      u"s: shipSummary(it.s),",
      u"s: truncate(stripHtml(it.s), 200),",
      u"test_summary_exits_decode_exactly_once"),
-]
+
+    # R64（2026-10-05 自查，任务 #31）：把 shipSummary 的函数体退回"只截断"。
+    # 这一格和我这批刚犯过的错逐字相同（把 stripHtml 的两半边一起删了），旧三条出口判据全都
+    # 抓不到 —— 实测 R64 下 test_summary_exits_decode_exactly_once / 接线 / 反证 三条仍全绿，
+    # 只有新加的 test_summary_exit_still_strips_tags_but_never_decodes_twice 会红。
+    # 锚点是定义体两行连成一个**连续**串（中间不跨注释），注释改写不会让靶失效。
+    ("R64 出厂摘要不再剥标签（防御被我删过头）", COPIES[2],
+     u"  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '').trim();" + chr(10) +     u"  return truncate(t, 200);",
+     u"  return truncate(x || '', 200);",
+     u"test_summary_exit_still_strips_tags_but_never_decodes_twice"),]
 
 
 def _stage(tmp, rel_list):

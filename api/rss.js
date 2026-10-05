@@ -582,7 +582,13 @@ function toCardItem(it) {
 // 只把第二趟解码删掉；标题那一格 `t: stripHtml(...)` 是同一族的另一处，见上方
 // `legacyEntityCascade` 的"已知挂起"，本批不动它（改了要连带动他人线 harness 的 parseFeed 口径）。
 function shipSummary(x) {
-  return truncate(x || '', 200);
+  // 剥标签这半边**必须留着**：被替换掉的旧行 `truncate(stripHtml(x),200)` 里的 `stripHtml`
+  // 干两件事，剥标签那件是原注释写明的"对快照数据做 HTML 清理（防御性）"（:1050），
+  // 只有解实体那件是缺陷。两半的切法照 Python `_strip_html`(build_rss_aggregator.py:1145) 的后两步：
+  // `<[^>]+>`→空、`<[^>]*$`→空、再 trim；**不许**改用 stripTagsKeepLines —— 它还整块删
+  // `<script>` 内容，而 Python 不删，那会把已登记的 P1-5 分叉搬进入口。
+  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '').trim();
+  return truncate(t, 200);
 }
 
 
