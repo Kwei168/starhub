@@ -16,6 +16,7 @@
 """
 import io
 import os
+import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BOARD = "trending_board.json"
@@ -57,16 +58,33 @@ def test_inline_trending_fallback_is_not_removed():
     assert "TRENDING = __TRENDING__" in tpl, "内联赋值语句本身要在"
 
 
-def test_board_is_published_not_just_cached():
-    """它是**站点件**：浏览器同源 fetch ⇒ 必须进 Stage 发布白名单，三处清单逐个一致。
+def _publish_list_of(txt, step_name):
+    """取某个 Stage 步里那份 `for f in ... do` 清单文本。
 
-    （我第一版把这条写成"要进跨场缓存族的 save/restore 两侧"，前提错了：快车道根本不该拿它，
-    是浏览器拿它。放进缓存只会多一个没人读的文件。）
+    为什么不裸搜文件名：`trending_board.json` 在 star-fast.yml 里**早就出现过**（curl 那一行），
+    但它没进发布清单 ⇒ 裸搜判据一路绿灯，而 Pages 是整棵制品替换，快车道每真发布一次就把
+    出口件从线上抹掉（2026-10-05 01:45 真发布后现网 404，实测）。
     """
-    files = (("update.yml 的 Stage 清单", WF_UPDATE),
-             ("A2 STAGE_ALLOWLIST", os.path.join(ROOT, "tests", "rss_history", "test_pages_deploy_wiring.py")),
-             ("A3 PUBLISH", os.path.join(ROOT, "tests", "site_nav_drift", "test_pages_artifact_scope.py")))
-    for name, path in files:
+    i = txt.find(step_name)
+    assert i >= 0, "找不到步骤 %r：判据的锚点先失效了" % step_name
+    m = re.search(r"for f in (.*?)\bdo\b", txt[i:], re.S)
+    return m.group(1) if m else ""
+
+
+def test_board_is_published_not_just_cached():
+    """它是**站点件**：浏览器同源 fetch ⇒ 必须进**每一条**会写 Pages 制品的清单。
+
+    Pages 部署是整棵替换而不是增量：哪条清单漏了它，那场发布就把这个文件从线上抹掉。
+    小时场和快车道各有一份自己的清单，只钉一边就会漏另一边（我上一轮就只钉了小时场侧）。
+    """
+    for name, path, step in (("update.yml 的 Stage 清单", WF_UPDATE, "Stage Pages site"),
+                             ("star-fast 的带回清单", WF_FAST, "Stage star page over live site")):
+        lst = _publish_list_of(_t(path), step)
+        assert lst, "%s 里没抓到 for-f-in 清单 ⇒ 这条判据在空转" % name
+        assert BOARD in lst, \
+            "%s 不含 %s ⇒ 那场真发布会把出口件从 Pages 上抹掉（浏览器 fetch 404）" % (name, BOARD)
+    for name, path in (("A2 STAGE_ALLOWLIST", os.path.join(ROOT, "tests", "rss_history", "test_pages_deploy_wiring.py")),
+                       ("A3 PUBLISH", os.path.join(ROOT, "tests", "site_nav_drift", "test_pages_artifact_scope.py"))):
         assert BOARD in _t(path), "%s 里没有 %s ⇒ 前端 fetch 会 404" % (name, BOARD)
 
 

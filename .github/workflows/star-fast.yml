@@ -120,8 +120,11 @@ jobs:
           # 带回线上现存的非 star 入口（重试 2 次区分网络抖动与真下架；404 跳过）。
           # 清单是「入口页 + 其数据 JSON」的并集，与功能注册表一一对应：
           # 下架某功能 = 从这张表删它的行，其他行不受影响。
+          # trending_board.json 必须在：Pages 部署是**整棵制品替换**，快车道每真发布一次，
+          # 制品里缺的文件就从线上消失（2026-10-05 01:45 真发布后它 404，排行榜从此只能读内联，
+          # 而下一场有新星的内联又会因为取不到出口件变成空榜）。
           for f in ai-daily.html rss-aggregator.html daily-insight-history.html \
-                   hot_snapshot.json rss_sources.json rss-data-0.js; do
+                   hot_snapshot.json rss_sources.json rss-data-0.js trending_board.json; do
             ok=""
             for attempt in 1 2 3; do
               if curl -fsS --max-time 90 "$LIVE_BASE/$f" -o "_pages/$f" && [ -s "_pages/$f" ]; then
