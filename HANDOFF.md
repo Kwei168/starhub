@@ -1,6 +1,6 @@
 # StarHub 项目移交文档
 
-> 最后更新：2026-09-18（同步每日深度洞察管线 build_daily_insight.py、RAGAS 评估-修正闭环、Agnes 多 key 轮询、RSS 快照出仓等重大变更；手册基线为 `e3c0313`，其后 25 个实质提交已全部核对。同日另完成一轮修复：Phase 2 prompt 语法与接地约束、6 个 Agnes 调用点 key 池统一、`update.yml` 两级质量门禁、被 SyntaxError 掩盖的 4 处失效测试，详见 §8.12 修改守则与 §8.14）
+> 最后更新：2026-10-05（同步每日深度洞察管线 build_daily_insight.py、RAGAS 评估-修正闭环、Agnes 多 key 轮询、RSS 快照出仓等重大变更；手册基线为 `e3c0313`，其后 25 个实质提交已全部核对。同日另完成一轮修复：Phase 2 prompt 语法与接地约束、6 个 Agnes 调用点 key 池统一、`update.yml` 两级质量门禁、被 SyntaxError 掩盖的 4 处失效测试，详见 §8.12 修改守则与 §8.14）
 
 ## 一、项目一句话
 
@@ -2003,3 +2003,60 @@ Vercel 域该件仍 404。⇒ 这条线到此闭合。
 
 **通用口径**：任何"我是不是已经拥有它"的标记，都不该只存 localStorage——那份数据会随域、
 随清缓存消失，而用户无从恢复；构建期已有的事实要用起来。
+
+### 8.33 阅读器正文可靠性：四条裁定全部落地，出口长度统一到构建期那一个数（2026-10-05 09:3x–12:2x BJT，**已推送 + 已部署 + 已线上验收**）
+
+承接 8.30/8.30 补。这一节记的是"用户当面给的四条裁定各自怎么落地、验到什么程度、哪些明确不做"，
+下一批改这块代码前先读这里，别把已经裁掉的事又翻出来。
+
+**远端链（每笔都只推显式路径，推前逐路径确认"远端 blob == 本地 HEAD blob"⇒ 差异全是自己的）**
+`e4a9ea7b02`（症状③收口）→ `fea99a36b3`（摘要与翻译按钮成对 + 电池登记）→ `30548d1fb1`（`fc<=100` 门槛 + `unwrapCdata`）
+→ `3761214576`（前缀重复 + B2 同判）→ `cb07fbadb1`（出口 500 + 现抓可执行面剥离）。
+部署场：07:00 / 08:09（schedule，08:00 那场被 cancel-in-progress 挤掉）/ 10:00 / 12:00，全 success。
+**读"发没发布"只看两步**：`Upload Pages artifact` + `Deploy to GitHub Pages`，以及末步"没发布就置红"是 skipped（=真发布）还是 failure。
+
+**四条裁定**
+1. **「重复的就要隐藏」**：`_summaryDuplicatedByFulltext` 从"剥标签后逐字相等"扩到**相等或是正文开头的前缀**
+   （`f.slice(0, a.length) === a`，相等是其特例，不加分支）；比较前摘掉出口截断补的 U+2026，
+   否则现抓/批量通道永远比不中。现取线上：逐字相等 97 条、前缀且不等 71 条 ⇒ 只收一半等于漏掉 42%。
+   硬约束：仍与 `fetchFullArticle` 的 `a.fc.length>100` 对齐——短正文不入屏，隐了就是**空面板**（判据钉 100/101/37 三格边界）。
+2. **「放宽出口」= 两边同一个数，不是取消截断**：Python 用的是 `_truncate(s, maxlen=500)` 的默认值，
+   写死的 200 一共四处（`shipSummary`、`?source=` 抽屉、解析层 Atom/RSS）⇒ 全改为引用 `SUMMARY_CAP`。
+   **判据不抄数字**：`test_summary_exit_cap_matches_buildtime_default` 直接读 `_truncate.__defaults__` 当参照物。
+   代价实测（同一份响应里对照"若仍按 200 截"）：cnbeta_41 **+136%**、infoq推荐_26 **+101%**、36氪_666 **+20%**
+   （摘要最长 500）。⚠ 我先把产物口径的 **+69.2%** 当实测报过——那是**总体估算**，真实按源差 5 倍；
+   列表可见布局不受影响（`.card-summary` 本就 `-webkit-line-clamp:4`）。
+3. **B2（RSS 支全文门槛）「你去协调」已收**：参照物两条都是"清洗后正文 vs 剥标签后摘要"
+   （`build_rss_aggregator.py:3190/:3297`），JS 的 RSS 支以前比**原始标签**长度（CDATA 白送 12）。
+   协调的正确顺序（这是本节的重点方法）：**先只给他人线 node 判据补它缺的依赖**
+   （`tests/rss_cover/test_realtime_cover_js.py` 加 `const BODY=require(LIB_BODY)`，带 env 覆盖口），
+   **行为一行没动先跑它绿**（35 passed），才动行为。反过来先改行为，红会落在别人线上，看着像我把他们打崩了。
+   现网确证：三个源里 `fc` 与摘要可见文字逐字相等 **0 条**（含 20 条带全文的样本）。
+4. **现抓通道「接」= 在出口那一格剥掉能执行的东西**（两轮复核唯一的 P0）：
+   `api/article.js` 三条现抓支路汇成同一行出口整形 ⇒ 刀只接那一处；快照那条构建期已过白名单，明确**不再过第二遍**。
+   剥：危险标签（成对 + 残留孤标签：script/style/object/embed/form/iframe/link/meta/base）、一切 `on*=`、
+   `javascript:`/`vbscript`/`data:text/html`/`data:application`。良性必须**逐字不动**（含 `data:image/svg+xml`）。
+   为什么是纯文本刀：① CI 没有 `npm ci` ⇒ 这文件 require jsdom，整文件在闸里跑不起来，只有纯文本刀能被 node 实跑；
+   ② `test_article_contract.py:233` 明确要求 `function sanitizeHtml(` 留在 parseFeed 切片内（它钉着"deepClean 唯一调用点在 sanitize 之后"那格死刀）。
+   两篇真文章确证（databricks 7,467 字 / cnbeta 3,370 字）：`on*=` 无、`<script` 无、`javascript:` 无，`<p>`×24、`<img>`×4 仍在。
+
+**明确裁定「不做」的一格（重启条件写清）**
+把 `api/rss.js` 那份 `sanitizeHtml` 合并进 `lib/body_rules.js` —— **用户 2026-10-05 裁定不做**。
+现状代价：现抓通道的 `iframe`（含 YouTube/Vimeo）被丢，构建期产物那份按白名单放行 ⇒ 两通道这一格不同判，已写进代码注释不静默。
+要重启就得连着改 `test_article_contract.py:233` 那条锚点，别只搬函数。
+
+**判据与电池现值（改这块必须跑的这些）**
+A2 四目录 + `tests/rss_translate` + `tests/rss_js` + A3 = **867 passed**；`tools/mut_reader.py` = **83/83 全挡、baseline 绿（13 文件 287 passed）、rc=0**。
+这批新长的牙：R71（摘要与翻译按钮必须成对）、R72（调用处喂空 fc ⇒ 红只能来自行为）、R73（`fc<=100` 门槛）、
+R74（漏 `unwrapCdata`）、R75（前缀重复）、B05（RSS 门槛退回原始长度）、R77（出口上限退回 200）、
+R78/R79（可执行面刀变恒等 / 拆接线）。**改这段正文必须重跑所有打它的靶**：F01/F02/F03 三条旧靶的锚点就跟着 `SUMMARY_CAP` 走过一次。
+
+**这次踩出来、以后当硬规矩的三条**
+- 推送**第 4 步 = 补一笔同路径本地提交**再对账：`remote_drift_check.py` 比的是 `git ls-tree -r HEAD`（不是工作树），
+  Data API 不回写本地 ⇒ 不补就会把这些路径长期报成"内容不同"，症状与"被人吞掉"几乎一样。
+  附带坑：别人线的文件可能**本地根本没被跟踪**（实例 `tests/rss_cover/test_realtime_cover_js.py`）
+  ⇒ `git commit -- <清单>` 会因一个 pathspec 报错把**整笔**提交带崩，而 `commit_rc` 照样是 0 ⇒ 必须 `git log -1` 确认真落了。
+- **别拿 `?ref=main` 当远端事实**（会返回缓存的旧 blob，我因此误判过"随行改动没上去"）：
+  按 commit sha → tree/blob sha → `git/blobs/<sha>` 取。
+- **判断"还在不在跑 / 跑了多久"必须现取 `date -u` + run 的 `createdAt/updatedAt`**，
+  不要用轮询次数或自己的等待时长推算——我因此把 30.5 分钟说成 45/50 分钟，还凭空造了一个阻塞点让用户做选择。
