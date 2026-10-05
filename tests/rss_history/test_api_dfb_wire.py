@@ -32,16 +32,50 @@ const MODE = process.argv[3];          // 'source' | 'batch'
 const WORK = process.argv[4];          // 作为 process.cwd() 的临时目录
 const out = {};
 
-// ── 1. 转 CJS，并把留存闸门指到绝对路径（生成的文件在 tests/ 下，相对 require 会指错目录）──
+// ── 1. 转 CJS（ESM → CJS；lib 依赖改指绝对路径 —— 生成件在 tests/ 下，相对 require 会指错目录）──
 let src = fs.readFileSync(path.join(ROOT, 'api', 'rss.js'), 'utf8');
 const before = src;
 src = src.replace("import { readFileSync } from 'fs';", "const { readFileSync } = require('fs');");
 src = src.replace("import { join } from 'path';", "const { join } = require('path');");
 src = src.replace("export default async function handler", "module.exports = async function handler");
-src = src.replace("require('../lib/rss_retention.js')", "require(process.env.STARHUB_RSS_LIB)");
 if (src === before) { throw new Error('转译没生效：api/rss.js 的 import/export 写法变了'); }
-if (src.indexOf("require(process.env.STARHUB_RSS_LIB)") < 0) {
+
+// ── 1b. 自动发现 api 源码里的 `require('../lib/*.js')`，逐条改写成绝对路径 ──
+// 不许再逐条硬写 lib 名单：生成件落在 tests/rss_js/ 下，`../lib/` 会被解析成 `tests/lib/`，
+// Node 直接 MODULE_NOT_FOUND。老写法只登记了 retention 一条，Task 4 给 api/rss.js 新增
+// **硬** require 的 body_rules.js 没人登记 ⇒ 本文件 4 条判据全红（2026-10-04 实测）。
+// 扫源码 ⇒ 新增 lib 依赖**零人工登记**就能跑，这才是这一类缺陷的收口。
+// 覆盖表只留给"必须换实现"的那条（retention）：它退化成普通路径的话，
+// "闸门装载失败/计算异常"那两类用例就没有着力点。防漂移判据见
+// tests/rss_history/test_api_lib_require_drift.py。
+const LIB_REQUIRE_RE = /require\(\s*(['"])\.\.\/lib\/([A-Za-z0-9_.\-]+\.js)\1\s*\)/g;
+const LIB_REQUIRE_LEFTOVER = /require\(\s*['"]\.\.\/lib\//;
+function rewriteLibRequires(source, root, overrides) {
+  const names = [];
+  const out = source.replace(LIB_REQUIRE_RE, function (_all, _q, name) {
+    names.push(name);
+    const target = Object.prototype.hasOwnProperty.call(overrides, name)
+      ? overrides[name] : path.join(root, 'lib', name);
+    return 'require(' + JSON.stringify(target) + ')';
+  });
+  if (LIB_REQUIRE_LEFTOVER.test(out)) {
+    throw new Error('还有相对 ../lib 依赖没被改写：新增 lib 的写法超出了自动发现的口径，去补正则而不是加一条硬编码');
+  }
+  if (!names.length) {
+    throw new Error('自动发现一条 ../lib 依赖都没扫到 ⇒ api/rss.js 的加载写法变了，转译探针已失效');
+  }
+  return { src: out, names: names };
+}
+const LIB_OVERRIDES = {
+  'rss_retention.js': process.env.STARHUB_RSS_LIB || path.join(ROOT, 'lib', 'rss_retention.js'),
+};
+const REWRITTEN = rewriteLibRequires(src, ROOT, LIB_OVERRIDES);
+src = REWRITTEN.src;
+if (REWRITTEN.names.indexOf('rss_retention.js') < 0) {
   throw new Error('闸门 require 改写没生效：api/rss.js 的加载写法变了，测试探针已失效');
+}
+if (src.indexOf(JSON.stringify(LIB_OVERRIDES['rss_retention.js'])) < 0) {
+  throw new Error('闸门没指到 STARHUB_RSS_LIB 给的实现 ⇒ "换实现"的用例失去着力点');
 }
 fs.writeFileSync(path.join(ROOT, '__GEN__'), src);
 

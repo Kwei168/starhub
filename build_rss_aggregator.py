@@ -987,7 +987,17 @@ def _save_api_snapshot(sources_with_items):
             item = {
                 "t": it.get("title_zh", "") or it.get("title", ""),
                 "u": _strip_oss_signature(it.get("link", "#")),
-                "s": _strip_oss_signature(it.get("summary_zh", "") or it.get("summary", "")),
+                # hnrss 的模板行（Article URL/Comments URL/Points/# Comments）在卡片上是纯噪声：
+                # 解析入口包过一层还不够 —— summary_zh 存在 translations.json 里、跨场复用且
+                # 不会被重新解析，所以快照出口要再过一次同一把刀（判据：
+                # tests/rss_history/test_hn_summary_rewrite.py::test_snapshot_exit_does_not_re_expose_meta_lines）。
+                # _rewrite_hn_summary 幂等，已重写过的一行不会被吃第二遍。
+                # _strip_glued_url（Task 11）同因接在这里：老缓存里的 summary_zh 是**剥之前**的
+                # "URL+正文"粘连形状，只在解析入口剥捞不到它们；这条也幂等（判据
+                # test_snapshot_exit_strips_glued_url_from_cached_translation / _is_idempotent）。
+                "s": _strip_oss_signature(_strip_glued_url(
+                    _rewrite_hn_summary(
+                        it.get("summary_zh", "") or it.get("summary", ""), it.get("link", "")))),
                 "d": it.get("pub_date", ""),
             }
             if it.get("bad_date"):
@@ -999,7 +1009,9 @@ def _save_api_snapshot(sources_with_items):
                 item["tags"] = _tags
             fc = it.get("full_content", "")
             if fc:
-                item["fc"] = _strip_oss_signature(fc[:50000])
+                # _cap_body 而不是裸切片：`fc[:50000]` 能正好落在 `<img src="htt` 中间，
+                # 出厂一条静默变形的半截标签（api/rss.js 直接 read 这份快照）。
+                item["fc"] = _strip_oss_signature(_cap_body(fc))
             img = it.get("image", "")
             if img:
                 item["img"] = _strip_oss_signature(img)
@@ -1243,6 +1255,157 @@ def _purge_bad_covers_in_history(history):
     return n
 
 
+# 历史摘要清扫的轮数护栏（不是语义）：`_clean_history_summary` 每轮都是"HN 刀 → 粘连刀"
+# 这个**唯一**顺序，收敛即返回；真数据实测一轮就收敛（见 `_renormalize_history_fulltext`
+# 的 docstring：18,037 条第二遍 0 改动）。
+_SUMMARY_SWEEP_MAX_ROUNDS = 4
+# 历史清扫的分账：与 `_LAST_HISTORY_ACCOUNT` 同一形态，只由主流程播报一次。
+# 必须可观测 —— 命中数掉到 0 要么上游换了形状、要么刀被摘了，两种都需要有人知道
+# （同 `_bad_cover_hits` 那条理由）。
+_LAST_HISTORY_SWEEP = {"entries": 0, "fulltext": 0, "body_delink": 0,
+                       "summary_hn": 0, "summary_glued": 0}
+# 出厂副本那一趟的分账（对抗审查 ②）。与上面那本同形但**另立**：历史侧播的是"存盘那份
+# 改了多少条"，这一本播的是"三个消费者真正读的那份改了多少条"—— 混成一本就答不出
+# 本条修复要观测的那个量（掉到 0 的两种解释同样都需要有人知道）。
+_LAST_OUTGOING_SWEEP = {"entries": 0, "fulltext": 0, "body_delink": 0,
+                        "summary_hn": 0, "summary_glued": 0}
+
+
+def _clean_history_summary(text, link, tally=None):
+    """历史里存的摘要过两把摘要刀：**先 HN 模板重写、再粘连裸链接**，滚到不动点。
+
+    顺序与构建期逐字一致（解析入口 `_truncate(_strip_glued_url(_rewrite_hn_summary(...)))`、
+    快照 `s` 出口、运行时 `api/rss.js` 的 `cleanSummary` 三处都是这个序），倒过来会先被
+    粘连刀改掉 HN 刀要看的行首形状 —— 两把互相吞。
+
+    为什么要**滚到不动点**而不是各过一遍：这两把刀会互相"让位"。粘连刀剥掉开头那条裸链接
+    之后，原先被 URL 前缀挡住的那一行才第一次长成模板行的形状
+    （`https://a/积分：3\n# 评论数：4\n正文` 过完一遍仍是脏的：第一轮 HN 刀只数到 1 行、
+    顶不住"至少两行"的门槛，粘连刀随后才把 `积分：3` 露出来）。历史清扫的契约是"扫完即出厂
+    形状"，一遍过完还不规范等于没扫；轮数上限是护栏不是语义 —— 真数据实测一遍就收敛
+    （18,037 条历史 / 1,762 个摘要字段，第二遍 0 改动）。
+    不做 `_truncate`：历史里存的已经是 `_truncate` 之后的形状，再过一次会按当前表长重切，
+    那是一条没被派工的行为变更。
+    `tally` 是可选的分账（`_LAST_HISTORY_SWEEP`）：**按每一轮真实开火计数**，而不是只看第一轮
+    —— 让位那一条的 HN 刀是在第二轮开的火，只数第一轮就把分账播少了。
+    """
+    cur = text
+    for _ in range(_SUMMARY_SWEEP_MAX_ROUNDS):
+        _before = cur
+        _hn = _rewrite_hn_summary(cur, link)
+        if _hn != cur:
+            if tally is not None:
+                tally["summary_hn"] = tally.get("summary_hn", 0) + 1
+            cur = _hn
+        _nxt = _strip_glued_url(cur)
+        if _nxt != cur:
+            if tally is not None:
+                tally["summary_glued"] = tally.get("summary_glued", 0) + 1
+            cur = _nxt
+        if cur == _before:
+            return cur
+    return cur
+
+
+def _renormalize_history_fulltext(history, tally=None):
+    """把历史里"按入库那一刻的规则出厂"的条目重扫成当前规则的形状，返回**改动条数**。
+
+    与 `_purge_bad_covers_in_history` 同一条理由、同一个调用点：72h 窗口内未被再次抓取的
+    旧条目不会被重新抓取，不重写的话它们就一直按入库那一刻的规则出厂。
+
+    扫三类值、四把刀（顺序与出厂链路一致）：
+      - `full_content`：`_normalize_body_html` → `_delink_nav_links`（规范化先把相对 URL
+        绝对化，脱链接才看得见 host 之后的第一个路径段；只认相对或只认绝对会漏一半）
+      - `summary` / `summary_zh`：`_clean_history_summary`（HN 模板刀 → 粘连裸链刀）
+      `summary_zh` 必须一起扫：它是 `translations.json` 里跨场复用的缓存，不会被重新解析，
+      快照 `s` 取的又是 `summary_zh or summary` —— 只扫 `summary` 的那半边是断链。
+
+    但**收益要按实测说，别按预期说**（2026-10-05 在同一份 `rss_history.json` 上跑的：
+    18,037 条、其中 5,405 条带正文；整表 0.73 s，第二遍 0 条改动）：
+      - 正文侧规范化改动 **62 条，全部是相对 URL 绝对化，图片一条都没捞回来**。原因是历史里
+        存的是 sanitize **之后**的正文 —— `_KEPT_ATTRS["img"]` 只留 src/alt，data-src 属性连同
+        "没有 src 的整枚 img"在出厂前就没了（同一份数据里 `data-src` 命中 0 条），规范化无从提升。
+      - 正文导航脱链 **36 条**（爱范儿_5×10、security_affairs_662×6、mit_tech_review_61×4、
+        flowingdata_673×4、nasa_674×4、theverge_8/arstechnica_60 各 2 …），外部正文链接一条没动。
+      - 摘要侧改动 **1,762 个字段**（`summary` 1,149、`summary_zh` 613）：HN 模板刀 1,750、
+        粘连刀 **12**（12 条全在 nodeseek_54，与 Task 11 入库时的读数一致）。
+        源分布 hn_newest_56×949、hn_ai_7×537、hn_show_58×113、hn_ask_57×99、hn_llm_8×47、
+        nodeseek_54×12、hackernews_6×5 —— 落点就是这两个族，没有误伤面。
+      - 三类并起来的净改动是 **1,244 条**（`_renormalize_history_fulltext` 的返回值口径是
+        "条"不是"字段"，一条命中里 summary 与 summary_zh 都改也只算一条）。
+    ⇒ 公众号那批正文图的"回来"发生在**解析入口**（`_fetch_rss` / `_parse_rss_item`），
+    条目被重新抓取后在 `_accumulate_history`（:760）整条覆盖历史；这条历史重写挡的是
+    "没被重抓、且形态仍可修"的那一类，并保证 `full_content` 与摘要出厂即规范这条**契约**成立
+    （Task 4/7 之后运行时通道写进来的正文不走 sanitize，那时它才真正吃到图）。
+    幂等实测：第二遍 0 条改动、分账全 0（判据
+    tests/rss_history/test_history_knife_sweep.py::test_history_sweep_is_idempotent_second_pass_changes_zero
+    与 ::test_sweep_reaches_a_fixed_point_when_knives_unmask_each_other 钉住）。
+    `tally` 传别的字典就把分账记到那里 —— `_renormalize_outgoing_fulltext` 就是靠这一个
+    参数复用同一批刀手（出厂副本那一格，对抗审查 ②）：**刀手清单全仓只有这一处**，
+    两处各写一遍就是本仓点名的"两份实现分叉"第 4 个来源。
+    """
+    n = 0
+    _t = _LAST_HISTORY_SWEEP if tally is None else tally
+    _t.update({"entries": 0, "fulltext": 0, "body_delink": 0,
+               "summary_hn": 0, "summary_glued": 0})
+    for _hit in history.values():
+        _link = _hit.get("link") or ""
+        changed = False
+        _fc = _hit.get("full_content") or ""
+        if _fc:
+            _norm = _normalize_body_html(_fc, _link)
+            if _norm != _fc:
+                _t["fulltext"] += 1
+            _new = _delink_nav_links(_norm)
+            if _new != _norm:
+                _t["body_delink"] += 1
+            if _new != _fc:
+                _hit["full_content"] = _new
+                changed = True
+        for _field in ("summary", "summary_zh"):
+            _old = _hit.get(_field) or ""
+            if not _old:
+                continue
+            _new = _clean_history_summary(_old, _link, _t)
+            if _new != _old:
+                _hit[_field] = _new
+                changed = True
+        if changed:
+            n += 1
+    _t["entries"] = n
+    return n
+
+
+def _renormalize_outgoing_fulltext(sources_with_items, tally=None):
+    """同一批刀也必须落在**真正出厂的那一份**上（对抗审查 ②）。
+
+    缺陷形状（2026-10-05 实测复现，判据
+    tests/rss_history/test_history_knife_sweep.py::test_outgoing_copies_are_swept_not_just_the_history_dict）：
+    `_accumulate_history` 在 :909 用 `entry = dict(item)` 给每条历史命中造**出厂副本**，
+    主流程的清扫（:9478）跑在那之后、且只改 `_rss_history` 里的那份字典 ⇒
+    三个消费者（`_save_api_snapshot` / `build_html` / `write_data_chunks`）读到的副本
+    仍是入库那一刻的形状：清扫后历史 `fc="<p>正文</p>Python"`、出厂 `fc` 仍是
+    `<a href="/tag/python">Python</a>`，`entry is hist=False`，出厂 `s` 也还是模板行。
+    同文件 :9461-9473 早就专门为 image 在副本上重跑了一遍 —— 那是本仓既有做法，照它修。
+
+    **刀手清单不重写**：这里把出厂副本按对象 id 组成一张临时表，喂给同一个
+    `_renormalize_history_fulltext`，两份对象共用一格实现 ⇒ 不存在"只改了一处"的分叉面
+    （本仓同类事故：`_needs_translation` 两份、封面判空两份）。
+    按 id 而不是按 link 建键：出厂列表里可能没有 link，也可能同 link 出现两次
+    （跨源重复），按 link 建键会把其中一条静默丢掉。
+
+    幂等：出厂副本里当次抓取的那批条目本来就过了同一批刀（解析入口），历史-derived 的
+    副本过了这一格之后，第二遍改动数为 0（判据 ::test_outgoing_sweep_is_idempotent_second_pass_changes_zero）。
+    分账另立一本（`_LAST_OUTGOING_SWEEP`），不与历史侧混：混在一格里就没法回答
+    "出厂那份到底改了多少条"这个问题，而那正是本条修复要观测的量。
+    """
+    _by_id = {str(id(_it)): _it
+              for _src in sources_with_items
+              for _it in (_src.get("items") or [])}
+    return _renormalize_history_fulltext(_by_id,
+                                         _LAST_OUTGOING_SWEEP if tally is None else tally)
+
+
 # ── XGO (Twitter/X) 信源内容清洗 ──────────────────────────────
 _XGO_TWEET_TEXT_RE = re.compile(
     r"<div[^>]*\bwhite-space:\s*pre-wrap[^>]*>([\s\S]*?)</div>",
@@ -1442,6 +1605,70 @@ _SAFE_TAGS = re.compile(
 )
 _EVT_ATTR = re.compile(r"^on[a-z]+$", re.IGNORECASE)
 _TAG_NAME = re.compile(r"^</?(\w[\w-]*)")
+# 正文出厂规范（Task 1/3 的唯一实现处；JS 端口在 lib/body_rules.js，对账判据
+# tests/site_nav/test_body_rules_parity.py —— 改这里必须同步改那边，否则对账红）。
+# 元组顺序**就是**优先级：_fix_img 按这个元组取第一个非空的值，与标签里属性的书写顺序无关。
+# JS 侧 _LAZY_SRC_ATTRS 必须与这个元组逐项同序（顺序不同 = 两侧挑到不同的镜像地址）。
+_LAZY_SRC_ATTRS = ("data-src", "data-original", "data-lazy-src", "data-croporisrc")
+_BODY_CAP = 50000
+_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_IMG_OPEN_RE = re.compile(r"^<img\b", re.IGNORECASE)
+# 这里必须是 (?<![\w-]) 而不是 \b：`-` 不是词字符，`\bsrc` 会命中 data-src 里的那个 src，
+# 于是"只有 data-src 的 img"被误判为已有真图，提升整步静默失效（JS 的 \b 同病，
+# Task 3 端口照搬时两侧要一起带守卫，否则对账会绿而行为两边都错）。
+# 它同时是**唯一**的"src 属性"口径：读现值、判存在、改写都复用这一个已编译常量
+# （M3：旧版另写了 `\ssrc\s*=\s*"[^"]*"` 的 search + 同式 sub，三套正则一个概念）。
+_IMG_SRC_ATTR_RE = re.compile(r'(?<![\w-])src\s*=\s*"([^"]*)"', re.IGNORECASE)
+# (?<![\w-]) 是防 `data-src` 被当成 `src` 的关键，删掉它 = 凭空造出第二个 src。
+_URL_ATTR_RE = re.compile(r'(?<![\w-])(src|href|poster)\s*=\s*"([^"]*)"', re.IGNORECASE)
+# 属性名/值对：与 _sanitize_html 里的 ([\w-]+)\s*=\s*"([^"]*)" **逐字同形**（M3：懒加载
+# 属性解析不再另立带冒号的第四种写法，JS 端口也因此只有一套属性语法要对）。
+_ATTR_VALUE_RE = re.compile(r'([\w-]+)\s*=\s*"([^"]*)"')
+# 尾部**未闭合**的标签片段：模式里不能出现收尾的 `>`（写成 `<[^>]*>$` 只会命中完整标签，
+# `<img src="htt` 这种半截反而逃掉，与仓内 _strip_html/_sanitize_html 用的 `<[^>]*$` 也不一致）。
+# 写成 `>?$` 更糟：切点正好落在完整标签的 `>` 上时会把整枚标签一起吞掉（少留内容）。
+_DANGLING_TAG_RE = re.compile(r"<[^>]*$")
+# 允许 0 个后继字符：截断正好停在 `&` 上也是残缺实体（第一版写成 `&[A-Za-z#]…` 时，
+# 尾部裸 `&` 逃过剥离，而配套测试同样要求"至少一个字符"，于是判据与缺陷同形 —— 假绿）。
+# 反过来收窄成 `&$` 也不许：尾部挂 1~8 个实体名字符（`</p>&a`）同样是残缺。
+_DANGLING_ENTITY_RE = re.compile(r"&[#A-Za-z0-9]{0,8}$")
+# **只有"第一次动刀"能用上面那条**（它允许 `&名字`，额度只有一次）。第二刀起、以及刀一
+# 什么都没剥到的时候，只许剥这条"无歧义形态"：尾部裸 `&`、`&#` 加十进制、`&#x` 加十六进制。
+# 为什么必须分开：`&名字` 是**有歧义**的 —— `A&B`、`AT&T`、`R&D`、`Q&A` 全是合法文字。
+# NEW-1 的修法把"退尾部空白"放进了刀二的每一轮循环，却没同时收窄形态，于是回溯之后又拿
+# `&[#A-Za-z0-9]{0,8}$` 剥了一次，把合法文字吃了（实测 `cap("A&B &am ", 7)` → `'A'`，应为
+# `'A&B'`；`cap("a&&b&am", 6)` 级联三层 → `'a'`，应为 `'a&&b'`）。⇒ 实体名段一生至多剥 1 段。
+# 量词写成 ASCII 显式类而不是 `\d`：这条正位在 `_cap_body` 里由**右往左扫描**等价实现（见
+# `_unambiguous_entity_start`），扫描器只能按 ASCII 判；`\d` 在 str 模式下还认 Unicode 十进制
+# 数字，两边会分叉。收窄的方向是"少剥"，与 NEW-3 保内容的取向一致。
+_DANGLING_ENTITY_UNAMBIG_RE = re.compile(r"&(?:#[0-9]*|#x[0-9a-fA-F]*)?$")
+# 这两份字符集**只被扫描器**（`_unambiguous_entity_start`）引用；上面那条正则写的是内联
+# 字面类（`[0-9]` / `[0-9a-fA-F]`），并没有引用它们 ⇒ "同一份真相"并不成立，两边等价是
+# 由对账判据 `test_cap_unambiguous_scan_is_the_same_predicate_as_the_regex` 在**行为上**兜住的。
+# ⇒ 改这两个集合必须同时改正则，否则红在那条判据上、而不是红在编译期。
+_DIGIT_ENTITY_CHARS = frozenset("0123456789")
+_HEX_ENTITY_CHARS = frozenset("0123456789abcdefABCDEF")
+# 窗口宽度是**推**出来的不是拍的：`_DANGLING_ENTITY_RE = &[#A-Za-z0-9]{0,8}$` 的最长匹配
+# = 1 枚 `&` + 8 个实体名字符 = `_ENTITY_TAIL_WINDOW = 1 + 8 = 9`，且任何匹配都以串尾结束
+# ⇒ 起点一定落在最后 9 个字符内 ⇒ 只看这 9 个字符 = 看整串。改量词必须同时改这里，
+# 判据 `test_cap_entity_window_is_wide_enough_for_eight_name_chars` 直接从正则里读上界对账。
+# Task 3 的 JS 端口照**推导**抄（窗口 = 1 + 量词上界），别只抄字面 9 而把量词改窄。
+# 为什么要有窗口：旧版 while+re.sub 每轮重扫整串，`&`×50000 实测 14.24 s / 本机 18.77 s。
+_ENTITY_TAIL_WINDOW = 9
+# 占位 src 的文件名词干精确等于这几个词才算占位（I6 收窄；误判方向一律"保留原 src"）。
+_PLACEHOLDER_SRC_NAMES = ("blank", "lazy", "placeholder", "spacer")
+# 词干里含"被非字母数字包围"的 1x1/0x0 成分才算占位：`spacer_1x1` 命中，
+# mmbiz 的 base64 段 `…LlmTcx1x1h4q…`、目录段 `/0x0/` 不命中（IGNORECASE 下
+# `[^0-9a-z]` 同样排除大写，别把这条写成 [^0-9a-z] 大小写敏感的版本）。
+_PLACEHOLDER_DIM_RE = re.compile(r"(?:^|[^0-9a-z])(?:1x1|0x0)(?:$|[^0-9a-z])", re.IGNORECASE)
+# I8（上一轮复核移交）：正文以**转义态**到达的形态。wechat2rss 一类代理会把已经 HTML 化的
+# content:encoded 再转义一层，出厂时收到的是 `&lt;img data-src=&quot;…&quot;&gt;`。
+# 两条判据同时成立才动手解一层，见 `_unescape_escaped_body`：
+#   ① 有转义标签形态（`&lt;p&gt;` / `&lt;img …` / `&lt;/div&gt;`）；
+#   ② 整段里没有未转义的真标签 —— 这是"这串是正文，而不是带代码样例的正文"的证据。
+# 名字段后必须紧跟空白、`/` 或 `&gt;`：裸 `&lt;imgx` 这类不算标签起始。
+_ESCAPED_TAG_HINT_RE = re.compile(r"&lt;/?[a-z][a-z0-9-]*(?:[\s/]|&gt;)", re.IGNORECASE)
+_REAL_TAG_OPEN_RE = re.compile(r"<[a-zA-Z]")
 # 仅保留渲染正文结构必需的属性：WeChat 段落带巨型内联 style，全量保留会撑爆快照
 _KEPT_ATTRS = {
     "img": ("src", "alt"), "a": ("href",),
@@ -1544,14 +1771,299 @@ def _sanitize_html(text):
     return text.strip()
 
 
+def _is_placeholder_src(value):
+    """src 是不是"占位图"（I6 收窄）。判据一律朝**保留原 src**那一侧收：
+    把真图误判成占位 = 用懒加载镜像地址换掉能显示的图，比不修更糟。
+
+    旧版是 `re.search(r"(?:^data:|blank|lazy|placeholder|1x1|spacer)", 整条 URL)`，
+    在本仓真实数据上大面积误杀：img-proxy 链接尾的 `%26wx_lazy%3D1`（5600+ 条）、
+    `https://image.pseudoyu.com/images/lazy_cat_pic.png`、mmbiz base64 段里撞出来的
+    `1x1`/`0x0`、`https://image.hkhl.hk/f/1024p0/0x0/100/…/New_Project_76__0.jpg`
+    的缩放目录段。现在只认三种确定形态：
+      ① `data:` 前缀（微信的 1px 内联占位）；
+      ② 路径**最后一段**的文件名词干精确等于 `_PLACEHOLDER_SRC_NAMES` 之一；
+      ③ 同一个词干里含被非字母数字包围的 1x1/0x0 成分（`spacer_1x1` 命中、
+         `j7RlD5l5q1x1NoXsN` 不命中）。
+    查询串与片段先剥掉，所以 `?…wx_lazy%3D1` 不算；Task 3 的 JS 端口必须同口径。
+    """
+    v = (value or "").strip()
+    if not v:
+        return False
+    if v[:5].lower() == "data:":
+        return True
+    path = v.split("?", 1)[0].split("#", 1)[0]
+    stem = path.rsplit("/", 1)[-1].partition(".")[0].lower()
+    if not stem:
+        return False
+    return stem in _PLACEHOLDER_SRC_NAMES or bool(_PLACEHOLDER_DIM_RE.search(stem))
+
+
+def _unescape_escaped_body(text):
+    """I8：整段被转义的正文补解一层，好让 `_normalize_body_html` 看得见标签。
+
+    为什么必须有它：`_sanitize_html` 第一句就是 `html_mod.unescape(text)`（:1539），而规范化
+    按契约必须跑在 sanitize **之前** —— 于是双重转义的正文（`&lt;img data-src=&quot;…&quot;&gt;`）
+    在规范化眼里一个标签都没有，原样返回；sanitize 再解出 `<img data-src=…>`，因为 img 没有
+    src 被整枚丢弃（`_clean_tag` 末尾 `img and not any(src=…)` 那两行）。上一轮实测：
+    `normalize(escaped)` 不变、`sanitize(normalize(escaped))` = `''`；同一串未转义时能拿到
+    `<img src=…>`。⇒ 规范化必须建立在"已解一层"的文本之上。
+
+    为什么不是无条件 unescape：正文里合法写着 `&amp;lt;img&amp;gt;`（要展示代码的字面量）时，
+    多解一层会把它**激活**成真的 `<img>`，凭空多出一张文章里没有的图。判据
+    `test_literal_escaped_code_sample_is_not_treated_as_escaped_body` 钉的就是这一侧。
+
+    动手条件两条同时成立（见 `_ESCAPED_TAG_HINT_RE` / `_REAL_TAG_OPEN_RE`）：
+      ① 有转义标签形态；② 整段没有未转义的真标签 —— ② 是"这串是正文，而不是带代码样例的
+      正文"的证据。激活风险侧**零新增**：sanitize 本来就会无条件 unescape 一次，本函数只在
+      "根本没有真标签"的输入上把同一件事提前一步做掉。
+    """
+    if not text:
+        return text
+    if _REAL_TAG_OPEN_RE.search(text):
+        return text
+    if not _ESCAPED_TAG_HINT_RE.search(text):
+        return text
+    return html_mod.unescape(text)
+
+
+def _normalize_body_html(text, base_url):
+    """正文出厂前的规范化：① 懒加载图片的真地址提到 src；② 相对 URL 按条目链接绝对化。
+
+    必须在 _sanitize_html **之前**调用：那一步只认 src，data-src 不在 _KEPT_ATTRS 里，
+    而 img 一旦没有 src 会被整枚丢掉（_clean_tag 末尾 `img and not any(src=…)` 那两行）
+    —— 先洗后规范等于什么都没修。
+    """
+    if not text:
+        return ""
+    base = (base_url or "").strip()
+    # M4：base 里带裸 `"` 时，urljoin 的产物会把引号一起带进属性值
+    # （`src="https://e.com/d"q/b.html"`），下游 _sanitize_html 的属性提取 `"([^"]*)"`
+    # 在第一个引号处截断 → 出厂一条静默变形的坏 URL。按"没有 base"处理：
+    # 相对路径原样保留，宁可 404 也不要变形。
+    has_base = base.lower().startswith(("http://", "https://")) and '"' not in base
+
+    def _fix_img(m):
+        tag = m.group(0)
+        # I5：优先级按 _LAZY_SRC_ATTRS 的**元组顺序**取第一个非空值，与标签里属性的
+        # 书写顺序无关（旧版按出现顺序 break，元组顺序对行为零影响，注释就是假的）。
+        seen = {}
+        for name, val in _ATTR_VALUE_RE.findall(tag):
+            seen.setdefault(name.lower(), val.strip())
+        lazy = ""
+        for name in _LAZY_SRC_ATTRS:
+            v = seen.get(name, "")
+            if v:
+                lazy = v
+                break
+        if not lazy:
+            return tag
+        cur = _IMG_SRC_ATTR_RE.search(tag)
+        cur_v = cur.group(1).strip() if cur else ""
+        if cur_v and not _is_placeholder_src(cur_v):
+            return tag          # 真图已在 src，懒加载属性只是镜像，不动
+        # C1：lazy 来自 feed，是**不可信数据**。旧版把它拼进 re.sub 的 replacement 模板，
+        # 于是 `\u0026` 抛 bad escape \u、`\1` 抛 invalid group reference（无 src 分支更坏：
+        # 静默把捕获到的 `<img` 注进属性值）。回调式替换返回拼好的字符串，不过模板解析。
+        if cur:
+            return _IMG_SRC_ATTR_RE.sub(lambda _m: 'src="%s"' % lazy, tag, count=1)
+        return _IMG_OPEN_RE.sub(lambda _m: _m.group(0) + ' src="%s"' % lazy, tag, count=1)
+
+    def _fix_url(m):
+        name, val = m.group(1), m.group(2)
+        v = val.strip()
+        if not v or not has_base:
+            return m.group(0)
+        if v[0] == "#" or v.lower().startswith(("http:", "https:", "mailto:", "tel:", "data:", "//")):
+            return m.group(0)
+        joined = urllib.parse.urljoin(base, v)
+        if not joined.lower().startswith(("http://", "https://")):
+            return m.group(0)
+        return '%s="%s"' % (name, joined)
+
+    text = _IMG_TAG_RE.sub(_fix_img, text)
+    return _URL_ATTR_RE.sub(_fix_url, text)
+
+
+def _unambiguous_entity_start(s, end):
+    r"""返回 `s[:end]` 上"无歧义残缺实体"匹配的**最左起点**；没有匹配返回 None。
+
+    与 `_DANGLING_ENTITY_UNAMBIG_RE.search(s[:end])` 逐字等价（判据
+    `test_cap_unambiguous_scan_is_the_same_predicate_as_the_regex` 对小字母表做穷举对账，
+    差分自证又在 12000 条随机截断上把"整串定点参考"拿来比过，不等价 0），但刻意写成
+    **右往左扫描**：正则版每轮整串重扫，对 `&`×50000 这类退化输入是二次方（M1，旧实测
+    18.77 s）；扫描版每轮只吃切点左边那一段数字/十六进制，而各轮扫过的区间互不相交
+    ⇒ 刀二+ 整体仍是 O(n)。
+    三条形态与常量旁的注释同源（字符集共用 `_DIGIT_ENTITY_CHARS` / `_HEX_ENTITY_CHARS`）：
+      `&$` 裸 &  /  `&#` + 十进制*  /  `&#x` + 十六进制*
+    十进制与十六进制各至多一个合法起点（`&` 之后必须全在对应字符集里，而 `#` 与 `#x`
+    互斥），所以"先试十进制、再试十六进制"就等于正则的最左匹配。
+    """
+    if end <= 0:
+        return None
+    last = s[end - 1]
+    if last == "&":
+        return end - 1
+    if last == "#":
+        return end - 2 if end >= 2 and s[end - 2] == "&" else None
+    if last == "x":
+        return end - 3 if end >= 3 and s[end - 2] == "#" and s[end - 3] == "&" else None
+    if last in _DIGIT_ENTITY_CHARS:
+        d = end - 1
+        while d > 0 and s[d - 1] in _DIGIT_ENTITY_CHARS:
+            d -= 1
+        if d >= 2 and s[d - 1] == "#" and s[d - 2] == "&":
+            return d - 2
+    if last in _HEX_ENTITY_CHARS:
+        h = end - 1
+        while h > 0 and s[h - 1] in _HEX_ENTITY_CHARS:
+            h -= 1
+        if h >= 3 and s[h - 1] == "x" and s[h - 2] == "#" and s[h - 3] == "&":
+            return h - 3
+    return None
+
+
+def _cap_body(text, limit=_BODY_CAP):
+    """按**码点**截断，并且**只在真的截断了**才抹尾部的半个标签/半个实体。
+
+    口径逐条如下，两边（Python / lib/body_rules.js）必须逐条对齐：
+      1. `len(text) <= limit` → 原样返回（I7）。没截断就没有"半个"可言，旧版无条件收口：
+         `Tom&Jerry`→`Tom`、`ends with <span`→`ends with`、尾部空白被顺手 rstrip。
+      2. 按码点计数：Python 的 len 与切片本来就是码点，`text[:limit]` 与 JS 端口
+         `Array.from(s).slice(0, limit).join("")` 同口径（JS 直接 String.slice 会把 emoji
+         的 UTF-16 代理对劈成两半），不许再写 `"".join(list(text)[:limit])`（M2）。
+      3. 两刀的顺序与判据不变：刀一 `_DANGLING_TAG_RE`、刀二（实体刀）见第 5 条。
+         刀一只可能命中一次（切点之后不会再有残缺标签），实体刀可以连着命中（`&&` 连排），
+         但每步只在**尾部 `_ENTITY_TAIL_WINDOW` 字符的窗口**里定位、只移动切点，
+         既不重扫整串也不逐轮复制字符串 —— 旧版 `while True` + 整串 `re.sub` 对
+         `&`×50000 是二次方（实测 18.77 s，复核机器 14.24 s），一条畸形 feed 就能拖住构建。
+         窗口视野只对"名段那一刀"成立（它最长 9 个字符）；无歧义那一刀走
+         `_unambiguous_entity_start` 的右往左扫描，与整串正则等价且同样 O(n)。
+      4. 刀二每一轮都**先把切点上的尾部空白退掉再取窗口**（`str.isspace()`，与 `rstrip()`
+         同口径），否则 `$` 锚定的实体正则在"空白结尾"的窗口上永远匹配不到，切点停在空白上，
+         出口 rstrip 一退空白就把残缺实体重新暴露。**靠这一退才不漏的形态**（实测出口）：`& &m`→`''`、`x&  &ab`→`'x'`、
+         `& &m `→`''`；把退空白那两行删掉，同样本变成 `'&'`、`'x&'`、`'& &m'` —— 全是漏剥。
+         **反过来不靠这一退也留在尾上、已知未修的形态**（取向是"少剥"，宁残不误剥）：`&\xa0&nbsp`
+         以及它前面还挂着正文的变体 —— NBSP 不在实体名字符类里，两条 `$` 锚定的
+         正则都够不着那个 `&`；宁可留一条看着像残缺实体的尾巴，也不去剥 `&` 后面可能合法的
+         文字。**旧稿在这里登记的是 `Tom &am `、`A&B &am `**：现实现下它们分别出口 `Tom`、
+         `A&B`，**两条都不漏** —— 属于文档与实现不符，已按实测换成上面这一组。
+         刀与刀之间的空白照旧要剥（`&am <b` 这种被标签片段隔开的形态要看得见），
+         但剥完仍要保证内容守恒：切点落在**完整**标签的 `>` 上时一个字都不许多剥。
+      5. 退完空白之后守 NEW-3：**实体名段至多剥 1 段**，而**无歧义形态一律剥净**：
+           · `&名字`（`_DANGLING_ENTITY_RE`，允许 1~8 个名符）只许当**第一次实体刀**，
+             错过就没有下一次 —— 即"名段至多剥 1 段"；
+           · 裸 `&` / `&#`+十进制 / `&#x`+十六进制（`_DANGLING_ENTITY_UNAMBIG_RE` 的正位，
+             实现是 `_unambiguous_entity_start`）每一轮都查、不耗额度，连名段那一刀
+             什么都没剥到时也查 —— 不变量①a 要的就是"截断过的出口绝不挂这三条尾巴"。
+         否则 `cap("A&B &am ", 7)` 会把合法文字 `A&B` 吃成 `A`、`cap("a&&b&am", 6)`
+         级联三层吃成 `a`、`cap("x&xab&am", 7)` 把 `&xab` 当成 `&#x…` 吃掉（NEW-1 的修法
+         自己引入的回归）。**第一次实体刀的既有契约不变**：`Tom&Jerryzz`/7 修复前后同为
+         `'Tom'` —— `&X` 被吃这件事本来就在，本轮只收"第二段 `&名字`"这一条权限。
+      6. 出口的 `out[:cut].rstrip()` 是"刀二停稳后唯一还在退空白的一刀"，不许省。
+    """
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    out = text[:limit]
+    m = _DANGLING_TAG_RE.search(out)
+    cut = len(out) if m is None else m.start()
+    # NEW-3：`&名字` 只许当**第一次实体刀**（契约第 1 条"第一刀不变"的字面含义）；
+    # 无歧义形态（裸 `&` / `&#`数字 / `&#x`十六进制）则**每一轮都查**、不耗额度 ——
+    # 不变量①a 要的是"截断过的出口绝不挂着这三条尾巴"，所以那一刀不许缺席。
+    first_entity_knife = True
+    while cut > 0:
+        # 刀二定位前必须先把切点上的尾部空白退掉。`_DANGLING_ENTITY_RE` 是 `$` 锚定的，
+        # 窗口末字符是空白时它必然匹配不到 → break → 出口那记 rstrip 再把空白剥掉 →
+        # 残缺实体（实测靠这一退才不漏的是 `& &m`、`x&  &ab`、`& &m `；`&\xa0&nbsp` 是契约第 4 条点名的"已知未修"（NBSP 挡的是名字字符类，与这行退空白无关）；
+        # 旧稿在这里还登记了 `Tom &am `、`A&B &am `，现实现下分别出口 `Tom`、`A&B`，
+        # 两条都不漏 —— 文档与实现不符，已按实测划掉）重新挂回尾巴。
+        # 退空白的口径必须和出口的 `str.rstrip()` 一致，所以用 str.isspace()：
+        # 写成 `out[i] <= ' '` 会放过 `\xa0`/`\u2028`（NBSP 在中文正文里到处都是）= 同一条回归。
+        # 摊还是 O(n)：每轮退的区间 (tail, cut] 互不相交，而 cut 每轮严格左移 ≥1。
+        tail = cut
+        while tail > 0 and out[tail - 1].isspace():
+            tail -= 1
+        # 第一次实体刀：允许 `&名字`（`_DANGLING_ENTITY_RE`，窗口内最左匹配 = 整串最左匹配，
+        # 因为它的任何匹配都 ≤ `_ENTITY_TAIL_WINDOW` 个字符且必然结束在 tail 上）。
+        m = None
+        if first_entity_knife:
+            window = out[max(0, tail - _ENTITY_TAIL_WINDOW):tail]
+            m = _DANGLING_ENTITY_RE.search(window)
+            first_entity_knife = False     # 名段额度只有这一次，剥没剥到都不回来
+        if m is not None:
+            # 匹配必然以窗口末尾结束 ⇒ 绝对切点 = 窗口起点 + 匹配起点
+            cut = tail - (len(window) - m.start())
+            continue
+        # 之后（以及第一刀什么都没剥到时）只查无歧义形态，且**每一轮都查**：不变量①a 要求
+        # "截断过的正文出口绝不挂裸 & / &#数字 / &#x十六进制 的尾巴"，而这三条后面不可能再接
+        # 合法文字 ⇒ 剥它们零风险。`a&#000000000`（数字尾巴 >9 字符、名段那一刀看不见）就是
+        # 靠这一查兜住的 —— 把它做成"只在名段剥过之后才查"会漏，见差分自证的 token 生成器。
+        nxt = _unambiguous_entity_start(out, tail)
+        if nxt is None:
+            break
+        cut = nxt
+    # 这记 rstrip 是"刀二停稳后唯一还在退空白的地方"（V13 的靶）：上面 break 时 cut 可能
+    # 正停在一串空白上（那串空白之后没有实体，所以循环没动它），出口必须把它退掉。
+    return out[:cut].rstrip()
+
+
+# ── 站内导航链接去链接（Task 10 的规则 2.5；R43 抽成模块级以便与 JS 端口逐条对账）──
+# 正文里的 "Kubernetes" 这类词常被包成 /tag/ 链接，整枚删除等于删正文 —— 判据
+# test_internal_nav_link_loses_href_but_keeps_text / test_nav_delink_keeps_surrounding_prose_verbatim
+# 钉住这条边界，防下一个人图省事改成"删掉所有 <a>"（外部正文链接那条反例判据会当场红）。
+# 判定只看 **host 之后的第一个路径段**，不做整串子串匹配：
+#   `https://about.fb.com/news/…`（about 在 host 上）、
+#   `https://lists.gnu.org/archive/html/…`、`…/blob/main/docs/author/x.md`（导航词在路径中段）
+# 都不是站内导航。brief 原样的 `href="[^"]*(?:/about|/archive…)[^"]*"` 会把这三种一起吃掉，
+# 真数据实测（那份快照 3140 条出厂正文、2159 条外部 href）带走 142 条外链 —— 违反
+# "外部正文链接不许被动"这条红线。两条反例判据
+# test_host_named_after_a_nav_word_is_not_delinked /
+# test_nav_word_outside_first_path_segment_is_not_delinked 在收紧前红、收紧后绿；
+# 反向守卫 test_nav_first_segment_still_delinked_with_deeper_path_and_query 挡住
+# "收成整段精确等于 /tag"那种过度收窄。
+# 相对形状 `/tag/x` 也要认：`_normalize_body_html` 在真实链路上已把它绝对化成
+# `https://blog.example/tag/x`，只认相对或只认绝对都会漏一半。
+# `categor`/`author`/`tag` 单复数并列不是冗余：brief 写的 `categories?` 只能匹
+# "categorie(s)"，**匹不到单数 `category`**（-y→-ies 不是加 s），
+# 照抄会让判据 test_author_and_category_links_too 永久红。
+#
+# 词表在运行时那一侧的同名导出是 `lib/body_rules.js` 的 `NAV_LINK_SEGMENTS`，
+# 两侧同值由 tests/site_nav/test_body_rules_parity.py 钉住（改一边必须改另一边）。
+_NAV_LINK_SEGMENTS = ("tag", "tags", "category", "categories", "author", "authors",
+                      "about", "subscribe", "donate", "archive")
+
+
+def _delink_nav_links(text):
+    """把站内导航链接脱成纯文字，外部正文链接一条不动，链接里的内层标签原样保留。"""
+    def _delink_nav_link(m):
+        path = re.sub(r"^(?:[a-z][a-z0-9+.-]*:)?//[^/]*", "", m.group("href"), flags=re.IGNORECASE)
+        if not path.startswith("/"):
+            return m.group(0)      # 纯相对（"tag/x"）、mailto:、空值：一律不动，宁可少剥
+        return (m.group("text") if re.split(r"[/?#]", path[1:], 1)[0].lower() in _NAV_LINK_SEGMENTS
+                else m.group(0))
+    return re.sub(
+        r'<a\b[^>]*?href="(?P<href>[^"]*)"[^>]*>(?P<text>[\s\S]*?)</a>',
+        _delink_nav_link, text, flags=re.IGNORECASE)
+
+
 def _deep_clean_html(text):
     """深度清洗 RSS 正文：移除广告、推广、引导关注等噪音，保留正文结构"""
     if not text:
         return ""
-    # 1. 移除广告/推广/订阅/评论相关 class 或 id 的整个元素
-    text = re.sub(
-        r'<(\w+)[^>]*\b(?:class|id)\s*=\s*"[^"]*\b(?:ads?[_-]?|advert|banner|sponsor|promo|newsletter|subscribe|social-share|share-buttons?|related-posts|recommend|widget|comments?|disqus|pagination|footer-links|follow-us|qrcode|qr-code)[^"]*"[^>]*>[\s\S]*?</\1>',
-        '', text, flags=re.IGNORECASE)
+    # 1. 【已删除】按 class/id 整枚删除推荐块/署名块的规则（原词表 ads?|advert|banner|…|
+    #    related-posts|recommend|read-next|article-tags|author-box|byline|toc-|meta-info…）。
+    #    删除理由（2026-10-05 裁定，R42）：这条在本函数的**两个生产调用点**上都开不了火。
+    #    唯一入口链是 `_deep_clean_html(_sanitize_html(_normalize_body_html(...)))`，
+    #    而 `_sanitize_html` 的属性白名单 `_KEPT_ATTRS` 不保留 class/id —— 等本函数拿到
+    #    `text` 时 `<div class="related-posts">` 早就是 `<div>`，任何按 class/id 匹配的规则
+    #    命中恒为 0。留它就是"看着有防线、实际为 0"的假绿形状（本仓点名的自欺形状之一）。
+    #    真在起作用的是下面 2.5/2.6 两条**按 href 判**的规则（实测：这份历史语料上脱掉
+    #    36 条导航 href、清掉 1 个推广块）。
+    #    闸：tests/rss_history/test_no_inert_deep_clean_rules.py —— 每条 re.sub 规则都必须
+    #    在"生产顺序 + 仓库真语料"上至少真的改写过一条样本，否则当场红；
+    #    口径事实另由 test_sanitize_drops_class_so_rule1_is_inert_on_the_entry_chain 钉住
+    #    （哪天给 `_KEPT_ATTRS` 加上 class，那条会红，届时才允许重新考虑容器名这一刀）。
     # 1.5 移除 wechat2rss / link-proxy 跳转链接（"跳转微信打开"等）
     text = re.sub(
         r'<a[^>]*href="[^"]*(?:link-proxy|wechat2rss|mp\.weixin\.qq\.com)[^"]*"[^>]*>[^<]*</a>',
@@ -1579,6 +2091,18 @@ def _deep_clean_html(text):
         plain = re.sub(r'<[^>]+>', '', block)
         return '' if _promo_re.search(plain) else block
     text = re.sub(r'<(p|div)\b[^>]*>[\s\S]*?</\1>', _strip_and_check, text, flags=re.IGNORECASE)
+    # 2.5 站内导航链接：**去链接留文字**（Task 10）。R43 起这条刀抽成模块级
+    #     `_delink_nav_links`：运行时通道 `api/rss.js` 要有它的 JS 端口
+    #     （`lib/body_rules.js` 的 `delinkNavLinks`），而"逐条比输出"的对账判据需要一个
+    #     能与 JS 端口一一对应的 Python 函数 —— 长在 `_deep_clean_html` 里面没法单独喂样本。
+    #     抽取**没有**改变清洗顺序（还是 2.5 这一格）、没有改判定，完整理由见它的 docstring。
+    text = _delink_nav_links(text)
+    # 2.6 空锚点 / 站点根链接（"阅读更多""返回首页"那类壳）整枚去掉。
+    #     只吃 `href="#"` 与 `href="/"` 两种**精确**形状：`href="#sec-2"` 是有内容的页内锚点，
+    #     放宽成 `href="#[^"]*"` 会把正文里的"见下节"一起删掉（判据
+    #     test_in_page_fragment_link_is_not_dropped）。放在规则 3 之前 —— 这两把刀删空的
+    #     `<p><a href="#">…</a></p>` 壳要由规则 3 收尾。
+    text = re.sub(r'<a\b[^>]*href="(?:#|/)"[^>]*>[\s\S]*?</a>', '', text, flags=re.IGNORECASE)
     # 3. 移除清洗后残留的空块元素
     text = re.sub(
         r'<(?:p|div|span)\b[^>]*>\s*(?:<br\s*/?>\s*)*</(?:p|div|span)>',
@@ -1586,6 +2110,165 @@ def _deep_clean_html(text):
     # 4. 压缩连续空行（保留段落间距）
     text = re.sub(r'(?:\s*\n){3,}', '\n\n', text)
     return text.strip()
+
+
+# ── hnrss 模板摘要重写（Task 8）─────────────────────────────────────
+# hnrss 的 <description> 不是摘要，是四行投稿元数据：
+#     Article URL: …\nComments URL: …\nPoints: 254\n# Comments: 162
+# 运行时翻译后还有中文变体（文章网址/评论网址/积分/评论数）。整段进阅读器就是用户报的
+# "全是链接"。判据按**形状**而非 source_key：源改名、`hn_newest_56` 那类新增镜像、
+# 翻译版都要命中；按 key 判等于把"HN 这个源"写死进清洗层。
+# 四条正则都整行锚定（^…$）：正文里的 "reports Points: 254 as the best score" 不是模板行。
+# 冒号两可：半角 ':' 与全角 '\uFF1A'（中文变体用的是后者）。这里**必须**写码位转义而不是
+# 直接贴字形 —— 全角冒号在编辑器里与半角看不出区别，brief 那行抄进文件时就悄悄变成了两个
+# 半角冒号，中文版模板从此永不命中（判据 test_zh_translated_variant_also_matched 是当场抓到的）。
+# 数字段写 `[0-9]` 而不是 `\\d`（R43 对账口径）：Python 的 `\\d` 在 str 模式里是 **Unicode**
+# 十进制数字（`Points: ２５４` 全角数字也算命中），而 JS 端口按裁定只用 ASCII；
+# 两侧统一成 ASCII 才对得上（对账语料里有全角数字那一条，用它钉住这个口径）。
+#
+# ── R45：词表来自真语料清点，不是凭想象 ────────────────────────────────
+# 原来每个槽位只收了一个中文词（`评论数`），而运行时翻译层对同一槽位会给出一族同义词，
+# 实测最大缺口就是 `# 评论: 0`（半角冒号、词是"评论"不是"评论数"，18,037 条里 551 行）。
+# 下面四张词表是把 `rss_history.json` 的 `summary`/`summary_zh` **逐行按行首形态聚合**数出来的，
+# 收词只有两条依据：
+#   ① 该词在 HN 条目的模板槽位上真实出现 ≥1 次（没有词是凭空加的）；
+#   ② 该词在全部 18,037 条的**非 HN 条目**上命中数为 0（判据
+#      test_hn_word_list_has_no_non_hn_surface 拿真语料复核这条，防的是"得分/热度"
+#      这类通用词把游戏评测正文的 `得分：9` 当成模板行）。
+# 长词排在前只为了读起来顺，判决靠整行锚定与回溯，不靠顺序。
+# 两条**刻意没收**的形态（收它们要动的不是词表而是值段语义，属于"为多剥而放宽"）：
+#   `评论数：1条`（数量词后缀，实测 2 行）；被 `_truncate` 截断成单行的模板块（实测 21 行，
+#   门槛"至少两行"本就该放它过去 —— 判据 test_truncated_single_line_block_is_left_alone 钉住）。
+_HN_ART_WORDS = (u"article url", u"文章网址", u"文章链接", u"文章URL", u"文章地址")
+_HN_CMT_WORDS = (u"comments url", u"评论网址", u"评论区链接", u"评论区网址", u"评论链接",
+                 u"评论URL", u"评论地址", u"评论页面", u"讨论区链接", u"讨论链接")
+_HN_PTS_WORDS = (u"points", u"积分", u"当前得分", u"得分", u"评分", u"点赞数",
+                 u"热度值", u"热度", u"分数", u"点数", u"分值", u"关注度")
+_HN_CMTS_WORDS = (u"comments", u"评论数量", u"评论数", u"评论")
+
+
+def _hn_alt(words):
+    """词表 → 非捕获交替式。每个词都过 `re.escape`：词表是从不可信的翻译产物里清出来的，
+    哪天混进 `.`/`+`/`(` 也不该把整条行的锚定炸掉（那会把"锚定"这件事静默降级成 search）。"""
+    return u"|".join(re.escape(w) for w in words)
+
+
+_HN_ART_URL = re.compile(r"^(?:%s)\s*[:\uFF1A]\s*(\S+)\s*$" % _hn_alt(_HN_ART_WORDS), re.IGNORECASE)
+_HN_CMT_URL = re.compile(r"^(?:%s)\s*[:\uFF1A]\s*(\S+)\s*$" % _hn_alt(_HN_CMT_WORDS), re.IGNORECASE)
+_HN_POINTS = re.compile(r"^(?:%s)\s*[:\uFF1A]\s*([0-9]+)\s*$" % _hn_alt(_HN_PTS_WORDS), re.IGNORECASE)
+_HN_COMMENTS = re.compile(r"^#?\s*(?:%s)\s*[:\uFF1A]\s*([0-9]+)\s*$" % _hn_alt(_HN_CMTS_WORDS), re.IGNORECASE)
+# R47：上游翻译层会把 `Article URL:` / `Comments URL:` 的**标签整个丢掉**，于是进来的正文
+# 就是 `https://… + https://… + 积分：2 + # 评论：0` 这一形：四槽刀照旧开火（积分与评论两行
+# 就够门槛），那两行 URL 却以正文行的身份留在摘要里 —— 用户报的原症状「HN 里全是链接」到这一
+# 步只清了一半（实测 rss_history.json 18,037 条：HN 形状出口仍剩 5 行裸 URL、涉及 4 个字段；
+# 实时 `?source=` 通道每场都会把它们重新长出来）。
+# **只在已判定为 HN 形状的那条分支里动手**（门槛已过、pts 或 cmt 必有一格），判据是「整行就是
+# 一个 `http(s)://…`」。值段限 **ASCII 可打印** `[\x21-\x7e]` 而不是 `\S`，与 `_GLUED_URL_RE`
+# 同一个口径：`\S` 会把 `https://ex.com/a看了大佬的文章` 这种 **URL 与正文粘连**的行也算成
+# 「整行裸 URL」一口吃掉 —— 本刀派工初版就踩过这一格，是
+# test_order_matters_when_meta_lines_come_before_the_glued_line 当场抓成回归的。URL 里带 CJK
+# 的少数形态宁可少剥一条，不少剥错一行。
+# 通用摘要一条都不许剥：很多源的正常摘要就是单独一行链接，真语料里「刀没开火」的字段整整放着
+# 38 行这一形（值段改用 `\S` 去数是 52 行）—— 做成通用剥离就是在吃这些正文，反例判据
+# test_bare_url_line_from_an_ordinary_summary_is_kept 钉住这条边界。
+_HN_BARE_URL_LINE = re.compile(r"^https?://[\x21-\x7e]+$", re.IGNORECASE)
+
+
+def _rewrite_hn_summary(desc, link):
+    """把 hnrss 的模板元数据压成一行，正文文字一个字不动、裸链接一条不留。
+
+    门槛是"**至少命中两行**、且必须含 Points 或 Comments URL"：单行 `Points: 3` 不足以
+    判定，否则任何英文文章的评分句都会被当成模板吃掉（判据
+    test_one_meta_line_alone_is_not_enough / test_prose_mentioning_points_is_not_eaten）。
+    R47 补的第二件事也挂在这条分支里：标签被翻译层丢掉时，那两行 URL 是以正文身份进来
+    的，门槛过后一并剥掉（`_HN_BARE_URL_LINE`）；门槛没过者一个字都不动。
+    Points 与评论数的**数字保留**，Article/Comments URL 两行删掉不丢信息 —— 条目本身的
+    `link` 就是 Article URL（讨论页入口由前端 a.u 承担，见 Task 9 的 `_isHnDiscussion`）。
+    正文按行原样保留（含段落空行），元数据行追加在最后。
+    幂等：重写结果里不再有模板行，过第二把刀返回原值 —— 快照出口对 `summary` 与
+    `summary_zh` 两条链路都会调，不幂等就会把"254 分"再吃一遍。
+    """
+    if not desc:
+        return desc
+    art = cmt = pts = cmts = ""
+    keep = []
+    for ln in desc.replace("\r\n", "\n").split("\n"):
+        ln = ln.strip()
+        if not ln:
+            if keep:
+                keep.append(ln)
+            continue
+        m = _HN_ART_URL.match(ln)
+        if m:
+            art = m.group(1)
+            continue
+        m = _HN_CMT_URL.match(ln)
+        if m:
+            cmt = m.group(1)
+            continue
+        m = _HN_POINTS.match(ln)
+        if m:
+            pts = m.group(1)
+            continue
+        m = _HN_COMMENTS.match(ln)
+        if m:
+            cmts = m.group(1)
+            continue
+        keep.append(ln)
+    while keep and not keep[-1]:
+        keep.pop()
+    hits = (1 if art else 0) + (1 if cmt else 0) + (1 if pts else 0) + (1 if cmts else 0)
+    if hits < 2:
+        return desc
+    if not (pts or cmt):
+        return desc
+    # R47：走到这里就是"已判定为 HN 形状"，此时才剥整行裸 URL；门槛没过的那条分支在上面就
+    # return 了，通用摘要因此一条都碰不到。剥完再退一次尾部空行（正文后面跟一个空行再跟
+    # 一条裸 URL 那种形状留下的空洞），否则每次构建对同一字段重写都会多/少一个空行，
+    # 幂等口径（快照出口每场重跑）就破了。
+    keep = [ln for ln in keep if not _HN_BARE_URL_LINE.match(ln)]
+    while keep and not keep[-1]:
+        keep.pop()
+    meta = []
+    if pts:
+        meta.append("%s 分" % pts)
+    if cmts:
+        meta.append("%s 评论" % cmts)
+    meta.append("Hacker News")
+    meta_line = " · ".join(meta)
+    return "\n".join(keep + [meta_line]) if keep else meta_line
+
+
+# "链接+正文"粘连：URL 后**紧跟**汉字/假名（无空白分隔）。NodeSeek 这类 feed 的 description 形状
+# （实测 nodeseek_54：`https://www.nodeseek.com/post-957723-1看了大佬的IX文章…`）。
+# URL 字符类用 `[\x21-\x7e]`（可打印 ASCII、无空白）而不是 brief 原样的 `\S`：
+# `\S` 会把紧跟在 URL 后面的全角逗号/句号也当 URL 字符吃掉（`…com/a，这是正文` 会连标点一起剥），
+# 而汉字/全角标点本来就不是这条 URL 的组成部分 —— 判据
+# test_url_followed_by_fullwidth_punctuation_is_not_glued / test_url_followed_by_newline_is_not_glued 钉住。
+# 先行断言是**唯一**动手条件：有空白/换行分隔、整条就是 URL、链接出现在句中，一律原样返回。
+_GLUED_URL_RE = re.compile(r"^\s*https?://[\x21-\x7e]+?(?=[\u4e00-\u9fff\u3040-\u30ff])")
+
+
+def _strip_glued_url(text):
+    """剥掉摘要开头与正文粘连的裸链接。
+
+    只在"URL 后紧跟汉字"这一种形状上动手：有空白分隔、整条就是 URL、
+    或链接出现在句中，都原样返回（判据里三条反例就是为了挡住过度匹配）。
+
+    幂等（剥完的串以汉字开头，再过一次返回原值）—— 这不是洁癖：本刀接在**解析入口**
+    （`summary` 出厂即规范）与**快照 `s` 出口**（`summary_zh` 是上一场翻译的缓存、跨场复用、
+    不会被重新解析）两处，同一条链路会过两遍，与 Task 8 的 `_rewrite_hn_summary` 同形。
+    `link` 参数不参与判决：粘连与否只看 `text` 自己的形状，与条目链接是否同源无关。
+    """
+    if not text:
+        return text
+    m = _GLUED_URL_RE.match(text)
+    if not m:
+        return text
+    # 不写 brief 里那句 `.lstrip()`：匹配终点按构造就是**汉字**，剥完的串第一个字符必是汉字，
+    # 永远没有前导空白可退 —— 那是条任何判据都打不到的死分支（本批变异 ④d 实测它存活），
+    # 留着只会让下一批以为"退空白"这件事有判据在守。
+    return text[m.end():]
 
 
 def _truncate(s, maxlen=500):
@@ -2498,14 +3181,21 @@ def _fetch_rss(source, timeout=None):
             summary_raw = e.findtext(ns + "summary") or ""
             desc = _strip_html(summary_raw)
             content_raw = e.findtext(ns + "content") or ""
-            atom_content = _deep_clean_html(_sanitize_html(content_raw))
+            # 出厂规范链路（顺序即契约，逐条不许换）：
+            #   _unescape_escaped_body 把双重转义的正文解一层（I8）→ _normalize_body_html
+            #   提懒加载 src / 绝对化相对 URL（必须在 sanitize 之前，sanitize 只认 src）
+            #   → _sanitize_html 白名单 → _deep_clean_html 去推广噪音。
+            atom_content = _deep_clean_html(_sanitize_html(_normalize_body_html(
+                _unescape_escaped_body(content_raw), link)))
             full_content = atom_content if len(atom_content) > len(desc) else ""
             pub = e.findtext(ns + "updated") or e.findtext(ns + "published") or ""
             if not title or not link:
                 continue
             media_url, media_type = _pick_item_media(e)
+            # 与 RSS 入口同一套刀序（`_rewrite_hn_summary` 在内、`_strip_glued_url` 在外、
+            # 最外层 `_truncate`）；两段代码各自写 summary，漏一个另一半照旧露粘连。
             items.append({
-                "title": title, "link": link, "summary": _truncate(desc),
+                "title": title, "link": link, "summary": _truncate(_strip_glued_url(_rewrite_hn_summary(desc, link))),
                 "full_content": full_content, "image": _upgrade_img_url(_pick_item_image(e, summary_raw, content_raw)),
                 "pub_date": _parse_iso(pub), "source": name, "source_key": source["key"],
                 "cat": source["cat"],
@@ -2601,11 +3291,17 @@ def _parse_rss_item(it, source_name, source_key, cat, items):
         img = _extract_tweet_media(desc_raw)
     else:
         desc = _strip_html(desc_raw)
-        content_encoded = _deep_clean_html(_sanitize_html(content_raw))
+        # 出厂规范链路：与 Atom 入口同一套顺序与理由（见 `_fetch_rss` 里那条注释）。
+        content_encoded = _deep_clean_html(_sanitize_html(_normalize_body_html(
+            _unescape_escaped_body(content_raw), link)))
         full_content = content_encoded if len(content_encoded) > len(desc) else ""
         img = _upgrade_img_url(_pick_item_image(it, desc_raw, content_raw))
+    # summary 出口的两把刀**顺序是契约**：先 `_rewrite_hn_summary`（hnrss 模板压成一行）、
+    # 再 `_strip_glued_url`（剥与正文粘连的裸链接）。倒过来会先改掉 HN 重写要看的行首形状，
+    # 两条互相吞（判据 test_order_matters_when_meta_lines_come_before_the_glued_line 给的是行为证据，
+    # test_rss_parse_entry_wraps_glued_strip_in_the_right_order 给的是链形）。
     items.append({
-        "title": title, "link": link, "summary": _truncate(desc),
+        "title": title, "link": link, "summary": _truncate(_strip_glued_url(_rewrite_hn_summary(desc, link))),
         "full_content": full_content, "image": img,
         "pub_date": _parse_rss_date(pub) or _parse_iso(pub), "source": source_name, "source_key": source_key,
         "cat": cat,
@@ -4159,6 +4855,64 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
 
   /* ── Reader ── */
   var _articleCache={};
+  /* /api/article 的失败码 → 用户能看懂的一句人话。宁可写长也别写成只有码名的那种提示。
+     这份表与 api/article.js 的 Task 5 契约一一对应（7 格，不多不少；timeout 由服务端
+     AbortError 动态产生，不在那边写成字面量）。判据：tests/site_nav/test_reader_fulltext_errors.py */
+  var _FT_NOTES={
+    'challenge_page':'该站点要求浏览器人机验证，StarHub 无法代为抓取正文。可点下方"打开原文"自行阅读。',
+    'no_body':'没能从该页面提取到正文（可能是纯 JS 渲染的页面），下面保留的是信源自带摘要。',
+    'timeout':'抓取原文超时（对方站点响应过慢），下面保留的是信源自带摘要。',
+    'fetch_failed':'原文站点拒绝访问或不存在，下面保留的是信源自带摘要。',
+    'extraction_failed':'页面结构无法解析，下面保留的是信源自带摘要。',
+    'invalid_url':'这条内容没有可抓取的外部链接。',
+    'missing_url':'缺少原文地址。'
+  };
+  var _FT_NOTE_FALLBACK='未能获取正文，以下为信源摘要。';
+  function _showFulltextNote(inner,text){
+    if(!inner||inner.querySelector('.r2-ft-note')) return;
+    var n=document.createElement('div');
+    n.className='r2-ft-note';
+    n.style.cssText='margin:10px 0;padding:9px 11px;border-left:3px solid var(--brand-line);background:var(--panel-soft,rgba(0,0,0,.03));font-size:13px;line-height:1.7;color:var(--muted)';
+    n.innerHTML=esc(text);
+    var hint=inner.querySelector('.r2-foot-hint');
+    if(hint) inner.insertBefore(n,hint); else inner.appendChild(n);
+  }
+  /* ── HN 讨论页（Task 9）：那是评论列表，没有"正文"可抽 ──
+     api/article.js 对 item 页跑 Readability 抽出来的是"用户名 + 评论锚点"，
+     正是用户报的"阅读器里全是链接"。裁定：不发 /api/article，摘要当正文显示 + 给讨论入口。 */
+  function _isHnDiscussion(u){
+    /* 只按 host 边界认 news.ycombinator.com（精确或其子域）。绝不对整条 URL 做子串匹配：
+       `http://evil.com/?x=news.ycombinator.com`、`https://news.ycombinator.com.evil.com/`、
+       `https://news.ycombinator.com@evil.com/item` 都不算 —— 与封面 referrer 表那条同形状。
+       走 new URL 而不是手拆：port / userinfo / 大小写 / 非 http(s) scheme 一次处理干净；
+       解析不了（相对路径、空串、老浏览器没有 URL）就当"不是讨论页"，最多少一层短路，不会误吞正文。 */
+    var HN='news.ycombinator.com';
+    var SUB='.'+HN;
+    var s=String(u||'').trim();
+    if(!s) return false;
+    var host='';
+    try{ host=String(new URL(s).hostname||'').toLowerCase(); }
+    catch(e){ return false; }
+    if(!host) return false;
+    return host===HN||host.slice(-SUB.length)===SUB;
+  }
+  function _showSummaryAsBody(inner,a){
+    /* 讨论页的"正文"就是信源摘要（Ask/Show HN 文本帖）或一句计数（纯链接投稿），
+       再加一个能点回讨论区的出口。摘要按**文本**转义后显示：Task 8 之后 a.s 里仍可能有
+       上游自带的 HTML/尖括号，直接拼进 innerHTML 就是自我 XSS 面。
+       href 是属性上下文：esc() 走 text-node 序列化，不转引号，所以这里补一道引号。
+       换行用 \\n 双写 —— 这段 JS 活在非 raw 的 Python 三引号串里，单写会被 Python 先解成
+       真换行，产物里就变成跨行的正则字面量（判据 test_summary_newlines_become_br_in_the_artifact）。 */
+    if(!inner||inner.querySelector('.r2-fulltext')) return;
+    var div=document.createElement('div');
+    div.className='r2-fulltext';
+    var txt=esc(a.s||'（该条目无文字内容）').replace(/\\n/g,'<br>');
+    div.innerHTML='<p>'+txt+'</p><p style="margin-top:10px"><a href="'
+      +esc(a.u||'').replace(/"/g,'&quot;')
+      +'" target="_blank" rel="noopener" style="color:var(--brand-strong)">在 Hacker News 查看讨论 ↗</a></p>';
+    var hint=inner.querySelector('.r2-foot-hint');
+    if(hint) inner.insertBefore(div,hint); else inner.appendChild(div);
+  }
   function fetchFullArticle(a){
     if(!a.u||a.u==='#') return;
     var inner=document.getElementById('r2Inner');
@@ -4167,9 +4921,15 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
       _insertFulltext(a.fc);
       return;
     }
+    /* 判断必须在 fetch **之前**：放进 .then 里等于白判（请求已经发出去了，
+       用户先看到一屏评论链接列表）。有真全文时先看全文，所以这一格排在 a.fc 之后。 */
+    if(_isHnDiscussion(a.u)){ _showSummaryAsBody(inner,a); return; }
     if(_articleCache[a.u]){
-      var d=_articleCache[a.u];
-      if(d.ok) _insertFulltext(d.content);
+      var cc=_articleCache[a.u];
+      /* 命中缓存也要判 ok：分享通道（shareArt）往同一张表里写 d 时不判 ok，
+         直接插就是把 undefined 当正文喂给 innerHTML。失败项在这里出声。 */
+      if(cc&&cc.ok&&cc.content) _insertFulltext(cc.content,cc.degraded);
+      else _showFulltextNote(inner,_FT_NOTES[cc&&cc.error]||_FT_NOTE_FALLBACK);
       return;
     }
     var old=inner.querySelector('.r2-ft-loading');
@@ -4181,9 +4941,16 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     if(hint) inner.insertBefore(ld,hint); else inner.appendChild(ld);
     var apiBase='https://starhub-refresh.vercel.app/api/article';
     fetch(apiBase+'?url='+encodeURIComponent(a.u)).then(function(r){return r.json();}).then(function(d){
-      _articleCache[a.u]=d;
       var cur=inner.querySelector('.r2-ft-loading'); if(cur) cur.remove();
-      if(d.ok&&d.content) _insertFulltext(d.content);
+      if(d.ok&&d.content){
+        /* 只缓存成功：把失败也缓存的话，会话内每次重试都拿回同一份失败并永久静默 */
+        _articleCache[a.u]=d;
+        _insertFulltext(d.content,d.degraded);
+        return;
+      }
+      /* ok:false 是服务端的**回答**，不是网络故障：过去这里没有 else，转圈被上一行删掉后
+         阅读器既不显示正文也不显示原因（用户报的"部分内容加载不出"）。 */
+      _showFulltextNote(inner,_FT_NOTES[d.error]||_FT_NOTE_FALLBACK);
     }).catch(function(){
       var cur=inner.querySelector('.r2-ft-loading'); if(cur) cur.remove();
       /* F3 修复：全文加载失败时显示行内提示与重试按钮 */
@@ -4242,9 +5009,56 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     var iframes=body.querySelectorAll('iframe');
     for(var j=0;j<iframes.length;j++){try{iframes[j].src='about:blank';}catch(e){}}
   }
-  function _insertFulltext(html){
+  /* 正文内联图片的渲染层兜底：只改属性、不碰结构。
+     为什么构建期规范之外还要这一道：`/api/article` 现抓的正文压根不过构建期规范，
+     Readability 的输出格式由站点决定，而双重转义那一类正文在运行时通道上服务端
+     压根拿不回 `data-src`（见 task-4-5-report.md 的 L1）—— 只能在浏览器里救。
+     referrer 复用封面那一份表（_coverRefPolicy/_coverHost/_hostInTable/_REF_HOSTS），
+     本函数里不写任何域名：第二张表就是第 4 个会分叉的事实来源。
+     判据：tests/site_nav/test_reader_body_images.py（含运行时通道 data-src 的行为样本）。 */
+  function _hardenBodyImages(root,baseUrl){
+    if(!root||!root.querySelectorAll) return;
+    var lazyAttrs=['data-src','data-original','data-lazy-src','data-croporisrc'];
+    var imgs=root.querySelectorAll('img');
+    var base=(baseUrl&&/^https?:/i.test(baseUrl))?baseUrl:'';
+    for(var i=0;i<imgs.length;i++){
+      var im=imgs[i];
+      var src=(im.getAttribute('src')||'').trim();
+      /* 空 src 与占位图都去懒加载属性里找真地址：老快照与现抓正文都常见这一形。 */
+      if(!src||src.slice(0,5)==='data:'){
+        for(var k=0;k<lazyAttrs.length;k++){
+          var v=(im.getAttribute(lazyAttrs[k])||'').trim();
+          if(v){ src=v; break; }
+        }
+      }
+      /* 相对/协议相对地址按**这条内容自己的原文链接**落地；补不出 http(s) 就当没有图。 */
+      if(src&&src.slice(0,11)!=='data:image/'&&!/^https?:/i.test(src)){
+        var abs='';
+        try{ abs=new URL(src,base||location.href).href; }catch(e){ abs=''; }
+        src=/^https?:/i.test(abs)?abs:'';
+      }
+      /* 没有可用地址就整枚摘掉：留在正文里的破图占位比没有图更糟（一枚碎图标压在段落中间）。 */
+      if(!src){ if(im.parentNode) im.parentNode.removeChild(im); continue; }
+      im.setAttribute('src',src);
+      im.setAttribute('loading','lazy');
+      im.setAttribute('decoding','async');
+      var pol=_coverRefPolicy(src);
+      /* pol 为空串=这家图床要带 Referer 才给图：必须 removeAttribute，
+         写成 attr="" 的属性值语义在浏览器间并不一致。 */
+      if(pol) im.setAttribute('referrerpolicy',pol); else im.removeAttribute('referrerpolicy');
+      if(!im._ftErr){
+        im._ftErr=1;
+        im.addEventListener('error',function(){this.style.display='none';});
+      }
+    }
+  }
+  function _insertFulltext(html,degraded){
     var inner=document.getElementById('r2Inner');
     if(!inner||inner.querySelector('.r2-fulltext')) return;
+    /* degraded 是服务端**给了内容但不足以称"全文"**的标注（值只可能 paywall/short，
+       判定住在 lib/body_rules.js 的 classifyBody）：照旧显示正文，但不许再假装它是全文。 */
+    if(degraded==='paywall') _showFulltextNote(inner,'该站点为付费内容，以下仅为可公开的试读部分。');
+    else if(degraded==='short') _showFulltextNote(inner,'正文可能不完整（站点仅提供短摘要或需 JS 渲染）。');
     var div=document.createElement('div');
     div.className='r2-fulltext';
     
@@ -4284,6 +5098,9 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
         var bs=tog.querySelectorAll('button');bs[0].classList.add('active');bs[1].classList.remove('active');
       };
     }
+    /* 正文内联图片兜底（referrer/懒加载/破图），必须在媒体嵌入之前跑：
+       _renderMedia 会往容器里插 iframe/audio，那是我们不该管的另一批元素。 */
+    _hardenBodyImages(div,curArt&&curArt.u);
     /* 媒体嵌入：YouTube 视频 / 播客音频 */
     _renderMedia(curArt,div);
   }
@@ -8695,15 +9512,36 @@ def main(mode="full"):
         print("[图片升级] 历史缓存补升级 %d 张" % _hist_upgraded)
     # 历史缓存里躺着的必挂封面同样清掉，免得每一场都重新命中一次
     _hist_purged = _purge_bad_covers_in_history(_rss_history)
+    # 正文侧的同批清扫：老条目的 full_content 是按入库那一刻的规则出厂的，不重写就要等
+    # 它被重新抓取（或自然过期）才换过来。理由与落点与上一行同一条（见函数 docstring 的实测口径）。
+    _hist_normed = _renormalize_history_fulltext(_rss_history)
+    # 对抗审查 ②：上一行只改 `_rss_history`，而 `_accumulate_history` 早在 :909 就用
+    # `entry = dict(item)` 把历史命中抄成了**出厂副本** —— 三个消费者
+    # （`_save_api_snapshot` / `build_html` / `write_data_chunks`）读的是副本，
+    # 所以清扫必须**也在副本上再跑一遍**，否则出厂形状仍是入库那一刻的。
+    # 落点与写法照本文件 :9517-9529 那条 image 补升级（同一格道理，既有做法）。
+    _out_normed = _renormalize_outgoing_fulltext(sources_with_items)
+    # 清扫分账必须**无条件**播报：掉到 0 有两种解释（上游换了形状 / 某把刀被摘了），
+    # 两种都需要有人知道，而"只在有命中时才打印"恰好把这一信号吞掉了
+    # （与 `_bad_cover_hits` 的判空播报同一条理由）。
+    print("[历史清扫] 重写 %d 条（正文规范化 %d / 导航脱链 %d；摘要 HN 模板 %d / 粘连裸链 %d）"
+          % (_hist_normed, _LAST_HISTORY_SWEEP["fulltext"], _LAST_HISTORY_SWEEP["body_delink"],
+             _LAST_HISTORY_SWEEP["summary_hn"], _LAST_HISTORY_SWEEP["summary_glued"]))
+    # 出厂那一本另播（对抗审查 ②）：三个消费者读的是这一份，历史上这一格根本没播过，
+    # 所以"清扫只改了存盘那份"这件事在构建日志里是完全静默的。
+    print("[出厂清扫] 重写 %d 条（正文规范化 %d / 导航脱链 %d；摘要 HN 模板 %d / 粘连裸链 %d）"
+          % (_out_normed, _LAST_OUTGOING_SWEEP["fulltext"],
+             _LAST_OUTGOING_SWEEP["body_delink"], _LAST_OUTGOING_SWEEP["summary_hn"],
+             _LAST_OUTGOING_SWEEP["summary_glued"]))
     # 判空必须可观测：0 命中说明上游换了域名或这张表已经过期，两种都需要有人知道
     if _bad_cover_hits:
         _bc_top = sorted(_bad_cover_hits.items(), key=lambda kv: -kv[1])
-        print("[封面判空] 丢弃 %d 张必挂封面（其中历史缓存清理 %d 张）：%s" % (
-            sum(_bad_cover_hits.values()), _hist_purged,
+        print("[封面判空] 丢弃 %d 张必挂封面（其中历史缓存清理 %d 张；同批历史正文重写 %d 条）：%s" % (
+            sum(_bad_cover_hits.values()), _hist_purged, _hist_normed,
             "、".join("%s×%d" % (_h, _n) for _h, _n in _bc_top)))
     else:
-        print("[封面判空] 0 张命中（表内 %d 个域名本场均未出现）"
-              % len(_BAD_COVER_HOSTS), file=sys.stderr)
+        print("[封面判空] 0 张命中（表内 %d 个域名本场均未出现；同批历史正文重写 %d 条）"
+              % (len(_BAD_COVER_HOSTS), _hist_normed), file=sys.stderr)
 
     # ── 剥离云存储签名参数（防止 GitHub Push Protection 拦截推送）──
     # 在快照/历史/数据分块写入前统一清洗，一处覆盖全部输出路径

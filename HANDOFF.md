@@ -1863,3 +1863,48 @@ Vercel 域 `/trending_board.json` 404、`/api/rss` 200、四页 200。快车道 
 | 翻译 | 构建期五端点降级链：Agnes AI（多 key 轮询）→ OpenCode Zen（免费模型轮询）→ Google GTX → Bing → MyMemory；构建期有界并发池（6 源）；运行时 Vercel 网关统一链 GTX → MyMemory → Agnes → Zen，mode 只改并发（full 4 / bulk 2）与 Agnes 条数上限（bulk 30） |
 | RSS 架构 | 1005 源三层分级（T1=6 实时/T2=204/T3=795 快照）+ 并行抓取（12 并发 + 域级熔断）+ 增量构建 + 卡片墙 4:1 交织 + AI 动态双形态侧栏 + 热榜 40 平台 + 媒体播放；快照已出仓（gitignore；**也不随 Vercel 上传** —— `.vercelignore:5` 排除 `rss_api_snapshot*.json`，2026-10-02 20:46 实测 `starhub-refresh.vercel.app/rss_api_snapshot.json` 404，`loadSnapshot()` 有 try/catch 走"实时抓取"降级） |
 | 洞察引擎 | insight_engine：LlamaIndex + RAGAS-inspired 自纠错 + 话题聚类 + 关键词生命周期 + 14 天趋势滚动；每日深度洞察：RAG 混合检索 + 多级 Phase（去重/核查/自审/硬过滤）+ RAGAS 四维阈值闭环 + 破茧栏 + 30 天跨天关联 |
+
+### 8.30 阅读器正文可靠性 7 项批次：规范层收口成两份实现 + 诚实降级（2026-10-04 15:2x–10-05 00:1x BJT，**本会话尚未推送，推送后请续写线上读数**）
+
+**用户三项裁定（当面确认，别再翻）**：① 分享卡内嵌图**整条摘掉不动**（跨域图污染 canvas，`toDataURL` 必抛）；
+② 抓不到正文只做**诚实降级 + 明确标注**，不加域名白名单、不加抓取通道、**不给 `/api/article` 加重试**
+（重试对 WAF 壳页与付费墙零收益，只会把 8s 变 16s，正撞 `vercel.json` 的 `maxDuration: 15`，即线上 `FUNCTION_INVOCATION_TIMEOUT` 的来源）；
+③ 新判据**只进 A2 已接线目录**（`tests/rss_history/`、`tests/site_nav/`），不新建目录、不动 `update.yml` 与 `test_gate_wiring.py`。
+
+**架构**：正文规范只留两份实现——构建期 `build_rss_aggregator.py` 与运行时 `lib/body_rules.js`
+（被 `api/rss.js`、`api/article.js` require，与 `rss_retention.js`/`rss_cover.js` 同族），
+由 `tests/site_nav/test_body_rules_parity.py` 逐条对账钉死；浏览器端不抄第三份规则，只把失败显示成人话。
+五条出口全部过刀：Atom/RSS 解析入口、快照 `fc` 与 `s`、72h 历史清扫、`api/rss.js` 实时 `?source=`/`?batch=`、`/api/article` 现抓通道。
+
+**症状落点（原表 7 项）**：丢图的根因**不是图坏了**，是微信懒加载 `data-src` 不在 `_KEPT_ATTRS` 里、
+`<img>` 因"没有 src"被 `_sanitize_html` **整枚删除**；另有相对路径、`fc[:50000]` 截半个标签、
+`ok:false` 前端静默（且失败被缓存 4 小时 ⇒ 重试永远拿回同一份失败）、`meta` 伪全文、HN 模板摘要、NodeSeek 粘连、站内导航链接。
+
+**本批实测数字（全为现取，别引用记忆）**：四目录 A2 `385 → 663 passed / 0 failed`；
+常驻电池 `tools/mut_reader.py` **61/61 被抓、78.5s**；产物级 15 项核验（`_FT_NOTES` 7 码齐、
+`_hardenBodyImages`/`_showSummaryAsBody`/`_isHnDiscussion` 在**生成页面**里都有真调用点）；
+真语料 `rss_history.json`（18,037 条）清扫净改 **1,244 条 / 0.73s，第二遍 0**；
+HN 模板行残留 **1,069 → 21**（余下是整字段仅剩一行的截断块，门槛按设计放行）；
+粘连可动 **12 条全在 `nodeseek_54`**，另 15 条 http 开头摘要其 URL 后是空格/换行 ⇒ 按裁定不剥；
+命名实体全语料只有 `&amp;`（41,373 次）、数字/十六进制 **0 次** ⇒ 运行时实体表从 544 行砍到 85 行。
+
+**三条教训（都是我自己的错）**
+1. **计划里塞完整代码 = 把缺陷前移**。本批每份 brief 有 5–8 处"照抄就跑不通"
+   （`src` 命中 `data-src`、残缺标签正则方向写反、恒红断言、切片边界让裸 `&` 永不进结果、
+   让 `tests/rss_history/` 用错 `_loader`），Task 1 因此烧 3 轮。下一批只给契约与判据要点。
+2. **我为了护并发代理的读数，让实现者跳过 A2 全量 ⇒ 亲手关掉回归闸**，当场漏出 6 条红
+   （`api/rss.js` 新增 `../lib/body_rules.js` 硬 require，CJS 转译件落在 `tests/rss_js/` ⇒ 被解析成 `tests/lib/`）。
+   新口径：**任何派工都必须跑四目录 A2 并给数字**；计数噪声远比漏掉的回归便宜。
+   顺带：CJS 转译层已从"逐条硬写 lib 名单"改成**扫 api 源码自动发现**，并有防漂移判据。
+3. **本地 git 落后 ≠ 远端没有**：`git status` 报 32 个"已改"、`git ls-files tests/rss_cover` 为空，
+   实测工作副本与远端 main **逐字节相同**。任何归属/发布面判断前，先 `gh api .../contents/<path>?ref=main` 打远端。
+   同一工作树被多会话共用时，HEAD 是共享的——本会话切了分支，就接走过别人一条提交（`c88c61c`），
+   所以所有 diff 一律**按路径限定**。
+
+**已知挂起（有意留的账，不是"没问题"）**
+- `lib/body_rules.js` 未登记进 `tests/site_nav_drift/{test_pages_artifact_scope,test_vercel_source_routes}.py`：
+  那两文件属他人线且**远端 != 工作树**，缺的是归他人提交；发布行为不缺（`/lib/.*` 是 glob、Pages 走显式清单、A2 不含该目录）。
+- `/api/article` 远端 HTML 进 `_insertFulltext` 仍是 `innerHTML` **未净化面**（既有现状，本批未扩大也未顺手改）；
+  `_translateFulltext` 整段重写 `innerHTML` ⇒ 译文视图会丢掉本批图片兜底。两条单独开批。
+- 实体口径两处不同源：`api/rss.js` 的 title 格与 `sanitizeHtml`（实测暴露面 title 0 / summary 3）。
+- 语料哨兵判据依赖本地大语料，CI 上是 skip 不是 pass ⇒ 靠行为对账 967 条 + 穷举 13,510 形态兜。

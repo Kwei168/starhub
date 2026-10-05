@@ -38,9 +38,43 @@ const before = src;
 src = src.replace("import { readFileSync } from 'fs';", "const { readFileSync } = require('fs');");
 src = src.replace("import { join } from 'path';", "const { join } = require('path');");
 src = src.replace("export default async function handler", "module.exports = async function handler");
-src = src.replace("require('../lib/rss_retention.js')",
-                  "require(" + JSON.stringify(LIB_OVERRIDE) + ")");
 if (src === before) { throw new Error('转译没生效：api/rss.js 的 import/export 写法变了'); }
+
+// ── 1b. 自动发现 api 源码里的 `require('../lib/*.js')`，逐条改写成绝对路径 ──
+// 不许再逐条硬写 lib 名单：生成件落在 tests/rss_js/ 下，`../lib/` 会被解析成 `tests/lib/`，
+// Node 直接 MODULE_NOT_FOUND。老写法只登记了 retention 一条，Task 4 给 api/rss.js 新增
+// **硬** require 的 body_rules.js 没人登记 ⇒ 本文件 2 条判据全红（2026-10-04 实测）。
+// 扫源码 ⇒ 新增 lib 依赖**零人工登记**就能跑，这才是这一类缺陷的收口。
+// 覆盖表只留给"必须换实现"的那条（retention）：LIB_OVERRIDE 是 stub 闸门的路径，
+// 把它退化成普通路径的话 test_gate_computation_failure_degrades_open_not_500 就没着力点。
+// 防漂移判据见 tests/rss_history/test_api_lib_require_drift.py。
+const LIB_REQUIRE_RE = /require\(\s*(['"])\.\.\/lib\/([A-Za-z0-9_.\-]+\.js)\1\s*\)/g;
+const LIB_REQUIRE_LEFTOVER = /require\(\s*['"]\.\.\/lib\//;
+function rewriteLibRequires(source, root, overrides) {
+  const names = [];
+  const out = source.replace(LIB_REQUIRE_RE, function (_all, _q, name) {
+    names.push(name);
+    const target = Object.prototype.hasOwnProperty.call(overrides, name)
+      ? overrides[name] : path.join(root, 'lib', name);
+    return 'require(' + JSON.stringify(target) + ')';
+  });
+  if (LIB_REQUIRE_LEFTOVER.test(out)) {
+    throw new Error('还有相对 ../lib 依赖没被改写：新增 lib 的写法超出了自动发现的口径，去补正则而不是加一条硬编码');
+  }
+  if (!names.length) {
+    throw new Error('自动发现一条 ../lib 依赖都没扫到 ⇒ api/rss.js 的加载写法变了，转译探针已失效');
+  }
+  return { src: out, names: names };
+}
+const LIB_OVERRIDES = { 'rss_retention.js': LIB_OVERRIDE };
+const REWRITTEN = rewriteLibRequires(src, ROOT, LIB_OVERRIDES);
+src = REWRITTEN.src;
+if (REWRITTEN.names.indexOf('rss_retention.js') < 0) {
+  throw new Error('闸门 require 改写没生效：api/rss.js 的加载写法变了，测试探针已失效');
+}
+if (src.indexOf(JSON.stringify(LIB_OVERRIDE)) < 0) {
+  throw new Error('闸门没指到 LIB_OVERRIDE 给的实现 ⇒ "换实现"的用例失去着力点');
+}
 const gen = path.join(ROOT, 'tests', 'rss_js', '_rss_cjs_generated.cjs');
 fs.writeFileSync(gen, src);
 

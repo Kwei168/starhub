@@ -42,6 +42,15 @@ try {
   console.log('::warning title=RSS 实时封面抽取不可用::' + (e && e.message));
 }
 
+// ── 运行时正文规范层 ──
+// 规则在 lib/body_rules.js，与构建期 build_rss_aggregator 的 `_normalize_body_html` / `_cap_body`
+// 同一套口径（懒加载提升 + 相对地址绝对化 + 按码点截断且抹净尾巴半个标签/残缺实体），
+// 由 tests/site_nav/test_body_rules_parity.py 逐条对账钉住。
+// 这里**故意不用** RETENTION/COVER 那种 try+`if (X)` 的可选闸门写法：装载失败若只影响封面
+// 可以出声放过，而正文要么规范要么不出厂 —— 退回 `.slice(0, 50000)` 就是用户报的"半个标签"，
+// 跳过 normalize 就是"正文丢图"。装不上就让函数 500，静默出厂坏正文是本项目付过两次代价的形态。
+const BODY = require('../lib/body_rules.js');
+
 /** 响应头口径：装载失败或计算异常都必须显式露出来，不许静默当成"已过滤"。 */
 function retentionHeader() {
   return (RETENTION && !RETENTION_FAILED) ? 'on' : 'unavailable';
@@ -300,22 +309,75 @@ function datedOrCapture(pubDate) {
   return { pub_date: new Date().toISOString(), date_fallback: true };
 }
 
-function stripHtml(text) {
-  if (!text) return '';
+// ── 摘要/标题的"解实体 + 去标签"两层（R43 拆的层，审查 ③ 换了实体那一格）──────
+// 拆成两层是给 R43 用的：`_strip_html`（构建期）只解实体+去标签、**保留换行**，
+// 而 HN 模板那四行是按行锚定（^…$）的 —— 实时通道要是先压掉换行再交给
+// rewriteHnSummary，那把刀在运行时永远开不了火（正是 R43 要收的断链）。
+function unwrapCdata(text) {
   return text
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<!\[CDATA\[/g, '')
-    .replace(/\]\]>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/&#\d+;/g, '')
-    .replace(/&[a-z]+;/gi, '')
+    .replace(/\]\]>/g, '');
+}
+
+function stripTagsKeepLines(text) {
+  return text
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]+>/g, '')
-    .replace(/<[^>]*$/, '')   // 移除末尾未闭合的标签片段（如 <video src="..." controls="controls" webkit-playsin…）
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/<[^>]*$/, '');   // 移除末尾未闭合的标签片段（如 <video src="..." controls="controls" webkit-playsin…）
+}
+
+/** 审查 ③（裁定 R50 收窄后）：摘要出口的实体这一格走 `BODY.decodeEntities` —— **单趟**、
+ *  只认"预定义 5 个（`&amp; &lt; &gt; &quot; &#39;`，含可省分号与大写的 legacy 形态）
+ *  + 数字/十六进制引用"，其余一律**整枚原样留着**。修前这里是**顺序级联**（`&amp;` 先解
+ *  ⇒ `&amp;lt;` 被二次解成真 `<`）+ `&[a-z]+;`→空串 + `&#\d+;`→空串，四条实测形状：
+ *    `价格 A &amp;amp; B 折扣`          现 `价格 A &amp; B 折扣`（= py）  / 旧 js `价格 A  B 折扣`
+ *    `&copy; 2026`                      现 `&copy; 2026`（字面量）        / 旧 js ` 2026`
+ *    `&amp;lt;script&amp;gt;alert(1)`   现 `&lt;script&gt;alert(1)`（= py）/ 旧 js 整条摘要没了
+ *    `&#20998;&#25968;`                 现 `分数`（= py）                 / 旧 js 空（汉字被整枚吃掉）
+ *  与 Python `html.unescape` 唯一分叉那一格：表外的命名实体（`&copy;` → py `©`）这里留字面量，
+ *  两侧**都**不再把实体名吃成空串 —— 那才是本批要修的缺陷；分叉面由真语料证明今天零暴露，并被
+ *  `tests/site_nav/test_body_rules_parity.py::test_corpus_named_entity_sentinel` 钉住。
+ *  反例同样钉住：正文里合法存在的 `&amp;lt;img&amp;gt;`（要展示的代码字面量）解一层之后
+ *  仍然是字面量，不会被激活成真标签。判据：
+ *  tests/site_nav/test_body_rules_parity.py §审查③（同面对账 + 分叉声明 + 语料哨兵 + 真出口对照）。 */
+function stripHtmlKeepLines(text) {
+  if (!text) return '';
+  return stripTagsKeepLines(BODY.decodeEntities(unwrapCdata(text)));
+}
+
+/** ⚠ 标题与去重键那一格**仍是修前那段顺序级联**，与构建期不同源 —— 已知挂起，
+ *  别把这段当成"两侧同一套实体口径"。为什么本批不动它：三条只注入 `COVER`、不注入
+ *  `BODY` 的 node 切片判据（`tests/rss_history/test_cleanlink_and_dedup_safety.py`、
+ *  `tests/rss_history/test_parse_parity_js.py`，他人线本批不许改）跑的是真 `parseFeed`，
+ *  标题链一旦吃 `BODY` 就红在 ReferenceError 上；而把 require 挪进切片能覆盖到的位置，
+ *  运行时就要按 cwd 动态解析路径（Vercel 打包靠静态跟踪 require）⇒ 代价比收益贵。
+ *  暴露面也量过（2026-10-05，真语料 18,037 条，逐条比"旧级联"与"新最小集合"的输出）：
+ *  title/title_zh 差异 **0** 条、summary/summary_zh 差异 **3** 条 ⇒ 这一格今天没有用户可见的
+ *  暴露，留着的是"没测出暴露"而不是"已知的缺陷"。摘要那一格已经换了口径，别把两边搞混。 */
+function legacyEntityCascade(text) {
+  return text
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '');
+}
+
+function stripHtmlKeepLinesLegacy(text) {
+  if (!text) return '';
+  // 顺序与修前逐字相同：CDATA → 实体 → 去标签（换回来会在"转义过的 CDATA 记号"上给
+  // 出不同答案，那条不是本批要动的行为）
+  return stripTagsKeepLines(legacyEntityCascade(unwrapCdata(text)));
+}
+
+// 出口形状不变：压空白 + trim 与改动前逐字同形（标题、去重键等调用点不受影响）。
+function collapseRuns(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function stripHtml(text) {
+  return collapseRuns(stripHtmlKeepLinesLegacy(text));
 }
 
 const SAFE_TAGS = new Set(['p','br','img','a','b','i','em','strong','h1','h2','h3','h4','h5','h6','ul','ol','li','blockquote','pre','code','figure','figcaption','table','tr','td','th','thead','tbody','span','div','hr','sup','sub','dl','dt','dd','audio','video','source','iframe']);
@@ -325,6 +387,10 @@ const SAFE_IFRAME_HOSTS = /youtube\.com|youtu\.be|vimeo\.com/i;
 
 function sanitizeHtml(text) {
   if (!text) return '';
+  // ⚠ 这里仍是**顺序级联**（`&amp;` 先解，`&amp;lt;` 会被解成真标签），与构建期
+  // `_sanitize_html` 的第一句 `html.unescape` 不同源 —— 对抗审查 ③ 只派工了摘要那一格
+  // （`stripHtmlKeepLines`，已改走 `BODY.decodeEntities`）。正文这一格的同批对齐登记为
+  // 已知挂起，别把这段当成"和构建期同一套实体口径"。
   text = text
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<!\[CDATA\[/g, '')
@@ -392,8 +458,11 @@ function sanitizeHtml(text) {
 
 function deepCleanHtml(text) {
   if (!text) return '';
-  // 1. 移除广告/推广/订阅/评论相关 class 或 id 的整个元素
-  text = text.replace(/<(\w+)[^>]*\b(?:class|id)\s*=\s*"[^"]*\b(?:ad[s_-]?|advert|banner|sponsor|promo|newsletter|subscribe|social-share|share-buttons?|related-posts|recommend|widget|comments?|disqus|pagination|footer-links|follow-us|qrcode|qr-code)[^"]*"[^>]*>[\s\S]*?<\/\1>/gi, '');
+  // 1. 【已删除】按 class/id 整枚删容器的规则 —— 与构建期 `_deep_clean_html` 同一笔账（R42）：
+  //    本函数的唯一调用点是 `deepCleanHtml(sanitizeHtml(...))`，而上面那个 sanitizeHtml 的
+  //    ALLOWED_ATTRS 只留 src/href/alt/…，class/id 到不了这里 ⇒ 那条刀命中恒为 0，
+  //    留着就是"看着有防线、实际为 0"的假绿。闸：tests/rss_history/test_no_inert_deep_clean_rules.py
+  //    （构建期侧）+ tests/site_nav/test_body_rules_parity.py 的 deepCleanHtml 无 class 判据（这一侧）。
   // 1.5 移除 wechat2rss / link-proxy 跳转链接（"跳转微信打开"等）
   text = text.replace(/<a[^>]*href="[^"]*(?:link-proxy|wechat2rss|mp\.weixin\.qq\.com)[^"]*"[^>]*>[^<]*<\/a>/gi, '');
   text = text.replace(/<a[^>]*>[^<]*\u8df3\u8f6c\u5fae\u4fe1[^<]*<\/a>/gi, '');
@@ -403,6 +472,21 @@ function deepCleanHtml(text) {
     const plain = block.replace(/<[^>]+>/g, '');
     return promoRe.test(plain) ? '' : block;
   });
+  // 2.5 站内导航链接：**去链接留文字**（R43 接上运行时出口；与构建期同一把刀，
+  //     端口在 lib/body_rules.js 的 delinkNavLinks，逐条对账判据在
+  //     tests/site_nav/test_body_rules_parity.py）。位置照构建期的规则 2.5：
+  //     在逐块推广检测之后、收尾空块之前 —— 挪到 sanitize 之前会看不见绝对化后的 href，
+  //     挪到最后会让规则 3 收尾不了被脱空的壳。
+  //     外部正文链接一条不许被动（`https://about.fb.com/news/…` 的 about 在 host 上、
+  //     `…/archive/html/…` 的 archive 在中段，都不算站内导航）。
+  text = BODY.delinkNavLinks(text);
+  // 2.6 空锚点 / 站点根链接（"阅读更多""返回首页"那类壳）**整枚**去掉（审查 ④）。
+  //     构建期 `_deep_clean_html` 的这一格以前只有 Python 一份，实时出口的 fc 没有它 ⇒
+  //     同一份 content:encoded 两侧产物不同。端口在 lib/body_rules.js 的
+  //     dropEmptyAnchorLinks，只吃 `href="#"` 与 `href="/"` 两种精确形状
+  //     （`#sec-2` 那种有内容的页内锚点必须活着）。位置照构建期的 2.6：2.5 之后、
+  //     规则 3 之前 —— 这两把刀删空的 `<p><a href="#">…</a></p>` 壳正需要规则 3 收尾。
+  text = BODY.dropEmptyAnchorLinks(text);
   // 3. 移除清洗后残留的空块元素
   text = text.replace(/<(?:p|div|span)\b[^>]*>\s*(?:<br\s*\/?>\s*)*<\/(?:p|div|span)>/gi, '');
   // 4. 压缩连续空行（保留段落间距）
@@ -445,6 +529,61 @@ function extractMediaFromEntry(entry) {
   return {};
 }
 
+// 摘要出口的三把刀（R43）：实时通道 `?source=`/`?batch=` 自己抓上游，
+// 之前只走 truncate(stripHtml(...)) ⇒ 构建期的两把摘要刀在这里是断链。
+// 顺序**是契约**，与构建期逐字一致：先 HN 模板重写、再粘连裸链接剥离
+// （倒过来会先改掉 HN 重写要看的行首形状，两条互相吞；构建期行为证据见
+//  tests/rss_history/test_body_noise_strip.py::test_order_matters_when_meta_lines_come_before_the_glued_line）。
+// `stripHtmlKeepLines` 而不是 `stripHtml`：换行必须先留着，否则 HN 那四行按行锚定的
+// 正则一条都看不见（压成空格=另一把开不了火的刀）。压空白放回**最后**一步做，
+// 出厂形状与改动前一致。
+// 输入用 `it.summaryRaw`（未剥标签的原始 description）而不是 `it.summary`：后者在 parseFeed 里
+// 已经过了 `stripHtml` 那一格（**旧顺序级联**，见上方 `legacyEntityCascade` 的"已知挂起"），
+// 再解一遍就是**双重解码**（`&amp;amp;` → `&amp;` → `&`），与构建期"实体只走一趟"的口径分叉。
+// 摘要这一格现在走 `BODY.decodeEntities`：**单趟**、认不出的一律整枚原样留着，与构建期
+// `_strip_html` 的 `html.unescape` 在"预定义 5 + 数字/十六进制"这一圈上逐字节同形（裁定 R50：
+// 只对齐这一圈，不搬整张 html5 表）。唯一分叉：表外的命名实体（`&copy;` → py `©`）这里留
+// 字面量 —— 两侧都不再把实体名吃成空串，那正是本批修的缺陷。分叉面 2026-10-05 实测真语料
+// （18,037 条 / 41,763 个 `&` token）零暴露，并由哨兵判据钉住"以后有了会被发现"：
+// tests/site_nav/test_body_rules_parity.py::test_corpus_named_entity_sentinel
+// （同面的逐字节对账与 `double_encoded_amp`、`&amp;lt;img&amp;gt;` 那批代码字面量样本在同文件）。
+function cleanSummary(raw, link) {
+  return collapseRuns(BODY.stripGluedUrl(BODY.rewriteHnSummary(stripHtmlKeepLines(raw), link)));
+}
+
+// 出厂卡片（与构建期快照的 t/u/s/d 同一形状）。**为什么住在顶层而不是 fetchOne 里**：
+// 这样它和 parseFeed 一起落在 `extractTag..fetchOne` 那段可离线 eval 的区段里，判据能拿
+// "真 parseFeed 的产物 + 真出口函数"给出接线证据；fetchOne 是 async + 真网络，
+// 接在里面就只能退回静态 grep（静态 grep 在子匹配变异下不红，Task 8/9 §4.2 栽过）。
+function toCardItem(it) {
+  const obj = {
+    t: it.title,
+    u: it.link,
+    s: truncate(cleanSummary(it.summaryRaw || '', it.link), 200),
+    d: it.pub_date,
+  };
+  // 无 pubDate 时 d 是抓取时刻（datedOrCapture 给的），必须带出降级标记，
+  // 否则实时路径的卡片会把抓取时间当发布时间显示。键名沿用构建期快照的长名
+  // date_fallback（前端 buildArt/_mergeRemoteSources 读的就是它），且只在真值时写。
+  if (it.date_fallback) obj.date_fallback = 1;
+  if (it.fullContent) obj.fc = it.fullContent;
+  if (it.media_url) { obj.mu = it.media_url; obj.mt = it.media_type; }
+  // 封面同样只在真值时写（与 mu/mt 一致）；出口那行 `img: it.img || ''` 靠它才有内容
+  if (it.img) obj.img = it.img;
+  return obj;
+}
+
+// 全文出口的唯一一份清洗链（RSS 与 Atom 两条解析分支共用）。
+// **为什么必须是一个函数而不是两处各写一遍**：对抗审查 ① 实测的就是"Atom 分支自己那段
+// 只造 {t,u,s,d}"——四把刀（normalize → sanitize → deepClean → cap）在 Atom 出口集体缺席，
+// 同一份 Atom 文档 Python 侧有 full_content、JS 侧没有 fc。两处各写一份就是下一个分叉源。
+// 顺序与构建期一致：normalize → sanitize → deepClean → cap（cap 走码点安全的 capBody，
+// 不再用 `.slice(0, 50000)`——那会把半个标签截进阅读器，innerHTML 一插就整段崩）。
+// base 用条目自己的 `link`（`result.link`/`item.link` 已被写成 `link || '#'`，'#' 不是 base）。
+function buildFullContent(fullContent, link) {
+  return BODY.capBody(deepCleanHtml(sanitizeHtml(BODY.normalizeBodyHtml(fullContent, link))));
+}
+
 function parseFeed(xml, sourceKey, maxItems) {
   const items = [];
   // Atom
@@ -453,17 +592,25 @@ function parseFeed(xml, sourceKey, maxItems) {
     for (const entry of atomEntries.slice(0, maxItems)) {
       const title = extractTag(entry, 'title');
       const link = cleanLink(extractAttr(entry, 'link', 'href')) || linkOrPermaId(entry, 'link', 'id');
-      const summary = extractTag(entry, 'summary') || extractTag(entry, 'content');
+      const summaryTag = extractTag(entry, 'summary');
+      const summary = summaryTag || extractTag(entry, 'content');
+      const contentEncoded = extractTag(entry, 'content') || '';
+      // 与 RSS 分支同一口径：正文只在**比摘要长**时才当全文出厂（等长或更短说明上游给的
+      // 就是摘要本身，阅读器再显示一遍没有意义）。
+      const fullContent = contentEncoded.length > summaryTag.length ? contentEncoded : '';
       const pubDate = extractTag(entry, 'published') || extractTag(entry, 'updated');
       if (title) {
         const _dt = datedOrCapture(pubDate);
         const item = {
           title: stripHtml(title),
           link: link || '#',
+          summaryRaw: summary || '',
           summary: truncate(stripHtml(summary), 200),
           pub_date: _dt.pub_date,
         };
         if (_dt.date_fallback) item.date_fallback = true;
+        // 审查 ①：这条分支以前只造 {t,u,s,d}，四把刀在这里全是断链。
+        if (fullContent) item.fullContent = buildFullContent(fullContent, link);
         const media = extractMediaFromEntry(entry);
         if (media.media_url) { item.media_url = media.media_url; item.media_type = media.media_type; }
         if (COVER) {
@@ -489,12 +636,15 @@ function parseFeed(xml, sourceKey, maxItems) {
       const result = {
         title: stripHtml(title),
         link: link || '#',
+        summaryRaw: desc || contentEncoded,
         summary: truncate(stripHtml(desc || contentEncoded), 200),
         pub_date: _dt.pub_date,
       };
       if (_dt.date_fallback) result.date_fallback = true;
       if (fullContent) {
-        result.fullContent = deepCleanHtml(sanitizeHtml(fullContent)).slice(0, 50000);
+        // 顺序与构建期一致：normalize → sanitize → deepClean → cap，链住在 `buildFullContent`
+        // 一处（Atom 分支共用，理由见那个函数的注释）。
+        result.fullContent = buildFullContent(fullContent, link);
       }
       // 提取 enclosure / media:content 中的音频视频
       const encMatch = item.match(/<enclosure[^>]*>/i);
@@ -626,25 +776,9 @@ async function fetchOne(source) {
     // 单源内去重：URL 归一化 + 标题重复检测
     items = dedupSourceItems(items, source.key);
     
-    // 成功：更新滚动缓存
+    // 成功：更新滚动缓存（映射住在顶层的 toCardItem，判据才能离线跑真出口）
     const cached = {
-      items: items.map(it => {
-        const obj = {
-          t: it.title,
-          u: it.link,
-          s: it.summary,
-          d: it.pub_date,
-        };
-        // 无 pubDate 时 d 是抓取时刻（datedOrCapture 给的），必须带出降级标记，
-        // 否则实时路径的卡片会把抓取时间当发布时间显示。键名沿用构建期快照的长名
-        // date_fallback（前端 buildArt/_mergeRemoteSources 读的就是它），且只在真值时写。
-        if (it.date_fallback) obj.date_fallback = 1;
-        if (it.fullContent) obj.fc = it.fullContent;
-        if (it.media_url) { obj.mu = it.media_url; obj.mt = it.media_type; }
-        // 封面同样只在真值时写（与 mu/mt 一致）；出口那行 `img: it.img || ''` 靠它才有内容
-        if (it.img) obj.img = it.img;
-        return obj;
-      }),
+      items: items.map(toCardItem),
       lastModified: new Date().toUTCString(),
     };
     rollingCache.set(source.key, cached);
