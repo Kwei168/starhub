@@ -485,14 +485,26 @@ MUTATIONS = [
      u"      const summaryPlain = stripHtmlKeepLines(summaryTag).trim();",
      u"      const summaryPlain = stripHtml(summaryTag);",
      u"test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape"),
-    # 同一对缺陷在 **RSS 那一半**照旧存在（实测 py `s=''` / js `s=正文` + `fc=正文`），
-    # 但本批**没有**给它登记靶：把"先清洗再定门槛"搬到 RSS 分支会让 `parseFeed` 对每条带
+    # B04 = 复评 B1 的**同一格在 RSS 分支**的那一半（派工点名的靶）：把摘要改回
+    # `desc || contentEncoded` ⇒ `<description>` 缺失时条目带着"正文前 200 字"的摘要出厂，
+    # 与参照物（`desc = _strip_html(desc_raw)`，**不回退**）不同判，阅读器里同一份正文两遍。
+    # 钉**行为对账**那条（三面量：参照物 summary / parseFeed 的 summary / 出厂卡片的 s），
+    # 不钉 grep 形状 —— 那行改回退后字符串仍然"像对的"。
+    ("B04 RSS 摘要又回退到正文", COPIES[2],
+     u"        summary: truncate(stripHtml(desc), 200),",
+     u"        summary: truncate(stripHtml(desc || contentEncoded), 200),",
+     u"test_realtime_rss_exit_matches_python_summary_shape_by_shape"),
+    # 同一对缺陷在 **RSS 那一半**：摘要回退那一格（B04）本批收了，靶跟着登记在这里；
+    # **门槛那一格仍然没有靶**（实测 py `s=''` / js `fc` 门槛比的是两个原始标签长度，
+    # CDATA 白送 12）—— 把"先清洗再定门槛"搬到 RSS 分支会让 `parseFeed` 对每条带
     # `<content:encoded>` 的条目都过 `BODY`，而两条只注入 `COVER` 的他人线 node 切片判据
     # （`tests/rss_cover/test_realtime_cover_js.py`、`tests/rss_source_coverage/test_dateless_source_guard.py`）
     # 当场红在 `ReferenceError: BODY is not defined`（实测 7 条红）。
     # 台账与前置动作写在 tests/site_nav/test_article_contract.py 的"RSS 出口那一半"那段登记里；
-    # 前置到位后 B04/B05 这两条靶的锚就是 `summaryRaw: desc,` 与
+    # 前置到位后 B05 这条靶的锚是
     # `const fullContent = cleanedBody.length > descPlain.length ? cleanedBody : '';`。
+    # （`summaryRaw: desc,` 那一行另有同一格的第二种写法：新判据是三面量的，实测单改它那行
+    #   两条都红，见 fixwaveB-report §B4；本电池按派工只登记 B04 这一条靶。）
 
     # ── 27 复评 B3：CI 上真正生效的那道实体闸（§合成）───────────────────────
     # 与 R58 打的是**同一份坏改动**（摘要出口退回旧顺序级联），但归宿不同，两条都不许省：

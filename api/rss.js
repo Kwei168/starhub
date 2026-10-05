@@ -647,12 +647,17 @@ function parseFeed(xml, sourceKey, maxItems) {
     const link = linkOrPermaId(item, 'link', 'guid');
     const desc = extractTag(item, 'description') || '';
     const contentEncoded = extractTag(item, 'content:encoded') || '';
-    // ── 已知分叉（复评 B1+B2 的同一对缺陷在 RSS 这一半**照旧存在**，本批没动它）──────
-    // 实测同一份 `<item>`、`<description>` 缺失：参照物 py 出厂 `summary=''` + `full_content=<p>正文…</p>`，
-    // 这条出口出厂 `s=正文前 200 字` + `fc=同一份正文` ⇒ 阅读器里两遍；门槛也比的是两个**原始标签**
-    // 长度（CDATA 白送 12）。裁定 = **不在本批收**：把 Atom 那套"清洗后才能定门槛"搬到这儿会让
-    // `parseFeed` 对**每条带 `<content:encoded>` 的条目**都过一遍 `BODY`，而三条只注入 `COVER`、
-    // 不注入 `BODY` 的他人线 node 切片判据（`tests/rss_cover/test_realtime_cover_js.py`、
+    // ── 已知分叉（复评 B1+B2 的同一对缺陷里，**只剩门槛那一半**还留在这里）─────────────
+    // B1（摘要回退正文）**本批已收**：参照物 Python 的 RSS 分支就一句
+    // `desc = _strip_html(desc_raw)`（`desc_raw = _rss_text(it, "description")`），**没有回退** ⇒
+    // `<description>` 缺失时出厂 `summary=''`。这里曾写 `desc || contentEncoded`，于是同一条
+    // 既出厂 `s=正文前 200 字`（`.r2-summary`）又出厂 `fc=同一份正文`（`_insertFulltext`）
+    // ⇒ 阅读器里同一份正文两遍。判据 = tests/site_nav/test_article_contract.py 的 RSS 语料
+    // 两条（行为对账 + 反重复），坏改动登记在 tools/mut_reader.py 的靶 B04。
+    // B2（门槛比的是两个**原始标签**的长度、CDATA 包装白送 12 字符）**裁定不在本批收**：把
+    // Atom 那套"清洗后才能定门槛"搬到这儿会让 `parseFeed` 对**每条带 `<content:encoded>` 的
+    // 条目**都过一遍 `BODY`，而三条只注入 `COVER`、不注入 `BODY` 的他人线 node 切片判据
+    // （`tests/rss_cover/test_realtime_cover_js.py`、
     // `tests/rss_source_coverage/test_dateless_source_guard.py`，本批不许改）当场红在
     // `ReferenceError: BODY is not defined`（实测 7 条红）。要收这笔账，先让那两个 harness 注 BODY，
     // 或与标题那一格（见 `legacyEntityCascade` 上方"已知挂起"）一起动 require 的位置。
@@ -663,8 +668,10 @@ function parseFeed(xml, sourceKey, maxItems) {
       const result = {
         title: stripHtml(title),
         link: link || '#',
-        summaryRaw: desc || contentEncoded,
-        summary: truncate(stripHtml(desc || contentEncoded), 200),
+        // B1（与 Atom 分支同一格，理由见上面那段登记）：**只取 `<description>`**，
+        // 缺失就是缺失 —— 拿正文顶上等于让同一份正文在阅读器里出现两遍。
+        summaryRaw: desc,
+        summary: truncate(stripHtml(desc), 200),
         pub_date: _dt.pub_date,
       };
       if (_dt.date_fallback) result.date_fallback = true;

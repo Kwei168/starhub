@@ -487,32 +487,39 @@ def _parse_feed_products(tmp_path, xmls):
     return got
 
 
-# ── RSS 出口那一半的同一对缺陷：**本批没修，也没有判据盖着**（登记，不含糊过去）──────
-# 复评 B1+B2 那两格（摘要回退正文、门槛比原始标签长度）在 `parseFeed` 的 RSS 分支上一字不差
-# 地存在。实测读数（同一份 `<item>`、`<description>` 缺失、零网络，2026-10-05）：
+# ── RSS 出口那一半的同一对缺陷：**摘要回退那一格本批收了，门槛那一格照旧挂账**────────
+# 实测（同一份 `<item>`、`<description>` 缺失、零网络，2026-10-05，改前）：
 #     参照物 py：summary=''  full_content='<p>正文一 正文二</p>'
-#     现  状 js：s='正文一 正文二'  fc='<p>正文一 正文二</p>'   ⇒ 同一份正文两遍
-# 上面的 Atom 语料盖不住它，因为 `parseFeed` 是两段代码（审查 ① 的原始事故形态就是这个）。
-# 本批为什么不顺手修：把"先清洗再定门槛"搬到 RSS 分支，`parseFeed` 就会对**每一条带
-# `<content:encoded>` 的条目**都走一遍 `BODY`，而三条**只注入 `COVER`、不注入 `BODY`** 的
-# 他人线 node 切片判据（`tests/rss_cover/test_realtime_cover_js.py`、
+#     改  前 js：s='正文一 正文二'  fc='<p>正文一 正文二</p>'   ⇒ 同一份正文两遍
+# 收掉的那一格（B1）：`summaryRaw` / `summary` 都删掉了 `|| contentEncoded` 回退，
+# 判据 = 下面 `RSS_NOFALLBACK_SHAPES` 那两条（行为对账 + 反重复），靶 = tools/mut_reader.py 的 B04。
+# **没修的那一半（B2）仍然没有判据盖着**：RSS 分支的 `fc` 门槛比的还是两个**原始标签**的长度
+# （`contentEncoded.length > desc.length`，CDATA 包装白送 12），而参照物比的是
+# 清洗后的正文 vs 剥标签后的摘要。为什么不顺手修：把"先清洗再定门槛"搬到 RSS 分支，
+# `parseFeed` 就会对**每一条带 `<content:encoded>` 的条目**都走一遍 `BODY`，而三条**只注入
+# `COVER`、不注入 `BODY`** 的他人线 node 切片判据（`tests/rss_cover/test_realtime_cover_js.py`、
 # `tests/rss_source_coverage/test_dateless_source_guard.py`，本批不许改）当场红在
 # `ReferenceError: BODY is not defined`（实测 7 条红）⇒ 只能退回登记，不拿"半边对齐"充数。
 # 前置动作（下一批）：那两个 harness 的 runner 各加一行 `const BODY = require(...)`，
 # 或与 `legacyEntityCascade` 上方"已知挂起"那条一起把 require 挪到切片可覆盖的位置；
-# 前置到位后 `_parity_diffs()` 直接喂一份 RSS 语料就能收 —— 它是方言无关的。
-# （xgo 那一格另说：Python `_parse_rss_item` 有 `_is_xgo_content` 专支、JS 没有，
-#   那是既有整块分叉，到时要单独对账，不是这两行门槛能收的账。）
+# 前置到位后 `_parity_diffs()` 直接喂一份 RSS 语料就能收 fc 那一面 —— 它是方言无关的。
+# （正因如此，下面两条 RSS 判据**只比 `s`、不比 `fc` 的存在性/逐字节**：那半是 B2 的账，
+#   把它混进来会让"挂起"变成"看着已收"。xgo 那一格也另说：Python `_parse_rss_item` 有
+#   `_is_xgo_content` 专支、JS 没有，那是既有整块分叉，不是这两行门槛能收的账。）
 
 
-def _py_feed_products(xmls):
-    """同一批 XML 喂**参照物** `build_rss_aggregator._fetch_rss`（`_fetch_url` 打桩，零网络）。"""
+def _py_feed_products(xmls, key_prefix=u"atom_parity_probe"):
+    """同一批 XML 喂**参照物** `build_rss_aggregator._fetch_rss`（`_fetch_url` 打桩，零网络）。
+
+    `key_prefix` 只是缓存键的名字空间：Atom 与 RSS 两批语料各自用各自的键，
+    免得一条判据留下的 `_rss_cache` 残留被另一条读到（`_fetch_rss` 的缓存在桩之前）。
+    """
     mod = _build_module()
     out = []
     old = mod._fetch_url
     try:
         for i, xml in enumerate(xmls):
-            key = u"atom_parity_probe_%d" % i
+            key = u"%s_%d" % (key_prefix, i)
             mod._rss_cache.pop(key, None)      # 缓存在 `_fetch_rss` 之前，不桩到桩后
             mod._fetch_url = (lambda doc: (lambda *a, **k: doc.encode("utf-8")))(xml)
             out.append(mod._fetch_rss({"key": key, "name": u"对账探针源",
@@ -521,7 +528,7 @@ def _py_feed_products(xmls):
     finally:
         mod._fetch_url = old
         for i in range(len(xmls)):
-            mod._rss_cache.pop(u"atom_parity_probe_%d" % i, None)
+            mod._rss_cache.pop(u"%s_%d" % (key_prefix, i), None)
     return out
 
 
@@ -635,6 +642,137 @@ def test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape(tmp_path):
     """
     diffs = _parity_diffs(tmp_path, ATOM_PARITY_SHAPES)
     assert not diffs, "Atom 实时出口与参照物不同判 %d 处：\n%s" % (len(diffs), "\n".join(diffs))
+
+
+# ============================================== 复评 B1 的 RSS 那一半：摘要不许回退正文
+# 与上面 Atom 那两条同形的一对，喂的是 `<item>` + `<content:encoded>`：`parseFeed` 是**两段
+# 代码**（审查 ① 的原始事故形态就是"只修一条"），Atom 语料一条都盖不住 RSS 分支。
+# 实测读数（零网络，2026-10-05，改前）：py `summary=''` / js `s='正文一 正文二'` + 同份 `fc`。
+# **口径边界（写清楚，别当成 B2 也收了）**：这两条只比 `s` 那一格，**不比 `fc` 的存在性集合
+# 与逐字节** —— RSS 分支的 `fc` 门槛比的还是两个**原始标签**的长度（CDATA 白送 12），那半
+# 按上方登记继续挂账；把它混进来只会把"挂起"伪装成"已收"。唯一例外是
+# `test_realtime_rss_exit_matches_python_summary_shape_by_shape` 末句那条
+# `full_content`/`fullContent` **都非空**的断言：它只声明"这一格两侧确实都出了正文"，
+# 好让反重复判据不是白得的，不比长度、不比字节。
+RSS_BODY = u"<p>正文一 正文二</p>"
+RSS_LINK = u"https://example.com/post/one/"
+RSS_NO_DESC_SHAPE = u"description 缺失（B1 的双显示形状）"
+
+
+def _rss_shape(desc_inner, content_inner):
+    """RSS `<item>`：`desc_inner is None` ⇒ **整枚 `<description>` 不出现**（缺陷的触发形状）。"""
+    d = u"" if desc_inner is None else u"<description>" + desc_inner + u"</description>"
+    c = (u"" if content_inner is None
+         else u"<content:encoded>" + _cdata(content_inner) + u"</content:encoded>")
+    return (u'<?xml version="1.0"?><rss xmlns:content="http://purl.org/rss/1.0/modules/content/">'
+            u'<channel><item><title>t</title><link>' + RSS_LINK + u'</link>' + d + c +
+            u'<pubDate>Tue, 01 Sep 2026 10:00:00 GMT</pubDate></item></channel></rss>')
+
+
+# description 一律用**纯文本形状**（不被 HN 刀/粘连刀改写）⇒ 参照物的 `summary`、parseFeed 的
+# `summary`、出厂卡片的 `s` 三格能逐字互比；那两把刀自己的对账另有判据
+# （`test_realtime_rss_summary_rewrites_the_hn_template` / `..._strips_the_glued_url`），不混进来。
+RSS_NOFALLBACK_SHAPES = [
+    (RSS_NO_DESC_SHAPE, _rss_shape(None, RSS_BODY)),
+    (u"description 是空标签", _rss_shape(u"", RSS_BODY)),
+    (u"description 只有空白", _rss_shape(u"    ", RSS_BODY)),
+    (u"description 缺失且没有正文", _rss_shape(None, None)),
+    (u"正常摘要 + 正文", _rss_shape(u"摘要", RSS_BODY)),
+    (u"CDATA 包着的摘要 + 正文", _rss_shape(_cdata(u"<p>摘要</p>"), RSS_BODY)),
+    (u"摘要有、正文没有", _rss_shape(u"只有摘要", None)),
+    (u"摘要带 &amp; 实体（两侧同圈解码）", _rss_shape(u"Tom &amp; Jerry", RSS_BODY)),
+]
+
+# 与 Atom 语料同一条自检：摘要必须短于 JS 的 200 字截断、也短于 Python `_truncate` 的 500 字默认，
+# 这样三格比的是**同一个字符串**，不是"两侧各自截了一刀之后刚好相等"。
+for _n, _x in RSS_NOFALLBACK_SHAPES:
+    assert 0 < len(re.sub(r"<[^>]+>", "", _x)) < 200, "RSS 语料 %s 超出 200 字，s 对账会失真" % _n
+
+
+def _rss_three_way(tmp_path, shapes, key_prefix):
+    """同一批 `<item>` 喂两侧，给每格读数：参照物 `summary` / parseFeed `summary` / 出厂 `s`。
+
+    回退写在 **两行**上（`summaryRaw` 与 `summary`），所以三格必须一起量：
+      · parseFeed 的 `summary` —— 它是微信那格的去重键的一半
+        （`dedupSourceItems` 的 `isWechat` 支用 `__biz + normText(title) + normText(summary)`，
+        参照物 `_dedup_source_items` 用的是**没有回退**的 `summary`）；回退让实时通道的
+        "同一篇文章"与构建期认出的不是同一篇；
+      · 出厂卡片的 `s` —— `toCardItem` 走 `cleanSummary(it.summaryRaw)`，阅读器 `.r2-summary`
+        渲的就是它，也正是"同一份正文两遍"里的那第一遍。
+    少比任一格，另一格被改回退时这条判据就是空的。
+    """
+    xmls = [x for _n, x in shapes]
+    js = _parse_feed_products(tmp_path, xmls)
+    py = _py_feed_products(xmls, key_prefix=key_prefix)
+    rows = []
+    for (name, _x), j, p in zip(shapes, js, py):
+        assert p, "%s：参照物一条都没解析出来 ⇒ 对账没有左边" % name
+        assert j["items"], "%s：JS 一条都没解析出来 ⇒ 对账没有右边" % name
+        card = (j["cards"][0] if j["cards"] else {})
+        rows.append((name, p[0], j["items"][0], card))
+    return rows
+
+
+def test_realtime_rss_exit_matches_python_summary_shape_by_shape(tmp_path):
+    """行为对账（RSS 分支）：同一份 `<item>` 三格 `s` 同判 ⇒ 缺 `<description>` 就是**空串**。
+
+    参照物是 `build_rss_aggregator._parse_rss_item`：`desc_raw = _rss_text(it, "description")`、
+    `desc = _strip_html(desc_raw)` —— **没有 `|| content_encoded` 这一格回退**，缺 description
+    就出厂 `summary=''`。JS 的 RSS 分支以前写 `desc || contentEncoded`，于是同一条既出 `s`
+    （正文前 200 字）又出 `fc`（同一份正文）⇒ 阅读器里两遍。
+    """
+    rows = _rss_three_way(tmp_path, RSS_NOFALLBACK_SHAPES, u"rss_parity_probe")
+    diffs, empty, nonempty = [], 0, 0
+    for name, pi, ji, card in rows:
+        s_p = pi.get("summary") or ""
+        s_it = ji.get("summary") or ""
+        s_c = card.get("s") or ""
+        if s_p != s_c:
+            diffs.append("%s\n  s 出厂 py=%r\n       js=%r" % (name, s_p[:60], s_c[:60]))
+        if s_p != s_it:
+            diffs.append("%s\n  s parseFeed py=%r\n            js=%r" % (name, s_p[:60], s_it[:60]))
+        empty += 1 if not s_p else 0
+        nonempty += 1 if s_p else 0
+    assert not diffs, "RSS 实时出口的摘要与参照物不同判 %d 处：\n%s" % (
+        len(diffs), "\n".join(diffs))
+    # 派工点名的那一格：三处都必须读作空串，且这一格两侧**确实都出了正文**（否则"都空"是白得的）
+    i = [n for n, _x in RSS_NOFALLBACK_SHAPES].index(RSS_NO_DESC_SHAPE)
+    _name, pi, ji, card = rows[i]
+    assert (pi.get("summary") or "") == "", "参照物这一格就不是空串了（语料失效）：%r" % pi.get("summary")
+    assert (card.get("s") or "") == "", (
+        "`<description>` 缺失时出厂 s=%r —— 不许拿 `<content:encoded>` 顶上，"
+        "阅读器先渲这 200 字、点开再插同一份全文" % (card.get("s") or "")[:60])
+    assert (ji.get("summary") or "") == "", (
+        "`<description>` 缺失时 parseFeed summary=%r —— 这一格还兼作实时去重键" % (ji.get("summary") or "")[:60])
+    assert (pi.get("full_content") or "") and (ji.get("fullContent") or ""), (
+        "这一格两侧都没出正文 ⇒ 反重复那一半失去前提，语料要修")
+    assert empty >= 2 and nonempty >= 2, (
+        "语料的 s 空/非空不两边都有（空 %d / 非空 %d）⇒ 回退改回去也测不出来" % (empty, nonempty))
+
+
+def test_realtime_rss_never_ships_the_same_body_as_both_summary_and_fulltext(tmp_path):
+    """反重复（RSS 分支）：任一条目不得同时「摘要非空」且「摘要是正文剥标签后的前缀」。
+
+    三面各量一遍（出厂卡片、parseFeed 条目、参照物），坏改动**打在哪一行都会在这里露形**：
+    回退写在 `summaryRaw`（→ `s`）与 `summary`（→ 条目/去重键）两行，任一行被改回
+    `desc || contentEncoded` 就会出现一条 `s`=正文前缀且 `fc`=同一份正文的条目。
+    检测器 `_shows_body_twice` 自己开不开火由
+    `test_atom_parity_detects_the_double_display_shape` 钉着（两侧共用同一个检测器）。
+    """
+    rows = _rss_three_way(tmp_path, RSS_NOFALLBACK_SHAPES, u"rss_nodup_probe")
+    hits, with_fc = [], 0
+    for name, pi, ji, card in rows:
+        if _shows_body_twice(card.get("s") or "", card.get("fc") or ""):
+            hits.append("%s：出厂卡片 s=%r 是 fc 的前缀" % (name, (card.get("s") or "")[:40]))
+        if _shows_body_twice(ji.get("summary") or "", ji.get("fullContent") or ""):
+            hits.append("%s：parseFeed 条目 summary=%r 是 fullContent 的前缀"
+                        % (name, (ji.get("summary") or "")[:40]))
+        if _shows_body_twice(pi.get("summary") or "", pi.get("full_content") or ""):
+            hits.append("%s：参照物 summary=%r 是 full_content 的前缀"
+                        % (name, (pi.get("summary") or "")[:40]))
+        with_fc += 1 if (card.get("fc") or ji.get("fullContent")) else 0
+    assert not hits, "同一份正文显示两遍 %d 条：\n%s" % (len(hits), "\n".join(hits))
+    assert with_fc >= 2, "语料里没有条目出厂正文（%d 条）⇒ 这条判据是空的" % with_fc
 
 
 # ================================================================ 对抗审查 ④：构建期规则 2.6 接上实时出口
