@@ -85,16 +85,12 @@ ADD_SOURCES = [
     #   ② 自身中位发布间隔 ≤168h  ③ 最新一条 ≤168h
     # 外加两条批次 A 没做的约束：**单域 ≤4 个**（A 把 13 个压在同一 CDN 上，一次模板缺陷全灭）
     # 与主题相关性人工收口（iTunes 机械检索出的 64 个里，体育/真人秀/德国政治/赌博引流站占大半）。
-    {"key": "latent_space_ai_engineer_podcast_920", "name": "Latent Space: The AI Engineer Podcast", "cat": "podcast", "color": "#4285f4",
-     "url": "https://api.substack.com/feed/podcast/1084089.rss", "tier": 3},
     {"key": "tbpn_921", "name": "TBPN", "cat": "podcast", "color": "#d97706",
      "url": "https://feeds.transistor.fm/technology-brother", "tier": 3},
     {"key": "machine_learning_tech_brief_by_hackernoo_922", "name": "Machine Learning Tech Brief By HackerNoon", "cat": "podcast", "color": "#e61919",
      "url": "https://feeds.transistor.fm/machine-learning-tech-brief-by-hackernoon", "tier": 3},
     {"key": "programming_tech_brief_by_hackernoon_923", "name": "Programming Tech Brief By HackerNoon", "cat": "podcast", "color": "#6366f1",
      "url": "https://feeds.transistor.fm/programming-tech-brief-by-hackernoon", "tier": 3},
-    {"key": "daily_paper_cast_924", "name": "Daily Paper Cast", "cat": "podcast", "color": "#6366f1",
-     "url": "https://feeds.transistor.fm/daily-paper-cast-ai", "tier": 3},
     {"key": "ai_news_minute_925", "name": "AI News Minute", "cat": "podcast", "color": "#0891b2",
      "url": "https://automatedpodcasts.com/podcast_rss/019c8c37-3feb-7940-ab90-2c00fad127c4", "tier": 3},
     {"key": "the_ai_daily_brief_artificial_intelligen_926", "name": "The AI Daily Brief: Artificial Intelligence News and Analysis", "cat": "podcast", "color": "#ff6600",
@@ -107,8 +103,6 @@ ADD_SOURCES = [
      "url": "https://video-api.shdsvc.dowjones.io/api/podcasts/feed/the%20wall%20street%20journal%20tech%20talk", "tier": 3},
     {"key": "daily_tech_news_show_930", "name": "Daily Tech News Show", "cat": "podcast", "color": "#4285f4",
      "url": "https://feeds.acast.com/public/shows/69874998-717b-4db3-9857-c07cf9597f55", "tier": 3},
-    {"key": "startup_insider_931", "name": "Startup Insider", "cat": "podcast", "color": "#24292e",
-     "url": "https://feeds.simplecast.com/ZQdsoEnZ", "tier": 3},
     {"key": "code_story_startup_podcast_for_ctos_ceos_932", "name": "Code Story | Startup Podcast for CTOs, CEOs and Technical Founders", "cat": "podcast", "color": "#24292e",
      "url": "https://rss.introcast.io/1466861744/feeds.redcircle.com/ac5e79a4-0405-49a3-af2c-02c37f0b3879", "tier": 3},
     {"key": "ev_news_933", "name": "ev.news", "cat": "podcast", "color": "#24292e",
@@ -131,10 +125,11 @@ ADD_SOURCES = [
      "url": "https://feed.xyzfm.space/rkue48tfd8yk", "tier": 3},
     {"key": "the_best_one_yet_942", "name": "The Best One Yet", "cat": "podcast", "color": "#6366f1",
      "url": "https://feeds.acast.com/public/shows/69545da8cb029db7575279fc", "tier": 3},
-    {"key": "side_hustle_school_943", "name": "Side Hustle School", "cat": "podcast", "color": "#e61919",
-     "url": "https://feeds.acast.com/public/shows/69ea8529d2febdbec932a7b2", "tier": 3},
-    {"key": "everything_everywhere_daily_history_scie_944", "name": "Everything Everywhere Daily: History, Science, Geography & More", "cat": "podcast", "color": "#24292e",
-     "url": "https://feeds.megaphone.fm/ADV3162807280", "tier": 3},
+    # ───────── 2026-10-06：本列表里原有的 5 条（_920/_924/_931/_943/_944）已摘出 ─────────
+    # latent_space_ai_engineer_podcast_920 / daily_paper_cast_924 / startup_insider_931 /
+    # side_hustle_school_943 / everything_everywhere_daily_history_scie_944。
+    # 原因不是"源坏了"，是我方抓取层读满 12MB 就截断（见 OVERSIZE_DELETE_KEYS）。
+    # 若日后聚合器改为"按最后一个完整 </item> 收边再解析"，这 5 条应从那里原样回补。
 ]
 DROP_THEN_ADD = {"france24_zh_779": "rfi_cn_779"}
 
@@ -272,6 +267,27 @@ DORMANT_DELETE_KEYS = {
     "飞哥说ai_175",
 }
 
+# ───────── 2026-10-06：feed 体量超过抓取上限，必然解析失败 ─────────
+# 机制（读远端 main 版 build_rss_aggregator.py 定死，非推测）：
+#   _fetch_url 用 `r.read(MAX_FEED_BYTES)`，MAX_FEED_BYTES = 12*1024*1024（:1131、:3124）。
+#   整篇剧集归档型播客 feed 一次返回 14~27MB ⇒ 读满 12MB 硬截断 ⇒ 紧接着的
+#   `ET.fromstring(raw)` 拿到半篇 XML 必 ParseError ⇒ _fetch_rss 返回 None ⇒ per_source 记 error、0 条。
+# 现场称量（本机直连，五个都 2~3.5 秒返回全部字节，所以**不是**超时也不是按 IP 拦）：
+#   startup_insider 27.0MB / side_hustle_school 22.2MB / daily_paper_cast 14.8MB /
+#   latent_space_ai_engineer_podcast 14.4MB / everything_everywhere_daily 13.9MB。
+# 把 20 个非 ok 源全量称过：只有这 5 个 >12MB，其余体量正常（钛媒体 238KB 那批是 CI 侧
+# 出口 IP 挑战，reddit 那 6 个是限速）⇒ 这是清单选择问题，不是一个大面积隐故障。
+# 为什么单独成桶而不塞进 DEAD：上游活得好好的，是我方上限把它拒了。将来聚合器改成
+# "解析失败且 raw 恰为 12MB 时按最后一个完整 </item> 收边再解析"（ITEMS_PER_SOURCE=30
+# 取的就是头部最新 30 条，收边不丢出厂内容），这 5 条应原样回补 —— 只有这一桶允许。
+OVERSIZE_DELETE_KEYS = {
+    "latent_space_ai_engineer_podcast_920",
+    "daily_paper_cast_924",
+    "startup_insider_931",
+    "side_hustle_school_943",
+    "everything_everywhere_daily_history_scie_944",
+}
+
 DATED_URL_FIX = {
     # 这两个不是"上游不给日期"，是我们接的地址不给 —— 换址就保住内容，删掉是净损失。
     # 备选地址都过真实解析器复测：逐条 pub_date 命中 100%，且不是同一分钟的批次时间。
@@ -296,7 +312,7 @@ def run(apply=False, scope="all"):
     if scope == "all":
         del_keys = (DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
                     | DEAD_DELETE_KEYS | CERT_EXPIRED_DELETE_KEYS
-                    | LINK_BIAS_DELETE_KEYS | DORMANT_DELETE_KEYS)
+                    | LINK_BIAS_DELETE_KEYS | DORMANT_DELETE_KEYS | OVERSIZE_DELETE_KEYS)
         del_names, drop_then_add = DELETE_BY_NAME, DROP_THEN_ADD
         url_fix = dict(URL_FIX)
         url_fix.update(DATED_URL_FIX)
@@ -306,8 +322,19 @@ def run(apply=False, scope="all"):
         del_names, drop_then_add = {}, {}
         url_fix, name_fix, ua_fix = dict(DATED_URL_FIX), {}, {}
         route_fix, adds = [], []
+    elif scope == "oversize":
+        # 只摘这 5 条。批次 B 的 LINK_BIAS/DORMANT 两桶已随 2d34ae11 落地，混着重放
+        # 等于让上一批的判定再动一次清单，改动面就说不清了。
+        del_keys = OVERSIZE_DELETE_KEYS
+        del_names, drop_then_add = {}, {}
+        url_fix, name_fix, ua_fix, route_fix, adds = {}, {}, {}, [], []
     else:
         raise SystemExit("未知 scope: %s" % scope)
+
+    # 删除桶与 ADD_SOURCES 不能同时声明同一个 key：下面的顺序是"先删后补"，
+    # 撞车时删除会被静默撤销，清单看上去打过补丁、实际一条没少。
+    conflict = del_keys & {s["key"] for s in adds}
+    assert not conflict, "同一 key 既声明删除又声明新增: %s" % sorted(conflict)
 
     gone = [k for k in del_keys if k in by_key]
     for nm, frag in del_names.items():
@@ -360,5 +387,8 @@ def run(apply=False, scope="all"):
 
 
 if __name__ == "__main__":
+    # 除 --apply 外的第一个参数即 scope（缺省 all），所以调用形如
+    # `python tools/rss_source_list_patch.py oversize --apply`。写成通用取值而不是再叠一个
+    # 三元判断，是为了让新批次不需要回来改这里。
     run(apply="--apply" in sys.argv,
-        scope="dateless" if "dateless" in sys.argv else "all")
+        scope=next((a for a in sys.argv[1:] if a != "--apply"), "all"))

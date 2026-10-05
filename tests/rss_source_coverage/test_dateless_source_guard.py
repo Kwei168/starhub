@@ -238,6 +238,9 @@ def test_every_declared_deletion_is_absent_from_the_list():
         # 只由工具单方面声明，谁把桶清空或把源加回清单，这条判据都会一路绿着。
         "LINK_BIAS": set(tool.LINK_BIAS_DELETE_KEYS),
         "DORMANT": set(tool.DORMANT_DELETE_KEYS),
+        # 12MB 上限桶同理：这 5 个在 CI 里看起来就是"源坏了"（error、0 条），
+        # 而真实原因是我方 _fetch_url 读满 12MB 硬截断。桶在，理由才在。
+        "OVERSIZE": set(tool.OVERSIZE_DELETE_KEYS),
     }
     by_key = {s.get("key"): s for s in _list_sources()}
     for name, keys in buckets.items():
@@ -295,6 +298,82 @@ def test_link_bias_bucket_is_pinned_and_dormant_bucket_is_not_silently_shrunk():
     by_key = {s.get("key"): s for s in _list_sources()}
     for k in LINK_BIAS_GONE | set(tool.DORMANT_DELETE_KEYS):
         assert k not in by_key, "%s 又回到清单里了 —— 每场白抓一次且永不出厂" % k
+
+
+def test_oversize_bucket_is_pinned_and_conflict_declaration_is_refused():
+    """12MB 上限桶（2026-10-06）的三条判据。
+
+    机制已读远端 main 版代码定死：_fetch_url 的 `r.read(MAX_FEED_BYTES=12MB)` 截断
+    整篇归档型播客 feed（实测 13.9~27.0MB，本机 2~3.5 秒即返回全部字节，故既非超时也非
+    按 IP 拦），截断后的半篇 XML 交给 ET.fromstring 必 ParseError ⇒ per_source 记 error、0 条。
+    ① 整桶钉死 5 个 key：这 5 个"看起来完全能救"（feed 活着、日期正常），最容易被顺手加回；
+    ② ADD_SOURCES 里不得再出现它们 —— 否则 scope="all" 先删后加，删除被静默撤销；
+    ③ 工具里那条"删/加撞车"断言必须真会红（变异自证），不能是恒绿摆设；
+    ④ 批次隔离：把 oversize 批次重放到当前清单上必须零改动。
+    """
+    tool = _tool()
+    OVERSIZE_GONE = {
+        "latent_space_ai_engineer_podcast_920",   # api.substack.com       14.4MB
+        "daily_paper_cast_924",                   # feeds.transistor.fm    14.8MB
+        "startup_insider_931",                    # feeds.simplecast.com   27.0MB
+        "side_hustle_school_943",                 # feeds.acast.com        22.2MB
+        "everything_everywhere_daily_history_scie_944",  # feeds.megaphone.fm 13.9MB
+    }
+    assert set(tool.OVERSIZE_DELETE_KEYS) == OVERSIZE_GONE, "12MB 上限桶与判据不一致"
+    add_keys = {s["key"] for s in tool.ADD_SOURCES}
+    assert not (add_keys & OVERSIZE_GONE), (
+        "ADD_SOURCES 里又有 %s：run() 的顺序是先删后加，这条声明会把刚摘掉的超大源"
+        "原样补回来，清单看着打过补丁实则一条没少" % sorted(add_keys & OVERSIZE_GONE))
+    by_key = {s.get("key"): s for s in _list_sources()}
+    for k in OVERSIZE_GONE:
+        assert k not in by_key, "%s 仍在清单里：每场白抓 12MB 且永不出厂" % k
+
+    # ③ 变异自证：造一条"既声明删除又声明新增"的冲突，工具必须当场拒绝。
+    # 必须打在 scope="all" 上：只有它把 adds 绑到 ADD_SOURCES，oversize/dateless 两批的
+    # adds 都是 []，往 ADD_SOURCES 里塞撞车项在这两个 scope 下根本不会被读到 ——
+    # 第一版就写成了 scope="oversize"，变异探针打在一处空转的分支上，看着自证其实恒绿。
+    # 而"恢复清单用默认 --apply"正是将来最可能把超大源静默补回来的那条路径。
+    tmp = tempfile.mkdtemp(prefix="rsplist-conflict-")
+    try:
+        dst = os.path.join(tmp, "rss_sources.json")
+        with open(dst, "w", encoding="utf-8", newline="") as f:
+            f.write(json.dumps([], ensure_ascii=False))
+        tool.PATH = dst
+        tool.ADD_SOURCES = list(tool.ADD_SOURCES) + [{
+            "key": "daily_paper_cast_924", "name": "Daily Paper Cast", "cat": "podcast",
+            "color": "#6366f1", "url": "https://feeds.transistor.fm/daily-paper-cast-ai",
+            "tier": 3}]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                tool.run(apply=False, scope="all")
+        except AssertionError as ex:
+            assert "daily_paper_cast_924" in str(ex), (
+                "断言是红了，但报的不是这个 key ⇒ 拦的是别的事，不能算拦住撞车")
+        else:
+            raise AssertionError(
+                "删/加声明撞车时工具没拦：后面的 src.extend(added) 会静默撤销删除")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # ③b 反向半：不加那条冲突项时 scope="all" 必须能正常走完。
+    # 缺这一半时，"撞车断言"可能被一个无关的既有重叠常年挡住 ⇒ 上面的红看着像拦住撞车，
+    # 其实拦的是别的事，而本批真正要防的静默回补反倒没人管。
+    tool2 = _tool()
+    tmp2 = tempfile.mkdtemp(prefix="rsplist-clean-")
+    try:
+        dst2 = os.path.join(tmp2, "rss_sources.json")
+        with open(dst2, "w", encoding="utf-8", newline="") as f:
+            f.write(json.dumps([], ensure_ascii=False))
+        tool2.PATH = dst2
+        with contextlib.redirect_stdout(io.StringIO()):
+            tool2.run(apply=False, scope="all")   # 不该抛
+    finally:
+        shutil.rmtree(tmp2, ignore_errors=True)
+
+    # ④ 批次隔离：已落地的清单上重放本批 = 零动作
+    before = open(LIST_PATH, "rb").read()
+    _, after = _replay(json.loads(before.decode("utf-8")), scope="oversize")
+    assert after == before, "oversize 批次在当前清单上重放产生了改动 ⇒ 声明与文件不一致"
 
 
 if __name__ == "__main__":
