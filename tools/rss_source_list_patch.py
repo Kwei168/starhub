@@ -59,53 +59,82 @@ ROUTE_FIX = [("/xiaoyuzhou/podcast/5f22729f9504bbdb77253e46",
 ADD_SOURCES = [
     {"key": "rfi_cn_779", "name": "RFI 中文", "cat": "news", "color": "#8a6d1f",
      "url": "https://www.rfi.fr/cn/rss", "tier": 3},   # 顶替 France24 中文（其 feed 不存在）
-    # ───────── 2026-10-04 批次：净新增播客供给 18 个 ─────────
-    # 为什么是"加"不是"修"：页面 `信源` 673 的口径是"近 7 天有货的源"，不是配置数。
-    # 逐源实测（295 个缺失源直连 + Apple Podcasts / 第二套 wechat2rss 部署交叉对撞）结论：
-    #   镜像没有断供 —— 9 个双方都有的微信账号，两套独立部署给出**完全相同**的最后发布日期；
-    #   那批 09-22~09-27 集体静默是中秋(9-25)+国庆的假期停更，节后应自行回升。
-    #   所以这 18 个不是"替代坏源"，是把"近 7 天有货"的底盘抬高。
-    # 入选三条同时满足（缺一即淘汰）：最新文章 ≤72h、自身中位发布间隔 ≤7 天、
-    #   且**同 host 在构建日志 per_source 里有 status=ok 记录**（CI 无代理、本地通不算 CI 通）：
-    #   feed.xyzfm.space 12 次 ok / feeds.simplecast.com 8 次 / feeds.megaphone.fm 4 次。
-    # 已剔：深圳天主教堂、Xbox 游戏、德语政治、内容农场 Fexingo 系列（新鲜但不合题）。
-    # 实测代价：+18 源、每场仅 +29~75 条（占现有 8326 条的 0.3%~0.9%），翻译压力可忽略。
-    {"key": "prof_g_markets_900", "name": "Prof G Markets", "cat": "podcast", "color": "#d32f2f",
-     "url": "https://feeds.megaphone.fm/profgmarkets", "tier": 3},
+    # ───────── 2026-10-04 批次 A：净新增播客供给（原 18 个，现存 6 个）─────────
+    # 保留的硬结论（当时用 295 个缺失源直连 + Apple Podcasts + 第二套 wechat2rss 部署交叉对撞）：
+    #   **镜像没有断供** —— 9 个双方都有的微信账号，两套独立部署给出完全相同的最后发布日期；
+    #   09-22~09-27 那批集体静默是中秋(9-25)+国庆的假期停更，节后自行回升。
+    #   所以"信源 673"是"近 7 天有货"的口径，不是配置数 968 —— 这批抬高的是底盘，不是修坏源。
+    # 但本批当时的入选判据已被 10-05 复核证伪：只看"feed 里 7 天内有没有条目"+
+    #   "同 host 在 CI 日志有 status=ok"，既没验"我方能否取到可用 link"，也没管单域并发。
+    #   结果 18 个里 12 个永不出厂（原因见 LINK_BIAS_DELETE_KEYS）。修正后的判据见下方批次 B。
     {"key": "david_senra_901", "name": "David Senra", "cat": "podcast", "color": "#0891b2",
      "url": "https://feeds.megaphone.fm/david-senra", "tier": 3},
     {"key": "晚安咖啡_902", "name": "晚安咖啡GoodNightCoffee", "cat": "podcast", "color": "#0891b2",
      "url": "https://feed.xyzfm.space/nf4qg8uypmrv", "tier": 3},
     {"key": "seventy3_903", "name": "Seventy3", "cat": "podcast", "color": "#d97706",
      "url": "https://feed.xyzfm.space/7g77eb3rfju8", "tier": 3},
-    {"key": "decoder_with_nilay_patel_904", "name": "Decoder with Nilay Patel", "cat": "podcast", "color": "#7c3aed",
-     "url": "https://feeds.megaphone.fm/recodedecode", "tier": 3},
     {"key": "隔夜市场_905", "name": "隔夜市场", "cat": "podcast", "color": "#4285f4",
      "url": "https://feed.xyzfm.space/xmugmcenwnga", "tier": 3},
     {"key": "the_exchange_906", "name": "The Exchange", "cat": "podcast", "color": "#d32f2f",
      "url": "https://feeds.simplecast.com/tc4zxWgX", "tier": 3},
-    {"key": "big_technology_podcast_907", "name": "Big Technology Podcast", "cat": "podcast", "color": "#4285f4",
-     "url": "https://feeds.megaphone.fm/LI3617121267", "tier": 3},
-    {"key": "real_eisman_playbook_908", "name": "The Real Eisman Playbook", "cat": "podcast", "color": "#ff6600",
-     "url": "https://feeds.megaphone.fm/GBLL9435201326", "tier": 3},
     {"key": "hard_fork_909", "name": "Hard Fork", "cat": "podcast", "color": "#d32f2f",
      "url": "https://feeds.simplecast.com/6HKOhNgS", "tier": 3},
-    {"key": "waveform_mkbhd_910", "name": "Waveform: The MKBHD Podcast", "cat": "podcast", "color": "#4285f4",
-     "url": "https://feeds.megaphone.fm/STU4418364045", "tier": 3},
-    {"key": "the_vergecast_911", "name": "The Vergecast", "cat": "podcast", "color": "#24292e",
-     "url": "https://feeds.megaphone.fm/vergecast", "tier": 3},
-    {"key": "morning_brew_daily_912", "name": "Morning Brew Daily", "cat": "podcast", "color": "#e61919",
-     "url": "https://feeds.megaphone.fm/MOBI8777994188", "tier": 3},
-    {"key": "super_data_science_podcast_913", "name": "Super Data Science: ML & AI Podcast with Jon Krohn", "cat": "podcast", "color": "#0891b2",
-     "url": "https://feeds.megaphone.fm/SUPERDATASCIENCEPTYLTD9836501887", "tier": 3},
-    {"key": "pivot_podcast_914", "name": "Pivot", "cat": "podcast", "color": "#d32f2f",
-     "url": "https://feeds.megaphone.fm/pivot", "tier": 3},
-    {"key": "compound_and_friends_915", "name": "The Compound and Friends", "cat": "podcast", "color": "#24292e",
-     "url": "https://feeds.megaphone.fm/TCP4771071679", "tier": 3},
-    {"key": "plain_english_derek_thompson_916", "name": "Plain English with Derek Thompson", "cat": "podcast", "color": "#d97706",
-     "url": "https://feeds.megaphone.fm/plain-english", "tier": 3},
-    {"key": "riskreversal_pod_917", "name": "RiskReversal Pod", "cat": "podcast", "color": "#6366f1",
-     "url": "https://feeds.megaphone.fm/RRM5151570998", "tier": 3},
+    # ───────── 2026-10-05 批次 B：净新增 25 个（播客为主）─────────
+    # 入选判据是批次 A 的修正版：不再只看"feed 里 7 天内有没有条目"，而是
+    #   ① 可取 link 且 ≤168h 的条目 ≥3（link 口径与 _parse_rss_item 一致，含 Atom <link href>）
+    #   ② 自身中位发布间隔 ≤168h  ③ 最新一条 ≤168h
+    # 外加两条批次 A 没做的约束：**单域 ≤4 个**（A 把 13 个压在同一 CDN 上，一次模板缺陷全灭）
+    # 与主题相关性人工收口（iTunes 机械检索出的 64 个里，体育/真人秀/德国政治/赌博引流站占大半）。
+    {"key": "latent_space_ai_engineer_podcast_920", "name": "Latent Space: The AI Engineer Podcast", "cat": "podcast", "color": "#4285f4",
+     "url": "https://api.substack.com/feed/podcast/1084089.rss", "tier": 3},
+    {"key": "tbpn_921", "name": "TBPN", "cat": "podcast", "color": "#d97706",
+     "url": "https://feeds.transistor.fm/technology-brother", "tier": 3},
+    {"key": "machine_learning_tech_brief_by_hackernoo_922", "name": "Machine Learning Tech Brief By HackerNoon", "cat": "podcast", "color": "#e61919",
+     "url": "https://feeds.transistor.fm/machine-learning-tech-brief-by-hackernoon", "tier": 3},
+    {"key": "programming_tech_brief_by_hackernoon_923", "name": "Programming Tech Brief By HackerNoon", "cat": "podcast", "color": "#6366f1",
+     "url": "https://feeds.transistor.fm/programming-tech-brief-by-hackernoon", "tier": 3},
+    {"key": "daily_paper_cast_924", "name": "Daily Paper Cast", "cat": "podcast", "color": "#6366f1",
+     "url": "https://feeds.transistor.fm/daily-paper-cast-ai", "tier": 3},
+    {"key": "ai_news_minute_925", "name": "AI News Minute", "cat": "podcast", "color": "#0891b2",
+     "url": "https://automatedpodcasts.com/podcast_rss/019c8c37-3feb-7940-ab90-2c00fad127c4", "tier": 3},
+    {"key": "the_ai_daily_brief_artificial_intelligen_926", "name": "The AI Daily Brief: Artificial Intelligence News and Analysis", "cat": "podcast", "color": "#ff6600",
+     "url": "https://anchor.fm/s/f7cac464/podcast/rss", "tier": 3},
+    {"key": "hacker_news_daily_927", "name": "Hacker News Daily", "cat": "podcast", "color": "#10a37f",
+     "url": "https://feed.huisheng.fm/feeds/cf-0fa5c88a-hacker-news-daily-bhmh/feed.xml", "tier": 3},
+    {"key": "security_spoken_928", "name": "Security, Spoken", "cat": "podcast", "color": "#6366f1",
+     "url": "https://feeds.megaphone.fm/CNE5644732130", "tier": 3},
+    {"key": "wsj_tech_news_briefing_929", "name": "WSJ Tech News Briefing", "cat": "podcast", "color": "#4285f4",
+     "url": "https://video-api.shdsvc.dowjones.io/api/podcasts/feed/the%20wall%20street%20journal%20tech%20talk", "tier": 3},
+    {"key": "daily_tech_news_show_930", "name": "Daily Tech News Show", "cat": "podcast", "color": "#4285f4",
+     "url": "https://feeds.acast.com/public/shows/69874998-717b-4db3-9857-c07cf9597f55", "tier": 3},
+    {"key": "startup_insider_931", "name": "Startup Insider", "cat": "podcast", "color": "#24292e",
+     "url": "https://feeds.simplecast.com/ZQdsoEnZ", "tier": 3},
+    {"key": "code_story_startup_podcast_for_ctos_ceos_932", "name": "Code Story | Startup Podcast for CTOs, CEOs and Technical Founders", "cat": "podcast", "color": "#24292e",
+     "url": "https://rss.introcast.io/1466861744/feeds.redcircle.com/ac5e79a4-0405-49a3-af2c-02c37f0b3879", "tier": 3},
+    {"key": "ev_news_933", "name": "ev.news", "cat": "podcast", "color": "#24292e",
+     "url": "https://audioboom.com/channels/5051980.rss", "tier": 3},
+    {"key": "bestblogs_934", "name": "BestBlogs", "cat": "podcast", "color": "#6366f1",
+     "url": "https://feed.xyzfm.space/gpul9qw8appt", "tier": 3},
+    {"key": "聊聊Sci_935", "name": "聊聊Sci", "cat": "podcast", "color": "#4285f4",
+     "url": "https://feed.xyzfm.space/ppwu97xrxj94", "tier": 3},
+    {"key": "科技最前沿_936", "name": "科技最前沿 | 最新科技前沿解读，做有态度的科技课", "cat": "podcast", "color": "#7c3aed",
+     "url": "http://www.ximalaya.com/album/6748227.xml", "tier": 3},
+    {"key": "每日AI_937", "name": "每日AI", "cat": "podcast", "color": "#6366f1",
+     "url": "https://anchor.fm/s/10f187f58/podcast/rss", "tier": 3},
+    {"key": "科技報橘_938", "name": "科技報橘", "cat": "podcast", "color": "#d32f2f",
+     "url": "https://feeds.soundon.fm/podcasts/ead686e9-4513-4217-beb5-5fa4d215860d.xml", "tier": 3},
+    {"key": "果仁聊科技_939", "name": "果仁聊科技", "cat": "podcast", "color": "#24292e",
+     "url": "https://feeds.soundon.fm/podcasts/d5f6f588-d93a-4876-9943-255c48cc16da.xml", "tier": 3},
+    {"key": "全球科技金融3分钟_940", "name": "全球科技金融3分钟", "cat": "podcast", "color": "#0891b2",
+     "url": "https://feed.xyzfm.space/u37qn3c4eh9a", "tier": 3},
+    {"key": "睡前短资讯_941", "name": "睡前短资讯", "cat": "podcast", "color": "#d97706",
+     "url": "https://feed.xyzfm.space/rkue48tfd8yk", "tier": 3},
+    {"key": "the_best_one_yet_942", "name": "The Best One Yet", "cat": "podcast", "color": "#6366f1",
+     "url": "https://feeds.acast.com/public/shows/69545da8cb029db7575279fc", "tier": 3},
+    {"key": "side_hustle_school_943", "name": "Side Hustle School", "cat": "podcast", "color": "#e61919",
+     "url": "https://feeds.acast.com/public/shows/69ea8529d2febdbec932a7b2", "tier": 3},
+    {"key": "everything_everywhere_daily_history_scie_944", "name": "Everything Everywhere Daily: History, Science, Geography & More", "cat": "podcast", "color": "#24292e",
+     "url": "https://feeds.megaphone.fm/ADV3162807280", "tier": 3},
 ]
 DROP_THEN_ADD = {"france24_zh_779": "rfi_cn_779"}
 
@@ -170,11 +199,87 @@ CERT_EXPIRED_DELETE_KEYS = {
 #   elevate_430 / ai_musings_by_mu_421 —— 本机抓得到 20 条（curl UA），CI 侧 403
 #                       ⇒ substack 按出口 IP 挑战，属基础设施限制，不是源坏
 
+# ───────── 2026-10-05 批次 B：两类"每场白抓、永不出厂"的源 ─────────
+# 与既有四桶的分工：DATELESS=feed 压根没日期；DEAD=403/404/空 feed 抓不到；
+# CERT_EXPIRED=上游活着证书过期；QUALITY=内容不行。这两桶都是"抓得到、有日期、
+# 有内容"，但结构性过不了留存闸门，所以既不能塞进 DEAD（会说谎：换地址救不回来
+# 也不是它的原因），也不能塞进 DATELESS（它日期好好的）。
+LINK_BIAS_DELETE_KEYS = {
+    # 上游近期剧集把 <link> 留空、URL 只放在 <guid isPermaLink="false"> 里且值是 UUID，
+    # 我方按设计拒绝非 permalink 的 guid（宁可不给链接也不给点开 404 的链接）⇒
+    # 去重后只剩多年前的旧剧集 ⇒ 闸门清空整源。实测：Vergecast 剩的 10 条最新 2.6 年前、
+    # Super Data Science 41 条最新 1.5 年前、Compound and Friends 264 条最新 3.3 年前。
+    # 同 host 的 david_senra_901 不在此列：它的 feed 逐条带真 link，正常出厂。
+    "big_technology_podcast_907",               # Big Technology Pod
+    "compound_and_friends_915",               # The Compound and F
+    "decoder_with_nilay_patel_904",               # Decoder with Nilay
+    "morning_brew_daily_912",               # Morning Brew Daily
+    "pivot_podcast_914",               # Pivot
+    "plain_english_derek_thompson_916",               # Plain English with
+    "prof_g_markets_900",               # Prof G Markets
+    "real_eisman_playbook_908",               # The Real Eisman Pl
+    "riskreversal_pod_917",               # RiskReversal Pod
+    "super_data_science_podcast_913",               # Super Data Science
+    "the_vergecast_911",               # The Vergecast
+    "waveform_mkbhd_910",               # Waveform: The MKBH
+}
+DORMANT_DELETE_KEYS = {
+    # 逐源直连实测：feed 可正常解析、最新一条却已 >3 月（最老 1556 天）。
+    # 留存闸门硬上限 168h，这类源永远不可能出厂，留着只多一份白抓和一个虚低的信源数。
+    # 已先探过同域替代 feed 路径：43 个里只有 Google Security Blog 是"搬家"（见 URL_FIX），
+    # 其余 42 个确无可用替代地址。
+    "a_list_apart_787",
+    "admin_744",
+    "ai闲谈_128",
+    "barsee_heybarsee_530",
+    "chrome_developer_blog_795",
+    "dbanotes_45",
+    "deepzz_26",
+    "fellou_fellouai_552",
+    "flowiseai_flowiseai_507",
+    "geekplux_21",
+    "joshcomeau_5",
+    "laike9m_s_blog_612",
+    "maxos_19",
+    "monica_im_hey_im_monica_573",
+    "onev_s_den_616",
+    "pseudoyu_617",
+    "randy'sblog_12",
+    "studyinglover_s_blog_751",
+    "ux_magazine_394",
+    "velas电波站_692",
+    "vue_blog_799",
+    "webdev_3",
+    "weishu_s_notes_634",
+    "xuanwo_23",
+    "yangxuan_s_blog_752",
+    "小lin说的公众号_373",
+    "小胡子哥_44",
+    "得意忘形_7",
+    "披萨盒的赛博日志_755",
+    "捕蛇者说_58",
+    "晚点对话_255",
+    "有赞coder_122",
+    "梁永安的播客_49",
+    "王登科dk_43",
+    "老钱说钱_223",
+    "艾逗笔_233",
+    "蒋方舟·一寸_43",
+    "赫赫文王_733",
+    "跑步指南_263",
+    "转转技术_285",
+    "风叔云_185",
+    "飞哥说ai_175",
+}
+
 DATED_URL_FIX = {
     # 这两个不是"上游不给日期"，是我们接的地址不给 —— 换址就保住内容，删掉是净损失。
     # 备选地址都过真实解析器复测：逐条 pub_date 命中 100%，且不是同一分钟的批次时间。
     "google_developers_blog_406": "https://blog.google/technology/developers/rss/",
     "美团技术团队_0": "https://tech.meituan.com/atom.xml",
+    # 不是停更，是搬家：security.googleblog.com/atom.xml 现在返回 200 但 0 条目，
+    # 新地址实测 20 条全部带日期+可用 link（最新 2026-10-01）。保留 key ⇒ 历史数据继续挂同一信源。
+    "google_security_blog_785": "https://blog.google/security/rss/",
 }
 
 
@@ -190,7 +295,8 @@ def run(apply=False, scope="all"):
     # ⇒ 恢复清单时用默认 `--apply`（scope=all）；用 scope="dateless" 会得到 970 而不是 968。
     if scope == "all":
         del_keys = (DELETE_KEYS | DATELESS_DELETE_KEYS | QUALITY_DELETE_KEYS
-                    | DEAD_DELETE_KEYS | CERT_EXPIRED_DELETE_KEYS)
+                    | DEAD_DELETE_KEYS | CERT_EXPIRED_DELETE_KEYS
+                    | LINK_BIAS_DELETE_KEYS | DORMANT_DELETE_KEYS)
         del_names, drop_then_add = DELETE_BY_NAME, DROP_THEN_ADD
         url_fix = dict(URL_FIX)
         url_fix.update(DATED_URL_FIX)

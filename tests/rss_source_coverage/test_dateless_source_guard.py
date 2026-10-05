@@ -48,10 +48,13 @@ CERT_EXPIRED_GONE = ["轶哥博客_20", "虹线_697"]
 DATED_MOVED = {
     "google_developers_blog_406": "https://blog.google/technology/developers/rss/",
     "美团技术团队_0": "https://tech.meituan.com/atom.xml",
+    # 2026-10-05：不是停更是搬家。旧地址 200 但 0 条目，新地址实测 20 条全带日期+可用 link。
+    "google_security_blog_785": "https://blog.google/security/rss/",
 }
 OLD_DATELESS_URLS = {
     "google_developers_blog_406": "https://developers.googleblog.com/feeds/posts/default",
     "美团技术团队_0": "https://tech.meituan.com/feed",
+    "google_security_blog_785": "https://security.googleblog.com/atom.xml",
 }
 # 这批改动落地前的原始条目（取自 origin/main 的 1005 条清单），用于"声明真的能干活"的重放判据。
 PRE_BATCH_DELETED = [
@@ -231,6 +234,10 @@ def test_every_declared_deletion_is_absent_from_the_list():
         "QUALITY": set(tool.QUALITY_DELETE_KEYS),
         "DEAD": set(tool.DEAD_DELETE_KEYS),
         "CERT_EXPIRED": set(tool.CERT_EXPIRED_DELETE_KEYS),
+        # 2026-10-05 批次 B 的两个新桶必须一起接进来：不接就等于"删 54 个源"这件事
+        # 只由工具单方面声明，谁把桶清空或把源加回清单，这条判据都会一路绿着。
+        "LINK_BIAS": set(tool.LINK_BIAS_DELETE_KEYS),
+        "DORMANT": set(tool.DORMANT_DELETE_KEYS),
     }
     by_key = {s.get("key"): s for s in _list_sources()}
     for name, keys in buckets.items():
@@ -260,6 +267,34 @@ def test_cert_expired_sources_declared_in_their_own_bucket():
         "证书过期桶与判据不一致"
     assert not (set(tool.CERT_EXPIRED_DELETE_KEYS) & set(tool.DEAD_DELETE_KEYS)), \
         "证书过期源被并进了死源桶 —— 理由被洗掉了"
+
+
+def test_link_bias_bucket_is_pinned_and_dormant_bucket_is_not_silently_shrunk():
+    """批次 B 两个新桶的"锁内容"判据。
+
+    LINK_BIAS 整桶钉死：这 12 个的理由（上游近期条目无可取 link ⇒ 去重后只剩多年前旧剧集）
+      是实测出来的、且**看起来完全能救**（feed 有内容、日期正常），所以最容易被后人
+      "顺手改改解析器就加回来"。把 12 个 key 钉在判据里，加回任何一个都要先给复核理由。
+    DORMANT 钉条数 + 三个最极端的 key：43 个 >3 月静默源逐条硬编码会随每次清理漂移，
+      但"桶被整体掏空"必须当场红 —— 条数与最老样本双锁。
+    """
+    tool = _tool()
+    LINK_BIAS_GONE = {
+        "prof_g_markets_900", "decoder_with_nilay_patel_904", "big_technology_podcast_907",
+        "real_eisman_playbook_908", "waveform_mkbhd_910", "the_vergecast_911",
+        "morning_brew_daily_912", "super_data_science_podcast_913", "pivot_podcast_914",
+        "compound_and_friends_915", "plain_english_derek_thompson_916", "riskreversal_pod_917",
+    }
+    assert set(tool.LINK_BIAS_DELETE_KEYS) == LINK_BIAS_GONE, \
+        "链接偏置桶与判据不一致 —— 这 12 个是 2026-10-04 批次 A 的实测教训，加回需先复核"
+    assert len(tool.DORMANT_DELETE_KEYS) >= 40, (
+        "静默桶只剩 %d 个：整桶被掏空不是'这批做完了'，是判据失效" % len(tool.DORMANT_DELETE_KEYS))
+    # 最老的三个（实测静默 1556 / 1074 / 764 天）：桶若被换血，这几个最先被牺牲
+    for k in ("老钱说钱_223", "小胡子哥_44", "vue_blog_799"):
+        assert k in tool.DORMANT_DELETE_KEYS, "静默桶里丢了 %s（>2 年无更新的最老样本）" % k
+    by_key = {s.get("key"): s for s in _list_sources()}
+    for k in LINK_BIAS_GONE | set(tool.DORMANT_DELETE_KEYS):
+        assert k not in by_key, "%s 又回到清单里了 —— 每场白抓一次且永不出厂" % k
 
 
 if __name__ == "__main__":
