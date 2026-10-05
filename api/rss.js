@@ -593,11 +593,27 @@ function parseFeed(xml, sourceKey, maxItems) {
       const title = extractTag(entry, 'title');
       const link = cleanLink(extractAttr(entry, 'link', 'href')) || linkOrPermaId(entry, 'link', 'id');
       const summaryTag = extractTag(entry, 'summary');
-      const summary = summaryTag || extractTag(entry, 'content');
+      // 复评 B1：摘要**只取 `<summary>`**，不许回退到 `<content>`。
+      // 参照物 Python Atom 分支就一句 `desc = _strip_html(summary_raw)`（`summary_raw =
+      // e.findtext(ns+"summary") or ""`），没有回退。上一波给同一条又产了 `fc` 之后，
+      // 回退让 `<summary>` 缺失的条目把同一份正文显示两遍（先 `.r2-summary` 前 200 字、
+      // 再 `_insertFulltext(fc)` 全文），实测 py `s=''` / js `s='只有正文'`。
+      const summary = summaryTag;
       const contentEncoded = extractTag(entry, 'content') || '';
-      // 与 RSS 分支同一口径：正文只在**比摘要长**时才当全文出厂（等长或更短说明上游给的
-      // 就是摘要本身，阅读器再显示一遍没有意义）。
-      const fullContent = contentEncoded.length > summaryTag.length ? contentEncoded : '';
+      // 清洗链只跑一次：门槛要用**清洗后的正文**当左边，右边才与 Python 同基准。
+      const cleanedBody = contentEncoded ? buildFullContent(contentEncoded, link) : '';
+      // 复评 B2：门槛基准 = 清洗后的正文长度 vs **剥标签后的摘要长度**，与参照物同判
+      // （Python `full_content = atom_content if len(atom_content) > len(desc)`，
+      // `desc = _strip_html(summary_raw)`）。旧写法比的是两个**原始标签**的长度，两处不同源：
+      //   · CDATA 包装白送 12 字符 ⇒ `<summary>短</summary>` + `<content><![CDATA[短]]></content>`
+      //     这种"正文==摘要"的形状 JS 出 `fc`、Python 不出（JS 多产）；
+      //   · `<summary>` 与 `<content>` 逐字相同时原始长度相等 ⇒ JS 不出 `fc`、
+      //     Python 出（清洗后正文带着标签、剥标签后的摘要只剩文字，14 > 7）。
+      // 剥标签用现成的 `stripHtmlKeepLines`（解实体走 BODY 那一格端口 + 去标签 + CDATA），
+      // 不新写第三套；**不加 `collapseRuns`** —— Python `_strip_html` 只 `.strip()` 首尾、
+      // 不压内部空白，压了基准就短一截、方向又错回去。
+      const summaryPlain = stripHtmlKeepLines(summaryTag).trim();
+      const fullContent = cleanedBody.length > summaryPlain.length ? cleanedBody : '';
       const pubDate = extractTag(entry, 'published') || extractTag(entry, 'updated');
       if (title) {
         const _dt = datedOrCapture(pubDate);
@@ -610,7 +626,9 @@ function parseFeed(xml, sourceKey, maxItems) {
         };
         if (_dt.date_fallback) item.date_fallback = true;
         // 审查 ①：这条分支以前只造 {t,u,s,d}，四把刀在这里全是断链。
-        if (fullContent) item.fullContent = buildFullContent(fullContent, link);
+        // `fullContent` 已经是清洗链的产物（上面算门槛时清洗过一次，不再二次清洗：
+        // normalize 不幂等的那一格见 `test_article_snapshot_channel_is_capped_but_not_normalized_again`）。
+        if (fullContent) item.fullContent = fullContent;
         const media = extractMediaFromEntry(entry);
         if (media.media_url) { item.media_url = media.media_url; item.media_type = media.media_type; }
         if (COVER) {
@@ -629,6 +647,15 @@ function parseFeed(xml, sourceKey, maxItems) {
     const link = linkOrPermaId(item, 'link', 'guid');
     const desc = extractTag(item, 'description') || '';
     const contentEncoded = extractTag(item, 'content:encoded') || '';
+    // ── 已知分叉（复评 B1+B2 的同一对缺陷在 RSS 这一半**照旧存在**，本批没动它）──────
+    // 实测同一份 `<item>`、`<description>` 缺失：参照物 py 出厂 `summary=''` + `full_content=<p>正文…</p>`，
+    // 这条出口出厂 `s=正文前 200 字` + `fc=同一份正文` ⇒ 阅读器里两遍；门槛也比的是两个**原始标签**
+    // 长度（CDATA 白送 12）。裁定 = **不在本批收**：把 Atom 那套"清洗后才能定门槛"搬到这儿会让
+    // `parseFeed` 对**每条带 `<content:encoded>` 的条目**都过一遍 `BODY`，而三条只注入 `COVER`、
+    // 不注入 `BODY` 的他人线 node 切片判据（`tests/rss_cover/test_realtime_cover_js.py`、
+    // `tests/rss_source_coverage/test_dateless_source_guard.py`，本批不许改）当场红在
+    // `ReferenceError: BODY is not defined`（实测 7 条红）。要收这笔账，先让那两个 harness 注 BODY，
+    // 或与标题那一格（见 `legacyEntityCascade` 上方"已知挂起"）一起动 require 的位置。
     const fullContent = contentEncoded.length > desc.length ? contentEncoded : '';
     const pubDate = extractTag(item, 'pubDate') || extractTag(item, 'dc:date');
     if (title) {

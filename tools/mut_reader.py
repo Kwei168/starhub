@@ -358,11 +358,11 @@ MUTATIONS = [
 
     # ── ⑲ 对抗审查 ①：Atom 实时出口的四把刀（以前这段只造 {t,u,s,d}）──────────
     ("R47 Atom 出口摘掉 fc", COPIES[2],
-     u"        if (fullContent) item.fullContent = buildFullContent(fullContent, link);",
-     u"        if (fullContent) item.fullContent = fullContent;",
+     u"      const cleanedBody = contentEncoded ? buildFullContent(contentEncoded, link) : '';",
+     u"      const cleanedBody = contentEncoded;",
      u"test_realtime_atom_entry_produces_full_content"),
     ("R48 Atom 出口整条摘掉清洗链", COPIES[2],
-     u"        if (fullContent) item.fullContent = buildFullContent(fullContent, link);",
+     u"        if (fullContent) item.fullContent = fullContent;",
      u"",
      u"test_realtime_atom_and_rss_exits_agree_on_the_same_body"),
 
@@ -467,6 +467,45 @@ MUTATIONS = [
       u"    text = _INERT_COMPILED_KNIFE.sub('', text)\n"
       u'    # 1.5 移除 wechat2rss / link-proxy 跳转链接（"跳转微信打开"等）\n'),
      u"test_no_rule_keys_on_attributes_the_sanitizer_cannot_emit"),
+
+    # ── 26 复评 B1+B2：JS Atom 出口的 s / fc 与 Python 不同判（上一波自己带进去的）──
+    # B01 = 把 `summary` 改回"回退到 content"（派工点名的靶）；B02 = 把 `fc` 门槛改回
+    # 比两个**原始标签**的长度（另一派工点名的靶，只换基准、不动清洗链，免得和 R47 混成一件事）；
+    # B03 = 门槛右边换成会压内部空白的 `stripHtml`（参照物 `_strip_html` 只 `.strip()` 首尾，
+    #       压了就短一截、HN 四行那种多行摘要会把"该不该出 fc"翻面）。
+    ("B01 Atom 摘要又回退到 content", COPIES[2],
+     u"      const summary = summaryTag;",
+     u"      const summary = summaryTag || extractTag(entry, 'content');",
+     u"test_realtime_atom_never_ships_the_same_body_as_both_summary_and_fulltext"),
+    ("B02 Atom 门槛退回比原始标签长度", COPIES[2],
+     u"      const fullContent = cleanedBody.length > summaryPlain.length ? cleanedBody : '';",
+     u"      const fullContent = contentEncoded.length > summaryTag.length ? cleanedBody : '';",
+     u"test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape"),
+    ("B03 Atom 门槛右边换成压空白的 stripHtml", COPIES[2],
+     u"      const summaryPlain = stripHtmlKeepLines(summaryTag).trim();",
+     u"      const summaryPlain = stripHtml(summaryTag);",
+     u"test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape"),
+    # 同一对缺陷在 **RSS 那一半**照旧存在（实测 py `s=''` / js `s=正文` + `fc=正文`），
+    # 但本批**没有**给它登记靶：把"先清洗再定门槛"搬到 RSS 分支会让 `parseFeed` 对每条带
+    # `<content:encoded>` 的条目都过 `BODY`，而两条只注入 `COVER` 的他人线 node 切片判据
+    # （`tests/rss_cover/test_realtime_cover_js.py`、`tests/rss_source_coverage/test_dateless_source_guard.py`）
+    # 当场红在 `ReferenceError: BODY is not defined`（实测 7 条红）。
+    # 台账与前置动作写在 tests/site_nav/test_article_contract.py 的"RSS 出口那一半"那段登记里；
+    # 前置到位后 B04/B05 这两条靶的锚就是 `summaryRaw: desc,` 与
+    # `const fullContent = cleanedBody.length > descPlain.length ? cleanedBody : '';`。
+
+    # ── 27 复评 B3：CI 上真正生效的那道实体闸（§合成）───────────────────────
+    # 与 R58 打的是**同一份坏改动**（摘要出口退回旧顺序级联），但归宿不同，两条都不许省：
+    #   R58 → §出口 那条接线判据，读的是 `_ENT_EXIT_SAMPLES`（两侧同源的那一圈形状）；
+    #   R60 → 新增的合成闸 `test_runtime_entity_exit_gate_runs_without_any_corpus`，
+    #         读的是表外命名实体（`&copy;` 被吃名字那格）+ 零语料 ⇒ CI 每场必跑。
+    # 实测这条为什么必须有：同一份 R58 变异件上，旧 §哨兵（本地大语料度量）**完全无感**
+    # —— 它只喂 `decodeEntities` 端口、不喂出口，而且没有 `rss_history.json` 就 skip
+    # （`1 passed / 1 skipped`），所以"零暴露"那句话从来不是 CI 上的闸。
+    ("R60 摘要出口退回旧级联（合成闸这一格）", COPIES[2],
+     u"  return stripTagsKeepLines(BODY.decodeEntities(unwrapCdata(text)));",
+     u"  return stripTagsKeepLines(legacyEntityCascade(unwrapCdata(text)));",
+     u"test_runtime_entity_exit_gate_runs_without_any_corpus"),
 ]
 
 

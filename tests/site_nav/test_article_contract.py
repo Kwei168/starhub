@@ -344,10 +344,12 @@ def test_realtime_atom_entry_produces_full_content(tmp_path):
 
 
 def test_realtime_atom_and_rss_exits_agree_on_the_same_body(tmp_path):
-    """同口径判据：同一段正文走 Atom 与走 RSS 必须给出**逐字节相同**的 fc。
+    """同口径判据（复评 B2 升级）：两条 JS 出口互等**还不够**，必须与 Python 同判。
 
     两条出口各写一份清洗链就是下一个分叉源（构建期 `_fetch_rss` 的 Atom 分支与
     `_parse_rss_item` 吃的就是同一条链），所以这里不比"都有 fc"，比相等。
+    原判据只拿 Atom 与 RSS 两条 JS 出口互相比 ⇒ 两份一起错也照样绿（复评实测的
+    `fc` 门槛就是同时错在两条出口上的），故保留原来那条逐字节互等，另加"与参照物相等"这一半。
     """
     body = (u'<p>正文 <img data-src="/i/x.png"></p>'
             u'<p><a href="https://blog.example/author/anna">anna</a> 与 '
@@ -361,6 +363,12 @@ def test_realtime_atom_and_rss_exits_agree_on_the_same_body(tmp_path):
     assert fc_a == fc_r, "Atom 与 RSS 两条实时出口给出不同正文：\n atom: %r\n  rss: %r" % (fc_a, fc_r)
     assert "https://example.com/i/x.png" in fc_a, "绝对化没开火：%r" % fc_a
     assert 'href="https://openai.com/blog/x"' in fc_a, "外部正文链接被脱了：%r" % fc_a
+    # ── 升级的那半：同一份 Atom 文档喂参照物 Python `_fetch_rss`，fc 必须逐字节相同 ──
+    py = _py_feed_products([_atom_feed(body)])[0]
+    assert py, "参照物没解析出条目（判据前提失效）"
+    fc_p = py[0].get("full_content") or ""
+    assert fc_p, "参照物 Python 侧没出 full_content ⇒ 对账没有左边"
+    assert fc_a == fc_p, "两条 JS 出口一致但一起与 Python 分叉：\n js: %r\n py: %r" % (fc_a, fc_p)
 
 
 def test_realtime_atom_cap_leaves_no_dangling_tag(tmp_path):
@@ -373,6 +381,260 @@ def test_realtime_atom_cap_leaves_no_dangling_tag(tmp_path):
     assert len(fc) <= 50000, "没截断：%d 字符出厂" % len(fc)
     assert not re.search(r"<[^>]*$", fc), "尾巴挂着半个标签：%r" % fc[-40:]
     assert fc.endswith("</p>"), "截断点没收敛到干净边界：%r" % fc[-24:]
+
+
+# ================================================== 复评 B1+B2：Atom 出口的 s / fc 与 Python 同判
+# 根因是一件事：**JS Atom 分支的摘要/全文判定与 Python 不同源**，两处各错一格 ——
+#   B1 `const summary = summaryTag || extractTag(entry,'content')` —— `<summary>` 缺失时
+#      回退用正文。参照物 Python 就一句 `desc = _strip_html(summary_raw)`
+#      （`summary_raw = e.findtext(ns+"summary") or ""`），**没有回退**；
+#      上一波又给同一条产了 `fc` ⇒ 阅读器先渲 `.r2-summary`（正文前 200 字）
+#      再 `_insertFulltext(fc)`（同一正文全文）= 正文显示两遍。
+#   B2 `contentEncoded.length > summaryTag.length` —— 比的是两个**原始标签**的长度
+#      （CDATA 包装白送 12 字符）。参照物是 `len(atom_content) > len(desc)`
+#      —— 清洗后的正文 vs 剥标签后的摘要。复评构造的形状全部不同判，
+#      含"`<summary>` 与 `<content>` 逐字相同"（py 出 fc、js 不出）与
+#      "`<summary>短</summary>` + CDATA 正文"（js 出 fc、py 不出）。
+# 判据按**行为对账**写：同一份 Atom XML 分别喂参照物 `_fetch_rss`（`_fetch_url` 打桩，零网络）
+# 与 `api/rss.js` 的**真** `parseFeed`（node 切片），逐条比 `s` 与 `fc`。
+# **语料边界（写清楚，别当成全覆盖）**：`<summary>` 里直接嵌**未转义的真标签**
+# （`<summary><p>x</p></summary>`）不在语料内 —— 那是 XML 解析层的事
+# （ElementTree `findtext` 只给第一个子元素之前的文本 ⇒ py 得 `''`，正则切片给全文），
+# 与本批改的"回退"与"门槛基准"两格无关，改它要动的是解析层而不是这两行。
+# 同理，`<content>` 里带双重转义实体的形状不在逐字节对账内（`sanitizeHtml` 仍是顺序级联，
+# 该分叉在 `api/rss.js:390` 明写为已知挂起，由 §实体那三条判据单独管）。
+ATOM_BODY = u"<p>正文一 正文二</p>"
+ATOM_LINK_ = u"https://example.com/post/one/"
+
+
+def _cdata(t):
+    return u"<![CDATA[" + t + u"]]>"
+
+
+def _atom_shape(summary_inner, content_inner):
+    s = (u"" if summary_inner is None else u"<summary>" + summary_inner + u"</summary>")
+    c = (u"" if content_inner is None else u"<content type=\"html\">" + content_inner + u"</content>")
+    return (u'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+            u'<title>t</title><link href="' + ATOM_LINK_ + u'"/>' + s + c +
+            u'<published>2026-10-01T10:00:00Z</published></entry></feed>')
+
+
+ATOM_PARITY_SHAPES = [
+    # —— 复评点名的四个形状 ——
+    (u"summary 与 content 逐字相同（同 CDATA）",
+     _atom_shape(_cdata(ATOM_BODY), _cdata(ATOM_BODY))),
+    (u"summary 缺失（复评 B1 的双显示形状）", _atom_shape(None, _cdata(ATOM_BODY))),
+    (u"CDATA 包装白送 12 字符（JS 曾多产）", _atom_shape(u"短", _cdata(u"短"))),
+    (u"清洗后正文长于剥标签后的摘要", _atom_shape(u"短", _cdata(ATOM_BODY))),
+    # —— 对照组：两侧本来就该同判的形状，缺了它们门槛改反方向也测不出来 ——
+    (u"空 summary 标签", _atom_shape(u"", _cdata(ATOM_BODY))),
+    (u"纯文本逐字相同（无 CDATA）", _atom_shape(u"只有正文", u"只有正文")),
+    (u"正文比摘要短", _atom_shape(_cdata(u"长" * 20), _cdata(u"短"))),
+    (u"没有 content", _atom_shape(u"只有摘要", None)),
+    (u"content 是空标签", _atom_shape(u"摘要", u"")),
+    (u"正文带懒加载图与站内导航", _atom_shape(
+        u"摘要", _cdata(ATOM_BODY + u'<p>我们用 <a href="/tag/kubernetes">Kubernetes</a> 部署</p>'
+                       u'<img data-src="/imgs/a.png" alt="a">'))),
+    # 基准必须用 `stripHtmlKeepLines`（解实体走 BODY 那格端口、**不压内部空白**）而不是
+    # 文件里另一个 `stripHtml`（旧顺序级联，`&#20998;` 整枚吃成空串）。这一格靠这条形状区分：
+    # 真长度 4 / 旧级联 3 / 清洗后正文 4 ⇒ 用错基准就会多出一次 fc（电池 B03 打的就是这格）。
+    (u"摘要带数字实体（旧级联会吃掉）", _atom_shape(u"分数&#20998;了", _cdata(u"正文一二"))),
+    (u"摘要是 HN 模板四行", _atom_shape(
+        u"Article URL: https://ex.com/a\nComments URL: https://news.ycombinator.com/item?id=1"
+        u"\nPoints: 254\n# Comments: 162", _cdata(ATOM_BODY))),
+]
+
+# 语料自检：每条摘要都短于 JS 的 200 字截断，也短于 Python `_truncate` 的 500 字默认，
+# 这样 `s` 比的是**同一个字符串**，不是"两侧各自截了一刀之后刚好相等"。
+# （200 与 500 这个长度差是另一笔既有的账，本条判据不把它混进来。）
+for _n, _x in ATOM_PARITY_SHAPES:
+    assert 0 < len(re.sub(r"<[^>]+>", "", _x)) < 200, "语料 %s 超出 200 字，s 对账会失真" % _n
+
+
+def _parse_feed_products(tmp_path, xmls):
+    """node 跑**真** `parseFeed` + 真出口 `toCardItem`，一次给全部形状的 {items, cards}。
+
+    与 `_parse_feed_product` 同一手法（COVER/BODY 先注进同一作用域，样本走 JSON 文件中转
+    不进 JS 源码），只是批量化 —— 11 个形状开 1 次 node 而不是 11 次。
+    """
+    spec_p = tmp_path / "atom_parity_spec.json"
+    out_p = tmp_path / "atom_parity_out.json"
+    spec_p.write_text(json.dumps(xmls, ensure_ascii=False), encoding="utf-8", newline="\n")
+    runner = tmp_path / "atom_parity_product.js"
+    runner.write_text(
+        "const fs = require('fs');\n"
+        "const COVER = require(%s);\n"
+        "const BODY = require(%s);\n"
+        "const src = %s;\n"
+        "eval(src);\n"
+        "const docs = JSON.parse(fs.readFileSync(%s, 'utf8'));\n"
+        "const out = docs.map(function (x) {\n"
+        "  const its = parseFeed(x, 'probe', 50);\n"
+        "  return {items: its, cards: its.map(toCardItem)};\n"
+        "});\n"
+        "fs.writeFileSync(%s, JSON.stringify(out));\n"
+        % (json.dumps(LIB_COVER.replace("\\", "/")), json.dumps(LIB_BODY.replace("\\", "/")),
+           json.dumps(_rss_pipeline_src()),
+           json.dumps(str(spec_p).replace("\\", "/")),
+           json.dumps(str(out_p).replace("\\", "/"))),
+        encoding="utf-8", newline="\n")
+    r = subprocess.run([_node(), str(runner)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", cwd=ROOT, timeout=300)
+    assert r.returncode == 0, "批量 parseFeed 跑崩：\n%s\n%s" % (
+        (r.stdout or "")[-400:], (r.stderr or "")[-1200:])
+    got = json.loads(out_p.read_text(encoding="utf-8"))
+    assert len(got) == len(xmls), "返回条数与语料不等（%d vs %d）" % (len(got), len(xmls))
+    return got
+
+
+# ── RSS 出口那一半的同一对缺陷：**本批没修，也没有判据盖着**（登记，不含糊过去）──────
+# 复评 B1+B2 那两格（摘要回退正文、门槛比原始标签长度）在 `parseFeed` 的 RSS 分支上一字不差
+# 地存在。实测读数（同一份 `<item>`、`<description>` 缺失、零网络，2026-10-05）：
+#     参照物 py：summary=''  full_content='<p>正文一 正文二</p>'
+#     现  状 js：s='正文一 正文二'  fc='<p>正文一 正文二</p>'   ⇒ 同一份正文两遍
+# 上面的 Atom 语料盖不住它，因为 `parseFeed` 是两段代码（审查 ① 的原始事故形态就是这个）。
+# 本批为什么不顺手修：把"先清洗再定门槛"搬到 RSS 分支，`parseFeed` 就会对**每一条带
+# `<content:encoded>` 的条目**都走一遍 `BODY`，而三条**只注入 `COVER`、不注入 `BODY`** 的
+# 他人线 node 切片判据（`tests/rss_cover/test_realtime_cover_js.py`、
+# `tests/rss_source_coverage/test_dateless_source_guard.py`，本批不许改）当场红在
+# `ReferenceError: BODY is not defined`（实测 7 条红）⇒ 只能退回登记，不拿"半边对齐"充数。
+# 前置动作（下一批）：那两个 harness 的 runner 各加一行 `const BODY = require(...)`，
+# 或与 `legacyEntityCascade` 上方"已知挂起"那条一起把 require 挪到切片可覆盖的位置；
+# 前置到位后 `_parity_diffs()` 直接喂一份 RSS 语料就能收 —— 它是方言无关的。
+# （xgo 那一格另说：Python `_parse_rss_item` 有 `_is_xgo_content` 专支、JS 没有，
+#   那是既有整块分叉，到时要单独对账，不是这两行门槛能收的账。）
+
+
+def _py_feed_products(xmls):
+    """同一批 XML 喂**参照物** `build_rss_aggregator._fetch_rss`（`_fetch_url` 打桩，零网络）。"""
+    mod = _build_module()
+    out = []
+    old = mod._fetch_url
+    try:
+        for i, xml in enumerate(xmls):
+            key = u"atom_parity_probe_%d" % i
+            mod._rss_cache.pop(key, None)      # 缓存在 `_fetch_rss` 之前，不桩到桩后
+            mod._fetch_url = (lambda doc: (lambda *a, **k: doc.encode("utf-8")))(xml)
+            out.append(mod._fetch_rss({"key": key, "name": u"对账探针源",
+                                       "url": "https://example.invalid/feed",
+                                       "cat": "tech"}) or [])
+    finally:
+        mod._fetch_url = old
+        for i in range(len(xmls)):
+            mod._rss_cache.pop(u"atom_parity_probe_%d" % i, None)
+    return out
+
+
+def _shows_body_twice(s, fc):
+    """「同一份正文显示两遍」这个形状本身：`s` 非空、`fc` 非空，且 `s` 是 `fc` 的**前缀截断**。"""
+    if not s or not fc:
+        return False
+    plain = _build_module()._strip_html(fc)
+    head = s[:-1] if s.endswith(u"…") else s
+    return bool(head) and plain.startswith(head)
+
+
+def test_atom_parity_detects_the_double_display_shape(tmp_path):
+    """反重复判据**自己**得会开火：坏形状喂进去必须判 True（否则下一条是空判据）。"""
+    assert _shows_body_twice(u"正文一 正文二", u"<p>正文一 正文二</p>"), \
+        "检测器认不出「摘要就是正文前缀」这个形状 ⇒ 反重复判据是空的"
+    assert _shows_body_twice(u"正文一…", u"<p>正文一 正文二</p>"), "带省略号的截断没认出来"
+    assert not _shows_body_twice(u"摘要", u"<p>正文一 正文二</p>"), "正常摘要被误判成重复显示"
+    assert not _shows_body_twice(u"", u"<p>正文一 正文二</p>"), "s 为空不该算重复"
+    assert not _shows_body_twice(u"正文一", u""), "fc 为空不该算重复"
+
+
+def test_realtime_atom_never_ships_the_same_body_as_both_summary_and_fulltext(tmp_path):
+    """反重复判据（B1 的用户可见后果）：JS 不得比参照物多出一遍正文。
+
+    三面各钉一格，合成一条才咬得住 B1：
+      1. **绝对**：raw 里 `<summary>` 缺失或为空的条目，出厂 `s` 必须是空串 ——
+         回退到 `<content>` 就是"先渲正文前 200 字、点开再插一遍全文"。
+      2. **相对**：全语料里"s 是 fc 的前缀截断且 fc 非空"的**形状集合**，JS 必须等于 Python
+         （JS 不得比参照物多出任何一条）。不能只写"JS 侧一条都不许出现"，因为参照物
+         自己在"`<summary>` 与 `<content>` 逐字相同"这一格就是两遍
+         （`desc='正文一 正文二'` 与 `atom_content='<p>正文一 正文二</p>'` 同源），
+         而派工的口径是**以 Python 为准** —— 下面第 3 面把这件事从"绕过"变成"点名"。
+      3. **非空跑**：那条参照物自身的两遍必须真的出现在两侧的同判集合里，
+         免得这条判据退化成"两边都没有所以相等"。
+    **覆盖面**：只有 Atom 出口。RSS 出口那一半有同一对缺陷（实测读数与为什么不修，
+    记在上方 `_py_feed_products` 前那段登记里），本条不假装盖住了它。
+    """
+    shapes = ATOM_PARITY_SHAPES
+    js = _parse_feed_products(tmp_path, [x for _n, x in shapes])
+    py = _py_feed_products([x for _n, x in shapes])
+    js_twice, py_twice = set(), set()
+    for (name, _x), j, p in zip(shapes, js, py):
+        card = (j["cards"][0] if j["cards"] else {})
+        if _shows_body_twice(card.get("s") or "", card.get("fc") or ""):
+            js_twice.add(name)
+        if _shows_body_twice(p[0].get("summary") or "", p[0].get("full_content") or ""):
+            py_twice.add(name)
+    assert not (js_twice - py_twice), (
+        "JS 比参照物多出一遍正文的形状：%s —— 摘要回退或门槛基准又分叉了" % sorted(js_twice - py_twice))
+    assert js_twice == py_twice, "两侧「正文两遍」的集合不等：js=%s py=%s" % (sorted(js_twice), sorted(py_twice))
+    # 1. summary 缺失/为空 ⇒ 出厂 s 必须是空串
+    for name in (u"summary 缺失（复评 B1 的双显示形状）", u"空 summary 标签"):
+        i = [n for n, _x in shapes].index(name)
+        s = (js[i]["cards"][0].get("s") or "") if js[i]["cards"] else "（没有条目）"
+        assert s == "", "「%s」出厂 s=%r —— `<summary>` 没内容时不许拿正文顶上" % (name, s[:60])
+    # 3. 参照物自身那一格必须在场（点名它，别让它藏在"两侧相等"里）
+    verbatim = u"summary 与 content 逐字相同（同 CDATA）"
+    assert verbatim in py_twice and verbatim in js_twice, (
+        "「%s」这一格在两侧都没出现 ⇒ 语料失效了：参照物在该形状下本来就会把同一份正文"
+        "既放进 summary 又放进 full_content，这是「以 Python 为准」的既有代价，"
+        "登记在报告里；判据必须看得见它" % verbatim)
+
+
+def _parity_diffs(tmp_path, shapes):
+    """同一批 XML 分别喂参照物 `_fetch_rss` 与真 `parseFeed`，逐条比 s / fc，返回分叉清单。
+
+    三面一起比，缺任一面都留得出盲区：
+      · `s` **存在性/逐字** —— B1 的回退只在这一面红（py `s=''`、js `s='只有正文'`）；
+      · `fc` **存在性** —— B2 的门槛基准在这一面红（逐字相同 py 出 / js 不出，
+        CDATA 白送那格反过来 js 出 / py 不出）；
+      · `fc` **逐字节** —— 存在性相同但清洗链少一把刀（审查 ① 的原始形状）也红。
+    """
+    xmls = [x for _n, x in shapes]
+    js = _parse_feed_products(tmp_path, xmls)
+    py = _py_feed_products(xmls)
+    diffs, s_ok, fc_ok = [], 0, 0
+    for (name, _x), j, p in zip(shapes, js, py):
+        assert p, "%s：参照物一条都没解析出来 ⇒ 对账没有左边" % name
+        assert j["items"], "%s：JS 一条都没解析出来 ⇒ 对账没有右边" % name
+        pj, jc = p[0], (j["cards"][0] if j["cards"] else {})
+        ji = j["items"][0]
+        s_p, s_j = pj.get("summary") or "", jc.get("s") or ""
+        f_p, f_j = pj.get("full_content") or "", ji.get("fullContent") or ""
+        if s_p != s_j:
+            diffs.append("%s\n  s  py=%r\n     js=%r" % (name, s_p[:60], s_j[:60]))
+        else:
+            s_ok += 1
+        if bool(f_p) != bool(f_j):
+            diffs.append("%s\n  fc 存在性  py=%s(%d 字)  js=%s(%d 字)"
+                         % (name, bool(f_p), len(f_p), bool(f_j), len(f_j)))
+        elif f_p != f_j:
+            diffs.append("%s\n  fc 逐字节  py=%r\n             js=%r" % (name, f_p[:80], f_j[:80]))
+        else:
+            fc_ok += 1
+    assert not diffs, "实时出口与参照物不同判 %d 处：\n%s" % (len(diffs), "\n".join(diffs))
+    assert s_ok == len(shapes), "s 对账没有跑满全部形状（%d/%d）" % (s_ok, len(shapes))
+    assert fc_ok == len(shapes), "fc 对账没有跑满全部形状（%d/%d）" % (fc_ok, len(shapes))
+    # fc 两侧都为真、两侧都为零的形状都要在语料里出现过，否则"存在性同判"是单边凑出来的。
+    both = [bool(p[0].get("full_content")) for p in py]
+    assert any(both) and not all(both), \
+        "语料的 fc 存在性全是同一边（%s）⇒ 门槛改坏也测不出来" % both
+    return diffs
+
+
+def test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape(tmp_path):
+    """行为对账（Atom）：JS 的 `s`/`fc` 与 Python 的 `summary`/`full_content` 逐条同判。
+
+    `_parity_diffs` 是方言无关的 —— RSS 那一半的语料等 `BODY` 注入的前置到位后接上即可
+    （登记见上方"RSS 出口那一半"那段注释）。
+    """
+    diffs = _parity_diffs(tmp_path, ATOM_PARITY_SHAPES)
+    assert not diffs, "Atom 实时出口与参照物不同判 %d 处：\n%s" % (len(diffs), "\n".join(diffs))
 
 
 # ================================================================ 对抗审查 ④：构建期规则 2.6 接上实时出口

@@ -1014,12 +1014,18 @@ def test_r43_parity_corpus_is_big_enough_to_be_a_reconciliation():
 #   `&#20998;&#25968;`              py `分数`                  / 旧 js 空（汉字被整枚吃掉）
 # 裁定 R50：**不许为一条缺陷搬进一套新机制** ⇒ 运行时只对齐「真语料证明有暴露的那一圈」：
 # 预定义 5 个（`&amp; &lt; &gt; &quot; &#39;`，含「可省分号」与大写两种 legacy 形态）
-# + 数字/十六进制引用，**单趟不级联**；表外的命名实体**整枚留字面量**。判据因此分三格，
+# + 数字/十六进制引用，**单趟不级联**；表外的命名实体**整枚留字面量**。判据因此分四格，
 # 谁也不许替谁（少了任一格都留得出盲区）：
 #   §同面 —— 两侧逐字节相等：受害形状/反例/数字 + 预定义 5 的全部形态 + 码位穷举 + 900 条随机；
+#   §穷举 —— `test_entity_unescape_gold_values_are_the_python_side` /
+#            `test_entity_port_matches_python_on_every_known_form`：金标准与每一种已知形态；
 #   §分叉 —— 表外命名实体必须**逐字节等于输入**（旧实现在这里吃名字、置空，正是本批修的缺陷）；
-#   §哨兵 —— 扫真语料（只读 `rss_history.json`，零网络）断言「分叉面今天零暴露」，
-#            语料里出现白名单外的可解命名实体就红并打印是哪几个词。
+#   §合成 —— `test_runtime_entity_exit_gate_runs_without_any_corpus`（复评 ③ 新增）：现造形状
+#            喂**运行时出口**，不读任何语料 ⇒ **CI 每场必跑**的那道闸；
+#   §哨兵 —— **本地可选度量**：扫 `rss_history.json` 断言「**已解码**的入库文本里不再引入
+#            新的可解命名实体」。它没有本地大语料就 skip ⇒ CI 上从不生效，
+#            也因此**从来不是**那道暴露面闸（raw feed 里的命名实体在它数的字段里早已是字符，
+#            结构上数不到；账算在下面 §哨兵 那块的注释里）。
 # 比较口径：这一格不涉及百分号编码 ⇒ 一律 `_compare_hard`，放宽通道用量必须为 0。
 _ENT_PARITY_SAMPLES = [
     # ── 派工点名的受害形状里「两侧同源」的那两条 ──
@@ -1244,13 +1250,21 @@ def test_entity_named_divergence_is_declared_and_eats_nothing(tmp_path):
           % (len(_ENT_DIVERGENT), len(_ENT_MIXED)))
 
 
-# ── §哨兵：真语料口径（派工 R50 第 3 条）──────────────────────────────────
-# 为什么必须有它：§分叉 把「表外命名实体留字面量」写成了契约，可契约值不值钱取决于
-# **语料里到底有没有这种 token**。2026-10-05 实测：18,037 条、5 个字段、41,763 个 `&` token
-# —— 会被 Python 解开的命名实体只有 `&amp;`（41,373 次）与 `&gt；`（7 次，全角分号手误，
-# 走的正是「可省分号」那一格），数字引用 **0 次**、表外命名实体 **0 次** ⇒ 两侧在真语料上
-# 零分叉。这条每场重跑该口径：以后上游塞进 `&copy;` 这种新种类，当场红并打印是哪几个词，
-# 而不是等用户看到摘要变空。
+# ── §哨兵：**本地可选度量**（复评 ③ 把它说清楚）──────────────────────────────
+# 它实际能证明的东西，一句话：**已解码文本里不再引入新的可解命名实体**。
+# 它**证明不了**"raw feed 里没有命名实体"—— 数的是 `rss_history.json` 的
+# `summary/summary_zh/title/title_zh/full_content`，而这些字段进历史之前就已经过了
+# `html.unescape`（构建期 `_strip_html` :1146 与 `_sanitize_html` 的第一句都是它）
+# ⇒ raw 里的 `&copy; / &ldquo; / &nbsp; / &#20998;` 到这里早已是 `© “ ” U+00A0 分`，
+# **结构上不可能被这条正则数到**。同语料实测（2026-10-05，18,037 条 / 62,661 个非空字段）：
+#   raw 形态的命名 token 只有 `&amp;` 41,373 次、`&gt`（全角分号手误）7 次，
+#   其余 62 种全是 URL 查询串（`&auto` / `&format` / `&CEO`…，Python 本来就不解）；
+#   而**已解码**的字符到处都是 —— 5,402 条含 “ 、5,382 条含 ” 、2,018 条含 U+00A0、
+#   70 条含 © ⇒ "语料里没有命名实体"这句从来就不成立，成立的只有"入库文本里没有
+#   **新的、还会被解开的**命名 token"。
+# 另外它是 **skip 型**判据：没有本地大语料就 skip（实测 31 passed / 1 skipped）⇒
+# **CI 上这道暴露面度量从不生效**。所以 CI 上真正生效的那道闸是下面这条合成判据
+# `test_runtime_entity_exit_gate_runs_without_any_corpus`，本条只是它之上的可选度量。
 HISTORY = os.environ.get("STARHUB_RSS_HISTORY") or os.path.join(ROOT, "rss_history.json")
 CORPUS_FIELDS = ("summary", "summary_zh", "full_content", "title", "title_zh")
 SENTINEL_FIELDS = ("summary", "summary_zh", "title", "title_zh")
@@ -1264,12 +1278,24 @@ SENTINEL_NAMED_WHITELIST = {u"&amp;", u"&gt" + chr(0xFF1B)}
 
 def _corpus_history():
     if not os.path.exists(HISTORY):
-        pytest.skip("没有 rss_history.json ⇒ 哨兵没有语料可数（这条判据的前提就是真语料）")
+        pytest.skip("没有 rss_history.json ⇒ 这条**本地可选度量**没有语料可数；"
+                    "CI 必跑的那道闸是 §合成的 `test_runtime_entity_exit_gate_runs_without_any_corpus`")
     with open(HISTORY, encoding="utf-8") as f:
         return json.load(f)
 
 
 def test_corpus_named_entity_sentinel(tmp_path):
+    """本地可选度量：**已解码**的入库文本里不再引入新的可解命名实体。
+
+    数的是历史里的字段值，而字段值进历史前已过一次 `html.unescape` ⇒
+    本条**不**断言"raw feed 里没有命名实体"（那句从来没人证明过，见上面 §哨兵 的账）。
+    它断言的是三件都在入库文本这一层成立的事：
+      (1) 入库文本里每个 `&`-token，两侧解法逐字节相同；
+      (2) 入库的摘要/标题整条喂端口，镜像与参照物同形；
+      (3) 还会被 Python 解开的命名 token 只许是白名单那几种（`&amp;`、`&gt；`）。
+    语料缺失时 skip ⇒ CI 上不作为闸；闸在下一条合成判据。
+    """
+
     history = _corpus_history()
     assert len(history) >= 10000, "语料退化到 %d 条 ⇒ 这个暴露面已经不代表真货" % len(history)
     tokens = {}
@@ -1303,21 +1329,138 @@ def test_corpus_named_entity_sentinel(tmp_path):
         if mirror != mod.html_mod.unescape(s):
             str_bad.append(s)
     assert not str_bad, (
-        "真语料的摘要/标题里出现了表外命名实体（py 解开、我们留字面量）共 %d 条，样例：\n%s"
+        "**已解码**的入库摘要/标题里又出现了还会被 Python 解开的命名 token（py 解开、我们留字面量）"
+        "共 %d 条，样例：\n%s"
         % (len(str_bad), "\n".join(repr(x[:120]) for x in str_bad[:5])))
     # (3) 种类口径：Python 会解开的命名 token 只许是白名单那几种
     named = set(t for t in distinct if t[1:2].isalpha() and mod.html_mod.unescape(t) != t)
     numeric = set(t for t in distinct if t[1:2] == "#")
     newkinds = sorted(named - SENTINEL_NAMED_WHITELIST)
     assert not newkinds, (
-        "语料里出现了白名单外的可解命名实体：%s（条数 %s）。R50 的最小集合不再零暴露："
+        "入库文本里出现了白名单外的**仍可被 Python 解开**的命名实体：%s（条数 %s）。"
+        "R50 的最小集合在这一格不再同解："
         "要么把它们加进 `lib/body_rules.js` 的 `_ENT_MIN` 并同步这张白名单，"
         "要么改契约并说明理由。" % (newkinds[:12], [(t, tokens[t]) for t in newkinds[:12]]))
     amp = tokens.get(u"&amp;", 0)
-    print("[③ 哨兵] 语料 %d 条 / token %d 个（%d 种）：可解命名实体 %s（`&amp;` %d 次）、"
-          "数字 token %d 种、表外命名实体 0 种 ⇒ 整条级与 token 级分叉都是 0"
+    print("[③ 哨兵｜本地可选度量] 入库（已解码）文本 %d 条 / token %d 个（%d 种）："
+          "仍会被 Python 解开的命名 token %s（`&amp;` %d 次）、数字 token %d 种 "
+          "⇒ 在**这一层**整条级与 token 级分叉都是 0（raw feed 那一层的账见上方注释，"
+          "本条不覆盖；CI 上的闸在下一条合成判据）"
           % (len(history), sum(tokens.values()), len(distinct), sorted(named), amp, len(numeric)))
-    assert amp > 1000, "`&amp;` 只剩 %d 次 ⇒ 语料换血了，上面那句零暴露要重测" % amp
+    assert amp > 1000, "`&amp;` 只剩 %d 次 ⇒ 语料换血了，上面那句「这一层零分叉」要重测" % amp
+
+
+# ── §合成：CI 每场必跑的那道闸（复评 ③ 第 2 条）──────────────────────────────
+# 上面 §哨兵 是 skip 型度量（无大语料 ⇒ `1 skipped`），所以 R50 让出来的那一格
+# 「表外命名实体留字面量」在 CI 上**从来没有闸**。这条就是那道闸：现造形状直接喂
+# **运行时出口** `api/rss.js` 的 `cleanSummary`（出厂 `s` 那一格），零语料、零网络、零 npm 依赖，
+# 只要 runner 上有 node 就每场跑。断言两件事：
+#   · 已知预定义与数字引用（`&amp;lt;script&amp;gt;`、`&#20998;`、`&amp;`…）与 Python **逐字节同解**；
+#   · 未知/表外命名实体（`&copy; &ldquo; &rdquo; &nbsp; &hellip; &unknownthing;`）**整枚保持字面量**，
+#     正文一个字符不许少（修前的顺序级联在这里吃名字、把整条摘要置空，那才是本批修的缺陷）。
+# 为什么喂 `cleanSummary` 而不是 `sanitizeHtml`：后者是**正文**那一格，仍是顺序级联，
+# `api/rss.js:390` 明写为已知挂起、由 §实体那三条单独管 —— 在这儿一起红就是把挂起当本批的活。
+# 丢的那半是**度量**（生产 raw 层的暴露面在本地语料上数不到），不是契约：
+# 契约由 §同面 / §穷举 / §分叉 三条钉着，且这三条**都不读语料**
+# （实测同一文件 `31 passed / 1 skipped`，skip 的只有哨兵那一条）。
+_SYN_TWIN = [
+    u"价格 A &amp;amp; B 折扣",
+    u"&amp;lt;script&amp;gt;alert(1)",
+    u"&#20998;&#25968; 分数",
+    u"&#x2014; 破折号",
+    u"版权 &amp; 备注",
+    u"正文里合法存在的 &amp;lt;img&amp;gt; 是要展示的代码字面量",
+]
+# (输入, [(JS 该留的字面量, Python 解出来的字符), ...])
+_SYN_OFFTABLE = [
+    (u"&copy; 2026 版权所有", [(u"&copy;", u"©")]),
+    (u"他说&nbsp;好", [(u"&nbsp;", u"\u00a0")]),
+    (u"&ldquo;引号&rdquo;", [(u"&ldquo;", u"“"), (u"&rdquo;", u"”")]),
+    (u"结尾 &hellip; 省略号", [(u"&hellip;", u"…")]),
+]
+# 两侧**都**认不得的 token：谁都不许把它吃成空串（旧 `&[a-z]+;`→'' 那格）
+_SYN_LITERAL_BOTH = [u"&unknownthing; 与正文", u"AT&T &R&D", u"&copltx; 记号"]
+# 形状选择说明：`&ltn;` 那一类（JS 按 HTML5 的 legacy 无分号规则解成 `<`、CPython 整枚留着）
+# 归 §同面 的**镜像**口径管，不进这条"与 Python 逐字节同解"，否则合成闸一开跑就红在一条
+# 早已声明的分叉上 —— 那是"两条判据互相顶"的形状，不是本条要回答的问题。
+
+
+def _exit_summary_products(tmp_path, samples):
+    """把原始 `<description>`/`<summary>` 形态喂**真**运行时出口 `cleanSummary`，逐条给产物。"""
+    api = open(API_RSS, encoding="utf-8").read()
+    a = api.find("function extractTag(")
+    b = api.find("async function fetchOne(")
+    assert 0 < a < b, "api/rss.js 里找不到 extractTag..fetchOne 区段，helper 结构变了"
+    seg = api[a:b]
+    assert "function cleanSummary(" in seg, "区段里没有 cleanSummary ⇒ 出口形状变了，判据要跟着改"
+    spec_p = tmp_path / "syn_ent_spec.json"
+    spec_p.write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8", newline="\n")
+    runner = tmp_path / "syn_ent_exit.js"
+    runner.write_text(
+        "const COVER = require(%s);\nconst BODY = require(%s);\nconst src = %s;\neval(src);\n"
+        "const S = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));\n"
+        "process.stdout.write(JSON.stringify("
+        "S.map(function (p) { return cleanSummary(p[0], p[1]); })));\n"
+        % (json.dumps(LIB_COVER.replace("\\", "/")), json.dumps(LIB.replace("\\", "/")),
+           json.dumps(seg)),
+        encoding="utf-8", newline="\n")
+    r = subprocess.run([_node(), str(runner), str(spec_p)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=300, cwd=ROOT)
+    assert r.returncode == 0, "运行时出口跑崩：\n%s\n%s" % (
+        (r.stdout or "")[-300:], (r.stderr or "")[-900:])
+    got = json.loads(r.stdout)
+    assert len(got) == len(samples), "出口返回条数与样本不等（%d vs %d）" % (len(got), len(samples))
+    return got
+
+
+def test_runtime_entity_exit_gate_runs_without_any_corpus(tmp_path):
+    """合成闸：不读任何语料的实体判据，钉住"表外留字面量 + 已知与 Python 逐字节同解"。
+
+    与 §哨兵 的分工写死在这儿：**这条是 CI 上的闸**，哨兵只是本地可选度量。
+    """
+    # 反 skip 自证：这条判据一旦去读大语料就失去存在意义（CI 上没有 64 MB 的 rss_history.json）。
+    # 查的是**代码对象里的名字表**而不是源码字符串 —— 查字符串的话这条断言自己就会命中。
+    co = test_runtime_entity_exit_gate_runs_without_any_corpus.__code__
+    refs = set(co.co_names) | set(co.co_varnames)
+    assert "HISTORY" not in refs and "_corpus_history" not in refs, (
+        "合成闸又去读大语料了（引用了 %s）⇒ 它会在 CI 上 skip，又变回那道从不生效的度量"
+        % sorted(r for r in refs if r in ("HISTORY", "_corpus_history")))
+    for s in _SYN_OFFTABLE:
+        assert s[1], "%r 没配替换表，断言会是空的" % s[0]
+    link = u"https://ex.test/a"
+    inputs = ([([s, link]) for s in _SYN_TWIN]
+              + [([s[0], link]) for s in _SYN_OFFTABLE]
+              + [([s, link]) for s in _SYN_LITERAL_BOTH])
+    got = _exit_summary_products(tmp_path, inputs)
+    n, i = 0, 0
+    # (1) 已知预定义与数字引用：与参照物 `html.unescape` + 去标签**逐字节**同解
+    for s, g in zip(_SYN_TWIN, got[i:]):
+        i += 1
+        w = mod._strip_html(s)
+        assert g == w, "同解那一格分叉 %r\n  py: %r\n js: %r" % (s, w, g)
+        n += 1
+    # (2) 表外命名实体：JS 侧**逐字等于输入**，且差的那一格只可能是被点名的 token
+    for (s, pairs), g in zip(_SYN_OFFTABLE, got[i:]):
+        i += 1
+        assert g == s, "表外实体被动了：%r → %r（契约是整枚留字面量）" % (s, g)
+        w = mod._strip_html(s)
+        assert w != s, "%r 在参照物那里也不解 ⇒ 这条分叉声明是空的，样本要换" % s
+        as_py = g
+        for js_tok, py_tok in pairs:
+            assert js_tok in as_py, "实体名被吃掉了：%r（缺 %r）" % (g, js_tok)
+            as_py = as_py.replace(js_tok, py_tok)
+        assert as_py == w, ("分叉只许在实体名那一格：%r\n  把字面量换成 Python 的答案后 %r\n"
+                            "  参照物给的却是 %r" % (s, as_py, w))
+        n += 1
+    # (3) 两侧都不认得的 token：谁都不许吃（修前 `&[a-z]+;`→'' 就是在这儿把正文吃没的）
+    for s, g in zip(_SYN_LITERAL_BOTH, got[i:]):
+        i += 1
+        assert g == s, "未知 token 被吃了：%r → %r" % (s, g)
+        assert g == mod._strip_html(s), "两侧在未知 token 上分叉：%r py=%r js=%r" % (s, mod._strip_html(s), g)
+        n += 1
+    print("[③ 合成闸] 零语料、CI 必跑：同解 %d 条 / 表外留字面量 %d 条 / 两侧都原样 %d 条，"
+          "合计 %d 条走**真出口** cleanSummary" % (len(_SYN_TWIN), len(_SYN_OFFTABLE),
+                                                  len(_SYN_LITERAL_BOTH), n))
 
 
 def test_realtime_summary_exit_shares_the_python_entity_port(tmp_path):
