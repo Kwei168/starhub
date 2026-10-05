@@ -7,7 +7,7 @@
 （`COPIES` 列表、`MUTATIONS` 五元组、`main()` 的三重门），不自创第二套框架。
 
 三重门（与 mut_attention 逐条同形，第三门按派工收窄到具名判据）：
-  1. **baseline 必须绿** —— 开跑前把 12 个判据文件整场跑一遍（实测 249 passed），副本没搭对
+  1. **baseline 必须绿** —— 开跑前把 13 个判据文件整场跑一遍（2026-10-05 现取 283 passed），副本没搭对
      时后面全不算数，直接退出 1；这一跑同时保证每条具名判据在打变异前都是绿的；
   2. `s.count(old) != 1` ⇒ 报"锚点失效"（变异根本没打上，判据绿是假的）；
   3. 打了坏改动之后：**只跑 `-k <那条具名判据>`，它必须变红**，而且 pytest 报告里要有真的
@@ -82,6 +82,7 @@ TESTS = [
     os.path.join("tests", "rss_history", "test_no_inert_deep_clean_rules.py"),
     os.path.join("tests", "site_nav", "test_body_rules_parity.py"),
     os.path.join("tests", "site_nav", "test_article_contract.py"),
+    os.path.join("tests", "site_nav", "test_reader_summary_dedupe.py"),
     os.path.join("tests", "site_nav", "test_reader_body_images.py"),
     os.path.join("tests", "site_nav", "test_reader_fulltext_errors.py"),
     os.path.join("tests", "site_nav", "test_reader_hn_discussion.py"),
@@ -608,7 +609,23 @@ MUTATIONS = [
     ("R70 实体正则改成大小写不敏感（逐名口径被当成全局规则）", COPIES[1],
      u'rdquo);?", "gu");',
      u'rdquo);?", "giu");',
-     u"test_entity_name_matrix_matches_python_per_form"),]
+     u"test_entity_name_matrix_matches_python_per_form"),
+
+    # ── 30 症状③那一格（摘要与内嵌全文同段 ⇒ 整对隐掉）此前**没进清单也没靶**：
+    # `TESTS` 里漏了 test_reader_summary_dedupe.py ⇒ 电池结构性打不到这条通道（R81 查出的登记缺口）。
+    # R71：把 `原文/翻译`那一块从守卫里放出去。用 `} {` 追加一个裸块接住原有括号 ⇒ **括号守恒**，
+    # node 不会用语法错冒充"挡住"（本仓第五种失败模式）。命中判据 = 同步断言 tog == has。
+    ("R71 摘要隐了但翻译按钮漏出守卫", COPIES[0],
+     u"h+='<div class=\"r2-summary\">'+formattedSummary+'</div>';",
+     u"h+='<div class=\"r2-summary\">'+formattedSummary+'</div>'; } {",
+     u"test_reader_hides_summary_when_fulltext_repeats_it"),
+
+    # R72：守卫永不开火（等价于把这条修复摘掉，但保持括号与形状）。命中的是**开火形状**那一格
+    # （dup 两格该没有 r2-summary）。这一条是"接线被拆"的探测器：R71 只盯得住成对，盯不住整条不干活。
+    ("R72 同段守卫条件写死成永假", COPIES[0],
+     u"      if(!_dupFt){",
+     u"      if(!_dupFt && 0){",
+     u"test_reader_hides_summary_when_fulltext_repeats_it"),]
 
 
 def _stage(tmp, rel_list):

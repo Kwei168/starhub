@@ -70,7 +70,9 @@ def _run(tmp_path, script, cases, helper=None, block=None):
         "  var h = '';",
         "  function esc(x){ return String(x == null ? '' : x); }",
         "  function formatSummary(x){ return String(x); }",
-        "  function isMostlyZh(){ return true; }",
+        # 存意给 false：让"原文/翻译"那一块真的被产出，守卫的边界才有东西可钉
+        # （给 true 时整块不外发，"摘要被隐掉但按钮漏出来"这类缺陷看不见）。
+        "  function isMostlyZh(){ return false; }",
         "  " + block,
         "  return h;",
         "};",
@@ -90,6 +92,8 @@ def _run(tmp_path, script, cases, helper=None, block=None):
 
 LONG = "这是一段足够长的摘要文字，用来判断它是否与内嵌全文逐字相同。"
 LONGER = LONG + "而全文在后面还有别的内容，所以两者不该被当成重复。"
+# 渲染里那行"出厂摘要入屏"的原文（产物层，不是源文件层）：反证要拿它做锚点。
+SUM_LINE = "h+='<div class=\"r2-summary\">'+formattedSummary+'</div>';"
 
 
 def test_reader_hides_summary_when_fulltext_repeats_it(tmp_path):
@@ -108,9 +112,15 @@ def test_reader_hides_summary_when_fulltext_repeats_it(tmp_path):
     has = [("r2-summary" in g) for g in got]
     assert has == [False, False, True, True, True], (
         "摘要去重的开火形状不对：%s\n%s" % (has, "\n".join(g[:120] for g in got)))
+    # 守卫的边界：`原文/翻译`那一块和摘要是一对（隐一个就得隐两个），
+    # 漏出半对会在卡片顶部挂一对指向空摘要的按钮；漏隐另一半则是同段又出现两遍。
+    tog = [("r2-lang-toggle" in g) for g in got]
+    assert tog == has, "摘要与其翻译按钮不同步（隐了摘要漏了按钮，或整对没隐）：%s vs %s" % (has, tog)
+    for g, want in zip(got, has):
+        assert ("btnOrig" in g) is want, "btnOrig 没跟着这一对走：%r" % g[:120]
     # fallback-card（无摘要那一支）不许被守卫挪走
     assert "fallback-card" in block, "无摘要分支被卷进守卫 ⇒ 空摘要条目会丢掉兜底卡"
-    print("[去重] 5 形状读数 has(r2-summary)=%s" % has)
+    print("[去重] 5 形状读数 has(r2-summary)=%s has(lang-toggle)=%s" % (has, tog))
 
 
 def test_reader_dedupe_helper_truth_table(tmp_path):
@@ -146,3 +156,13 @@ def test_dedupe_guard_is_not_vacuous(tmp_path):
     assert "r2-summary" in got[0], (
         "把去重判据写死成 false 之后摘要仍然不出现 ⇒ 隐藏动作不是这个判据在管的")
     print("[反空转] 写死 false ⇒ r2-summary 回到页面（判据有牙）")
+
+    # 第二格反证：把 `原文/翻译`那一块从守卫里放出去（补一个 `}` 关摘要、再开一个裸块接住原括号，
+    # 括号守恒 ⇒ node 不会因语法错冒充"挡住"）。这条必须让同段那一格出现"没摘要但有按钮"，
+    # 否则上面那句 tog == has 是恒真的。
+    assert SUM_LINE in block, "锚点行不在渲染段里 ⇒ 这条反证是空的（别自证干净）"
+    escaped = block.replace(SUM_LINE, SUM_LINE + "} {", 1)
+    got2 = _run(tmp_path, script, [{"s": LONG, "fc": "<p>" + LONG + "</p>"}], helper, escaped)
+    assert "r2-summary" not in got2[0] and "r2-lang-toggle" in got2[0], (
+        "escape 变异没造出【隐了摘要、漏了按钮】的形状 ⇒ 同步断言盯不住它：%r" % got2[0][:160])
+    print("[反空转] 按钮逃出守卫 ⇒ 判据抓到（摘要消失、r2-lang-toggle 漏出）")
