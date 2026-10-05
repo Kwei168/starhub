@@ -92,6 +92,13 @@ def _run(tmp_path, script, cases, helper=None, block=None):
 
 LONG = "这是一段足够长的摘要文字，用来判断它是否与内嵌全文逐字相同。"
 LONGER = LONG + "而全文在后面还有别的内容，所以两者不该被当成重复。"
+# `fetchFullArticle` 的入屏门槛是 `a.fc.length > 100`（**原始**长度，带标签）。
+# 所以"隐摘要"必须和它同门槛：短于门槛的 fc 根本不上屏，此时再隐 ⇒ 面板一个字都不剩。
+# LONGDUP 是"够长的那一半"（加 `<p></p>` 后 127 字符 > 100 ⇒ 会入屏 ⇒ 允许隐）。
+LONGDUP = LONG * 4
+# 门槛两侧的精确一对：fc 原始长度**正好 100**（不许隐）与 **101**（可以隐）。
+P100 = "文" * 93          # + "<p></p>" = 100
+P101 = "文" * 94          # + "<p></p>" = 101
 # 渲染里那行"出厂摘要入屏"的原文（产物层，不是源文件层）：反证要拿它做锚点。
 SUM_LINE = "h+='<div class=\"r2-summary\">'+formattedSummary+'</div>';"
 
@@ -102,15 +109,19 @@ def test_reader_hides_summary_when_fulltext_repeats_it(tmp_path):
     helper, block = _slice_block(script)
     assert "if(!_dupFt){" in block, "渲染段里没有 _dupFt 守卫 ⇒ 刀没接上"
     cases = [
-        {"s": LONG, "fc": "<p>" + LONG + "</p>"},                       # 逐字重复 ⇒ 隐藏
-        {"s": LONG, "fc": "<p>" + LONG + "</p><img src=x>"},            # 重复但正文带图 ⇒ 仍隐藏（图在正文里）
-        {"s": LONG, "fc": "<p>" + LONGER + "</p>"},                     # 正文更长 ⇒ 摘要照旧出现
-        {"s": LONG, "fc": ""},                                          # 无内嵌全文 ⇒ 摘要出现
-        {"s": "短句。", "fc": "<p>短句。</p>"},                            # ≤24 字 ⇒ 不隐藏（宁少剥）
+        {"s": LONGDUP, "fc": "<p>" + LONGDUP + "</p>"},                  # 逐字重复且够长会入屏 ⇒ 隐藏
+        {"s": LONGDUP, "fc": "<p>" + LONGDUP + "</p><img src=x>"},        # 重复但正文带图 ⇒ 仍隐藏（图在正文里）
+        {"s": LONGDUP, "fc": "<p>" + LONGER + "</p>"},                    # 正文更长 ⇒ 摘要照旧出现
+        {"s": LONGDUP, "fc": ""},                                         # 无内嵌全文 ⇒ 摘要出现
+        {"s": "短句。", "fc": "<p>短句。</p>"},                              # ≤24 字 ⇒ 不隐藏（宁少剥）
+        {"s": P100, "fc": "<p>" + P100 + "</p>"},                         # 逐字相等但 fc 原始正好 100 字符 ⇒
+        # ↑ `fetchFullArticle` 只在 `fc.length>100` 时才把正文放上屏，等于 100 不上屏 ⇒ 摘要不许隐，
+        #   否则这块面板会一个字都不剩（线上今天 93/93 都是长正文，属数据巧合，不是代码保证）
+        {"s": P101, "fc": "<p>" + P101 + "</p>"},                         # 刚过门槛 ⇒ 允许隐
     ]
     got = _run(tmp_path, script, cases, helper, block)
     has = [("r2-summary" in g) for g in got]
-    assert has == [False, False, True, True, True], (
+    assert has == [False, False, True, True, True, True, False], (
         "摘要去重的开火形状不对：%s\n%s" % (has, "\n".join(g[:120] for g in got)))
     # 守卫的边界：`原文/翻译`那一块和摘要是一对（隐一个就得隐两个），
     # 漏出半对会在卡片顶部挂一对指向空摘要的按钮；漏隐另一半则是同段又出现两遍。
@@ -118,9 +129,11 @@ def test_reader_hides_summary_when_fulltext_repeats_it(tmp_path):
     assert tog == has, "摘要与其翻译按钮不同步（隐了摘要漏了按钮，或整对没隐）：%s vs %s" % (has, tog)
     for g, want in zip(got, has):
         assert ("btnOrig" in g) is want, "btnOrig 没跟着这一对走：%r" % g[:120]
-    # fallback-card（无摘要那一支）不许被守卫挪走
-    assert "fallback-card" in block, "无摘要分支被卷进守卫 ⇒ 空摘要条目会丢掉兜底卡"
-    print("[去重] 5 形状读数 has(r2-summary)=%s has(lang-toggle)=%s" % (has, tog))
+    # fallback-card（无摘要那一支）不许被守卫挪走：这条改成**跑出来的**，不是段里有没有字面量
+    no_s = _run(tmp_path, script, [{"s": "", "fc": "<p>" + LONGDUP + "</p>"}], helper, block)
+    assert "fallback-card" in no_s[0], "摘要为空时兜底卡没渲染 ⇒ else 那一支断了"
+    assert "r2-summary" not in no_s[0]
+    print("[去重] 7 形状读数 has(r2-summary)=%s has(lang-toggle)=%s；空摘要⇒兜底卡在" % (has, tog))
 
 
 def test_reader_dedupe_helper_truth_table(tmp_path):
@@ -131,16 +144,18 @@ def test_reader_dedupe_helper_truth_table(tmp_path):
     with open(f, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(helper + "\nmodule.exports = _summaryDuplicatedByFulltext;\n")
     runner = os.path.join(str(tmp_path), "hrun.js")
-    cases = [[LONG, LONG], [LONG, LONGER], ["短句。", "短句。"], [LONG, ""], ["", LONG],
-             [LONG, "<div  >\n" + LONG + "\n</div>"]]
+    cases = [[LONGDUP, LONGDUP], [LONGDUP, LONGER], ["短句。", "短句。"], [LONGDUP, ""], ["", LONGDUP],
+             [LONGDUP, "<div  >\n" + LONGDUP + "\n</div>"],
+             [P100, "<p>" + P100 + "</p>"], [P101, "<p>" + P101 + "</p>"], [LONG, "<p>" + LONG + "</p>"]]
     with open(runner, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("const f = require(%r);\nprocess.stdout.write(JSON.stringify(%s.map(c => f(c[0], c[1]))));\n"
                  % (f, repr(cases)))
     p = subprocess.run([_node(), runner], capture_output=True)
     assert p.returncode == 0, p.stderr.decode("utf-8", "replace")[:500]
     got = __import__("json").loads(p.stdout.decode("utf-8", "replace"))
-    assert got == [True, False, False, False, False, True], (
-        "真值表不对（等值=True、正文更长=False、≤24 字=False、缺一半=False、只差标签/空白=True）：%s" % got)
+    assert got == [True, False, False, False, False, True, False, True, False], (
+        "真值表不对（等值且 fc>100=True、正文更长=False、≤24 字=False、缺一半=False、"
+        "只差标签/空白=True、fc 原始正好 100=False、fc 原始 101=True、fc 原始 37=False）：%s" % got)
 
 
 def test_dedupe_guard_is_not_vacuous(tmp_path):
@@ -152,7 +167,7 @@ def test_dedupe_guard_is_not_vacuous(tmp_path):
     helper, block = _slice_block(script)
     neutered = helper.replace("return a.length > 24 && vis(fc) === a;", "return false;")
     assert neutered != helper, "辅助函数体形状变了 ⇒ 这条反证是空的"
-    got = _run(tmp_path, script, [{"s": LONG, "fc": "<p>" + LONG + "</p>"}], neutered, block)
+    got = _run(tmp_path, script, [{"s": LONGDUP, "fc": "<p>" + LONGDUP + "</p>"}], neutered, block)
     assert "r2-summary" in got[0], (
         "把去重判据写死成 false 之后摘要仍然不出现 ⇒ 隐藏动作不是这个判据在管的")
     print("[反空转] 写死 false ⇒ r2-summary 回到页面（判据有牙）")
@@ -162,7 +177,18 @@ def test_dedupe_guard_is_not_vacuous(tmp_path):
     # 否则上面那句 tog == has 是恒真的。
     assert SUM_LINE in block, "锚点行不在渲染段里 ⇒ 这条反证是空的（别自证干净）"
     escaped = block.replace(SUM_LINE, SUM_LINE + "} {", 1)
-    got2 = _run(tmp_path, script, [{"s": LONG, "fc": "<p>" + LONG + "</p>"}], helper, escaped)
+    got2 = _run(tmp_path, script, [{"s": LONGDUP, "fc": "<p>" + LONGDUP + "</p>"}], helper, escaped)
     assert "r2-summary" not in got2[0] and "r2-lang-toggle" in got2[0], (
         "escape 变异没造出【隐了摘要、漏了按钮】的形状 ⇒ 同步断言盯不住它：%r" % got2[0][:160])
     print("[反空转] 按钮逃出守卫 ⇒ 判据抓到（摘要消失、r2-lang-toggle 漏出）")
+
+    # 第三格反证：把无摘要那一支的 `else` 禁掉（`} else {` → `} else if(!1) {`，括号与语法都不动）。
+    # 若这样兜底卡仍然"在"，上面那条 fallback-card 断言就是空的（复评第 4 轮点名：旧形状只钉字面量，
+    # 副本里改成 `} else if(0){` 三条判据全绿）。
+    assert block.count("    } else {") == 1, (
+        "`} else {` 在渲染段里不是恰好一处 ⇒ 这条反证会打错地方：%d" % block.count("    } else {"))
+    neutered_else = block.replace("    } else {", "    } else if(!1) {", 1)
+    got3 = _run(tmp_path, script, [{"s": "", "fc": ""}], helper, neutered_else)
+    assert "fallback-card" not in got3[0], (
+        "把 else 支禁掉后兜底卡仍在 ⇒ 那条断言盯不住它：%r" % got3[0][:160])
+    print("[反空转] else 支写死不进 ⇒ 兜底卡消失（断言有牙）")

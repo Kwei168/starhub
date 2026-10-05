@@ -558,8 +558,8 @@ MUTATIONS = [
     # 只有新加的 test_summary_exit_still_strips_tags_but_never_decodes_twice 会红。
     # 锚点是函数体那两行连成的**连续**串；函数体一改就要重核锚点（本批 R64 因我改体被电池当场报"命中判据 0 条"两次 ⇒ 空靶由电池自己抓出来，不是人看出来的）。
     ("R64 出厂摘要不再剥标签（防御被我删过头）", COPIES[2],
-     u"  const t = String(x || '').replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
-     u"  const t = String(x || '');" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
+     u"  const t = unwrapCdata(String(x || '')).replace(/<[^>]+>/g, '').replace(/<[^>]*$/, '');" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
+     u"  const t = unwrapCdata(String(x || ''));" + chr(10) +     u"  return truncate(collapseRuns(t), 200);",
      u"test_summary_exit_still_strips_tags_but_never_decodes_twice"),
 
     # R65：把 shipSummary 里的折叠那步摘掉（= 我 R67 之前一次删过头的另一种形状）。
@@ -622,10 +622,29 @@ MUTATIONS = [
 
     # R72：守卫永不开火（等价于把这条修复摘掉，但保持括号与形状）。命中的是**开火形状**那一格
     # （dup 两格该没有 r2-summary）。这一条是"接线被拆"的探测器：R71 只盯得住成对，盯不住整条不干活。
-    ("R72 同段守卫条件写死成永假", COPIES[0],
-     u"      if(!_dupFt){",
-     u"      if(!_dupFt && 0){",
-     u"test_reader_hides_summary_when_fulltext_repeats_it"),]
+    # R72：拆接线探测器。原先打在 `if(!_dupFt){` 这个字面锚上 ⇒ 红是红在判据第 99 行的
+    # "守卫不存在"，而不是行为（复评第 4 轮点名）。改成在**调用处**把 fc 换成空串：
+    # 守卫字面量原样在位、判据的锚点断言全过，红只能来自"同段却没隐"这一格行为。
+    ("R72 调用处喂空 fc（守卫永不开火）", COPIES[0],
+     u"var _dupFt = _summaryDuplicatedByFulltext(a.s, a.fc);",
+     u"var _dupFt = _summaryDuplicatedByFulltext(a.s, '');",
+     u"test_reader_hides_summary_when_fulltext_repeats_it"),
+
+    # R73：把"隐摘要"与 `fetchFullArticle` 的 `fc.length>100` 门槛解耦（写成永不生效）。
+    # 这条测的是**空面板**那一格：fc 短于门槛时根本不入屏，摘要若被隐掉，那块面板就一个字都不剩。
+    # 现网今天 93 条同段全是长正文 ⇒ 只有合成边界（原始长度正好 100 / 101 / 37）能盯住它。
+    ("R73 隐摘要不再对齐 fc 入屏门槛", COPIES[0],
+     u"    if(String(fc).length <= 100) return false;",
+     u"    if(String(fc).length <= 0) return false;",
+     u"test_reader_dedupe_helper_truth_table"),
+
+    # R74：shipSummary 漏掉 unwrapCdata（= 我自己上一批"只删第二遍解码"时顺手删掉的第四件）。
+    # 少了这一步，`<[^>]+>` 会把 `<![CDATA[正文]]>` **整段当一个标签**吃掉 ⇒ 出厂空串。
+    # 现网暴露面 0（2,412 条里 `s`/`fc` 含 CDATA 记号 0 条），钉的是"与改动前逐字节同形"那句承诺。
+    ("R74 shipSummary 漏掉 unwrapCdata", COPIES[2],
+     u"  const t = unwrapCdata(String(x || ''))",
+     u"  const t = String(x || '')",
+     u"test_summary_exit_shape_equals_the_pre_batch_exit"),]
 
 
 def _stage(tmp, rel_list):

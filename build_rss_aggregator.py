@@ -5177,7 +5177,9 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
          下面 _insertFulltext(a.fc) 还会再渲染一遍 ⇒ 同一段话屏幕上出现两遍。
          已发布产物 15,632 条里这样的 191 条（1.22%），其中 151 条正文里还带图 ⇒
          不能丢正文，只能把这块重复的摘要隐掉；翻译/原文按钮在正文那块上仍然在。
-         口径只看剥标签后的可见文字逐字相等，不引入第三套正文规则。 */
+         口径只看剥标签后的可见文字逐字相等，不引入第三套正文规则。
+         频度会随第二遍解码被删掉而上升：这一批上线后现网一次读到 93/2,412（3.8%）——
+         旧出口把两侧解成不一样的形状，所以以前是漏报，不是没有。 */
       var _dupFt = _summaryDuplicatedByFulltext(a.s, a.fc);
       if(!_dupFt){
       // Auto-format summary into paragraphs
@@ -5219,6 +5221,10 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
      判据：tests/site_nav/test_reader_summary_dedupe.py */
   function _summaryDuplicatedByFulltext(sum, fc){
     if(!sum || !fc) return false;
+    /* 门槛必须与 fetchFullArticle 的 `if(a.fc&&a.fc.length>100)` 对齐（比的是**原始**长度、带标签）：
+       短于它的 fc 根本不会入屏（转去现抓或出降级提示），这时再隐掉摘要 = 整块面板一个字都不剩。
+       线上今天 93 条同段全部是长正文 ⇒ 那是数据巧合，不是代码保证，所以这条要写死。 */
+    if(String(fc).length <= 100) return false;
     var vis = function(x){ return String(x).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); };
     var a = vis(sum);
     return a.length > 24 && vis(fc) === a;

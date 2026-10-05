@@ -1548,7 +1548,7 @@ def test_summary_exit_still_strips_tags_but_never_decodes_twice(tmp_path):
         "出口又解了第二遍实体：进 %r 出 %r" % (_ENTITY_MUST_SURVIVE, got[3]))
     # ── 反空转：把 shipSummary 退回「只截断」（= 我这批刚犯过的形状），上面的断言必须真红 ──
     seg = _rss_pipeline_src()
-    old_body = (u"  const t = String(x || '').replace(/<[^>]+>/g, '')"
+    old_body = (u"  const t = unwrapCdata(String(x || '')).replace(/<[^>]+>/g, '')"
                 u".replace(/<[^>]*$/, '');" + chr(10) +
                 u"  return truncate(collapseRuns(t), 200);")
     weak_body = u"  return truncate(x || '', 200);"
@@ -1569,6 +1569,10 @@ _SHAPE_SAMPLES = [
     u'x' + chr(160) + u'y' + chr(160) + u'z',
     u'尾巴' + u' ' * 8 + u'少一句' + u' ' * 8 + u'被吃到这里',
     u'前半<a href="x">链</a>后半',
+    # CDATA 包装：改动前那条出口的**第一步**是 unwrapCdata。漏了它，`<[^>]+>` 会把
+    # `<![CDATA[正文]]>` 整段当一个标签吃掉 ⇒ 出厂空串（复评第 4 轮 2026-10-05 合成样本量到）。
+    u'<![CDATA[' + u'正文一段' + u']]>',
+    u'<![CDATA[' + u'未闭合的那半',
 ]
 _ENTITY_SAMPLE = u'&copy; 2026 版权所有'   # 已经过单趟解码的出厂输入（不是 feed 原文）
 
@@ -1609,4 +1613,5 @@ def test_summary_exit_shape_equals_the_pre_batch_exit(tmp_path):
     bad = _seg_product(tmp_path, "nocollapse",
                        "function (s) { return shipSummary(s); }", _SHAPE_SAMPLES, seg=stripped)
     assert bad != old, "摘掉 collapseRuns 后竟然仍与改动前同形 ⇒ 这条判据没牙"
-    print("[R67b] 4 形状与改动前逐字节同形；实体格保留 &copy;；摘掉折叠 ⇒ 立刻不同形")
+    print("[R67b] %d 形状与改动前逐字节同形；实体格保留 &copy;；摘掉折叠 ⇒ 立刻不同形"
+          % len(_SHAPE_SAMPLES))
