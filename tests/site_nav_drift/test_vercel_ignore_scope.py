@@ -126,7 +126,10 @@ def _covered_by_ignore(paths, ignore_file=None):
 #     而 `.vercelignore:5` 本来就排它，实测 `starhub-refresh.vercel.app/rss_api_snapshot.json` **404**
 #     ⇒ "不发"是设计，不是漏（`lib/` 那两个 require 也在 try/catch 里，但缺了会掉留存闸门与封面，
 #     所以目录这一档仍按不许排除处理）。
-HARD_NEEDS = {"rss_sources.json": "api/rss.js loadSources() 无 try/catch"}
+HARD_NEEDS = {"rss_sources.json": "api/rss.js loadSources() 无 try/catch",
+              # 2026-10-05 阅读器正文规范：api/rss.js:52 与 api/article.js:8 都是**顶层 require、无 try/catch**
+              # （不像 rss_retention/rss_cover 那样有降级），缺件就是 ?source= / ?batch= / 现抓正文三条出口当场 500。
+              "body_rules.js": "api/rss.js、api/article.js 顶层 require 无 try/catch ⇒ 缺件两接口全部 500"}
 # 有 try/catch，但缺了不是"少个优化"而是**功能掉档**：`lib/rss_retention.js` 是运行时的第二道留存闸门
 # （缺 ⇒ `?batch=`/`?source=` 现抓的旧文整批回来，2026-09-20 对抗审查 P0-2 那条），
 # `lib/rss_cover.js` 是实时封面抽取（缺 ⇒ 新文章从出生就没封面）。加载失败会打 ::warning 并在响应头留痕，

@@ -5010,7 +5010,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
     for(var j=0;j<iframes.length;j++){try{iframes[j].src='about:blank';}catch(e){}}
   }
   /* 正文内联图片的渲染层兜底：只改属性、不碰结构。
-     为什么构建期规范之外还要这一道：`/api/article` 现抓的正文压根不过构建期规范，
+     为什么构建期规范之外还要这一道：文章接口（api/article.js）现抓的正文压根不过构建期规范，
      Readability 的输出格式由站点决定，而双重转义那一类正文在运行时通道上服务端
      压根拿不回 `data-src`（见 task-4-5-report.md 的 L1）—— 只能在浏览器里救。
      referrer 复用封面那一份表（_coverRefPolicy/_coverHost/_hostInTable/_REF_HOSTS），
