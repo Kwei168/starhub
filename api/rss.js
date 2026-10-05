@@ -691,21 +691,26 @@ function parseFeed(xml, sourceKey, maxItems) {
     const link = linkOrPermaId(item, 'link', 'guid');
     const desc = extractTag(item, 'description') || '';
     const contentEncoded = extractTag(item, 'content:encoded') || '';
-    // ── 已知分叉（复评 B1+B2 的同一对缺陷里，**只剩门槛那一半**还留在这里）─────────────
+    // ── 出厂两道门槛（B1 摘要回退、B2 全文长度基准）现在都与 Python 同判，理由各见下面两段 ─────
     // B1（摘要回退正文）**本批已收**：参照物 Python 的 RSS 分支就一句
     // `desc = _strip_html(desc_raw)`（`desc_raw = _rss_text(it, "description")`），**没有回退** ⇒
     // `<description>` 缺失时出厂 `summary=''`。这里曾写 `desc || contentEncoded`，于是同一条
     // 既出厂 `s=正文前 200 字`（`.r2-summary`）又出厂 `fc=同一份正文`（`_insertFulltext`）
     // ⇒ 阅读器里同一份正文两遍。判据 = tests/site_nav/test_article_contract.py 的 RSS 语料
     // 两条（行为对账 + 反重复），坏改动登记在 tools/mut_reader.py 的靶 B04。
-    // B2（门槛比的是两个**原始标签**的长度、CDATA 包装白送 12 字符）**裁定不在本批收**：把
-    // Atom 那套"清洗后才能定门槛"搬到这儿会让 `parseFeed` 对**每条带 `<content:encoded>` 的
-    // 条目**都过一遍 `BODY`，而三条只注入 `COVER`、不注入 `BODY` 的他人线 node 切片判据
-    // （`tests/rss_cover/test_realtime_cover_js.py`、
-    // `tests/rss_source_coverage/test_dateless_source_guard.py`，本批不许改）当场红在
-    // `ReferenceError: BODY is not defined`（实测 7 条红）。要收这笔账，先让那两个 harness 注 BODY，
-    // 或与标题那一格（见 `legacyEntityCascade` 上方"已知挂起"）一起动 require 的位置。
-    const fullContent = contentEncoded.length > desc.length ? contentEncoded : '';
+    // 复评 B2（这一批收口）：门槛基准 = **清洗后的正文长度** vs **剥标签后的摘要长度**，
+    // 与参照物 Python 的 RSS 分支同判（`build_rss_aggregator.py:3297`
+    // `full_content = content_encoded if len(content_encoded) > len(desc)`，两边都是**清洗后**的值，
+    // 右边 `desc = _strip_html(desc_raw)`）。旧写法比两个**原始标签**的长度，两处不同源：
+    //   · CDATA 包装白送 12 字符 ⇒ "正文==摘要"那种形状 JS 多出 `fc`、Python 不出；
+    //   · 正文里的标签让左边虚高 ⇒ 同一 feed 里 JS 判"有全文"、Python 判"没有"。
+    // 真样本：woshipm/ai/6473625.html 原始 12,065 vs 12,157（JS 判出全文），
+    // 清洗后 7,906 vs 7,907（Python 判不出）⇒ 该不出，旧写法出了。
+    // 清洗链**只跑一次**（与 Atom 分支同一手法）：定门槛用的与出厂的必须是同一份产物，
+    // normalize 不幂等那一格见 `test_article_snapshot_channel_is_capped_but_not_normalized_again`。
+    const cleanedBody = contentEncoded ? buildFullContent(contentEncoded, link) : '';
+    const descPlain = stripHtmlKeepLines(desc).trim();
+    const fullContent = cleanedBody.length > descPlain.length ? cleanedBody : '';
     const pubDate = extractTag(item, 'pubDate') || extractTag(item, 'dc:date');
     if (title) {
       const _dt = datedOrCapture(pubDate);
@@ -720,9 +725,9 @@ function parseFeed(xml, sourceKey, maxItems) {
       };
       if (_dt.date_fallback) result.date_fallback = true;
       if (fullContent) {
-        // 顺序与构建期一致：normalize → sanitize → deepClean → cap，链住在 `buildFullContent`
-        // 一处（Atom 分支共用，理由见那个函数的注释）。
-        result.fullContent = buildFullContent(fullContent, link);
+        // 定门槛时已经过一次清洗链（normalize → sanitize → deepClean → cap），这里**不许再过一遍**：
+        // normalize 不幂等，二次清洗会改掉出厂形状（Atom 分支同一格同理）。
+        result.fullContent = fullContent;
       }
       // 提取 enclosure / media:content 中的音频视频
       const encMatch = item.match(/<enclosure[^>]*>/i);

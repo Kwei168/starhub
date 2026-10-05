@@ -27,6 +27,11 @@ JS_TEST = os.path.join(ROOT, "tests", "rss_js", "test_realtime_cover.js")
 # 变异体注入点（本仓既有约定：STARHUB_UPDATE_YML / RSS_BUILD_SRC 的第三个同族）
 API_RSS = os.environ.get("STARHUB_API_RSS") or os.path.join(ROOT, "api", "rss.js")
 LIB_COVER = os.environ.get("STARHUB_COVER_LIB") or os.path.join(ROOT, "lib", "rss_cover.js")
+# 切出来的 `parseFeed` 里，Atom 分支自 R43 起就走 `BODY.capBody`（`buildFullContent`）⇒ 跑它的
+# node 驱动必须一并 require 运行时规则表，否则任何让 RSS 分支也过清洗链的改动都会以
+# `ReferenceError: BODY is not defined` 红在这里（不是判据坏，是桩缺依赖）。
+# 与 COVER 一样走 env：变异电池的 tmp 副本靠它把 require 指到副本目录。
+LIB_BODY = os.environ.get("STARHUB_BODY_LIB") or os.path.join(ROOT, "lib", "body_rules.js")
 
 # 两边必须给同一条答案的样本。覆盖：表内精确/子域、大写 scheme、带端口与 userinfo、
 # Referer 放行域名、健康域名、相对路径与 data URI、空值。
@@ -151,10 +156,11 @@ def test_parse_feed_cover_matches_buildtime_parser(tmp_path):
     runner = tmp_path / "parse_feed_cover.js"
     runner.write_text(
         "const COVER=require(%r);\n"
+        "const BODY=require(%r);\n"
         "const s=%r;\neval(s);\n"
         "const its=parseFeed(%s,'k',50);\n"
         "process.stdout.write(JSON.stringify(its.map(function(x){return x.img||'';})));\n"
-        % (LIB_COVER, _js_pipeline_src(),
+        % (LIB_COVER, LIB_BODY, _js_pipeline_src(),
            json.dumps(xml)),
         encoding="utf-8", newline="\n")
     r = subprocess.run([node, str(runner)], capture_output=True, text=True,

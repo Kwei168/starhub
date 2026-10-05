@@ -99,6 +99,12 @@ LONGDUP = LONG * 4
 # 门槛两侧的精确一对：fc 原始长度**正好 100**（不许隐）与 **101**（可以隐）。
 P100 = "文" * 93          # + "<p></p>" = 100
 P101 = "文" * 94          # + "<p></p>" = 101
+# 前缀重复（2026-10-05 用户裁定"重复的就要隐藏"）：摘要就是正文开头那一段，后面还有别的内容。
+# 现取线上读数：7,184 条里逐字相等 97 条、**前缀且不等 71 条**（两者都 >24 字、fc 都 >100）。
+# 出口那四条会把摘要截到 200 并补省略号（U+2026），所以比前缀之前要先把尾巴摘掉，
+# 否则现抓/批量通道上的那一格永远判不出重复。
+PFX_TAIL = "而后正文里还有整段别的内容，这部分是摘要没有给出的。"
+ELL = chr(0x2026)        # 省略号：一律写码位，不贴字形
 # 渲染里那行"出厂摘要入屏"的原文（产物层，不是源文件层）：反证要拿它做锚点。
 SUM_LINE = "h+='<div class=\"r2-summary\">'+formattedSummary+'</div>';"
 
@@ -118,10 +124,12 @@ def test_reader_hides_summary_when_fulltext_repeats_it(tmp_path):
         # ↑ `fetchFullArticle` 只在 `fc.length>100` 时才把正文放上屏，等于 100 不上屏 ⇒ 摘要不许隐，
         #   否则这块面板会一个字都不剩（线上今天 93/93 都是长正文，属数据巧合，不是代码保证）
         {"s": P101, "fc": "<p>" + P101 + "</p>"},                         # 刚过门槛 ⇒ 允许隐
+        {"s": LONGDUP, "fc": "<p>" + LONGDUP + PFX_TAIL + "</p>"},         # 摘要=正文开头那一段 ⇒ 也要隐
+        {"s": LONGDUP + ELL, "fc": "<p>" + LONGDUP + PFX_TAIL + "</p>"},   # 同上，但摘要被出口截断补了省略号
     ]
     got = _run(tmp_path, script, cases, helper, block)
     has = [("r2-summary" in g) for g in got]
-    assert has == [False, False, True, True, True, True, False], (
+    assert has == [False, False, True, True, True, True, False, False, False], (
         "摘要去重的开火形状不对：%s\n%s" % (has, "\n".join(g[:120] for g in got)))
     # 守卫的边界：`原文/翻译`那一块和摘要是一对（隐一个就得隐两个），
     # 漏出半对会在卡片顶部挂一对指向空摘要的按钮；漏隐另一半则是同段又出现两遍。
@@ -146,16 +154,22 @@ def test_reader_dedupe_helper_truth_table(tmp_path):
     runner = os.path.join(str(tmp_path), "hrun.js")
     cases = [[LONGDUP, LONGDUP], [LONGDUP, LONGER], ["短句。", "短句。"], [LONGDUP, ""], ["", LONGDUP],
              [LONGDUP, "<div  >\n" + LONGDUP + "\n</div>"],
-             [P100, "<p>" + P100 + "</p>"], [P101, "<p>" + P101 + "</p>"], [LONG, "<p>" + LONG + "</p>"]]
+             [P100, "<p>" + P100 + "</p>"], [P101, "<p>" + P101 + "</p>"], [LONG, "<p>" + LONG + "</p>"],
+             [LONGDUP, LONGDUP + PFX_TAIL],                 # 前缀（摘要短、正文还有后续）
+             [LONGDUP + ELL, LONGDUP + PFX_TAIL],           # 前缀 + 出口补的省略号
+             [LONGDUP + PFX_TAIL, LONGDUP],                 # 反过来：摘要比正文长 ⇒ 不是重复
+             ["短句。", "短句。后面还有内容"],                 # ≤24 字 ⇒ 不隐
+             [P100, P100 + PFX_TAIL]]                       # 门槛比的是**正文**长度，不是摘要长度
     with open(runner, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("const f = require(%r);\nprocess.stdout.write(JSON.stringify(%s.map(c => f(c[0], c[1]))));\n"
                  % (f, repr(cases)))
     p = subprocess.run([_node(), runner], capture_output=True)
     assert p.returncode == 0, p.stderr.decode("utf-8", "replace")[:500]
     got = __import__("json").loads(p.stdout.decode("utf-8", "replace"))
-    assert got == [True, False, False, False, False, True, False, True, False], (
-        "真值表不对（等值且 fc>100=True、正文更长=False、≤24 字=False、缺一半=False、"
-        "只差标签/空白=True、fc 原始正好 100=False、fc 原始 101=True、fc 原始 37=False）：%s" % got)
+    assert got == [True, False, False, False, False, True, False, True, False,
+                   True, True, False, False, True], (
+        "真值表不对（等值/前缀且 fc>100=True、正文更长≠前缀=False、≤24 字=False、缺一半=False、"
+        "只差标签/空白=True、fc 原始 100/37=False、fc 原始 101=True、摘要比正文长=False）：%s" % got)
 
 
 def test_dedupe_guard_is_not_vacuous(tmp_path):
@@ -165,7 +179,7 @@ def test_dedupe_guard_is_not_vacuous(tmp_path):
     """
     script = _artifact_script()
     helper, block = _slice_block(script)
-    neutered = helper.replace("return a.length > 24 && vis(fc) === a;", "return false;")
+    neutered = helper.replace("return a.length > 24 && f.slice(0, a.length) === a;", "return false;")
     assert neutered != helper, "辅助函数体形状变了 ⇒ 这条反证是空的"
     got = _run(tmp_path, script, [{"s": LONGDUP, "fc": "<p>" + LONGDUP + "</p>"}], neutered, block)
     assert "r2-summary" in got[0], (

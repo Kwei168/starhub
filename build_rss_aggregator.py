@@ -5177,7 +5177,9 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
          下面 _insertFulltext(a.fc) 还会再渲染一遍 ⇒ 同一段话屏幕上出现两遍。
          已发布产物 15,632 条里这样的 191 条（1.22%），其中 151 条正文里还带图 ⇒
          不能丢正文，只能把这块重复的摘要隐掉；翻译/原文按钮在正文那块上仍然在。
-         口径只看剥标签后的可见文字逐字相等，不引入第三套正文规则。
+         口径只看剥标签后的可见文字：**逐字相等**或**正好是正文开头的前缀**都算重复
+         （出口把摘要截到 200 字会补省略号，比之前先摘掉尾巴那个 U+2026，否则现抓通道判不出来）；
+         不引入第三套正文规则。
          频度会随第二遍解码被删掉而上升：这一批上线后现网一次读到 93/2,412（3.8%）——
          旧出口把两侧解成不一样的形状，所以以前是漏报，不是没有。 */
       var _dupFt = _summaryDuplicatedByFulltext(a.s, a.fc);
@@ -5226,8 +5228,11 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
        线上今天 93 条同段全部是长正文 ⇒ 那是数据巧合，不是代码保证，所以这条要写死。 */
     if(String(fc).length <= 100) return false;
     var vis = function(x){ return String(x).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); };
-    var a = vis(sum);
-    return a.length > 24 && vis(fc) === a;
+    /* 摘掉出口截断补的那个省略号（`truncate` 到 200 字会加 U+2026），否则现抓/批量通道上
+       "摘要=正文开头"那一格永远比不中 ⇒ 用户还是读两遍。 */
+    var a = vis(sum).replace(/\\u2026+$/, '');
+    var f = vis(fc);
+    return a.length > 24 && f.slice(0, a.length) === a;
   }
 
   function formatSummary(text){

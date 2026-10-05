@@ -637,8 +637,8 @@ def _parity_diffs(tmp_path, shapes):
 def test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape(tmp_path):
     """行为对账（Atom）：JS 的 `s`/`fc` 与 Python 的 `summary`/`full_content` 逐条同判。
 
-    `_parity_diffs` 是方言无关的 —— RSS 那一半的语料等 `BODY` 注入的前置到位后接上即可
-    （登记见上方"RSS 出口那一半"那段注释）。
+    `_parity_diffs` 是方言无关的 —— RSS 那一半已在
+    `test_realtime_rss_exit_matches_python_s_and_fc_shape_by_shape` 接上同一把尺（2026-10-05 B2 收口）。
     """
     diffs = _parity_diffs(tmp_path, ATOM_PARITY_SHAPES)
     assert not diffs, "Atom 实时出口与参照物不同判 %d 处：\n%s" % (len(diffs), "\n".join(diffs))
@@ -648,9 +648,10 @@ def test_realtime_atom_exit_matches_python_s_and_fc_shape_by_shape(tmp_path):
 # 与上面 Atom 那两条同形的一对，喂的是 `<item>` + `<content:encoded>`：`parseFeed` 是**两段
 # 代码**（审查 ① 的原始事故形态就是"只修一条"），Atom 语料一条都盖不住 RSS 分支。
 # 实测读数（零网络，2026-10-05，改前）：py `summary=''` / js `s='正文一 正文二'` + 同份 `fc`。
-# **口径边界（写清楚，别当成 B2 也收了）**：这两条只比 `s` 那一格，**不比 `fc` 的存在性集合
-# 与逐字节** —— RSS 分支的 `fc` 门槛比的还是两个**原始标签**的长度（CDATA 白送 12），那半
-# 按上方登记继续挂账；把它混进来只会把"挂起"伪装成"已收"。唯一例外是
+# **口径边界**：下面这两条只比 `s` 那一格，**不比 `fc` 的存在性集合与逐字节** ——
+# `fc` 那一格由 `test_realtime_rss_exit_matches_python_s_and_fc_shape_by_shape` 负责
+# （复评 B2 于 2026-10-05 收口：RSS 门槛改成"清洗后的正文 vs 剥标签后的摘要"，
+# 靶 B05 打在它上面）。唯一例外是
 # `test_realtime_rss_exit_matches_python_summary_shape_by_shape` 末句那条
 # `full_content`/`fullContent` **都非空**的断言：它只声明"这一格两侧确实都出了正文"，
 # 好让反重复判据不是白得的，不比长度、不比字节。
@@ -687,6 +688,33 @@ RSS_NOFALLBACK_SHAPES = [
 # 这样三格比的是**同一个字符串**，不是"两侧各自截了一刀之后刚好相等"。
 for _n, _x in RSS_NOFALLBACK_SHAPES:
     assert 0 < len(re.sub(r"<[^>]+>", "", _x)) < 200, "RSS 语料 %s 超出 200 字，s 对账会失真" % _n
+
+# ── 复评 B2 收口：RSS 支的 fc 门槛也拿 `_parity_diffs` 那把尺（s 逐字 + fc 存在性 + fc 逐字节）。
+# 前提有两件：① `api/rss.js` 的 RSS 门槛从"两个**原始标签**的长度"改成"清洗后的正文 vs
+# 剥标签后的摘要"（与 Python `build_rss_aggregator.py:3297` 同判）；
+# ② 他人线 harness `tests/rss_cover/test_realtime_cover_js.py` 的 node 驱动补了 `BODY` require
+# （它以前只注入 `COVER`，任何让 RSS 支过清洗链的改动都会红在 ReferenceError，实测 7 条）。
+RSS_PARITY_SHAPES = [
+    (u"摘要短、正文长 ⇒ 两侧都出 fc", _rss_shape(u"这是摘要", u"<p>" + u"正文" * 20 + u"</p>")),
+    (u"剥标签后两侧逐字相同 ⇒ 两侧都不出", _rss_shape(u"同一句话不要出现两遍", u"同一句话不要出现两遍")),
+    (u"正文只是摘要再加一层标签 ⇒ 都不出", _rss_shape(u"摘要文字一二三", u"<p>摘要文字一二三</p>")),
+    (u"description 缺失 ⇒ 两侧 s 空、都出 fc", _rss_shape(None, u"<p>只有正文的一段话</p>")),
+    (u"清洗后正文比摘要短 ⇒ 都不出 fc", _rss_shape(u"摘要" * 12, u"<div><p>短</p></div>")),
+    (u"正文是空标签 ⇒ 都不出", _rss_shape(u"只有摘要", u"")),
+    (u"摘要有实体（两侧同圈解码）", _rss_shape(u"Tom &amp; Jerry 的摘要", u"<p>" + u"正文" * 12 + u"</p>")),
+]
+
+
+def test_realtime_rss_exit_matches_python_s_and_fc_shape_by_shape(tmp_path):
+    """行为对账（RSS 支）：与 Atom 那条共用一把尺子，把 B2 那一半也接上。
+
+    旧写法（比原始标签长度）会在第 2/3/5 格上 js 出 fc、py 不出 —— CDATA 包装白送 12 字符、
+    正文标签让左边虚高，正是"摘要与全文在阅读器里同段两遍"的上游来源之一。
+    """
+    for _n, _x in RSS_PARITY_SHAPES:
+        assert 0 < len(re.sub(r"<[^>]+>", "", _x)) < 200, "RSS fc 语料 %s 超出 200 字" % _n
+    diffs = _parity_diffs(tmp_path, RSS_PARITY_SHAPES)
+    assert not diffs, "RSS 实时出口与参照物不同判 %d 处：\n%s" % (len(diffs), "\n".join(diffs))
 
 
 def _rss_three_way(tmp_path, shapes, key_prefix):

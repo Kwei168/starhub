@@ -644,7 +644,24 @@ MUTATIONS = [
     ("R74 shipSummary 漏掉 unwrapCdata", COPIES[2],
      u"  const t = unwrapCdata(String(x || ''))",
      u"  const t = String(x || '')",
-     u"test_summary_exit_shape_equals_the_pre_batch_exit"),]
+     u"test_summary_exit_shape_equals_the_pre_batch_exit"),
+
+    # R75：只收"逐字相等"、不收"正文开头的前缀"（= 用户裁定 ① 之前那半边的形状）。
+    # 线上 7,184 条里相等 97 条、前缀且不等 71 条 ⇒ 少这一半就等于漏掉 42% 的那格症状。
+    ("R75 前缀重复不再算重复", COPIES[0],
+     u"    return a.length > 24 && f.slice(0, a.length) === a;",
+     u"    return a.length > 24 && f === a;",
+     u"test_reader_dedupe_helper_truth_table"),
+
+    # B05：RSS 支的全文门槛退回"两个**原始标签**的长度"（复评 B2 的旧判据）。
+    # 这一格的左边带 CDATA 包装与正文标签 ⇒ 比清洗后的摘要长 ⇒ js 出 fc、Python 不出，
+    # 正是"同一份正文在阅读器里两遍"的上游来源之一。语料第 2/3/5 格各咬一种形状。
+    # 注：这一格能落地的前提是他人线 harness 补了 `BODY` require（它以前只注入 COVER，
+    # 任何让 RSS 支过清洗链的改动都红在 `ReferenceError: BODY is not defined`）。
+    ("B05 RSS 门槛退回原始标签长度", COPIES[2],
+     u"    const fullContent = cleanedBody.length > descPlain.length ? cleanedBody : '';",
+     u"    const fullContent = contentEncoded.length > desc.length ? cleanedBody : '';",
+     u"test_realtime_rss_exit_matches_python_s_and_fc_shape_by_shape"),]
 
 
 def _stage(tmp, rel_list):
