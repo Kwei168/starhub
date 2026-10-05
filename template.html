@@ -1088,6 +1088,11 @@ try {
 }
 catch(e){ favs = new Set(DEFAULT_FAVS); }
 
+// 搜索结果里的「✓ 已收藏」不能只认 favs：那份存在 localStorage，换浏览器、清缓存、
+// 换域（站点产物 10-04 从 Vercel 域收口到 Pages 域，而 localStorage 按域隔离）之后标记整片消失，
+// 且用户没法恢复。"这个仓库我已经 star 过"这件事本来就在构建期数据里 ⇒ 用它兜住。
+const POOL_NAMES = new Set(DATA.map(d => d.full_name));
+
 const state = { q:'', cat:'', lang:'', star:'all', sort:'stars-desc', trendTab:'rising', sideTab:'trend', searchSort:'best-match', searchLang:'', searchQuery:'', updated:'', topic:'', sortTouched:false };
 
 // ---- 语言统计 ----
@@ -1568,7 +1573,8 @@ function renderSearchResults(j, append){
   j.items.forEach(x => {
     const row = document.createElement('div');
     row.className = 's-item';
-    const faved = favs.has(x.full_name);
+    // 「或」而不是替换：池内 = 已 star 过（换浏览器也不丢）；favs = 在本页点过心（置顶语义，保留）。
+    const faved = favs.has(x.full_name) || POOL_NAMES.has(x.full_name);
     const topics = (x.topics || []).map(t => '<span class="s-tag">' + escHtml(t) + '</span>').join('');
     row.innerHTML =
       '<div class="s-top">' +
