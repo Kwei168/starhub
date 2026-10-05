@@ -337,7 +337,7 @@ function stripTagsKeepLines(text) {
  *    `&amp;lt;script&amp;gt;alert(1)`   现 `&lt;script&gt;alert(1)`（= py）/ 旧 js 整条摘要没了
  *    `&#20998;&#25968;`                 现 `分数`（= py）                 / 旧 js 空（汉字被整枚吃掉）
  *  与 Python `html.unescape` 唯一分叉那一格：表外的命名实体（`&copy;` → py `©`）这里留字面量，
- *  两侧**都**不再把实体名吃成空串 —— 那才是本批要修的缺陷；分叉面由真语料证明今天零暴露，并被
+ *  两侧**都**不再把实体名吃成空串 —— 那才是本批要修的缺陷；分叉面按**原始 feed**普查（89 个上游源、`&名字;` 共 10 种；既往用"已解码语料"测零暴露是在空集上取读数，永远绿）；除 amp/lt/gt/quot 外真出现的 nbsp(241)/apos(31)/rsquo(21)/rarr(6)/ldquo(2)/rdquo(2)共 303 处已进 BODY 表，表外（`&copy;` 这类今天零出现）才留字面量，并被
  *  `tests/site_nav/test_body_rules_parity.py::test_corpus_named_entity_sentinel` 钉住。
  *  反例同样钉住：正文里合法存在的 `&amp;lt;img&amp;gt;`（要展示的代码字面量）解一层之后
  *  仍然是字面量，不会被激活成真标签。判据：
@@ -572,6 +572,19 @@ function toCardItem(it) {
   if (it.img) obj.img = it.img;
   return obj;
 }
+// 出厂摘要的**唯一一份**收尾（复核 P0-2）：`s` 到这里已经过**单趟**清洗
+// （实时条目走 toCardItem→cleanSummary→BODY.decodeEntities；快照条目的 s 是构建期
+// `_strip_html`/`html.unescape` 的产物）。出口**再**过一遍 `stripHtml` 就是第二趟，而那一格
+// 走的是旧顺序级联 `legacyEntityCascade` —— 它有一支 `&[a-z]+;`→空串，于是
+// `&amp;copy; 2026 版权所有` 单趟得 `&copy; 2026 版权所有`（= 构建期答案），再解一趟就被吃成
+// ` 2026 版权所有`。实测四条出口（?batch= / 快照服务 / refresh 合并 T1 / 快照 T2T3）各抄了一份
+// 这个第二遍 ⇒ 同一篇文章在两条通道显示不同。长度口径**保持原行为**（照旧封顶 200），
+// 只把第二趟解码删掉；标题那一格 `t: stripHtml(...)` 是同一族的另一处，见上方
+// `legacyEntityCascade` 的"已知挂起"，本批不动它（改了要连带动他人线 harness 的 parseFeed 口径）。
+function shipSummary(x) {
+  return truncate(x || '', 200);
+}
+
 
 // 全文出口的唯一一份清洗链（RSS 与 Atom 两条解析分支共用）。
 // **为什么必须是一个函数而不是两处各写一遍**：对抗审查 ① 实测的就是"Atom 分支自己那段
@@ -968,7 +981,7 @@ export default async function handler(req, res) {
         items: (src.items || []).map(it => ({
           t: stripHtml(it.t || ''),
           u: it.u || '#',
-          s: truncate(stripHtml(it.s || ''), 200),
+          s: shipSummary(it.s),
           d: it.d || '',
           // 与构建期快照同一键名、同一只在真值时写的形状；每源每条目都固定写 0 会白涨 payload。
           ...(it.date_fallback ? { date_fallback: 1 } : {}),
@@ -1053,7 +1066,7 @@ export default async function handler(req, res) {
           items: (src.items || []).map(item => ({
             ...item,
             t: stripHtml(item.t || ''),
-            s: truncate(stripHtml(item.s || ''), 200),
+            s: shipSummary(item.s),
           })),
         }));
         // 兜底翻译：构建时翻译失败（熔断/限流/超时）的英文标题，在快照服务时补翻
@@ -1106,7 +1119,7 @@ export default async function handler(req, res) {
         ...item,
         t: stripHtml(item.t || ''),
         t_zh: item.t_zh || '',
-        s: truncate(stripHtml(item.s || ''), 200),
+        s: shipSummary(item.s),
       })),
     })).concat(otherSources.map(src => {
       const snap = snapshotMap[src.key];
@@ -1116,7 +1129,7 @@ export default async function handler(req, res) {
         items: (snap ? snap.items : []).map(item => ({
           ...item,
           t: stripHtml(item.t || ''),
-          s: truncate(stripHtml(item.s || ''), 200),
+          s: shipSummary(item.s),
         })),
       };
     }));

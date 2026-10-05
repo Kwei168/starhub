@@ -1288,3 +1288,222 @@ def test_strip_html_split_keeps_the_old_output_shape(tmp_path):
     # 这里要钉的是"没变"，不是"等于 Python _strip_html"——后者保留换行、不做空白折叠）
     assert got == u"a b c", "stripHtml 的出厂形状变了：%r" % got
     assert kept == u"a\n\nb", "stripHtmlKeepLines 不该压换行（HN 刀靠它看行）：%r" % kept
+
+
+# ── 判据 2（复核 P0-2）：`s` 到出口只许解**一趟** ──────────────────────────────
+# 四条出厂出口（`?batch=` 格式化 / 快照服务 / refresh 合并 T1 / refresh 合并快照 T2T3）原先各抄
+# 一份 `s: truncate(stripHtml(x), 200)`。`s` 走到出口时**已经**过单趟清洗（实时条目
+# `toCardItem → cleanSummary → BODY.decodeEntities`；快照条目的 `s` 是构建期 `_strip_html` 的产物），
+# 而 `stripHtml` 走的是旧顺序级联 `legacyEntityCascade`，里面那支 `&[a-z]+;` → 空串会把**已经剩下来
+# 的字面量吃掉名字**（实测两条通道的产物因此不同判）：
+#     `&amp;copy; 2026 版权所有` → 单趟 `&copy; 2026 版权所有`（= 构建期答案）
+#                          → 第二趟 `2026 版权所有`
+# 修法是收进唯一一份 `shipSummary(x) = truncate(x || '', 200)`：**长度口径一字未改**（照旧 200 封顶
+# + 既有省略号），只是不再二次解码。**标题那一格 `t: stripHtml(...)` 本批故意没动**（它是
+# `legacyEntityCascade` 上方登记的"已知挂起"，牵动他人线 harness）⇒ 下面所有断言只碰 `s`。
+# 三条判据的分工：`test_summary_exits_decode_exactly_once` 是**行为**（真 `shipSummary` + 真出口
+# 那 4 行表达式实跑）、`test_summary_exit_wiring_is_shipsummary_not_a_second_pass` 是**接线**
+# （4 处调用 + 定义唯一 + 第二趟形状绝迹，并自带双向控制）、最后一条是**接线的反证**（删掉定义
+# 之后 node 侧必须真崩，不是 grep 崩）。
+_SNAPSHOT_ONCE = u"&copy; 2026 版权所有"        # 单趟之后、进出口之前该长这样
+_SNAPSHOT_NUMERIC = u"&#20998; 数"              # 另一格：旧级联的 `&#\d+;` → 空串
+_SNAPSHOT_DECODED_AMP = u"版权 &amp; 备注"       # 再一格：`&amp;` 是**货**，不是还没解的实体
+_SNAPSHOT_SAMPLES = [_SNAPSHOT_ONCE, _SNAPSHOT_NUMERIC, _SNAPSHOT_DECODED_AMP]
+
+
+def _ship_exit_line_specs():
+    """从 `api/rss.js` 的**请求处理区段**（`async function fetchOne(` 之后）抠出每一条 `s:` 出口。
+
+    返回 `[(整行文本, shipSummary 的那个实参), ...]`。为什么在这儿要求"每一条都是 shipSummary"：
+    只数 `s: shipSummary(` 的次数的话，把某条出口改回别的写法（`s: item.s,`）就只掉一个计数、
+    剩下的三条照样绿；这里是"先收集全部 `s:` 行、再要求它们**逐个**通过"，少一条、多一条、
+    换一种写法都会红。
+    """
+    text = _read(API_RSS)
+    cut = text.find("async function fetchOne(")
+    assert cut > 0, "找不到 async function fetchOne ⇒ 出口区段的边界变了，判据要跟着改"
+    tail = _code(text[cut:])          # `_code` 去掉注释行：注释里提一句不许把判据打红
+    lines = [ln.strip() for ln in tail.split("\n") if re.match(r"^\s*s:\s", ln)]
+    assert lines, "fetchOne 之后一条 `s:` 出口都没有 ⇒ 出厂形状整个换了"
+    out = []
+    for ln in lines:
+        m = re.match(r"^s:\s*shipSummary\((?P<arg>.+)\),$", ln)
+        assert m, ("有条出口没走 shipSummary（应当是 `s: shipSummary(<实参>),`）：%r" % ln)
+        assert m.group("arg").strip(), "shipSummary 的实参是空的：%r" % ln
+        out.append((ln, m.group("arg").strip()))
+    return out
+
+
+def _exit_line_products(tmp_path, lines, samples):
+    """把抠出来的**真出口行**在 node 里逐行求值：`{lines: [[每条样本的产物], ...]}`。
+
+    行文本来自仓库源码（与 `_rss_pipeline_src()` 同一信任级），样本一律走 JSON 文件中转，
+    不进 JS 源码 —— 能引号改写被测脚本的"实跑"不算实跑（Task 1 的 C1 同一类）。
+    """
+    spec_p = tmp_path / "ship_exit_spec.json"
+    out_p = tmp_path / "ship_exit_out.json"
+    spec_p.write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8", newline="\n")
+    runner = tmp_path / "ship_exit_product.js"
+    runner.write_text(
+        "const fs = require('fs');\n"
+        "const COVER = require(%s);\n"
+        "const BODY = require(%s);\n"
+        "const src = %s;\n"
+        "eval(src);\n"
+        "const LINES = %s;\n"
+        "const S = JSON.parse(fs.readFileSync(%s, 'utf8'));\n"
+        "const out = LINES.map(function (ln) {\n"
+        "  const f = new Function('it', 'item', 'shipSummary', 'truncate', 'stripHtml',\n"
+        "                          'return {' + ln + '}');\n"
+        "  return S.map(function (v) {\n"
+        "    return f({s: v}, {s: v}, shipSummary, truncate, stripHtml).s;\n"
+        "  });\n"
+        "});\n"
+        "fs.writeFileSync(%s, JSON.stringify(out));\n"
+        % (json.dumps(LIB_COVER.replace("\\", "/")), json.dumps(LIB_BODY.replace("\\", "/")),
+           json.dumps(_rss_pipeline_src()), json.dumps([ln.rstrip(",") for ln, _a in lines]),
+           json.dumps(str(spec_p).replace("\\", "/")), json.dumps(str(out_p).replace("\\", "/"))),
+        encoding="utf-8", newline="\n")
+    r = subprocess.run([_node(), str(runner)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", cwd=ROOT, timeout=300)
+    assert r.returncode == 0, "真出口行实跑崩了：\n%s\n%s" % (
+        (r.stdout or "")[-300:], (r.stderr or "")[-1200:])
+    got = json.loads(out_p.read_text(encoding="utf-8"))
+    assert len(got) == len(lines) and all(len(x) == len(samples) for x in got), (
+        "出口行数/样本数与产物对不上：%s" % [len(x) for x in got])
+    return got
+
+
+def _seg_product(tmp_path, tag, expr, samples, seg=None):
+    """在 node 里跑真切片（默认真 `extractTag..fetchOne` 区段），对每个样本求值 `expr`。"""
+    spec_p = tmp_path / ("ship_%s_spec.json" % tag)
+    out_p = tmp_path / ("ship_%s_out.json" % tag)
+    spec_p.write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8", newline="\n")
+    runner = tmp_path / ("ship_%s.js" % tag)
+    runner.write_text(
+        "const fs = require('fs');\n"
+        "const COVER = require(%s);\n"
+        "const BODY = require(%s);\n"
+        "const src = %s;\n"
+        "eval(src);\n"
+        "const S = JSON.parse(fs.readFileSync(%s, 'utf8'));\n"
+        "const f = %s;\n"
+        "fs.writeFileSync(%s, JSON.stringify(S.map(f)));\n"
+        % (json.dumps(LIB_COVER.replace("\\", "/")), json.dumps(LIB_BODY.replace("\\", "/")),
+           json.dumps(seg if seg is not None else _rss_pipeline_src()),
+           json.dumps(str(spec_p).replace("\\", "/")), expr,
+           json.dumps(str(out_p).replace("\\", "/"))),
+        encoding="utf-8", newline="\n")
+    r = subprocess.run([_node(), str(runner)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", cwd=ROOT, timeout=300)
+    assert r.returncode == 0, "node 跑 %s 崩了：\n%s\n%s" % (
+        tag, (r.stdout or "")[-300:], (r.stderr or "")[-1200:])
+    return json.loads(out_p.read_text(encoding="utf-8"))
+
+
+def _wiring_violations(code):
+    """判据 2 那三道**接线**闸的口径，抠成一个函数：好让"双向控制"拿同一把尺子量坏副本。"""
+    v = []
+    n = code.count("s: shipSummary(")
+    if n != 4:
+        v.append("`s: shipSummary(` 应恰好 4 处（四条出口各一处），实得 %d" % n)
+    if "s: truncate(stripHtml(" in code:
+        v.append("出口里又出现 `s: truncate(stripHtml(` —— 那是第二趟解码")
+    d = code.count("function shipSummary(")
+    if d != 1:
+        v.append("`function shipSummary(` 的定义应恰好 1 处，实得 %d ⇒ 四条出口指的是谁？" % d)
+    return v
+
+
+def test_summary_exits_decode_exactly_once(tmp_path):
+    """判据 2（行为）：出口只截断、**不再解第二遍**；长度口径照旧 200 封顶。"""
+    # ── (1) 单趟 vs 第二趟：同一份输入，两个形状必须给出**不同**答案，且单趟那个等于构建期 ──
+    once = _seg_product(tmp_path, "onepass",
+                        "function (s) { return shipSummary(BODY.decodeEntities(s)); }",
+                        [u"&amp;copy; 2026 版权所有"])[0]
+    twice = _seg_product(tmp_path, "twopass",
+                         "function (s) { return truncate(stripHtml(BODY.decodeEntities(s)), 200); }",
+                         [u"&amp;copy; 2026 版权所有"])[0]
+    build = _build_module()._strip_html(u"&amp;copy; 2026 版权所有")
+    assert u"&amp;copy;" not in once and u"&copy;" in once, (
+        "单趟那一格不对：%r（期望实体只解一层、`&copy;` 原样留着）" % once)
+    assert once == build, "出口产物与构建期分叉\n  py: %r\n js: %r" % (build, once)
+    assert u"&copy;" not in twice and twice != once, (
+        "对照那一格失效：旧的第二趟写法竟然与单趟同形（%r / %r）⇒ 输入样本不再能分辨两遍解码"
+        % (twice, once))
+    # ── (2) 长度口径不变：240 字仍然只留 200 字 + 既有省略号 ──
+    long_in = u"y" * 240
+    long_out = _seg_product(tmp_path, "cap",
+                            "function (s) { return shipSummary(s); }", [long_in])[0]
+    assert len(long_out) == 201 and long_out.endswith(u"…") and long_out[:-1] == u"y" * 200, (
+        "`shipSummary` 的截断口径变了（本批只删第二趟、不许动长度）：%d 字，尾 %r"
+        % (len(long_out), long_out[-6:]))
+    short_out = _seg_product(tmp_path, "short", "function (s) { return shipSummary(s); }",
+                             [_SNAPSHOT_ONCE])[0]
+    assert short_out == _SNAPSHOT_ONCE, "200 字以内被动了：%r" % short_out
+    # ── (3) 四条出口的**真行**逐条实跑：每条都只许截断，不许再解一遍 ──
+    lines = _ship_exit_line_specs()
+    assert len(lines) == 4, "四条出口应当抠出 4 行，实得 %d：%s" % (
+        len(lines), [ln for ln, _a in lines])
+    products = _exit_line_products(tmp_path, lines, _SNAPSHOT_SAMPLES)
+    for (ln, _arg), col in zip(lines, products):
+        for want, got in zip(_SNAPSHOT_SAMPLES, col):
+            assert got == want, ("某条出口又解了第二遍：%r\n  进 %r\n  出 %r" % (ln, want, got))
+    # ── (4) 反空转：这批样本在**旧写法**下必须确实会坏（否则 (3) 是在数空气）──
+    old = _seg_product(tmp_path, "oldshape", "function (s) { return truncate(stripHtml(s), 200); }",
+                       _SNAPSHOT_SAMPLES)
+    broke = [w for w, g in zip(_SNAPSHOT_SAMPLES, old) if g != w]
+    assert len(broke) == len(_SNAPSHOT_SAMPLES), (
+        "旧出口形状竟然不破坏任何一条样本（%s）⇒ 上面 (3) 的判别力是假的，样本要换"
+        % [w for w, g in zip(_SNAPSHOT_SAMPLES, old) if g == w])
+    print("[判据2 行为] 单趟=构建期（%r）；第二趟会吃掉 %r；4 条出口 × %d 份已解码样本逐个原样出厂；"
+          "240 字仍截到 200+省略号" % (once, twice, len(_SNAPSHOT_SAMPLES)))
+
+
+def test_summary_exit_wiring_is_shipsummary_not_a_second_pass():
+    """判据 2（接线）：四条出口真的都指到同一份 `shipSummary`，且第二趟形状绝迹。
+
+    行为那一格（上一条）量的是产物，这一条量的是"四条出口有没有各自抄一份"：本批的缺陷形状
+    就是**同一个第二遍解码被抄了四遍**，所以计数必须恰好 4，且不许残留旧写法。
+    双向控制写在这儿：两种坏改动（某条出口改回 stripHtml / 定义整个删掉）拿**同一个**
+    `_wiring_violations` 量必须红 —— 否则这条判据只是"当前源码刚好没违规"。
+    """
+    code = _code(_read(API_RSS))
+    assert _wiring_violations(code) == [], "真源码现在就违规：%s" % _wiring_violations(code)
+    # 控制 1：把某一条出口改回第二遍（= 电池靶 R63 的形状）
+    v1 = code.replace(u"s: shipSummary(it.s),", u"s: truncate(stripHtml(it.s), 200),", 1)
+    assert v1 != code, "控制 1 没打上（`?batch=` 那条出口的锚点变了）"
+    assert _wiring_violations(v1), "把一条出口改回 stripHtml 竟然不红 ⇒ 这条接线判据没牙"
+    # 控制 2：删掉 `shipSummary` 的定义（四条出口从此指向不存在的东西）
+    v2 = code.replace(u"function shipSummary(x) {", u"function _retiredShipSummary(x) {", 1)
+    assert v2 != code, "控制 2 没打上（定义的锚点变了）"
+    assert _wiring_violations(v2), "删掉 shipSummary 的定义竟然不红 ⇒ 这条接线判据没牙"
+    # 控制 3：把某一条出口整个换成不再截断的写法（计数掉到 3，第二趟也没有）
+    v3 = code.replace(u"s: shipSummary(item.s),", u"s: item.s,", 1)
+    assert v3 != code and _wiring_violations(v3), "出口少了一处 shipSummary 却不红"
+    print("[判据2 接线] `s: shipSummary(` 恰好 4 处 / 定义 1 处 / `s: truncate(stripHtml(` 0 处；"
+          "三种坏改动（退回 stripHtml、删定义、少一处接线）各自都红")
+
+
+def test_summary_exit_probe_dies_without_the_shipsummary_definition(tmp_path):
+    """判据 2（接线的反证）：删掉定义之后**实跑**必须真崩，不是只有 grep 崩。
+
+    上一条控制走的是文本口径；这条走 node —— 它证明 `shipSummary` 是出口行**运行时**指向的那个
+    东西（`ReferenceError`），也就是"接线判据不许只 grep 函数名"那半。
+    """
+    ok = _seg_product(tmp_path, "def_alive", "function (s) { return shipSummary(s); }",
+                      [_SNAPSHOT_ONCE])[0]
+    assert ok == _SNAPSHOT_ONCE, "控制那一格先红了（真切片里 shipSummary 就不通？）：%r" % ok
+    seg = _rss_pipeline_src()
+    broken = seg.replace(u"function shipSummary(x) {", u"function _retiredShipSummary(x) {", 1)
+    assert broken != seg, "删定义的锚点没打上 ⇒ 这条反证是空的"
+    raised = None
+    try:
+        _seg_product(tmp_path, "def_gone", "function (s) { return shipSummary(s); }",
+                     [_SNAPSHOT_ONCE], seg=broken)
+    except AssertionError as e:
+        raised = str(e)
+    assert raised is not None, "删掉 shipSummary 的定义，出口实跑竟然照样通过"
+    assert "shipSummary is not defined" in raised, (
+        "崩是崩了，但不是崩在那个字上（说明出口行根本没用 shipSummary）：%s" % raised[-400:])
+    print("[判据2 反证] 删定义 ⇒ node 真崩在 `shipSummary is not defined`")

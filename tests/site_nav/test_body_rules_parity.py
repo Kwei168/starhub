@@ -332,11 +332,13 @@ def _run_js(tmp_path, src, args):
     return r
 
 
-def _js(tmp_path, spec):
+def _js(tmp_path, spec, lib=None):
+    """跑**真** `lib/body_rules.js`（默认那份）；`lib=` 只给「判据自己有没有牙」那条用：
+    它要的是一份**被改坏的临时副本**，好证明同一套断言在坏实现上真的会红。"""
     spec_p = tmp_path / "_spec.json"
     out_p = tmp_path / "_out.json"
     spec_p.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
-    _run_js(tmp_path, _PROBE, [LIB.replace("\\", "/"), spec_p, out_p])
+    _run_js(tmp_path, _PROBE, [(lib or LIB).replace("\\", "/"), spec_p, out_p])
     return json.loads(out_p.read_text(encoding="utf-8"))
 
 
@@ -1045,6 +1047,11 @@ _ENT_PARITY_SAMPLES = [
     u"&amp", u"&amp;", u"&AMP;", u"&AMP", u"&lt", u"&LT;", u"&GT;", u"&gt;",
     u"&quot;", u"&QUOT;", u'&quot;引号&quot;', u"a&amp;b", u"&amp;&amp; 双与",
     u"&amp;amp;amp;", u"&amp;lt;amp;", u"&ampc;", u"&amp;#", u"&amp;#38;",
+    # ── 2026-10-05 按现取普查扩进来的 6 个名字（原始 feed 里共 303 处，旧表原样漏解）──
+    # 分号三档各留形状：nbsp 可省分号、apos/rsquo/rarr/ldquo/rdquo 必须带分号、大写都不解。
+    u"&nbsp", u"&nbsp;", u"a&nbspb", u"&NBSP;", u"&NBSP", u"结尾裸名字 &nbsp占位",
+    u"&apos;", u"&apos", u"a&aposb", u"&APOS;", u"&rsquo;", u"&rsquo", u"&rarr;",
+    u"&ldquo;引号&rdquo;", u"&rdquo", u"他说&rsquo;的&rsquo;", u"&rarr; 向右",
     # ── 两侧都该原样留着的 junk（URL 查询串是这里的主要真实形状）──
     u"&unknownthing;", u"&auto=webp", u"&format=png", u"AT&T &R&D", u"a&b&c", u"&&&&",
     u"&", u"&;", u"& ;", u"&a", u"&ab", u"&Quot;", u"&Amp;", u"A&B&C",
@@ -1072,17 +1079,19 @@ _ENT_GOLD = {
     u"AT&T &R&D": u"AT&T &R&D",
 }
 
-# §分叉 声明：表外的命名实体。R50 的裁定是「未知命名实体保持字面量（绝不删除、绝不置空）」，
+# §分叉 声明：**表外**的命名实体。R50 的裁定是「未知命名实体保持字面量（绝不删除、绝不置空）」，
 # 所以每条的期望值就是**输入本身**；同时断言参照物在这里给的是**别的**答案（否则这条声明是空的、
 # 判据会在「两侧本来就同形」的输入上假装抓到了分叉）。
+# 2026-10-05 按普查改表时收进来的一条口径：这张表里**只许留表外名**（`copy/reg/hellip/notin`）。
+# 旧版把 `&nbsp;`/`&rdquo;`/`&ldquo;` 也当"表外"写在这儿 —— 那是普查前的读数，那三个名字
+# 今天真在 89 个上游源的原始 feed 里出现（nbsp 241 / ldquo 2 / rdquo 2），已进 `_ENT_MIN`，
+# 再留在这儿就是把"两侧同解"的一格当分叉钉。它们的形状现在由 §同面 与 §矩阵 管。
 _ENT_DIVERGENT = [
     u"&copy; 2026 版权所有",
     u"版权所有 &copy; 与 &reg;",
-    u"&nbsp;占位空白",
     u"&hellip; 省略号",
-    u"&rdquo;引号&ldquo;",
     u"&notin; 数学符号",
-    u"结尾裸名字 &nbsp占位",
+    u"他说&hellip;然后走了",
 ]
 # 混合条单独写死：同面的那一格照 Python 解，表外那一格留字面量。
 _ENT_MIXED = [(u"版权 &copy; 与 &amp;amp; 折扣", u"版权 &copy; 与 &amp; 折扣")]
@@ -1097,6 +1106,7 @@ _ENT_FRAGMENTS = [
     u"&quot;", u"&QUOT", u"&#39;", u"&#39", u"&#x27;", u"&#X27", u"&#20998;", u"&#13;", u"&#0;",
     u"&#xD800;", u"&#65534;", u"&#x110000;", u"&#;", u"&#x;", u"&#0000000009;", u"&#99999999999999;",
     u"&copy;", u"&copy", u"&nbsp;", u"&hellip;", u"&notin;", u"&unknownthing;", u"&Amp;", u"&Quot;",
+    u"&nbsp", u"&NBSP;", u"&apos;", u"&apos", u"&rsquo;", u"&rarr;", u"&ldquo;", u"&rdquo;",
     u"&", u";", u"#", u"&#", u"&;", u"&ampamp;", u"&&", u"<p>", u"</p>", u'"', u"'", u"=", u"/",
     u" ", u"\t", u"\n", u"中文", u"价格", u"x", u"A", u"0", u"9", u"webp", u"=", chr(0xA0), chr(0x1F600),
 ]
@@ -1115,16 +1125,45 @@ _ENT_EXIT_SAMPLES = [
     u'<a href="?a=1&amp;b=2">链接</a>',
 ]
 
-# `lib/body_rules.js` 最小集合在 Python 侧的**镜像**：只把 R50 那一圈（预定义 5 + 数字，单趟）
-# 交给参照物自己回答。它不是第二份出厂实现（出厂只有 JS 那一份），存在的唯一理由是「随机串整条
-# 比 Python」会把 §分叉 那一格混进 §同面 当噪声。它与 Python 同形由 §同面/§穷举/§哨兵 单独钉，
-# JS 与它在**任何**输入上同形由 §同面 钉 —— 两头都在，中间就没有静默的缝。
-_ENT_NARROW_RE = re.compile(r"&#(?:[0-9]+|[xX][0-9a-fA-F]+);?"
-                            r"|&(?:amp|AMP|lt|LT|gt|GT|quot|QUOT);?")
+# ── JS 那张实体表的**同源清单**：§同面 的镜像、§矩阵（判据 1）、§哨兵 的白名单三处都从这里取，
+#    任何一处另抄一份就是第 6 个分叉源（本仓对"两边各有一份样本清单"的账）。
+# 名字集合 = 2026-10-05 现取普查（89 个上游源的**原始** feed）里 `&名字;` 出现的全部 10 种：
+#   amp / lt / gt / quot（含大写 legacy）+ nbsp(241) + apos(31) + rsquo(21) + rarr(6)
+#   + ldquo(2) + rdquo(2) ⇒ 除 legacy 那 4 个外还有 303 处，全部进表。
+# 分号规则按**实测**分三档（下面每一档的期望值都由 `html.unescape` 现场算，判据里不写死字符串）：
+#   · legacy 四个（`amp/lt/gt/quot`，含大写）无分号也解：`&amp` → `&`、`&LT ` → `< `；
+#   · `nbsp` 无分号也解（`a&nbspb` → `a\xa0b`），但大写 `&NBSP;/&NBSP` **不解**；
+#   · `apos/rsquo/rarr/ldquo/rdquo` **必须带分号**（`&apos ` 原样留着），大写一律不解。
+_ENT_LEGACY_NAMES = [u"amp", u"lt", u"gt", u"quot"]                  # 预定义 legacy 那四个
+_ENT_TABLE_NO_SEMI_NAMES = _ENT_LEGACY_NAMES + [u"nbsp"]             # 可省分号那一档
+_ENT_SEMI_ONLY_NAMES = [u"apos", u"rsquo", u"rarr", u"ldquo", u"rdquo"]  # 必须带分号那一档
+_ENT_TABLE_NAMES = _ENT_TABLE_NO_SEMI_NAMES + _ENT_SEMI_ONLY_NAMES       # 表内 10 个（矩阵行）
+# 表外对照名：89 源普查里今天零出现，JS 留字面量而 Python 会解 ⇒ 那是**已知分叉**，
+# 判据 1 把"分叉本身"钉住（不许写成等价），白名单/镜像都不许把它们算成同解。
+_ENT_OFF_TABLE_NAMES = [u"copy", u"hellip"]
+# `lib/body_rules.js` 的 `_ENT_RE` 交替支顺序（大写只给 legacy 那四个 —— 实测口径）。
+_ENT_TABLE_KEYS = ([u"amp", u"AMP", u"lt", u"LT", u"gt", u"GT", u"quot", u"QUOT"]
+                   + [u"nbsp"] + _ENT_SEMI_ONLY_NAMES)
+
+# `lib/body_rules.js` 那张表在 Python 侧的**镜像**：只把"表内那 10 个名字 + 数字/十六进制"这一圈
+# （**单趟**）交给参照物自己回答。它不是第二份出厂实现（出厂只有 JS 那一份），存在的唯一理由是
+# 「随机串整条比 Python」会把 §分叉 那一格混进 §同面 当噪声。它与 Python 同形由 §同面/§穷举/§哨兵
+# 单独钉，JS 与它在**任何**输入上同形由 §同面 钉 —— 两头都在，中间就没有静默的缝。
+_ENT_TABLE_RE = re.compile(r"&#(?:[0-9]+|[xX][0-9a-fA-F]+);?"
+                           r"|&(?:%s);?" % "|".join(_ENT_TABLE_KEYS))
 
 
 def _ent_port_mirror(s):
-    return _ENT_NARROW_RE.sub(lambda m: mod.html_mod.unescape(m.group(0)), s)
+    """按 `_ENT_TABLE_KEYS` + 分号三档**单趟**替换；期望值一律由 `html.unescape` 现算。"""
+    def _one(m):
+        tok = m.group(0)
+        if tok[1:2] == "#":
+            return mod.html_mod.unescape(tok)
+        name = tok[1:-1] if tok.endswith(";") else tok[1:]
+        if name in _ENT_SEMI_ONLY_NAMES and not tok.endswith(";"):
+            return tok                      # `&apos ` 那种：两侧都整枚原样留着
+        return mod.html_mod.unescape(tok)
+    return _ENT_TABLE_RE.sub(_one, s)
 
 
 def _ent_fuzz():
@@ -1145,7 +1184,7 @@ def test_entity_unescape_matches_python(tmp_path):
         mirror = _ent_port_mirror(s)
         if g != mirror:
             _compare_hard(mirror, g, "实体解码 %r" % s)
-        narrow_hits += len(_ENT_NARROW_RE.findall(s))
+        narrow_hits += len(_ENT_TABLE_RE.findall(s))
         if mirror != mod.html_mod.unescape(s):
             off_surface += 1                       # 越面那一格由 §分叉 单独解释，这里只计数
         else:
@@ -1250,6 +1289,148 @@ def test_entity_named_divergence_is_declared_and_eats_nothing(tmp_path):
           % (len(_ENT_DIVERGENT), len(_ENT_MIXED)))
 
 
+# ── §矩阵（判据 1）：py↔js **实体名 × 形态** 矩阵，逐条对 `html.unescape` ──────────
+# 为什么在 §同面/§穷举/§分叉 之外还要这一条：那三条的样本都是**手写清单**，而 2026-10-05
+# 这张表按现取普查扩了 6 个名字（nbsp/apos/rsquo/rarr/ldquo/rdquo）。"扩了哪几个名、
+# 每个名在哪一种形态上解/不解"这件事如果只写在实现注释里，下一个人改表时**没有任何东西**
+# 会告诉他是哪一格翻了面 —— 尤其 `&nbsp` 与 `&apos` 这种"同一名两副面孔"的。所以这里把
+# 10 个表内名与 2 个表外对照名摆在**同一批形态**上过一遍，期望值一律由 `html.unescape`
+# 当场算（判据里没有一个硬编码的期望字符串），JS 侧走真 `lib/body_rules.js` 的 `decodeEntities`。
+# 取数总体是**原始形态的字符串样本**（`&nbsp;` 这种字面 token 直接喂端口），不是 `rss_history.json`
+# 里那批**已解码**字段 —— 后者结构上看不见未解码名字，在它上面数"零暴露"恒绿（旧判据的方法学错误，
+# 账见 §哨兵 上面那块注释）。
+# 表外那两个对照名（`copy`/`hellip`）**不许**写成等价：JS 留字面量、Python 会解，那是 R50 让出来
+# 且被 §分叉/§合成 一起钉住的已知分叉 ⇒ 这条判据把"分叉本身"钉成断言（两侧都必须落在各自那一格）。
+_ENT_MATRIX_FORMS = [
+    (u"bare",       u"&%s",        False),   # 裸名收尾（可省分号那一档在这里开火）
+    (u"semi",       u"&%s;",       False),   # 带分号
+    (u"sp",         u"&%s x",      False),   # 名字后跟空格
+    (u"cjk",        u"&%s中文",     False),   # 名字后紧跟汉字
+    (u"sand",       u"a&%sb",      False),   # 前后粘字母（无分隔）
+    (u"sandsemi",   u"a&%s;b",     False),   # 带分号且粘字母
+    (u"UPPER;",     u"&%s;",       True),    # 大写 + 分号
+    (u"UPPER",      u"&%s",        True),    # 大写 + 无分号
+    (u"UPPER_sp",   u"&%s x",      True),    # 大写 + 空格
+]
+
+
+def _entity_matrix_rows():
+    rows = []
+    for n in _ENT_TABLE_NAMES:
+        for form, tpl, upper in _ENT_MATRIX_FORMS:
+            tok = tpl % (n.upper() if upper else n)
+            rows.append((n, True, form, tok))
+    for n in _ENT_OFF_TABLE_NAMES:
+        for form, tpl, upper in _ENT_MATRIX_FORMS:
+            tok = tpl % (n.upper() if upper else n)
+            rows.append((n, False, form, tok))
+    return rows
+
+
+def _entity_matrix_findings(tmp_path, lib=None):
+    """跑一次矩阵，返回 (rows, js_products, 违规清单)。违规清单为空 = 这条判据绿。
+
+    两类违规：
+      · 表内名与 `html.unescape` 不同解（扩表/删表/分号规则写错都落在这儿）；
+      · 表外名**动了内容**（旧实现把名字吃成空串那一格；契约是整枚原样留着）。
+    """
+    rows = _entity_matrix_rows()
+    assert rows, "矩阵是空的 ⇒ 判据在数空气"
+    got = _js(tmp_path, {"kind": "call", "fn": "decodeEntities",
+                         "items": [[r[3]] for r in rows]}, lib=lib)
+    assert len(got) == len(rows), "JS 返回条数与矩阵行数不等（%d vs %d）⇒ 没法逐条对齐" % (
+        len(got), len(rows))
+    bad = []
+    for (name, in_tbl, form, s), g in zip(rows, got):
+        py = mod.html_mod.unescape(s)
+        if in_tbl:
+            if g != py:
+                bad.append((name, form, s, py, g, u"表内名与 Python 不同解"))
+        elif g != s:
+            bad.append((name, form, s, py, g, u"表外名动了内容（契约=整枚留字面量）"))
+    return rows, got, bad
+
+
+def test_entity_name_matrix_matches_python_per_form(tmp_path):
+    """判据 1：10 个表内名 + 2 个表外对照名 × 9 种形态，逐条与 `html.unescape` 对账。"""
+    rows, got, bad = _entity_matrix_findings(tmp_path)
+    in_tbl = [r for r in rows if r[1]]
+    off = [r for r in rows if not r[1]]
+    assert len(in_tbl) == len(_ENT_TABLE_NAMES) * len(_ENT_MATRIX_FORMS) >= 60, (
+        "表内那一半掉了行数（%d）⇒ 名字清单或形态清单被裁过" % len(in_tbl))
+    assert len(off) >= 2 * 6, "表外对照名不足两个/形态不足六种 ⇒ 分叉那一格没被测"
+    assert not bad, "实体矩阵分叉 %d 条，前 12 条：\n%s" % (
+        len(bad), "\n".join(
+            (u"  [%s] 名=%s 形态=%s in=%r py=%r js=%r" % (k, n, f, s, py, g))
+            .encode("ascii", "backslashreplace").decode("ascii")
+            for (n, f, s, py, g, k) in bad[:12]))
+    # ── 反空转 ①：表内**每个**名字都必须至少有一种形态真被解开（否则整条判据可以在
+    #    "谁都不解这张表"的实现上绿 —— 那正是把 nbsp 从表里删掉之后的形状）。
+    dec, lit = {}, {}
+    for (name, in_tbl_i, form, s), g in zip(rows, got):
+        if not in_tbl_i:
+            continue
+        (dec if g != s else lit).setdefault(name, []).append(form)
+    never = [n for n in _ENT_TABLE_NAMES if n not in dec]
+    assert not never, "表内这些名**一种形态都没被解开**：%s ⇒ 它们已经不在 JS 表里了" % never
+    # ── 反空转 ②：分号/大写这两道边界必须**两侧都在矩阵里**（同一名既要有解的形态、
+    #    也要有不解的形态），否则"逐条比"只测到了半张脸，把规则整体放宽也没人红。
+    both_needed = [u"nbsp"] + _ENT_SEMI_ONLY_NAMES
+    missing = [n for n in both_needed if n not in lit]
+    assert not missing, "这些名只有『解』的形态进了矩阵：%s ⇒ 分号/大写那一档没有对照" % missing
+    for n in _ENT_SEMI_ONLY_NAMES:
+        assert "bare" in lit.get(n, []), "%s 的无分号形态竟然被解开了 ⇒ 与 Python 分叉" % n
+        assert "semi" in dec.get(n, []), "%s 的带分号形态竟然没被解开 ⇒ 表里没这个名字" % n
+    assert "bare" in dec.get(u"nbsp", []), "nbsp 的无分号形态没被解开（实测 Python 会解）"
+    assert "UPPER;" in lit.get(u"nbsp", []), "大写 &NBSP; 竟然被解开了（实测 Python 不解）"
+    for n in _ENT_LEGACY_NAMES:
+        assert "bare" in dec.get(n, []), "%s 的可省分号形态没被解开（legacy 口径）" % n
+        assert "UPPER" in dec.get(n, []), "%s 的大写无分号形态没被解开（legacy 口径）" % n
+        assert "UPPER;" in dec.get(n, []), "%s 的大写带分号形态没被解开（legacy 口径）" % n
+    # ── 反空转 ③：表外那两个对照名的"已知分叉"必须**非空**（Python 至少有一种形态会解）。
+    off_div = [(n, f, s, mod.html_mod.unescape(s)) for (n, it, f, s) in off
+               if mod.html_mod.unescape(s) != s]
+    assert len(off_div) >= 6, "表外对照名的分叉声明是空的（%d 条）⇒ 样本要换" % len(off_div)
+    for n in _ENT_OFF_TABLE_NAMES:
+        assert [x for x in off_div if x[0] == n], "%s 一个分叉形态都没有 ⇒ 它不该留在表外清单里" % n
+    print(u"[判据1 矩阵] 表内 %d 名 × %d 形态 = %d 条与 html.unescape 逐字节同解；表外对照 %d 条"
+          u"整枚留字面量（其中 %d 条 Python 会解 = 已知分叉），违规=0"
+          % (len(_ENT_TABLE_NAMES), len(_ENT_MATRIX_FORMS), len(in_tbl), len(off), len(off_div)))
+
+
+def test_entity_name_matrix_detects_a_dropped_table_name(tmp_path):
+    """判据 1 自己得有牙：把 nbsp 从表里删掉 / 把分号那一档放宽，矩阵**必须**变红。
+
+    这条不测实现，测的是"上面那条判据能不能抓到"：它拿真 lib 的文本在 tmp 里造两份坏副本
+    （与电池靶 R61/R62 同形状），跑同一套矩阵断言，要求违规清单非空且点到被改坏的那个名字。
+    同时保留一份**控制**：真 lib 必须违规为空，否则"变红"不代表任何事。
+    """
+    real = open(LIB, encoding="utf-8").read()
+    _rows, _got, clean = _entity_matrix_findings(tmp_path)
+    assert clean == [], "真 lib 上矩阵就有 %d 条违规 ⇒ 下面那两条『变红』是白给的" % len(clean)
+
+    # 坏副本 A（= 靶 R61）：nbsp 从 `_ENT_RE` 与 `_ENT_MIN` 两处一起删掉
+    v = re.sub(r"\|nbsp(?=\|apos)", "", real)
+    v = re.sub(r't\["nbsp"\] = [^;\n]*;[ \t]*', "", v, count=1)
+    assert v != real and "|nbsp|" not in v and 't["nbsp"]' not in v, "坏副本 A 没打上（锚点变了）"
+
+    # 坏副本 B（= 靶 R62）：`_ENT_SEMI_ONLY` 换成空集合 ⇒ `&apos` 无分号也解
+    v2 = re.sub(r"const _ENT_SEMI_ONLY = new Set\(\[[^\]]*\]\);",
+                "const _ENT_SEMI_ONLY = new Set([]);", real, count=1)
+    assert v2 != real, "坏副本 B 没打上（锚点变了）"
+
+    for i, (tag, text, victim) in enumerate(
+            ((u"R61 删 nbsp", v, u"nbsp"), (u"R62 分号档清空", v2, u"apos"))):
+        p = tmp_path / ("_lib_sabotage_%d.js" % i)
+        p.write_text(text, encoding="utf-8", newline="\n")
+        _rows, _got, bad = _entity_matrix_findings(tmp_path, lib=str(p))
+        assert bad, "%s 之后矩阵竟然全绿 ⇒ 判据 1 没牙" % tag
+        hit = sorted({n for (n, _f, _s, _py, _g, _k) in bad})
+        assert victim in hit, "%s 之后红在 %s 上，没点到被改坏的 %s ⇒ 断言抓错了格" % (
+            tag, hit, victim)
+        print(u"[判据1 有牙] %s ⇒ 矩阵红 %d 条，点名 %s" % (tag, len(bad), hit))
+
+
 # ── §哨兵：**本地可选度量**（复评 ③ 把它说清楚）──────────────────────────────
 # 它实际能证明的东西，一句话：**已解码文本里不再引入新的可解命名实体**。
 # 它**证明不了**"raw feed 里没有命名实体"—— 数的是 `rss_history.json` 的
@@ -1271,9 +1452,21 @@ SENTINEL_FIELDS = ("summary", "summary_zh", "title", "title_zh")
 # 与 CPython `html._charref` 同一条正则（写在判据里而不是取私有变量：参照物哪天换了分词，
 # 这条要在「我数的是什么」上红，而不是静默数出另一批东西）。
 _PY_CHARREF = re.compile(r"&(#[0-9]+;?|#[xX][0-9a-fA-F]+;?|[^\t\n\f <&#;]{1,32};?)")
-# 白名单 = Python 会解开、且最小集合也认得的命名 token。只能变**长**，且每加一项都要同步
-# `lib/body_rules.js` 的 `_ENT_MIN`，否则加了也解不开。
-SENTINEL_NAMED_WHITELIST = {u"&amp;", u"&gt" + chr(0xFF1B)}
+# 白名单 = **JS 表里那 10 个名字**（含大写 legacy 与全角分号手误形态）的所有 token 形状。
+# 2026-10-05 改口径：旧版这里只写死 `{&amp;, &gt；}`，那是**普查前**的读数，与扩表之后的
+# `_ENT_MIN` 直接矛盾 —— 语料里哪天再出现一个 `&quot;`（两侧现在同解）它也会红成"白名单外"，
+# 而那种红是假警报。现在这张清单由 §矩阵 用的同一份名字清单**生成**，只加不减；每加一项都要
+# 同步 `lib/body_rules.js` 的 `_ENT_RE`/`_ENT_MIN`，否则加了也解不开（那条由 §同面 的 token 级
+# 对账兜着：白名单**挡不住**分叉，第 (1) 段断言才挡得住）。
+# ⚠ 这条哨兵的取数总体是 `rss_history.json` 里**已解码**的入库字段，**不是**原始 feed 形态
+#   （raw 里的 `&nbsp;` 到这里早已是 U+00A0，这条结构上永远数不到，所以它也永远不构成
+#   "raw 层零暴露"的证据）。原始形态的取数在 §矩阵（判据 1：样本就是 `&nbsp;` 这类字面 token）；
+#   CI 必跑的暴露面闸在 §合成。这三格谁都不许替谁说话。
+SENTINEL_NAMED_WHITELIST = frozenset(
+    [u"&" + k + sfx for k in _ENT_TABLE_KEYS for sfx in (u"", u";", chr(0xFF1B))])
+assert len(_ENT_TABLE_NAMES) == 10, "表内名字清单变成 %d 个 ⇒ 普查那笔账要重跑" % len(_ENT_TABLE_NAMES)
+assert u"&amp;" in SENTINEL_NAMED_WHITELIST and u"&nbsp;" in SENTINEL_NAMED_WHITELIST, \
+    "白名单生成失败 ⇒ 上面那段同源清单没接上"
 
 
 def _corpus_history():
@@ -1370,12 +1563,23 @@ _SYN_TWIN = [
     u"&#x2014; 破折号",
     u"版权 &amp; 备注",
     u"正文里合法存在的 &amp;lt;img&amp;gt; 是要展示的代码字面量",
+    # 2026-10-05 普查进来的三个名字：出口这一格必须与构建期**同解**（旧表在原样吐它们）。
+    # nbsp 不在这一组 —— 它的产物是 U+00A0，JS 出口的 `collapseRuns` 把 `\s`（含 NBSP）压成
+    # 普通空格、Python `_strip_html` 只 `.strip()` 首尾 ⇒ 这一格的差别在**空白口径**那一笔账上
+    # （见 tests/site_nav_drift 与 memory 的 py↔js 文本原语不等价表），拿它来测实体只会让合成闸
+    # 一开跑就红在一条与实体无关的分叉上。nbsp 在出口解没解，单独由下面 `_SYN_NBSP_AT_EXIT` 钉。
+    u'&ldquo;引号&rdquo; 与 &rsquo;撇号',
+    u"向右 &rarr; 这里",
+    u"他说 &apos; 完了",
 ]
-# (输入, [(JS 该留的字面量, Python 解出来的字符), ...])
+# `&nbsp;` 在**真出口**那一格的形状：不许再是字面量（旧表在这里原样吐它，本批就是修这个）。
+_SYN_NBSP_AT_EXIT = [u"他说&nbsp;好", u"结尾&nbsp"]
+# (输入, [(JS 该留的字面量, Python 解出来的字符), ...]) —— 只许放**表外**名：今天 89 源普查里
+# 零出现、JS 留字面量而 Python 会解的那一格（= 已知分叉）。`&nbsp;`/`&ldquo;`/`&rdquo;` 旧版
+# 写在这儿，那是普查前的读数 —— 它们真在 raw feed 里出现（241/2/2 处）、已进 `_ENT_MIN`，
+# 再留在这儿等于把"两侧同解"的一格钉成分叉（本批 3 条红的就是它）。
 _SYN_OFFTABLE = [
     (u"&copy; 2026 版权所有", [(u"&copy;", u"©")]),
-    (u"他说&nbsp;好", [(u"&nbsp;", u"\u00a0")]),
-    (u"&ldquo;引号&rdquo;", [(u"&ldquo;", u"“"), (u"&rdquo;", u"”")]),
     (u"结尾 &hellip; 省略号", [(u"&hellip;", u"…")]),
 ]
 # 两侧**都**认不得的 token：谁都不许把它吃成空串（旧 `&[a-z]+;`→'' 那格）
@@ -1430,7 +1634,8 @@ def test_runtime_entity_exit_gate_runs_without_any_corpus(tmp_path):
     link = u"https://ex.test/a"
     inputs = ([([s, link]) for s in _SYN_TWIN]
               + [([s[0], link]) for s in _SYN_OFFTABLE]
-              + [([s, link]) for s in _SYN_LITERAL_BOTH])
+              + [([s, link]) for s in _SYN_LITERAL_BOTH]
+              + [([s, link]) for s in _SYN_NBSP_AT_EXIT])
     got = _exit_summary_products(tmp_path, inputs)
     n, i = 0, 0
     # (1) 已知预定义与数字引用：与参照物 `html.unescape` + 去标签**逐字节**同解
@@ -1458,9 +1663,17 @@ def test_runtime_entity_exit_gate_runs_without_any_corpus(tmp_path):
         assert g == s, "未知 token 被吃了：%r → %r" % (s, g)
         assert g == mod._strip_html(s), "两侧在未知 token 上分叉：%r py=%r js=%r" % (s, mod._strip_html(s), g)
         n += 1
-    print("[③ 合成闸] 零语料、CI 必跑：同解 %d 条 / 表外留字面量 %d 条 / 两侧都原样 %d 条，"
-          "合计 %d 条走**真出口** cleanSummary" % (len(_SYN_TWIN), len(_SYN_OFFTABLE),
-                                                  len(_SYN_LITERAL_BOTH), n))
+    # (4) `&nbsp;` 在出口这一格**不许再是字面量**：它就是 89 源普查里 241 处那个名字，
+    #     旧表原样吐它 ⇒ 判据必须为它单开一格（放进 (1) 会被空白口径那条无关分叉挡掉）。
+    for s, g in zip(_SYN_NBSP_AT_EXIT, got[i:]):
+        i += 1
+        assert u"&nbsp" not in g, "nbsp 在真出口上又没被解开：%r → %r" % (s, g)
+        assert g and g != s, "nbsp 那一格把整条摘要吃空了？%r → %r" % (s, g)
+        n += 1
+    print("[③ 合成闸] 零语料、CI 必跑：同解 %d 条 / 表外留字面量 %d 条 / 两侧都原样 %d 条 / "
+          "nbsp 出口已解 %d 条，合计 %d 条走**真出口** cleanSummary"
+          % (len(_SYN_TWIN), len(_SYN_OFFTABLE), len(_SYN_LITERAL_BOTH),
+             len(_SYN_NBSP_AT_EXIT), n))
 
 
 def test_realtime_summary_exit_shares_the_python_entity_port(tmp_path):

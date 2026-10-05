@@ -406,22 +406,22 @@ MUTATIONS = [
     #   R58 打接线（端口写对但出口没调用 = 等于没修，本仓点名的"定义了不调用"形状）。
     # 每条都点名一条**具名判据**：§同面 / §穷举 / §分叉 / §出口 四条各管一格，不许互相顶。
     ("R53 未知命名实体又被吃成空串", COPIES[1],
-     (u"  return s.replace(_ENT_RE, function (whole, digits, name) {\n"
-      u'    if (typeof name === "string") return _ENT_MIN[name];\n'
-      u"    return _decodeNumericEntity(digits);\n"
-      u"  });"),
-     (u"  return s.replace(_ENT_RE, function (whole, digits, name) {\n"
-      u'    if (typeof name === "string") return _ENT_MIN[name];\n'
-      u"    return _decodeNumericEntity(digits);\n"
-      u'  }).replace(/&[a-z]+;/gi, "");'),
+     u"    return _decodeNumericEntity(digits);\n  });",
+     u"    return _decodeNumericEntity(digits);\n  }).replace(/&[a-z]+;/gi, \"\");",
+     # 锚点 2026-10-05 换形（**语义没动**）：P0-3 扩表把回调体从
+     # `if (typeof name === "string") return _ENT_MIN[name];` 改成带 `_ENT_SEMI_ONLY` 分支的
+     # 多行体，旧锚点在现源码里出现 0 次 ⇒ 变异根本打不上（电池会报"锚点失效"）。
+     # 现在钉的是"整个 replace 之后再接一刀"这一格，坏改动与判据归宿都与换形前逐字相同。
      u"test_entity_named_divergence_is_declared_and_eats_nothing"),
     ("R54 数字实体整枚被替成空串", COPIES[1],
      u"    return _decodeNumericEntity(digits);",
      u'    return "";',
      u"test_entity_unescape_matches_python"),
     ("R55 可省分号的 legacy 形态不认了", COPIES[1],
-     u'  "&#([0-9]+|[xX][0-9a-fA-F]+);?|&(amp|AMP|lt|LT|gt|GT|quot|QUOT);?", "gu");',
-     u'  "&#([0-9]+|[xX][0-9a-fA-F]+)|&(amp|AMP|lt|LT|gt|GT|quot|QUOT)", "gu");',
+     u'  "&#([0-9]+|[xX][0-9a-fA-F]+);?|&(amp|AMP|lt|LT|gt|GT|quot|QUOT|nbsp|apos|rsquo|rarr|ldquo|rdquo);?", "gu");',
+     u'  "&#([0-9]+|[xX][0-9a-fA-F]+)|&(amp|AMP|lt|LT|gt|GT|quot|QUOT|nbsp|apos|rsquo|rarr|ldquo|rdquo)", "gu");',
+     # 锚点 2026-10-05 跟着 P0-3 的扩表换形（**语义没动**：两支的 `;?` 一起去掉）：
+     # 旧锚是扩表前那一行的字面量，在现源码里已经 0 次。
      u"test_entity_port_matches_python_on_every_known_form"),
     ("R56 坏码位表整张关掉", COPIES[1],
      u"  if ((n >= 0x01 && n <= 0x08) || n === 0x0b || (n >= 0x0e && n <= 0x1f) || n === 0x7f) return true;",
@@ -518,6 +518,38 @@ MUTATIONS = [
      u"  return stripTagsKeepLines(BODY.decodeEntities(unwrapCdata(text)));",
      u"  return stripTagsKeepLines(legacyEntityCascade(unwrapCdata(text)));",
      u"test_runtime_entity_exit_gate_runs_without_any_corpus"),
+
+    # ── 28 复核 P0-3 + P0-2（2026-10-05 两处修复各自的靶）─────────────────────
+    # P0-3 把实体表按**现取普查**（89 个上游源的原始 feed）扩了 6 个名字并按实测分了三档分号规则；
+    # P0-2 把四条出厂出口的"第二趟解码"收进唯一一份 `shipSummary`。三把靶各钉一条**新**判据：
+    #   R61 从表里删 nbsp（普查里 241 处那个）→ 判据 1 的名字×形态矩阵；
+    #   R62 把"必须带分号"那一档清空（= `&apos` 无分号也解）→ 还是判据 1；
+    #   R63 把 `?batch=` 那条出口改回第二趟解码 → 判据 2 的出口实跑。
+    # 为什么这三条必须由**新**判据抓：旧 §同面/§穷举 的样本是手写清单（没有 nbsp 的无分号形态、
+    # 也没有大写 nbsp 的对照），旧接线判据只看 `cleanSummary` 那一格（四条出口它压根没看过）。
+    # 现取变异自证（.deploy-tmp 的一次性脚本，读数抄在这儿）：干净副本上 A/B 两组都绿；
+    #   R61 → A 组（本批没动的判据，= parity 里 `entity and not name_matrix`）**也红 2 条**
+    #        （§同面、§合成）—— 因为本批按派工第 4 条把它们取数的清单换成与 `_ENT_MIN` 同源；
+    #        B 组（判据 1）红 2 条，且只有它点名到"名=nbsp 形态=bare/semi/…具体哪一格"。
+    #   R62 → A 组红 1 条（§同面），B 组红 2 条（判据 1，点名 apos/rsquo/rarr/ldquo/rdquo）。
+    #   R63 → A 组 **38 条全绿**（contract 里除本批三条之外的一条都没碰这四条出口），
+    #        B 组红 2 条（判据 2 的行为 + 接线；反证那条仍绿 = 定义还在，符合预期）。
+    ("R61 nbsp 从实体表里删掉（普查 241 处那个）", COPIES[1],
+     u"quot|QUOT|nbsp|apos",
+     u"quot|QUOT|apos",
+     # 一条靶只有一个**连续**锚点：`_ENT_RE` 与 `_ENT_MIN` 中间隔着带中文注释的两行，
+     # 把它们缝成一个锚点就是把靶子挂在注释字面上（注释一改靶就"锚点失效"，本仓 R53/R55
+     # 今天这样）。删掉正则里这一项之后 `t["nbsp"] = \xa0` 那格成为**不可达键**，行为上
+     # "nbsp 不在这张表里"与两处一起删是同一件事 —— 判据量的是行为，正好。
+     u"test_entity_name_matrix_matches_python_per_form"),
+    ("R62 「必须带分号」那一档被清空", COPIES[1],
+     u'const _ENT_SEMI_ONLY = new Set(["apos", "rsquo", "rarr", "ldquo", "rdquo"]);',
+     u'const _ENT_SEMI_ONLY = new Set([]);',
+     u"test_entity_name_matrix_matches_python_per_form"),
+    ("R63 一条出口退回第二趟解码", COPIES[2],
+     u"s: shipSummary(it.s),",
+     u"s: truncate(stripHtml(it.s), 200),",
+     u"test_summary_exits_decode_exactly_once"),
 ]
 
 
