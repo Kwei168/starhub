@@ -1933,3 +1933,33 @@ HN 模板行残留 **1,069 → 21**（余下是整字段仅剩一行的截断块
   `_translateFulltext` 整段重写 `innerHTML` ⇒ 译文视图会丢掉本批图片兜底。两条单独开批。
 - 实体口径两处不同源：`api/rss.js` 的 title 格与 `sanitizeHtml`（实测暴露面 title 0 / summary 3）。
 - 语料哨兵判据依赖本地大语料，CI 上是 skip 不是 pass ⇒ 靠行为对账 967 条 + 穷举 13,510 形态兜。
+
+### 8.31 出口件被快车道的 Pages 发布抹掉（2026-10-05 10:23，commit `6aa5ea8cfd`）
+
+**根因**：Pages 部署是**整棵制品替换**（`upload-pages-artifact path=_pages` + `deploy-pages`），
+而 `star-fast.yml` 的带回清单只有 6 项、不含 `trending_board.json`。⇒ 快车道每真发布一次，
+这个出口件就从线上消失。它自己开头那步 `Fetch trending board for inline fallback` 还是 success，
+所以症状是"生成端好好的，线上却 404"。
+
+**时间线（全部现取）**：01:45 那场 `297→303 条`真有新星、`Deploy to GitHub Pages = success`
+⇒ 之后 `/trending_board.json` 404；10:00 小时场（清单里有它）跑完 ⇒ 10:22 复测回到 200。
+也就是它会**每小时自愈一次**，所以只盯整点后的读数永远看不出问题。
+
+**为什么页面当时看不出问题（用户的截图否证了我的第一版说法，是对的）**：内联兜底仍是上一次小时场的
+20 条 rising，前端 fetch 到 404 会 `if(!r.ok) return` 静默保留内联 ⇒ 症状不是"坏"而是"不更新"。
+真正的后果分两级，第二级才吓人：`fetch_and_build.py:1253` 是 `_safe_json(trending or {})`，
+所以**下一场有新星**的快车道 curl 不到出口件 ⇒ `board={}` ⇒ 内联被写成 `{}` ⇒
+`template.html:1661` 的 `if(!items.length)` 渲染成"首次运行正在建立基线"——把 §8.27 那个
+2026-10-04 18:01 的原始空态**原地复现**。这条是读实现得到的，不是推测。
+
+**判据缺口的两层**：① 上一轮我钉的"三处发布清单"（update.yml Stage / A2 allowlist / A3 PUBLISH）
+**全是小时场侧**，第四处（快车道带回清单）不在任何判据里；② 就算把 star-fast.yml 加进去**裸搜文件名也会假绿**，
+因为 `trending_board.json` 早就出现在它的 curl 那一行。⇒ 判据改成按 Stage 步的 `for f in ... do`
+**清单段**提取再断言（`_publish_list_of`），并把 `deploy-pages` 出现的两处 workflow 全钉进去
+（全仓只有这两处会写 Pages 制品，已 grep 确认）。RED 用真实状态跑：只有快车道那条失败，
+且失败信息里打印出的正是缺它的那六项。
+
+**我报错的一处口径**：同一批里我把"快车道回填不再带 feed ⇒ 内联 `FEED=[]`"说成用户可见故障。
+用户截图是关注动态正常（`实时更新于 2026-10-05 09:59`）——`refreshFeed()` 走 EVENTS_API 在供数据，
+内联空不空看不见。⇒ 撤回该修法（曾打算把 feed 塞进出口岸件，代价实测 +8.3 KB/45 条），
+那属于为看不见的东西扩面。**报"用户看到什么"必须用页面实测，不能从代码退化推出来。**
