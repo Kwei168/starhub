@@ -592,6 +592,7 @@ def _apply_retention(sources, offsets=None, now_bj=None):
     b_le72 = b_mid = b_over = 0
     over_names = []             # 超龄条目的身份 + 两把尺的读数，见 RETENTION_OVER_NAME_CAP 与 A2 判据
     emptied = []
+    emptied_detail = []       # 与 emptied 同批：名单 + 各自最后一条的龄期 + 它拿到的窗口
     out = []
     for src in sources:
         items = src.get("items", [])
@@ -657,12 +658,26 @@ def _apply_retention(sources, offsets=None, now_bj=None):
                     })
         if items and not kept:
             emptied.append(src.get("name") or src.get("key", "?"))
+            # 名单要带"为什么"：只有名字的话，下一句必然是"这个源是停更还是被判龄砍了"，
+            # 而那只能再拿手工探针回答（10-05 定案 12 个 megaphone 源就是这么来的）。
+            # newest_age_h 与 window_h 并排放，两个读数一对照就能看出是"上游没货"
+            # （最新一条已远超窗）还是"窗口给小了"（最新一条只差一点点）。
+            _ages = [t[1] for t in dated]
+            emptied_detail.append({
+                "key": src.get("key") or "?",
+                "name": src.get("name") or "?",
+                "n_items": len(items),                    # 闸门**前**抓到几条
+                "newest_age_h": None if not _ages else round(min(_ages), 1),
+                "window_h": round(window, 1),
+                "undatable": len(items) - len(dated),     # 判不了龄因而直接丢弃的那部分
+            })
         src["items"] = kept
         after += len(kept)
         out.append(src)
     stats = {"before": before, "after": after, "dropped": before - after,
              "undatable": undatable, "widened": widened,
              "floored": floored, "capped": capped, "emptied": emptied,
+             "emptied_detail": emptied_detail,
              "sources_after": sum(1 for s in out if s.get("items")),
              "le72": b_le72, "mid": b_mid, "over": b_over, "over_names": over_names}
     print("[留存] 出口闸门：进 %d 条 → 留 %d 条（丢弃 %d，其中判不了龄 %d）"
@@ -9697,6 +9712,11 @@ def main(mode="full"):
         "sources_after_gate": _LAST_RETENTION_STATS.get("sources_after"),
         "sources_empty_after_gate": (
             len(_LAST_RETENTION_STATS["emptied"]) if _LAST_RETENTION_STATS else None),
+        # 同一个统计的**名单面**：计数只能告诉我"塌了 256 个"，问"哪 256 个、各自断供多久"
+        # 就必须回头手工探针或翻 stderr（stderr 只打前 10 个，且每场被覆盖）。
+        # 空表 [] = 这场没有一个源被清空；None = 闸门没跑到，两者必须是两个样子（沿用上面那条规矩）。
+        "sources_empty_detail": (
+            _LAST_RETENTION_STATS.get("emptied_detail") if _LAST_RETENTION_STATS else None),
         "items_after_gate": _LAST_RETENTION_STATS.get("after"),
         # 出厂龄期三段也落日志：跨构建趋势不用回去 grep stdout
         "items_le_base_h": _LAST_RETENTION_STATS.get("le72"),

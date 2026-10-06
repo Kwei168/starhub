@@ -459,7 +459,7 @@ def test_build_log_carries_post_gate_counts(clean):
     assert '_LAST_RETENTION_STATS.get("after")' in src, "items_after_gate 不再读闸后统计"
 
 
-def test_breakdown_line_reports_real_numbers(clean, capsys):
+def test_breakdown_line_pins_three_shipped_age_buckets(clean, capsys):
     """龄期分项必须是真数：验收靠构建日志，日志里的数字不能是写死的 0。
 
     线上产物试跑暴露的正是这条 —— 不分项的话「>72h 从 59% 降到 18.6%」这一堆里
@@ -478,6 +478,9 @@ def test_breakdown_line_reports_real_numbers(clean, capsys):
     assert ">168h 0 条" in line[0], line[0]
 
 
+# 2026-10-06 修同名遮蔽：这一条曾与上面那条**同名**（两个 def test_breakdown_line_reports_real_numbers），
+# Python 只绑定后定义的 ⇒ 前一条从未被 pytest 收集，且远端 main 上就是这个形状（31 个 def、实跑 30 个）。
+# 前面那条的三条断言今天照旧成立（当场重放过），所以保留并改名，两条一起跑。
 def test_breakdown_line_reports_real_numbers(clean, capsys):
     """龄期分项必须是真数：验收靠构建日志，日志里的数字不能是写死的 0。"""
     now = _now()
@@ -493,6 +496,60 @@ def test_breakdown_line_reports_real_numbers(clean, capsys):
     assert len(nums) >= 3, "分项行解析不出三段数字：%s" % line[0]
     assert nums[0] == 3, "分项第一段应是 3 条，实为 %d：%s" % (nums[0], line[0])
     assert nums[2] == 0, "超硬上限桶被保底填了旧文：%s" % line[0]
+
+
+def test_emptied_sources_are_named_with_their_own_two_rulers(clean):
+    """被闸门清空的源要**带名字进台账**，并各自附两个读数：最新一条的龄期、它拿到的窗口。
+
+    只有计数时，「这场清空 256 个源」之后必然接着问「哪 256 个」，而答案只有 stderr 前 10 名
+    （每场被覆盖）+ 一次手工探针 —— 10-05 定案 12 个 megaphone 源就是这么来的：名单只活在
+    一次性脚本里，下一场构建就又没人知道了。
+    `newest_age_h` 与 `window_h` 并排，是为了当场分开两种完全不同的病：
+      上游真没货（最新 400h、窗 72h ⇒ 交信源清单健康度跟进）
+      还是只差一点（最新 80h、窗 72h ⇒ 该看窗口算法本身）。
+    """
+    now = _now()
+    dead = _source([_item("d1", 500.0, now), _item("d2", 400.0, now)],
+                   key="src_dead", name="停更源")
+    blind = _source([_item("u1", None, now, pub=False)], key="src_blind", name="无日期源")
+    live = _source([_item("l1", 1.0, now)], key="src_live", name="正常源")
+    _, stats = mod._apply_retention([dead, blind, live], None, now)
+
+    assert stats["emptied"] == ["停更源", "无日期源"], (
+        "名单与既有 emptied 字段不同批 ⇒ 计数和名单会各说一套")
+    rows = {r["key"]: r for r in stats["emptied_detail"]}
+    assert set(rows) == {"src_dead", "src_blind"}, (
+        "名单里的源与 emptied 对不上：两个面各算各的，日志会自相矛盾")
+
+    r = rows["src_dead"]
+    assert r["name"] == "停更源" and r["n_items"] == 2
+    assert r["newest_age_h"] == 400.0, (
+        "newest_age_h 必须是**最新**那条的龄期（400h）而不是最旧（500h）："
+        "写成 max 就永远看不出这个源其实两天前刚更新过")
+    assert r["window_h"] == 72.0, "样本不足 3 条时窗口退回基线 72h，读数要跟着这个口径"
+    assert r["undatable"] == 0
+
+    b = rows["src_blind"]
+    assert b["newest_age_h"] is None and b["undatable"] == 1, (
+        "判不了龄的源必须能看出是「判不了」而不是「没货」：newest_age_h=None + undatable=1；"
+        "否则它和停更源在日志里长得一模一样，而这两件事的处置完全相反")
+
+
+def test_emptied_roster_is_written_into_build_log_not_only_counted():
+    """台账字段必须写**名单本身**，不能退化成 `len(名单)`。
+
+    与上一条是一套：上一条验「名单算得出来」，这一条验「名单送得出仓库」。
+    只验前者的话，把字段改成计数照样全绿 —— 而「计数已有、名单没有」正是这次要修的形状。
+    """
+    txt = io.open(BUILD, encoding="utf-8").read()
+    assert '"sources_empty_detail"' in txt, "闸后清空名单没落进构建日志字段"
+    assert '_LAST_RETENTION_STATS.get("emptied_detail")' in txt, (
+        "sources_empty_detail 不再读闸后统计的名单面：退化成计数等于没有观测面")
+    # None 与 [] 必须可区分（沿用那六个闸后字段同一条规矩）：
+    # [] = 这场没有一个源被清空，None = 闸门没跑到（早退/异常路径）。
+    assert '"sources_empty_detail": _LAST_RETENTION_STATS["emptied_detail"]' not in txt, (
+        "sources_empty_detail 用下标直取：闸门没跑到的那场会 KeyError 崩掉整场构建，"
+        "而不是把「这一步没跑到」如实记成 None")
 
 
 def test_breakdown_uses_shipped_date_not_judged_date(clean):
