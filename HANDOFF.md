@@ -2143,6 +2143,44 @@ Pages 发布（Vercel 侧新建可写存储），**未做**，理由见 `docs/su
 （同文件 `:201` 已有剥注释写法可抄）；跨车道 dispatch（`gh workflow run` / curl Actions REST）不在
 yml 闭集的可见面内，属 `actions: write` 之外的通道，暂按可接受处理。
 
+**回退预案（本仓 `git push` 不可用 ⇒ `git revert` 推不出去，那句"revert 单提交即可"是不成立的，作废）**
+- 基线：P0 之前远端 tip = `1f9349d`；P0 落地 = `0602c15b8e`（作者 `Kwei168@users.noreply.github.com`）；本地镜像 = `aef73b0`。
+- 回退动作 = 用 `tools/data_api_push.py` 把下面 9 个路径推回基线 blob（**已逐个核过 9/9 存在**，
+  取法 `gh api repos/Kwei168/starhub/git/trees/1f9349d…?recursive=1`）：
+
+  | 路径 | 基线 blob |
+  |---|---|
+  | `.github/workflows/star-fast.yml` | `3d3b35ce50` |
+  | `fast_refresh.py` | `45f169bce0` |
+  | `tests/site_nav/test_star_attention_bar.py` | `a00d7f207b` |
+  | `tests/site_nav_drift/test_star_fast_wiring.py` | `a7017df6ff` |
+  | `tests/site_nav_drift/test_trending_board_injection.py` | `bfbf7c5570` |
+  | `tests/site_nav_drift/test_fast_refresh.py` | `c3c695bba0` |
+  | `tools/mut_attention.py` | `4fb1f17e15` |
+  | `tools/mut_push_retry.py` | `e90db19776` |
+  | `HANDOFF.md` | `d1cf059872` |
+
+- **必须整批回退，不许挑**：只回退 `star-fast.yml`（把发布权放回去）会撞上本批新写的
+  `test_fast_lane_has_no_publish_authority` ⇒ A3 红；只回退判据不回退 workflow 则失去防线。
+  这 9 个路径是一个原子单元（workflow + 它的产物生成端 + 钉它的全部判据 + 两个电池）。
+- 回退窗口：`data_api_push` 自带构建窗口守门与生产验证闸（90 分钟新鲜度），过期先跑
+  `tools/prod_verify.py` 再推；**不要用 `--allow-running`**，它连生产验证闸一起绕。
+
+**CI 侧生效证据（推送后 2 分钟现取，不必等小时场）**
+run `37587752566`（`workflow_dispatch`，`head_sha=0602c15b8e`，completed/**success**）的步骤名单：
+`Set up job → Checkout → Setup Python → Quality gate syntax → Fast refresh →
+Commit star state if changed → Mark the run red(skipped)`——**Stage/Upload/Deploy Pages 三步已消失**，
+而保留的 `Commit star state` 仍 success ⇒ 摘掉 `pages: write`+`id-token: write` 没有引发权限错
+（独立印证了"余下步骤零 OIDC 依赖"那条判断）。对照：它前面两场
+（`37586213367`、`37584737676`）都还带着那三步。
+另 `compare 0602c15b8e...b10b9e07` = ahead_by 1 ⇒ 15:31 那场 fast refresh 叠在我提交之后，没被回滚。
+
+**尚未成立的两条（成立之前别把 P0 当"已完成"）**
+1. A2/A3 判据在 **ubuntu** 上的结果：只有 update.yml 跑那两道闸（star-fast 只跑 `py_compile`），
+   要等下一场小时场。A2 是 blocking，判据若在那边红 = 整场不发布，本地 721/298 全绿不能替代它。
+2. 线上 `rss-data-1..N-1.js` 恢复 200，**且此后连续两场 star-fast 之后仍是 200**——
+   后者才是"不再被抹"的判据；只看到恢复不算（小时场本来就会恢复它，18 分 42 秒后又被抹）。
+
 **本地复跑读数（改这块必须重跑的）**：gate A 语法 OK；**A2 完整 `:103` 那条命令 = 721 passed**；
 `tests/site_nav/ + tests/site_nav_drift/` 合跑 = 298 passed（基线 301 − 删掉的 3 条）；
 `tests/daily_insight/` = 425 passed；`mut_attention` 9/9 全挡；`mut_push_retry` 6/6 全挡 + 对照组 3 passed；
