@@ -146,8 +146,16 @@ def _call_blocks(src, name):
     return out
 
 
-def test_both_render_exits_inject_attention():
-    """主链与快车道共用 build_index_html ⇒ 每一处调用都必须传 attention，缺一处就静默不一致。"""
+def test_index_html_has_exactly_one_producer():
+    """首页 HTML 的唯一产地是小时场（2026-10-07 P0 摘掉快车道的 HTML 通路）。
+
+    两半都要钉，缺一半就是假绿：
+    - 正向：主链每一处 build_index_html 调用都必须传 attention_html=，漏一处那一版页面缺提醒条；
+    - 反向：fast_refresh.py 里**不许再出现** build_index_html 调用点。只钉正向的话，
+      谁把 HTML 生成加回快车道都一路绿——而 Pages 是整棵制品替换，两个 HTML 版本会互相
+      覆盖成"半新半旧"（本次事故的形状）。旧版这条叫 test_both_render_exits_inject_attention，
+      它要求两处都存在调用点，前提已随 P0 消失。
+    """
     src = io.open(os.path.join(ROOT, "fetch_and_build.py"), encoding="utf-8").read()
     fast = io.open(os.path.join(ROOT, "fast_refresh.py"), encoding="utf-8").read()
     tpl = io.open(os.path.join(ROOT, "template.html"), encoding="utf-8").read()
@@ -156,12 +164,10 @@ def test_both_render_exits_inject_attention():
     assert main_calls, "主链里找不到 build_index_html 的调用点"
     assert all("attention_html=" in b for b in main_calls), \
         "主链有调用没传 attention_html ⇒ 那一版页面会缺提醒条"
-    # 注释里提一次不算传参：先剔掉 # 开头行再找调用点
+    # 注释里提一次不算代码：先剔掉 # 开头行再找调用点（本文件曾因这个坑写下这条口径）
     fast_code = "\n".join(l for l in fast.splitlines() if not l.strip().startswith("#"))
-    fast_calls = _call_blocks(fast_code, "build_index_html")
-    assert fast_calls, "快车道里找不到 build_index_html 的调用点"
-    assert all("attention_html=" in b for b in fast_calls), \
-        "快车道没传 attention_html ⇒ 有新星那场生成的页面会缺提醒条"
+    assert not _call_blocks(fast_code, "build_index_html"), \
+        "快车道又长出 build_index_html 调用点 ⇒ 站点出现第二个 HTML 版本，整棵替换会互相覆盖"
 
 
 def test_empty_live_set_renders_nothing():

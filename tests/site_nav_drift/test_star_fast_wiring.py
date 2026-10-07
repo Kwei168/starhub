@@ -1,15 +1,23 @@
 # -*- coding: utf-8 -*-
 """T4 快车道 workflow 判据（A3 advisory）。
 
-架构原则（用户裁决 2026-10-03）：功能解耦——star 车道是独立功能单元，
-不与 RSS 深度捆绑，不引入新的无限膨胀源。本文件钉住：
+架构原则（用户裁决 2026-10-03 解耦；2026-10-07 P0 把裁决执行到底）：star 车道只做
+"拉 star → 分类 → 提交状态"，**不持有任何 Pages 发布能力**。本文件钉住：
 - 独立 concurrency 组（绝不取消小时场 starhub-update）；
 - */15 schedule（cron-job.org mode=star 为主力的兜底）；
-- if-no-files-found: error（§8.15 空制品绿发布教训）；
-- 解耦红线：不引用 rss-data-1.js（已退役的 55MB 分块机制）；
-- 制品不变量：index.html 是唯一硬必在项，其余入口带回 404 容忍（下架不拖死车道）；
-- fast_refresh 被 GITHUB_TOKEN 注入调用；deploy 依赖 upload outcome（残缺制品防线）。
-文本断言（不引 YAML 依赖）。"""
+- 发布权为零：permissions 与 uses 两个正向闭集都不许出现发布通道（见
+  test_fast_lane_has_no_publish_authority 的注释——为什么不用负字面量清单）；
+- fast_refresh 被 GITHUB_TOKEN 注入调用；
+- 撞车重试的**行为**判据（实跑 shell，见文件后半）。
+
+2026-10-07 删掉的三条：test_upload_rejects_empty_artifact、
+test_index_html_is_the_only_hard_requirement、test_upload_depends_on_publish_flag，
+以及共犯判据 test_decoupling_no_retired_rss_chunks——它们钉的 Stage/Upload/Deploy 三步
+与那份"带回清单"已整体不存在。其中最后一条尤其要记：它明令 rss-data-1.js 不得出现在
+本车道，把"退出 git 提交"误当成"退出站点分发"，于是任何人想给闭集清单加回 chunk 都会
+被打红——事故的认知根源被它固化了整整四天。
+文本断言（不引 YAML 依赖：本仓 tests/ 下无 conftest，且 gate A 的 compileall 会先于
+依赖安装崩在收集阶段）。"""
 import os
 import re
 
@@ -38,53 +46,79 @@ def test_concurrency_group_is_independent():
     assert m.group(1) != "starhub-update"
 
 
-def test_upload_rejects_empty_artifact():
-    yml = _wf_text()
-    assert "if-no-files-found: error" in yml
-    assert re.search(r"steps\.pages_upload\.outcome == 'success'", yml), "deploy 必须依赖 upload outcome"
+def _code_only(txt):
+    """剔掉整行注释——判据要读行为，不能读关键词。
+
+    就地写而不是从 test_trending_board_injection 复用：本仓 tests/ 下没有 conftest，
+    跨模块 import 在 tools/mut_push_retry.py 的临时副本里会 ImportError（它只 copy
+    yml + 本文件），而电池会把 ImportError 误报成"判据不合格"。
+    """
+    return "\n".join(l for l in txt.splitlines() if not l.strip().startswith("#"))
 
 
-def test_decoupling_no_retired_rss_chunks():
-    yml = _wf_text()
-    assert "rss-data-1.js" not in yml, "rss-data-1.js（55MB 分块）已退役，快车道不得引用"
-    # rss-data-0.js 只允许出现在"带回清单"（404 容忍语义），不许是必点名硬失败
-    must_lines = [l for l in yml.splitlines() if "for must in" in l or "硬必在" in l]
-    for line in must_lines:
-        assert "rss-data" not in line, "带回清单之外的 rss-data 引用都会把退役机制重新绑回 star 车道"
+# permissions: / uses: 的**两种 YAML 写法**都要能被数出来。flow 风格（`permissions: {a: write}`、
+# `- {name: Publish, uses: actions/deploy-pages@v4}`）不会展开成块，下面那些 block 正则一条都抓不到
+# ⇒ 键集合退化成空集或合法子集，判据"全绿"而发布权已经回来了（2026-10-07 对抗审查实测命中）。
+# 所以判据第一步是钉"声明数 == 抓取数"，把解析形状本身也变成被检对象。
+_PERM_BLOCK = re.compile(r"^([ \t]*)permissions:[ \t]*\n((?:[ \t]+\w+:[^\n]*\n?)+)", re.M)
+_PERM_DECL = re.compile(r"^[ \t]*permissions:", re.M)
+_USES_BLOCK = re.compile(r"^[ \t]*uses:[ \t]*([^\s#]+)", re.M)
+_USES_DECL = re.compile(r"\buses:", re.M)
 
 
-def test_index_html_is_the_only_hard_requirement():
-    """无新星 = fast_refresh 零写入 = 工作区无 index.html——这是【正常路径】，
-    必须以 publish=false 干净跳过发布（线上保持上一版制品），而不是 cp 报错 +
-    continue-on-error 吞一场红字（2026-10-04 用户在 Actions 看到的每 15 分钟噪音）。"""
-    yml = _wf_text()
-    stage = yml.split("Stage star page over live site", 1)[1]
-    # 缺 index.html 的路径：先存在性检查（不许 cp 先炸）、notice 语义、置 publish=false、exit 0
-    assert re.search(r"\[ ! -s index.html \]", stage), "必须先做存在性检查，不许让 cp 当探测员（set -e 下 cp 先炸）"
-    assert "::notice::" in stage and "publish=false" in stage, "无新星必须 notice + publish=false 干净跳过"
-    assert "continue-on-error: true" not in stage, "不再需要兜底吞错——缺文件走正常 false 路径，真缺陷应当场红"
-    # 带回文件失败是 warning（下架容忍），不是 error
-    assert re.search(r'::warning::线上无 \$f', stage), "带回失败必须走 warning（下架不拖死车道）"
-    for f in ("ai-daily.html", "rss-aggregator.html", "daily-insight-history.html"):
-        assert f in stage, "入口页带回清单缺 %s（下架语义覆盖不了它了）" % f
+def _perm_keys(txt):
+    keys = set()
+    for _indent, body in _PERM_BLOCK.findall(txt):
+        for line in body.splitlines():
+            m = re.match(r"[ \t]*([A-Za-z_-]+):", line)
+            if m:
+                keys.add(m.group(1))
+    return keys
 
 
-def test_upload_depends_on_publish_flag():
-    """upload 只在 stage 真产出时跑（publish=true 门），deploy 依旧依赖 upload outcome——
-    双闸保住 §8.15「空制品绿发布抹平站点」的红线。"""
-    yml = _wf_text()
-    upload = yml.split("Upload Pages artifact", 1)[1].split("Deploy to GitHub Pages", 1)[0]
-    assert "steps.stage.outputs.publish == 'true'" in upload, "upload 必须被 publish 标志门住"
-    assert "if-no-files-found: error" in yml, "空制品防线不撤"
-    deploy = yml.split("Deploy to GitHub Pages", 1)[1].split("Mark the run red", 1)[0]
-    assert "steps.pages_upload.outcome == 'success'" in deploy, "deploy 必须依赖 upload outcome"
+def _action_names(txt):
+    """所有**块风格** `uses:` 引用的 action 名（去掉 @版本后缀）。"""
+    return {u.split("@")[0] for u in _USES_BLOCK.findall(txt)}
+
+
+def test_fast_lane_has_no_publish_authority():
+    """P0 红线：本车道不得持有任何发布能力。钉两个**正向闭集**，不钉负字面量。
+
+    为什么不写"不含 upload-pages-artifact / deploy-pages / _pages / publish=" 四条：
+    换成别的 action（peaceiris/actions-gh-pages）或改走 curl 打 Pages 部署 API，负断言全部
+    照样绿，而站点照样被整棵替换抹掉。本仓已经在"用闭集表达开集"这条路上摔过三次
+    （lib/+api/ 10-02、trending_board 10-05、rss-data-1+ 10-07），不再第四次。
+    ① permissions 键集合恰好 == {contents}：没有 pages / id-token，连调部署 API 的
+       凭据通道都不存在（workflow/job/step 三级都收，防"缩进一层躲过检查"）；
+    ② uses: 引用的 action 集合 ⊆ {checkout, setup-python}，且**必须非空**——
+       空集配闭集判据等于恒真，那是本仓点名过的假绿形状；
+    ③ 先钉形状：permissions / uses 的声明数必须等于块正则抓取数，否则 flow 风格写法正在
+       绕过上面两个闭集（②的洞实测能塞进一整条 deploy-pages 步而全绿）。
+    """
+    code = _code_only(_wf_text())
+    n_perm, got_perm = len(_PERM_DECL.findall(code)), len(_PERM_BLOCK.findall(code))
+    assert n_perm == got_perm, \
+        "%d 处 permissions 声明只解析到 %d 处 ⇒ 有 flow 风格写法绕过了闭集检查" % (n_perm, got_perm)
+    n_uses, got_uses = len(_USES_DECL.findall(code)), len(_USES_BLOCK.findall(code))
+    assert n_uses == got_uses, \
+        "%d 处 uses: 只解析到 %d 处 ⇒ 有 flow 风格条目（- {name: …, uses: …}）绕过了闭集检查" % (n_uses, got_uses)
+    keys = _perm_keys(code)
+    assert keys == {"contents"}, \
+        "star-fast 的 permissions 键集合不是 {{contents}} 而是 %s ⇒ 多出来的每一项都可能是一条发布通道" % sorted(keys)
+    used = _action_names(code)
+    assert used, "一个 uses: 都没抓到 ⇒ 本判据在空转（锚点或缩进形状变了）"
+    allowed = {"actions/checkout", "actions/setup-python"}
+    assert used <= allowed, \
+        "star-fast 引用了发布类 action：%s（本车道只许用 checkout/setup-python）" % sorted(used - allowed)
+    assert "rss-data" not in code, \
+        "star-fast.yml 的代码区出现 rss-data 引用：阅读器分块由 update.yml 的工作树 glob 发布，本车道碰它就等于重新绑回双写者"
 
 
 def test_fast_refresh_called_with_token():
     yml = _wf_text()
     assert "python fast_refresh.py" in yml
     m = re.search(r"Fast refresh.*?env:.*?GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}", yml, re.S)
-    assert m, "fast_refresh 必须带 GITHUB_TOKEN（匿名限流=旧页静默上线的雷）"
+    assert m, "fast_refresh 必须带 GITHUB_TOKEN（匿名限流=拉不全新星，本场分类结果直接丢）"
 
 
 def test_timeout_cap_present():
@@ -107,22 +141,20 @@ def test_commit_step_adds_only_tracked_state_files():
     """descriptions_zh.json 已进 starhub-state 缓存家族（.gitignore + 出 git 树）——
     star-fast 的 git add 还按旧"三件套"清单 ⇒ set -e 下当场红，且新星场的分类结果
     提交不出去 ⇒ 每 15 分钟循环炸（下一场重新检测同一新星再炸，白烧 LLM）。
-    2026-10-04 03:0x 实锤。钉：add 清单只许仍被跟踪的两个状态文件，
-    且任何 .gitignore 排除的名字不得出现（泛化守卫，防下一批摘名再犯）。"""
+    2026-10-04 03:0x 实锤。钉法用**集合相等**而不是"必须包含 + 不许包含"两条：后者是开集写法，
+    实测把 add 改成 `git add -A` 之后 all_added 只剩一个 "-A"、违规项为空 ⇒ 判据全绿，
+    而手册的"禁 add -A"这条硬规恰恰是它该拦的形态。闭集（相等）一次覆盖三种越界。"""
     yml = _wf_text()
-    ign = open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read()
-    commit = yml.split("Commit star state if changed", 1)[1].split("- name: Stage star page", 1)[0]
-    all_added = " ".join(re.findall(r"git add (.+)", commit))
-    assert "known_categories.json" in all_added and "known_notes.json" in all_added, \
-        "两个仍被跟踪的状态文件必须在 add 清单"
-    assert "descriptions_zh.json" not in all_added, "descriptions_zh.json 已出 git 树，add 它必红"
-    ignored = {l.strip() for l in ign.splitlines() if l.strip() and not l.strip().startswith("#")}
-    for path in re.findall(r"[\w./-]+\.\w+", all_added):
-        assert path not in ignored, "%s 在 .gitignore 里，不得出现在 star-fast 的 add 清单" % path
+    commit = _step_body(yml, COMMIT_STEP_MARK)
+    added = set()
+    for line in re.findall(r"git add (.+)", commit):
+        added.update(line.split())
+    assert added == {"known_categories.json", "known_notes.json"}, \
+        "star-fast 的 add 面必须恰好是这两个状态文件，实际是 %s（出现 -A / . / 第三个名字都算越界）" % sorted(added)
 
 
 # ── 撞车重试的**行为**判据：读文本只证明"写了"，跑一遍才证明"跑得通" ──────────
-# 为什么必须实跑：Commit 步的放弃分支是 `|| echo warning`（放弃优于挡发布），所以它坏成
+# 为什么必须实跑：Commit 步的放弃分支是 `|| echo warning`（放弃优于挡住本步提交），所以它坏成
 # "从没重试过"或"撞车即崩"都不会让整场变红——文本对了不代表 fetch 的 refspec、merge 的 --no-edit、
 # 二次 push 的目标分支任何一处写错都能让"重试"形同不存在而全程静默。
 # 这里在临时目录里建本地裸仓当远端，全程不碰网络、不碰 GitHub。
@@ -131,10 +163,22 @@ _BOT = ("github-actions[bot]", "41898282+github-actions[bot]@users.noreply.githu
 _ME = ("Kwei168", "83650072+Kwei168@users.noreply.github.com")
 
 
+def _step_body(txt, step_mark):
+    """取某步骤从名字起、到**下一个** `- name:` 之前的正文。
+
+    旧写法是 split(右锚步骤名)，右锚写死成 "Stage star page"——2026-10-07 P0 删掉 Stage 步之后，
+    三条行为判据会一起 IndexError，看起来像"判据挂了"其实是锚点没了。改用"下一个 - name:"
+    当边界，相邻步骤增删都不炸；找不到边界时明确报"边界没了"，不静默返回全文。
+    """
+    i = txt.index(step_mark)
+    j = txt.find("\n      - name:", i + len(step_mark))
+    assert j > i, "找不到 %r 之后的下一个步骤边界：本判据的右锚失效了" % step_mark
+    return txt[i:j]
+
+
 def _commit_shell(tmp_path):
     """抽出 Commit 步的 run 正文，去掉 YAML block scalar 的公共缩进后落成可执行脚本。"""
-    yml = _wf_text()
-    seg = yml.split(COMMIT_STEP_MARK, 1)[1].split("- name: Stage star page", 1)[0]
+    seg = _step_body(_wf_text(), COMMIT_STEP_MARK)
     lines = seg.split("run: |", 1)[1].rstrip("\n").splitlines()
     ind = min(len(l) - len(l.lstrip()) for l in lines if l.strip())
     sh = tmp_path / "commit_step.sh"
@@ -226,12 +270,12 @@ def test_star_fast_lands_after_a_clean_collision(tmp_path):
     _g(work, "fetch", "-q", "origin", "main", "--depth=50")
     assert "b/new" in _g(work, "show", "origin/main:known_categories.json"), (
         "远端分类表里没有本场新星 ⇒ 结果没落库，下一场会重新 diff 出来再烧一次 LLM")
-    assert "changed=" in gh, "$GITHUB_OUTPUT 必须写 changed 信号，否则 Stage 步只能靠猜"
+    assert "changed=" in gh, "$GITHUB_OUTPUT 必须写 changed 信号：workflow 内已无下游（Stage 步随 P0 删除），它是本步「提交/放弃」唯一的可观测出口，也是这三条行为判据的断言目标"
 
 
 def test_star_fast_survives_a_merge_conflict(tmp_path):
     """别人改的是同一个 known_categories.json ⇒ 合并必冲突：这一步必须零退出并留下可读警告。
-    放弃优于挡发布，但绝不能把每 15 分钟一场变成连片红（§8.24 那类吓人的红错正是这么长出来的）。"""
+    放弃优于挡住本步提交，但绝不能把每 15 分钟一场变成连片红（§8.24 那类吓人的红错正是这么长出来的）。"""
     _need_bash()
     sh = _commit_shell(tmp_path)
     work = _stage(tmp_path, "known_categories.json", '{"a/one": "agent", "c/other": "info"}\n')

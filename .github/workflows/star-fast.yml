@@ -2,12 +2,22 @@ name: Star Fast Refresh
 
 # 15 分钟新星快车道（SPEC 2026-10-02 §4-T3/T4）。
 #
-# ── 架构原则（用户裁决 2026-10-03）：功能解耦 ─────────────────────────────
-# star 页是独立功能单元：本 workflow 只产出/发布 index.html，
-# 不依赖 RSS 的任何数据文件、缓存或构建产物（rss-data-*.js 已退役，永不引用）。
-# 不变量：发布后站点 = 发布前线上现状 + 新 index.html —— 绝不比线上少，
-# 也不替任何其他功能做主。其他功能（RSS/晨报/洞察）单独部署、单独下架，
-# 均不影响本车道；本车道对它们的唯一动作是「线上有就原样带回，没有就跳过」。
+# ── 架构原则（用户裁决 2026-10-03 功能解耦；2026-10-07 P0 把裁决执行到底）──────
+# 本车道只做 star 这一件事：拉 star → 分类/点评/翻译 → 把状态提交回库。
+# **不产出、不发布任何 HTML。** 站点内容的唯一通路是 update.yml。
+#
+# 为什么必须这样：Pages 部署是**整棵制品替换**，不是增量合并。一条要发布 1 个字的车道，
+# 被迫把整站所有文件重放一遍；它那份清单只能列"作者当时想到的名字"，而站点里有开集产物
+# （rss-data-1..N.js，N 随数据量浮动）⇒ 永远列不全。2026-10-07 实测：本车道那份带回清单是
+# 7 个硬编码名字 + index.html = **8 文件制品**，不含 rss-data-1+；同一天小时场的制品是
+# **15 文件**（含 chunk1–6，各 5.9–7.7MB）。本车道每真发布一次就把阅读器后台数据从线上
+# 抹掉一次：chunk1 于 05:28:25 随小时场复活，**18 分 42 秒后**被 05:45 那场本车道抹回 404。
+# 同类缺陷此前已按"往闭集表加一个名字"补过两次（lib/+api/ 10-02、trending_board 10-05），
+# 都复发了——加名字是闭集表达开集，只有取消本车道的发布权才是结构性收口。
+#
+# 代价（明写，不粉饰）：新星上线从 ≤15 分钟回落到 ≤1 小时（等下一场小时场）。
+# 实测本车道 96% 场次是空转（fast 提交 3.9 次/天 vs 上限 96 次/天），买回的只有每天约
+# 4 个事件提前 ≤45 分钟，付出的是阅读器每天约 2 小时只剩首屏 51 个信源。
 #
 # 触发：cron-job.org 每 15 分钟 POST /api/refresh?mode=star（主力，§7.1 schedule 漂移不可信）；
 # GitHub schedule 兜底。mode=star 由 api/refresh.js 分流到本 workflow。
@@ -18,9 +28,9 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write   # star 功能私有状态（known_categories/known_notes/descriptions_zh）有新星时提交
-  pages: write
-  id-token: write
+  contents: write   # star 功能私有状态（known_categories/known_notes）有新星时提交
+                    # 2026-10-07 P0：pages/id-token 两条已摘——本车道不再发布，留着就是
+                    # 一条没人用但随时可以捅穿站点的能力面（判据钉 permissions 键集合 == {contents}）
 
 concurrency:
   group: starhub-fast   # 独立于 starhub-update：快车道绝不取消小时场
@@ -29,12 +39,11 @@ concurrency:
 jobs:
   fast:
     runs-on: ubuntu-latest
-    timeout-minutes: 12   # 超 12 分钟即失去意义（下一场 15 分钟就来）
+    timeout-minutes: 12   # 超 12 分钟就撞上下一场（15 分钟节奏），cancel-in-progress 会把本场提交掐掉
     env:
       AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
       AGNES_API_KEYS: ${{ secrets.AGNES_API_KEYS }}
       SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
-      LIVE_BASE: https://kwei168.github.io/starhub
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -49,16 +58,6 @@ jobs:
       - name: Quality gate — syntax (blocking)
         run: python -m py_compile fast_refresh.py fetch_and_build.py
 
-      - name: Fetch trending board for inline fallback
-        # 必须在 Fast refresh 之前：快车道重建的是**整页**，排行榜要用与浏览器同一份出口件回填内联。
-        # 取不到不阻断——内联留空即可，前端仍会 fetch 同一个文件（回填只是让首屏也有数据）。
-        # 这里原本是 actions/cache 的 starhub-sidebar 族：出口件（§8.28）落地后那份状态
-        # 既冗余又是单点（restore 不到 ⇒ 整页不发布），2026-10-04 拆掉，改走同源 curl。
-        continue-on-error: true
-        run: |
-          curl -fsS --max-time 60 "$LIVE_BASE/trending_board.json" -o trending_board.json \
-            || echo "::warning::线上取不到 trending_board.json——本场首页内联兜底为空（前端仍会 fetch）"
-
       - name: Fast refresh
         id: fast
         env:
@@ -66,7 +65,6 @@ jobs:
         run: python fast_refresh.py | tee fast.log
 
       - name: Commit star state if changed
-        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -82,7 +80,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
           if ! git push; then
             # 小时场 bot 并发提交 → merge 远端重试一次；再失败放弃提交（下场重新 diff 补判，
-            # 数据不丢）。放弃优于阻塞发布。
+            # 数据不丢）。放弃优于挡住本步提交（2026-10-07 P0 之后本车道不再发布任何东西）。
             # ⚠ fetch 的深度不是可有可无的参数：actions/checkout 是浅检出，`--depth=1` 只取远端
             # tip 一层、把它变成 grafted 历史 ⇒ merge 报 "refusing to merge unrelated histories"
             # 并被下面的 || true 吞掉 ⇒ 二次 push 照旧 non-fast-forward ⇒ 重试永远走放弃分支
@@ -93,65 +91,13 @@ jobs:
           fi
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      # ── 制品策略：新 index.html + 「线上有什么就带回什么」（解耦版）──────────
-      # 与旧 update.yml 整站必点名的本质区别：
-      # ① index.html 是唯一硬必在项（本场新生成，缺了就没有"快"可言）；
-      # ② 其他功能入口页带回时 404 容忍 —— 那是「该功能已单独下架」的正常状态，
-      #    绝不让已下架的功能把 star 车道拖成永久红；网络抖动靠重试区分。
-      # ③ 不引用任何 rss-data-*.js（已退役）；hot_snapshot/rss_sources 归 RSS 单元，
-      #    线上有就带回（RSS 页侧栏用），没有就跳过（RSS 页前端自己降级）。
-      - name: Stage star page over live site
-        id: stage
-        run: |
-          mkdir -p _pages
-          # 无新星 = fast_refresh 零写入 = 工作区无 index.html：这是【正常路径】，
-          # 干净跳过发布（线上保持上一版制品）。缺文件是信号不是缺陷——
-          # 不许让 cp 当探测员（set -e 下它先炸，每 15 分钟刷一条吓人的红错）。
-          if [ ! -s index.html ]; then
-            echo "::notice::[fast] index.html 未重生成（本场无新星）——跳过发布"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          cp -f index.html _pages/
-          if [ ! -s "_pages/index.html" ]; then
-            echo "::error::index.html 拷贝后缺失（工作区异常）——本场不发"
-            exit 1
-          fi
-          # 带回线上现存的非 star 入口（重试 2 次区分网络抖动与真下架；404 跳过）。
-          # 清单是「入口页 + 其数据 JSON」的并集，与功能注册表一一对应：
-          # 下架某功能 = 从这张表删它的行，其他行不受影响。
-          # trending_board.json 必须在：Pages 部署是**整棵制品替换**，快车道每真发布一次，
-          # 制品里缺的文件就从线上消失（2026-10-05 01:45 真发布后它 404，排行榜从此只能读内联，
-          # 而下一场有新星的内联又会因为取不到出口件变成空榜）。
-          for f in ai-daily.html rss-aggregator.html daily-insight-history.html \
-                   hot_snapshot.json rss_sources.json rss-data-0.js trending_board.json; do
-            ok=""
-            for attempt in 1 2 3; do
-              if curl -fsS --max-time 90 "$LIVE_BASE/$f" -o "_pages/$f" && [ -s "_pages/$f" ]; then
-                ok=1; echo "fetched $f ($(wc -c < _pages/$f) B)"; break
-              fi
-              sleep 2
-            done
-            [ -n "$ok" ] || echo "::warning::线上无 $f（下架或 CDN 未及）——跳过带回"
-          done
-          echo "Staged site size:"; du -sh _pages
-          echo "publish=true" >> "$GITHUB_OUTPUT"
-
-      - name: Upload Pages artifact
-        id: pages_upload
-        if: steps.fast.outcome == 'success' && steps.stage.outputs.publish == 'true'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: _pages
-          if-no-files-found: error   # 空制品"绿发布"= 抹平站点（§8.15 教训）
-
-      - name: Deploy to GitHub Pages
-        id: deploy_pages
-        if: always() && steps.fast.outcome == 'success' && steps.pages_upload.outcome == 'success'
-        uses: actions/deploy-pages@v4
-
+      # 2026-10-07 P0：这里原有 Stage（从线上 curl 带回 7 个硬编码名字）+ Upload Pages artifact
+      # + Deploy to GitHub Pages 三步，已整体删除。删除的理由写在文件头部的架构原则里
+      # （整棵制品替换 + 闭集追不上开集 = 每发布一次抹掉阅读器后台数据一次）。
+      # 判据 tests/site_nav_drift/test_star_fast_wiring.py::test_fast_lane_has_no_publish_authority
+      # 钉住"本车道再无发布权"：permissions 键集合 == {contents} 且 uses: 集合 ⊆ {checkout, setup-python}。
       - name: Mark the run red when fast did not run
         if: always() && steps.fast.outcome == 'failure'
         run: |
-          echo "::error::[fast] fast_refresh 失败，本场未发布"
+          echo "::error::[fast] fast_refresh 失败，本场 star 状态未提交（新星分类结果没入库，下一场会重新烧一次 LLM）"
           exit 1

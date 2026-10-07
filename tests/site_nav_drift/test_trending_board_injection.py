@@ -77,8 +77,11 @@ def test_board_is_published_not_just_cached():
     Pages 部署是整棵替换而不是增量：哪条清单漏了它，那场发布就把这个文件从线上抹掉。
     小时场和快车道各有一份自己的清单，只钉一边就会漏另一边（我上一轮就只钉了小时场侧）。
     """
-    for name, path, step in (("update.yml 的 Stage 清单", WF_UPDATE, "Stage Pages site"),
-                             ("star-fast 的带回清单", WF_FAST, "Stage star page over live site")):
+    # 只剩一条清单要钉了：2026-10-07 P0 摘掉快车道的 Pages 发布权，它那份"带回清单"随
+    # Stage 步一起消失。上一版这里遍历两条——因为 10-05 事故就是"只钉了小时场侧、漏了
+    # 快车道侧"复发的。现在站点唯一写者是 update.yml ⇒ 钉一条就是钉全部；快车道侧由
+    # test_star_fast_wiring.py::test_fast_lane_has_no_publish_authority 反向钉住。
+    for name, path, step in (("update.yml 的 Stage 清单", WF_UPDATE, "Stage Pages site"),):
         lst = _publish_list_of(_t(path), step)
         assert lst, "%s 里没抓到 for-f-in 清单 ⇒ 这条判据在空转" % name
         assert BOARD in lst, \
@@ -88,17 +91,21 @@ def test_board_is_published_not_just_cached():
         assert BOARD in _t(path), "%s 里没有 %s ⇒ 前端 fetch 会 404" % (name, BOARD)
 
 
-def test_fast_lane_reuses_the_same_board_file_as_inline_value():
-    """快车道重建整页时，内联那份排行榜要取自**同一个出口件**。
+def test_fast_lane_touches_no_page_or_board_at_all():
+    """反向：快车道既不产页面，也不再需要把排行榜取回来。
 
-    为什么不能省：删掉回填、只留"浏览器 fetch"的话，trending_board.json 万一取不到就是空榜——
-    等于把兜底从"有数据"降级成"空对象"。让 CI 与浏览器读同一份文件才是单一真相。
+    旧版这条叫 test_fast_lane_reuses_the_same_board_file_as_inline_value，钉的是"快车道的
+    内联兜底必须与浏览器读同一份出口件"——它的前提（快车道产 HTML）已随 2026-10-07 P0 消失。
+    为什么翻成反向而不是直接删：回填这件事本身就是单点（10-04 拆 starhub-sidebar 缓存族时
+    写过的同一条理由——"取不到 ⇒ 整页不发布"），只有在本车道根本不产页面之后它才无意义。
+    留着这条反向判据，是为了让"顺手把 curl 加回去"当场红，而不是等下一轮再靠人想起来。
     """
-    fr = _t(os.path.join(ROOT, "fast_refresh.py"))
-    assert "TRENDING_BOARD" in fr or BOARD in fr, \
-        "快车道没把 %s 当回填源 ⇒ 内联兜底会退化成空榜" % BOARD
-    fast = _t(WF_FAST)
-    assert BOARD in fast, "star-fast.yml 没在生成页面之前把 %s 取回工作目录" % BOARD
+    fr = _code_only(_t(os.path.join(ROOT, "fast_refresh.py")))
+    fast = _code_only(_t(WF_FAST))
+    assert BOARD not in fr and "TRENDING_BOARD" not in fr, \
+        "快车道仍在读 %s ⇒ 它又被当成 HTML 的生产者了" % BOARD
+    assert BOARD not in fast, "star-fast.yml 里还留着 %s 的 curl 带回" % BOARD
+    assert "build_index_html" not in fr, "fast_refresh.py 里还有 HTML 生成调用"
 
 
 def _code_only(txt):

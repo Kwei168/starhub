@@ -40,9 +40,15 @@ MUTATIONS = [
      'ATTENTION_SAME_HINT = "同名候选（仅参考，同名不等于同一仓库）"',
      'ATTENTION_SAME_HINT = "已改名为"',
      "test_same_base_name_candidate_is_hint_not_verdict"),
-    ("M6 快车道漏注入", "fast_refresh.py",
-     "                                attention_html=attention_html)", "                                )",
-     "test_both_render_exits_inject_attention"),
+    # 2026-10-07 P0：快车道的 HTML 通路已整体删除，所以 M6 从"漏传 attention_html"翻成它的
+    # 反面——把 build_index_html 调用点加回快车道，必须被反向那半拦住。旧靶的原文
+    # ("                                attention_html=attention_html)") 已随删除消失，
+    # 留着只会让电池报"锚点失效"，把一个已经收口的缺陷当成电池自己的故障去修。
+    ("M6 快车道重新长出 HTML", "fast_refresh.py",
+     '    # 新星点评沉淀（classify_repo 对老星查表命中 note=""，只有新星带点评）',
+     '    html = fab.build_index_html(out, fab.CATS, attention_html="")\n'
+     '    # 新星点评沉淀（classify_repo 对老星查表命中 note=""，只有新星带点评）',
+     "test_index_html_has_exactly_one_producer"),
     ("M7 新仓库被当待办", "fetch_and_build.py",
      "for fn in sorted(set(known) - live):",
      "for fn in sorted(set(known) | live):",

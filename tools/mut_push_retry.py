@@ -18,17 +18,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 YML = os.path.join(".github", "workflows", "star-fast.yml")
 TEST = os.path.join("tests", "site_nav_drift", "test_star_fast_wiring.py")
 
-RETRY_BLOCK = """          if ! git push; then
-            # 小时场 bot 并发提交 → merge 远端重试一次；再失败放弃提交（下场重新 diff 补判，
-            # 数据不丢）。放弃优于阻塞发布。
-            # ⚠ fetch 的深度不是可有可无的参数：actions/checkout 是浅检出，`--depth=1` 只取远端
-            # tip 一层、把它变成 grafted 历史 ⇒ merge 报 "refusing to merge unrelated histories"
-            # 并被下面的 || true 吞掉 ⇒ 二次 push 照旧 non-fast-forward ⇒ 重试永远走放弃分支
-            # （判据 test_star_fast_lands_after_a_clean_collision 实测：depth=1 推不上去，2/10 可以）。
-            git fetch origin main --depth=10 || true
-            git merge origin/main --no-edit || true
-            git push || echo "::warning::[fast] star 状态提交被拒，本场放弃（下一场补）"
-          fi"""
+def _retry_block(yml):
+    """现切"if ! git push; then … fi"整段，不在本文件里维护逐字副本。
+
+    为什么必须现切：副本与 yml 一旦分叉（谁改了那几行注释），CI **不会**响——两个电池都不在
+    CI 里跑（workflows 里 grep mut_ = 0 命中），只有人手跑才报"锚点失效"。2026-10-07 P0 就
+    实际改过其中一行措辞，靠手工同步才没把电池弄坏；单源化之后这类分叉不可能再发生。
+    """
+    head = "          if ! git push; then"
+    tail = "\n          fi"
+    i = yml.index(head)
+    j = yml.index(tail, i) + len(tail)
+    return yml[i:j]
+
+
+RETRY_BLOCK = "@RETRY_BLOCK@"   # 由 main() 在读到 yml 之后就地展开（见 _retry_block）
 
 MUTATIONS = [
     ("M1 浅 fetch 退回 depth=1（生产原状）",
@@ -70,7 +74,12 @@ def _run(tmp, name):
 
 
 def _stage(tmp):
-    for rel in (YML, TEST, ".gitignore"):
+    # 只 copy 判据真正会读的东西：2026-10-07 P0 把 add 面判据从".gitignore 泛化守卫"改成
+    # 集合相等之后，本文件没有任何判据再读 .gitignore ⇒ 那份 copy 成了无人用的准备，摘掉。
+    # 注意 :132 的 test_refresh_js_star_mode_dispatch 读 api/refresh.js，它**不在**这里：
+    # 电池每轮只用 -k 点那三条行为判据，跑不到它。谁要把它纳进靶，必须同时把 refresh.js 加进本清单，
+    # 否则临时目录里 FileNotFoundError 会被 :100 误报成"判据不合格"。
+    for rel in (YML, TEST):
         dst = os.path.join(tmp, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copyfile(os.path.join(ROOT, rel), dst)
@@ -87,6 +96,8 @@ def main():
             _stage(tmp)  # 每轮从干净副本重打
             p = os.path.join(tmp, YML)
             s = io.open(p, encoding="utf-8").read()
+            if old == RETRY_BLOCK:
+                old = _retry_block(s)      # 现切：电池副本永不与 workflow 正文分叉
             n = s.count(old)
             if n != 1:
                 bad.append("%s：靶子在 yml 里出现 %d 次 ⇒ 锚点失效，变异没打上" % (mid, n))

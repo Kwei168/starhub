@@ -2060,3 +2060,103 @@ R78/R79（可执行面刀变恒等 / 拆接线）。**改这段正文必须重�
   按 commit sha → tree/blob sha → `git/blobs/<sha>` 取。
 - **判断"还在不在跑 / 跑了多久"必须现取 `date -u` + run 的 `createdAt/updatedAt`**，
   不要用轮询次数或自己的等待时长推算——我因此把 30.5 分钟说成 45/50 分钟，还凭空造了一个阻塞点让用户做选择。
+
+### 8.34 Pages 站点回到单写者：star 快车道摘除发布权（2026-10-07 13:0x–14:1x BJT，**本地全绿，尚未推送**）
+
+**症状与根因（都不是"抓取坏了"）**：阅读器"信源 55"＋toast"剩余内容数据异常"。
+根因是**两条车道共享 Pages 这个单写者资源**——`deploy-pages` 是整棵制品替换，不是增量合并。
+`star-fast.yml` 那份 Stage 带回清单是硬编码 9 个文件名的**闭集**，不含 `rss-data-1..N.js`
+（阅读器后台数据，6MB/块、N 随数据量浮动＝**开集**）⇒ 每真发布一次就把 chunk1+ 从线上抹掉一次。
+实测对账：star-fast 场制品 **8 文件**（带回清单 7 个硬编码名字 + `index.html`，`rss-data-1.js` 计数 0）
+vs update 场制品 **15 文件**（含 chunk1–7，各 5.9–7.2MB）。
+第二条根因是撞 `main` 写权：update 单场构建 ~35 分钟 > fast 的 15 分钟节奏 ⇒ push 必 `non-fast-forward`，
+`update.yml:351-385` 只重试一次且重试本身要 5 分钟 ⇒ 10-07 04:00 场红，Stage/Deploy 全 skipped。
+
+**活闭环（05:00 场，60 次轮询逐秒对齐）**：`05:28:25` update 部署生效 → c1 复活 200 →
+存活 **18 分 42 秒** → `05:46:47` 被 05:45 那场 star-fast 的部署抹回 404。摘除发布权的止血效果由此实证。
+
+**认知根源（必须记住的一条）**：`test_star_fast_wiring.py` 原有一条
+`test_decoupling_no_retired_rss_chunks` 明令 `assert "rss-data-1.js" not in yml`，
+把"退出 git 提交"误当成"退出站点分发"——**任何人想给闭集清单加回 chunk 都会被打红**。
+同类缺陷此前已按"加一个名字"补过两次（`lib/`+`api/` 10-02、`trending_board` 10-05）且都复发。
+⇒ 硬规矩：**开集产物一律不许用闭集清单表达**；要收口就取消那条车道的发布权。
+
+**本批做了什么（P0，6 个文件）**：`star-fast.yml` 删 Stage/Upload/Deploy 三步 + `pages: write` +
+`id-token: write` + `LIVE_BASE` + curl trending_board；`fast_refresh.py` 删 HTML 生成三段（保留
+`assemble_entries`，它是分类/点评的产出载体，唯一下游是点评沉淀）；判据侧同步收口（详见下）。
+**站点唯一写者现在只剩 `update.yml`。**
+
+**代价（明写）**：新星上线从 ≤15 分钟回落到 ≤1 小时。价格账：fast 提交实测 3.9 次/天 vs 上限 96 次/天
+⇒ 快车道 96% 场次空转，买回的只有每天约 4 个事件提前 ≤45 分钟。要压回 ≤15 分钟必须让首页数据脱离
+Pages 发布（Vercel 侧新建可写存储），**未做**，理由见 `docs/superpowers/specs/2026-10-07-single-writer-decoupling-SPEC.md`。
+
+**判据现值与"这次新长的牙"**
+- 删 3 条（钉已消失的 Stage/Upload/Deploy）：`test_upload_rejects_empty_artifact`、
+  `test_index_html_is_the_only_hard_requirement`、`test_upload_depends_on_publish_flag`；删共犯 1 条（上段那条）。
+- 新增 `test_fast_lane_has_no_publish_authority`：钉**两个正向闭集**——permissions 键集合
+  （workflow/job/step 三级都收）`== {contents}`，且 `uses:` 集合 `⊆ {checkout, setup-python}` **且非空**。
+  不用"不含 deploy-pages 字面量"那四条负断言：换 action 或改走 Pages 部署 API 就能全绿绕过。
+- `test_star_attention_bar.py::test_both_render_exits_inject_attention` →
+  **改名** `test_index_html_has_exactly_one_producer`：旧条要求"两处都存在调用点"，前提已消失；
+  新版一半正向（主链每处必传 `attention_html=`）+ 一半反向（快车道不得再长出 `build_index_html`）。
+  **这条在 A2 blocking 里**——不同批改它，10-07 那场就会以"判据红 ⇒ 整场不发布"的方式把我自己的修复冻住。
+- `test_trending_board_injection.py`：带回清单从遍历两条收成一条（唯一写者只剩 update.yml），
+  `_publish_list_of` 的"空清单即自报空转"机制保留；`test_fast_lane_reuses_the_same_board_file_as_inline_value`
+  → `test_fast_lane_touches_no_page_or_board_at_all`（反向）。
+- `test_fast_refresh.py`：产物判据改成 `sorted(os.listdir()) ==` 三个状态文件（封闭断言，加回
+  index.html 立刻不等），且**必须挂在有新星那条**——零写入走早退分支看不到产物，当锚＝恒真。
+- `_commit_shell`/`test_commit_step_adds_only_tracked_state_files` 的右锚从写死的 `"Stage star page"`
+  换成 `_step_body()`（找"下一个 `- name:`"）：相邻步骤增删不再 IndexError，找不到边界时明确报错不静默。
+- `tools/mut_attention.py` 的 M6 从"漏传 attention_html"翻成"快车道重新长出 HTML"（旧靶原文已随删除消失，
+  留着只会让电池报"锚点失效"，把已收口的缺陷当电池故障去修）。
+
+**两路对抗审查命中并已在本批补修（7 条）**
+1. **flow-style YAML 绕过闭集判据**（最严重）：实测把权限写成 `permissions: {contents: write, pages: write,
+   id-token: write}`、步骤写成 `- {name: Publish, uses: actions/deploy-pages@v4}`，block 正则一条都抓不到
+   ⇒ 键集合退化成 `{contents}`、uses 集合退化成子集，**判据全绿而发布权已经回来了**。这正是"闭集第四次"
+   的形状。修法：判据第一步钉"**声明数 == 抓取数**"（`_PERM_DECL`/`_USES_DECL` 对 `_PERM_BLOCK`/`_USES_BLOCK`），
+   把解析形状本身变成被检对象。
+2. **`git add -A` 被放行**：`test_commit_step_adds_only_tracked_state_files` 原本用"必须包含 + 不许包含 +
+   .gitignore 泛化守卫"三条**开集**写法，实测 `git add -A` 时 `all_added` 只剩一个 `-A`、违规项为空 ⇒ 全绿，
+   而它恰恰该拦这个。改成 `added == {known_categories.json, known_notes.json}` 集合相等，三条并一条。
+3. **`mut_push_retry.py` 的 `RETRY_BLOCK` 是 yml 逐字副本**：本批改那几行注释措辞时必须手工同步，
+   而两个电池**都不在 CI 跑**（workflows 里 grep `mut_` = 0）⇒ 分叉后 CI 全绿、只有人手跑才报"锚点失效"。
+   改成运行时 `_retry_block(yml)` 现切，单源化，副本不可能再分叉。
+4. **被我删掉的 `monkeypatch.chdir`**：产物集合相等只看得见 `tmp_path`，而本仓写盘主流写法是相对路径
+   ⇒ 将来一个相对路径的状态文件会落到 pytest cwd、既不进 env 也不被看见＝静默产物。加回并写明理由。
+5. **制品文件数我记错**：先前写"star-fast 场 9 文件 / 小时场 16 文件"，那是把 tar 的 `./` 目录条目算进去了；
+   现取 `tar -tf | grep -v '/$' | wc -l` = **8 与 15**。带回清单是 7 个硬编码名字 + `index.html`。
+6. **三处措辞 + 一条死链**：`放弃优于阻塞发布`（本车道已不发布任何东西）、`匿名限流=旧页静默上线的雷`、
+   `否则 Stage 步只能靠猜`（Stage 步已删）全部改成现状；`fast_refresh.py` 里指向旧判据名的引用改名。
+7. **`fast_refresh.py` docstring 承诺了一条不会响的铃**：它写"断链由 /api/health 的 star_fast_age 报警"，
+   实测 `health.js:107` 的 `ok` 只含 `pagesOk && buildAge`，而拉取失败同样 `return 0` ⇒ run 照样绿、
+   `star_fast_age` 恒 0–15 分钟。改成明写"**别指望它报**"，断链检测归 P1.5。
+
+**驳回的一条审查意见（记录基线教训）**：它断言"删 curl trending_board 那一步在 HEAD 里无对应删除"，
+那是拿**本地 HEAD `8abcb7c`**（浅取副本、落后远端）比的；对远端 tip `1f9349d` 现取，该步骤确实在
+`star-fast.yml:52`。⇒ 本仓判断"某改动存不存在"必须对**远端 tip** 取，不能对本地 HEAD（见 §8.33 第 1 条）。
+另注：`tests/site_nav/test_star_attention_bar.py`、`test_trending_board_injection.py`、`tools/mut_attention.py`
+三个文件在本地 .git 里**未被跟踪**但远端存在 ⇒ 逐文件与远端 tip 对过 diff（差异恰好等于本批改动）才可推。
+
+**未在本批处理（登记）**：`test_trigger_chain.py:63` 对 `api/health.js` 只做整文件 substring，
+而该文件头部注释里就有 `pages_ok`/`star_fast_age_minutes` 两个字段名 ⇒ 删 payload 只要注释不动照样绿
+（同文件 `:201` 已有剥注释写法可抄）；跨车道 dispatch（`gh workflow run` / curl Actions REST）不在
+yml 闭集的可见面内，属 `actions: write` 之外的通道，暂按可接受处理。
+
+**本地复跑读数（改这块必须重跑的）**：gate A 语法 OK；**A2 完整 `:103` 那条命令 = 721 passed**；
+`tests/site_nav/ + tests/site_nav_drift/` 合跑 = 298 passed（基线 301 − 删掉的 3 条）；
+`tests/daily_insight/` = 425 passed；`mut_attention` 9/9 全挡；`mut_push_retry` 6/6 全挡 + 对照组 3 passed；
+P0 变异自证 **6/6**（V1 加回 Deploy 步、V2 加回 `pages: write`、V3 重新写 index.html、
+V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `git add -A`），
+每条红在对应判据上，且每条先跑过未变异对照组证明绿。
+
+**未闭合（下一批的账）**
+1. **P1 分支解耦未做**：star-fast 仍推 `main` ⇒ 撞车仍在，但后果已从"数据缺失"降级成"内容陈旧 ≤1 小时"。
+   方案（orphan `star-state` 分支 + 回读地板值闸门 + 顺序必须在 `git reset --hard` 之后）在 SPEC §P1。
+2. **P1.5 告警链未修**：`api/health.js:69-83` 的 `pages_ok` 只看 200+长度 ⇒ 对**陈旧** index.html 恒真；
+   唯一出声口 `buildAge>120` ⇒ 需连红 2 场、滞后 ≥2h 才 503。`star_fast_age_minutes` 数的是 run 成功
+   而非状态提交 ⇒ P0 之后它恒绿但不再意味着任何事（本批撞车频率实测 1/30，故登记不修）。
+3. **P2 emb 富度闸门未做**：`template.html:1279` 的 `DATA.some(d=>d.emb)` 会把 emb 归零吞成静默降级
+   （SILICONFLOW 配额耗尽也会）。P0 后 HTML 唯一产地是小时场，主病灶自动归位，闸门放 update.yml 的 Stage 步。
+4. `.qoder/repowiki/` 那份流水线卡片仍在描述"三件套权限 + Stage 带回清单"——它**未被 git 跟踪**
+   （`git ls-files .qoder/` = 0）⇒ 不是交付面、不改；但谁下次读它会被误导，以本节为准。
