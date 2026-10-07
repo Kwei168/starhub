@@ -308,5 +308,6 @@
  "joeseesun/qiaomu-codex-imagegen": "agent",
  "linshenkx/prompt-optimizer": "tools",
  "Alishahryar1/free-claude-code": "tools",
- "ginobefun/deep-reading-analyst-skill": "agent"
+ "ginobefun/deep-reading-analyst-skill": "agent",
+ "ginobefun/wechat-radar": "info"
 }
