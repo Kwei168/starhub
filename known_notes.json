@@ -310,5 +310,7 @@
  "hum0r23/wx-cli": "微信本地数据命令行工具，基于Rust实现的守护进程架构",
  "spacering-net/codeg": "基于Rust的多Agent协作编程工作空间，集成主流AI编程",
  "jackwener/wx-cli-again": "微信本地数据命令行解析导出工具，实用效率工具",
- "LearnPrompt/awesome-seedance": "Seedance提示词awesome合集，含多模型实测验证与"
+ "LearnPrompt/awesome-seedance": "Seedance提示词awesome合集，含多模型实测验证与",
+ "mcncarl/jianying-headless": "字节剪映无头自动化编辑导出及Agent技能，属视频创作工具链",
+ "linguo2625469/workbuddy2api-panel": "基于腾讯WorkBuddy账号构建的OpenAI兼容API网"
 }
