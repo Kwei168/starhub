@@ -308,5 +308,6 @@
  "ginobefun/deep-reading-analyst-skill": "Claude AI Skill，属于多智能体框架下的专业能力",
  "ginobefun/wechat-radar": "聚合群聊信息与趋势的资讯聚合看板工具",
  "hum0r23/wx-cli": "微信本地数据命令行工具，基于Rust实现的守护进程架构",
- "spacering-net/codeg": "基于Rust的多Agent协作编程工作空间，集成主流AI编程"
+ "spacering-net/codeg": "基于Rust的多Agent协作编程工作空间，集成主流AI编程",
+ "jackwener/wx-cli-again": "微信本地数据命令行解析导出工具，实用效率工具"
 }
