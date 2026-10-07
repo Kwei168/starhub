@@ -304,5 +304,6 @@
  "open-webui/open-webui": "自托管本地化AI聊天客户端，支持Ollama与OpenAI等",
  "joeseesun/qiaomu-codex-imagegen": "基于 MCP 为 Agent 添加 Codex 生图能力的工",
  "linshenkx/prompt-optimizer": "专注提示词优化的AI工具，帮助用户写出更好的prompt并获",
- "Alishahryar1/free-claude-code": "提供多模型API免费接入的实用工具，支持终端与浏览器使用。"
+ "Alishahryar1/free-claude-code": "提供多模型API免费接入的实用工具，支持终端与浏览器使用。",
+ "ginobefun/deep-reading-analyst-skill": "Claude AI Skill，属于多智能体框架下的专业能力"
 }
