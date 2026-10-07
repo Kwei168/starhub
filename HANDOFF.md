@@ -2175,11 +2175,34 @@ Commit star state if changed → Mark the run red(skipped)`——**Stage/Upload/
 （`37586213367`、`37584737676`）都还带着那三步。
 另 `compare 0602c15b8e...b10b9e07` = ahead_by 1 ⇒ 15:31 那场 fast refresh 叠在我提交之后，没被回滚。
 
-**尚未成立的两条（成立之前别把 P0 当"已完成"）**
-1. A2/A3 判据在 **ubuntu** 上的结果：只有 update.yml 跑那两道闸（star-fast 只跑 `py_compile`），
-   要等下一场小时场。A2 是 blocking，判据若在那边红 = 整场不发布，本地 721/298 全绿不能替代它。
-2. 线上 `rss-data-1..N-1.js` 恢复 200，**且此后连续两场 star-fast 之后仍是 200**——
-   后者才是"不再被抹"的判据；只看到恢复不算（小时场本来就会恢复它，18 分 42 秒后又被抹）。
+**线上读数（07:57–07:58 现取 = 推送后 24 分钟，方案 §4/§5 逐条）**
+
+| 判据 | 读数 | 结论 |
+|---|---|---|
+| `rss-data-0..6.js` | **全 200**；`_total=7` ⇒ `rss-data-7.js` 正确 404 | ✓ 不钉死块数、按 `_total` 断言的口径成立 |
+| 页头"信源"计数 | 浏览器实读 `#srcCnt` = **636**；离线各块 `sources[].key` 去重 = **636** | ✓ 关系判据闭合（坏的时候它=chunk0 的 51） |
+| `ART` | 8847 篇（= 各块条目和 360+875+1667+1376+1393+1670+1506） | ✓ 七块全部合并进来 |
+| `index.html` | 1,188,378 B；`DATA` 314 条、**`emb` 非空 314/314**、`FEED` 39 条 | ✓ 378KB/emb=0 的残缺形态已消失 |
+| 两场 star-fast | 07:30(`0602c15b8e`)、07:45(`39d96d67a9`) 均 success 且 **NO-PAGES-STEPS** | ✓ 新 workflow 被 GitHub 正常解析执行 |
+| 不再被抹 | `chunk1` 自 `07:24:21` 部署起持续 200，**跨两场快车道 33 分钟+** | ✓ 旧行为是 18 分 42 秒即被抹回 404 |
+| 单写者 | `grep -rl actions/deploy-pages .github/workflows/` = **1**（update.yml） | ✓ I1 达成 |
+
+**ubuntu 跨平台闸结果（08:11–08:19 现取，最后一条已成立）**
+run `37591249152`（`event=schedule`、`head=39d96d67a9`＝本批全部改动）：
+`Quality gate A2 — … (blocking) = success`、`Quality gate A3 — … (advisory) = success`
+⇒ 本批改写的 A2 判据 `test_index_html_has_exactly_one_producer`、A3 的
+`test_fast_lane_has_no_publish_authority`（含"声明数==抓取数"形状守卫）与 add 面集合相等，
+在 ubuntu 上全部成立，**不会把部署冻住**。
+
+**一条同形陷阱（看闸结论前必读）**：前一场 `37590919431`（`workflow_dispatch`，08:00:30）
+在 **Checkout 步就被 cancelled**——08:03:30 的 schedule 场经 `concurrency: starhub-update` +
+`cancel-in-progress: true` 把它掐掉，于是它所有闸位显示 `skipped`。
+**skipped ≠ 判据红**：先确认这场有没有真正跑到那一步（看 `Set up job` 之后的步骤是否也全 skipped），
+否则会把一次并发取消误读成"我的改动把 CI 弄坏了"。
+
+**P0 收口状态**：站点单写者已达成并被线上证实（`deploy-pages` 持有者 = 1；chunk0–6 全 200 且跨
+两场快车道不再被抹；页头 636 = 各块去重源数；首页 emb 314/314）。**未做的后续**：P1 分支解耦
+（star-fast 仍推 `main`，撞车只造成陈旧不造成缺失）、P1.5 告警链、P2 emb 富度闸门。
 
 **本地复跑读数（改这块必须重跑的）**：gate A 语法 OK；**A2 完整 `:103` 那条命令 = 721 passed**；
 `tests/site_nav/ + tests/site_nav_drift/` 合跑 = 298 passed（基线 301 − 删掉的 3 条）；
@@ -2198,3 +2221,10 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
    （SILICONFLOW 配额耗尽也会）。P0 后 HTML 唯一产地是小时场，主病灶自动归位，闸门放 update.yml 的 Stage 步。
 4. `.qoder/repowiki/` 那份流水线卡片仍在描述"三件套权限 + Stage 带回清单"——它**未被 git 跟踪**
    （`git ls-files .qoder/` = 0）⇒ 不是交付面、不改；但谁下次读它会被误导，以本节为准。
+5. **cadence 重估（P0 之后新增的判断，别误砍）**：摘掉发布权后本车道**不是空转**，有两个不可替代
+   的作用——① `known_notes.json` 的**唯一**自动写者是 `fast_refresh.py:74`（小时场
+   `fetch_and_build.py:1350` 只读、`:1409` 只写 categories）⇒ 停掉它点评永久停更；
+   ② `fetch_and_build.py:1267` 写明"查表命中不烧 LLM"⇒ 新星越晚进表，小时场越要重复为它生成点评。
+   但 `*/15` 相对 `*/60` 的**额外**收益确实随 P0 缩水（新星可见性现在受小时场发布节奏限制，
+   入库再快也要等下一场 HTML）。要降频就按"少烧几次 LLM vs 多花 runner 分钟"算，
+   不要按"它反正不发布"拍板。
