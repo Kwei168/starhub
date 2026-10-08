@@ -17,7 +17,10 @@ TEST = os.path.join("tests", "site_nav_drift")   # 整目录：白名单的变�
 # 白名单化之后锚点全部跟着换（2026-10-02 18:12）：旧那几条挡的是"排除表少一行"，
 # 现在正文里已经没有排除表了 —— 留着它们电池只会报 INVALID 而不是红（那正是它该有的行为）。
 # 锚点一律按**单行**定位，不写跨行字符串：跨行字面量在这个环境里被转义吃过两次。
-BY_NAME = "                   hot_snapshot.json rss_sources.json; do"
+# 锚点必须跟着发布清单走：10-05 那次给清单加了 trending_board.json，本行没同步 ⇒
+# W1 长期打不上变异（10-08 复跑才暴露：锚点在 update.yml 里命中 0 次）。
+# 失修的电池比没有电池更坏——它让人以为这一面有人守。
+BY_NAME = "                   hot_snapshot.json rss_sources.json trending_board.json; do"
 NULLGLOB = "          shopt -s nullglob"
 HEAD_LOOP = ("          for f in index.html ai-daily.html rss-aggregator.html "
              "daily-insight-history.html")
@@ -54,6 +57,10 @@ def run(k=None):
     return p.returncode != 0, (lines[-1] if lines else "?"), failed
 
 
+if hasattr(sys.stdout, "reconfigure"):
+    # 同 mut_star_state：本机 GBK 控制台下一个『⇒』就能让电池崩在 print 上，
+    # 而 rc=1 看起来像「某个变式没挡住」——那是打印失败，不是判据失守。
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 src = open(WF, encoding="utf-8").read()
 open(COPY, "w", encoding="utf-8", newline="").write(src)
 red, tail, failed = run()

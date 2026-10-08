@@ -2367,8 +2367,11 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      判据回红 ⇒ 这条坑以后被机制挡住，而不是靠我记得。
    - 写判据时又踩一次本仓老坑：为了说明这个 bug，注释里合法写着 `git checkout -- .` 与
      `git clean -fdq` 两个字面量，判据不剔注释就会**假红**（第 5 次遇到，`_code_only` 是必需的）。
-   - 待线上确证：下一场小时场的首页里，`imaiwork` 的 `note` 必须是非空。这一步没做完之前，
-     "点评已全量上线"这句话不许写进任何结论。
+   - **线上确证已完成（18:3xZ 现取，run#1754 = 第一场带修正的发布）**，用同一指标、同一通道
+     （curl 取 index.html + 括号配对解析该条对象）：改之前 #1753 → `imaiwork` 的 `note=''`；
+     改之后 #1754 → `note='基于无障碍模式的AI手机RPA自动化框架…'` 非空，`libukai` 仍在，`emb` 仍 330 条；
+     同场读端日志仍是 `main 326 + 分支 326 → 并集 327（新增 1）`。这一步真正的收获不是多一条点评，
+     而是**"步骤绿 + 日志文本"证明不了产物，必须回头读产物**——三道质量闸对这个坑全程沉默。
 1. **P1.5 告警链：已补上唯一用户可见损坏的内容级探活（2026-10-08 13:3xZ）**
    `api/health.js` 新增 `readerChunksOk()`，handler 合成改成
    `ok = pagesOk && readerOk !== false && buildAge !== null && buildAge <= STALE_BUILD_MINUTES`。
@@ -2440,9 +2443,11 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      现 24 条；`tools/mut_health_reader.py` 加 H8 退回 content-length 短路、H9 emb 归零报不知道、
      H10 网络失败报坏，现 **10/10**。踩到一次老坑：判据全文搜 `content-length` 被我自己的
      **注释**喂成假红 ⇒ 收窄到函数体并先剔注释行（本仓第四次记这条）。
-   - **待线上确证**：下一次小时场部署后读活接口，`emb_ok` 必须是 **true**；
-     若生产上也长期是 null，说明 Vercel→Pages 读 1.2MB 超 10s，要调超时或改用别的水位来源，
-     不能让它"装了没人守"。
+   - **线上确证已完成（16:2xZ 现取）**：Vercel 部署后活接口返回
+     `{"ok":true,…,"pages_ok":true,"reader_ok":true,"emb_ok":true}`（http 200）⇒ 两条新面都不是
+     "永远 null 的假防线"。另做了一次**阳性对照**：只把 `DATA_CHUNK_BASE` 换成必然 404 的前缀
+     （逻辑一行不动）⇒ `http=503 / ok=false / reader_ok=false / pages_ok=true`，
+     正是 10-07 那天"首页完好、阅读器数据坏"的形状——当时全绿，现在会响。
 4. `.qoder/repowiki/` 那份流水线卡片仍在描述"三件套权限 + Stage 带回清单"——它**未被 git 跟踪**
    （`git ls-files .qoder/` = 0）⇒ 不是交付面、不改；但谁下次读它会被误导，以本节为准。
 5. **cadence 重估（P0 之后新增的判断，别误砍）**：摘掉发布权后本车道**不是空转**，有两个不可替代
@@ -2452,3 +2457,28 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
    但 `*/15` 相对 `*/60` 的**额外**收益确实随 P0 缩水（新星可见性现在受小时场发布节奏限制，
    入库再快也要等下一场 HTML）。要降频就按"少烧几次 LLM vs 多花 runner 分钟"算，
    不要按"它反正不发布"拍板。
+6. **不进 CI 的本地守卫层做了一次全量扫描（2026-10-08 19:2xZ），抓出三处"静默失效"，已修**：
+   电池与 `tests/tools/` 都不在 CI 清单里，漂了就没人知道——这次把 `tools/mut_*.py` 全部跑了一遍
+   （`PYTHONIOENCODING=utf-8` 串行；见下面的坑）：
+   - **加载器过期使整组判据空跑**：`tools/data_api_push.py:52` 引入 `import prod_verify` 之后，
+     用 `importlib.spec_from_file_location` 加载它的 `tests/tools/test_push_ignores_scratch.py`
+     直接 `ModuleNotFoundError` ⇒ **4 条守卫判据从那天起一条都没跑过**（含"被忽略路径必须拒推"
+     和 `--no-index` 承重那条）。修在源头：工具自己把所在目录插进 `sys.path`（一行），
+     而不是给每个测试补一遍——原来那句"测试态也在 sys.path 上"的注释是错的，已改。
+   - **判据的期望值与现实脱节（且它其实是对的）**：`test_push_gate_ref_write.py` 里
+     "唯一写 main 的步骤"从 10-03 起就是红的——`Ensure Vercel sees a bot-authored commit` 也会
+     `git push`。按作者留的处置指令把集合补全，并写清为什么守门仍可只盯主提交步：那一步推的是
+     `--allow-empty` 空提交、无 --force、`continue-on-error: true` ⇒ 只会 non-fast-forward 失败，
+     **顶不掉别人的提交**，最坏是那场 Vercel 被 Blocked。
+   - **判据依赖可变本地状态**：`test_data_api_push_line_endings.py` 直接 assert 工作树的
+     `template.html` 是 CRLF；谁用 LF 落过一次盘，这条就只剩"拒绝执行"。改成**自己造 CRLF 夹具**
+     （读真实字节→转成 CRLF→把 `_abs` 指过去），语义不变而不再看运气；
+     并做了摘除自证：把工具的归一逻辑去掉 ⇒ 该判据立刻红（不是空跑）。
+   - **两处电池锚点漂移**：`mut_artifact_scope` 的 W1（发布清单 10-05 加了 trending_board.json，
+     锚点没跟）与 `mut_realtime_cover` 的 N2（`api/rss.js:591` 缩进 8→2）。
+     电池会报 "SKIP（锚点没找到）"而不是绿，这点是诚实的，但没人跑它等于没有。
+   - **Windows 侧的固定坑（第 N 次）**：电池自身 print 中文在 GBK 控制台下会崩，`rc=1` 看着像
+     "有变异没挡住"——那是**打印失败不是判据失守**。复跑一律带 `PYTHONIOENCODING=utf-8`，
+     且**不许并发**（它们共用 `.deploy-tmp` 里的同一份副本，并发会把基线污染成"基线不绿"，
+     我第一次扫描就被自己的并发误导过）。
+   扫描后状态：25 个电池全部 rc=0（无逃逸变异、无无效锚点）；`tests/tools/` 103 条全绿。

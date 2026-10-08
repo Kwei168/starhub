@@ -18,7 +18,10 @@ MUTS = [
      "      if (COVER) {\n        const _cv = COVER.pickItemImage(item, contentEncoded, desc);\n"
      "        if (_cv) result.img = _cv;\n      }\n", ""),
     ("N2 抽到了但短键映射不带出（响应恒空）", API,
-     "        if (it.img) obj.img = it.img;", ""),
+     # 锚点带着缩进原文写：591 行后来从嵌套块里提了出来（缩进 8→2 空格），锚点就对不上了。
+     # 电池报的是"SKIP（锚点没找到）"而不是绿，这是诚实的，但本仓电池不进 CI ⇒ 一漂就是几天，
+     # 所以 10-08 全量扫描时它排在"未被挡住"里。改锚点，不判据。
+     "  if (it.img) obj.img = it.img;", ""),
     ("N3 不解实体就找 <img>（转义描述漏抽）", LIB,
      "  var text = decodeEntities(html);", "  var text = html;"),
     ("N4 音频 enclosure 也被当封面", LIB,

@@ -49,7 +49,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 就地变异 harness 的持锁标记：见 gate() 里的说明
 MUTATION_LOCK = os.path.join(ROOT, "_scratch", ".mutation-lock")
 # 生产验证时间戳：见 prod_gate()。默认落在 .deploy-tmp（gitignore 内），判据用 monkeypatch 指到临时目录
-import prod_verify as PV  # noqa: E402  （与本文件同目录，脚本态与测试态都在 sys.path 上）
+# 先把自己的目录放进 sys.path：原来那句注释说"脚本态与测试态都在 sys.path 上"是**错的**——
+# 判据用 importlib.util.spec_from_file_location 加载本文件时，tools/ 并不在 sys.path 上，
+# 于是 `import prod_verify` 直接 ModuleNotFoundError ⇒ tests/tools/test_push_ignores_scratch.py
+# 四条判据从这行引入那天起就在红（本仓电池不进 CI，所以没人发现）。在源头补一行，
+# 而不是给每个测试各写一遍 sys.path。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import prod_verify as PV  # noqa: E402
 PROD_STAMP = PV.STAMP
 MAX_AGE_S = PV.MAX_AGE_S
 
