@@ -215,9 +215,17 @@ def _g(repo, *args):
     return (r.stdout or "").strip()
 
 
-def _clone(url, here, who):
+def _clone(url, here, who, ci_checkout=False):
+    """ci_checkout=True 复刻 actions/checkout 的默认形态：浅 + 单分支 ⇒ **别的分支一个对象都没有**。
+
+    这个开关是 10-08 09:45/10:00 两场 "not a valid object" 换来的：全量 clone 会把 star-state
+    的对象也带回本地，于是"拿远端 sha 直接当父提交"在测试里永远成立，在 CI 里永远炸。
+    """
     import subprocess
-    subprocess.run(["git", "clone", "-q", url, here], check=True)
+    cmd = ["git", "clone", "-q"]
+    if ci_checkout:
+        cmd += ["--depth=1", "--single-branch", "--branch", "main"]
+    subprocess.run(cmd + [url, here], check=True)
     _g(here, "config", "user.name", who[0])
     _g(here, "config", "user.email", who[1])
 
@@ -272,9 +280,17 @@ def _stage(tmp_path, prior_state=None, new_star=True):
     _g(seed, "push", "-q", "-u", "origin", "main")
 
     work = str(tmp_path / "work")
-    _clone(str(origin), work, _BOT)
     if prior_state:
-        _push_star_state(work, prior_state, "chore: star state prior")
+        # 「上一场」必须由**另一份工作树**造（CI 里它是另一台 runner 的前一场），再从 work 里
+        # 看不见那枚对象。早前借 work 自己提交 ⇒ 判据以为在测"追加"，实际从没测过
+        # "父提交不在本地"这一条真实条件（checkout 只取 main），于是它在本地一直绿、CI 连红两场。
+        prev = str(tmp_path / "prev")
+        _clone(str(origin), prev, _BOT)
+        _push_star_state(prev, prior_state, "chore: star state prior")
+    # work 对齐 CI：单分支浅检出，别的分支的对象一个都没有。
+    # 必须走 file:// 而不是裸路径——本地路径 clone 会硬链整个 objects/ 并打印
+    # "--depth is ignored in local clones"，那样浅检出形同没浅，父提交永远在场（10-08 踩过）。
+    _clone(origin.as_uri(), work, _BOT, ci_checkout=True)
     if new_star:
         (tmp_path / "work" / "known_categories.json").write_text(
             '{"a/one": "agent", "b/new": "tools"}\n', encoding="utf-8")

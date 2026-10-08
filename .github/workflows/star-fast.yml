@@ -82,7 +82,7 @@ jobs:
           # 而 star-state 只该装这两个状态文件——把源码一起放进去，读端 fetch 到的就是
           # "停在旧流程的过期副本"（正是 10-07 事故里库里那份 rss-data-1.js 的坑）。
           # 本分支唯一写者就是这条车道 ⇒ 不需要 merge、不需要重试链：
-          # --force-with-lease 的租约基线取本场刚 ls-remote 到的 tip，真冒出第二个写者才会被拒。
+          # --force-with-lease 的租约基线取本场刚 fetch 下来的 tip，真冒出第二个写者才会被拒。
           # descriptions_zh.json 不在清单里：它已进 starhub-state 缓存家族（.gitignore + 出树），
           # add 它必被拒，新星场的分类结果会提交不出去（10-04 03:0x 实锤，15 分钟循环炸）。
           idx=$(mktemp)
@@ -95,6 +95,15 @@ jobs:
           rm -f "$idx"
           parent=$(git ls-remote origin refs/heads/star-state | cut -f1)
           if [ -n "$parent" ]; then
+            # ⚠ 浅检出里**没有** star-state 的对象，而 commit-tree -p 要的是能在本地解析的对象：
+            # ls-remote 只回一个 sha ⇒ "fatal: <sha> is not a valid object" ⇒ bash -e 整步 exit 128。
+            # 10-08 实锤：分支由 09:30 那场（init 路径、无父）建出来，之后**每一场有新星都必红**
+            # （09:45、10:00 连续两场）。判据当时全绿，因为它用的是全量 clone——父提交本来就在场。
+            # 先把 tip fetch 下来；depth=1 够用：commit-tree 只要父对象本身在场，不需要它的祖先。
+            git fetch -q --depth=1 origin refs/heads/star-state
+            # 用 FETCH_HEAD 而不是上面那个 sha 当父与租约基线：两者之间若真有第二个写者挤进来，
+            # 基线取"我刚追加上去的那枚"才是对的，取旧 sha 会把别人的提交直接判成租约冲突。
+            parent=$(git rev-parse FETCH_HEAD)
             commit=$(git commit-tree "$tree" -p "$parent" \
               -m "chore: star state $(TZ=Asia/Shanghai date +%F' '%H:%M)")
             lease="--force-with-lease=star-state:$parent"

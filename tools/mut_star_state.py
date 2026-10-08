@@ -3,7 +3,7 @@
 
 它替代 2026-10-08 P1 退役的 `mut_push_retry.py`——那个电池钉的是"撞 main ⇒ merge 重试一次"
 那条链，而本车道不再写 main 之后单写者不需要 merge，链整体消失 ⇒ 留着它就是钉一个不存在的
-机制（另一种空转）。这里钉的是新机制的五个真实失败模式。
+机制（另一种空转）。这里钉的是新机制的六个真实失败模式。
 
 做法与 tools/mut_reader.py 同：真实文件一个字节不动，把 star-fast.yml 复制进临时目录打变异，
 用 STAR_FAST_YML 注入点让判据读副本。每轮从干净副本重打（变异绝不互相掩盖），
@@ -42,6 +42,13 @@ MUTATIONS = [
     ("S5 不追加、每场重开一条历史（覆盖上一场）",
      'commit=$(git commit-tree "$tree" -p "$parent" \\',
      'commit=$(git commit-tree "$tree" \\',
+     "test_star_state_appends_and_never_uses_bare_force"),
+    # S6 = 10-08 09:45/10:00 真实那场事故的形状：只 ls-remote 拿 sha、不 fetch 就喂 commit-tree -p。
+    # 判据必须在这一条上回红，否则它钉住的只是"本地已经有父提交"那种理想环境（全量 clone），
+    # 而 CI 的 actions/checkout 是单分支浅检出——这正是它当时全绿、生产连红两场的差额。
+    ("S6 不 fetch 就把远端 sha 当父提交（浅检出必崩）",
+     '            git fetch -q --depth=1 origin refs/heads/star-state\n',
+     '',
      "test_star_state_appends_and_never_uses_bare_force"),
 ]
 
