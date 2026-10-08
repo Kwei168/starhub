@@ -110,9 +110,14 @@ jobs:
       # 仍然只观测不拦截：文件回不回 git 只是历史体积问题，不是站点坏掉；
       # 拿它挡 blocking 闸 = 一场部署为一笔 3 MiB 滞留陪葬（本仓 10-01 实测过冻两小时的代价）。
       # header 的结构配平另有人在 A2 挡着：tests/site_nav/test_header_structure.py。
-      - name: Quality gate A3 — generated pages must stay out of git (advisory)
+      - name: Quality gate A3 — generated pages out of git & pusher guard layer (advisory)
         continue-on-error: true
-        run: python -m pytest tests/site_nav_drift/ -q -s
+        # tests/tools/ 是 2026-10-08 才接进来的：这 8 个文件（63 条）此前不在任何一道门禁里，
+        # 于是 `data_api_push.py` 引入 `import prod_verify` 之后整组 ModuleNotFoundError
+        # **空跑了五天没人知道**（HANDOFF §8.34）。入库只治"孤本"，治不了"没人跑"。
+        # 保持 advisory 是刻意的：守卫层是元层，它红不该冻住定时档与一行热修
+        # ——两个方向各由 tests/site_nav_drift/test_guard_layer_execution.py 的一条判据钉住。
+        run: python -m pytest tests/site_nav_drift/ tests/tools/ -q -s
 
       # ── 质量门禁 B：洞察测试（advisory）──
       # 本 job 是唯一产出者（stars/RSS/ai-daily/每日洞察 + bot 提交 + Vercel 部署），

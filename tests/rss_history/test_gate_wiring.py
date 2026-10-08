@@ -41,7 +41,15 @@ UNWIRED = {
     "rss_composite": "脚本风格（模块级 sys.exit），pytest 收集即 INTERNALERROR；要接先得改造成 test 函数",
     "rss_date": "脚本风格：文件末尾 sys.exit(0)，被 pytest 当测试模块导入会打崩整场收集",
     "rss_sort": "单文件脚本风格，同样是 import 期执行 + sys.exit；改造前不进闸",
-    "tools": "本地推送工具判据（CI 不调用 data_api_push）；2026-10-03 00:05 现跑 57 条 160.3s（上一登记值是 40 条 403.1s —— 这类数只会随批次数漂移，别引用旧值，要就跑一遍）—— 慢在临时仓里真跑 git 的用例，不值得每场构建都跑",
+    # "tools" 于 2026-10-08 从本表**移出**（不是漏删）：当时的理由是"慢在临时仓里真跑 git，不值得每场跑"
+    # （旧登记：57 条 160.3s，与远端这行原文一致）。这个理由被事实否掉了——正因为没人跑，
+    # `data_api_push.py` 引入 `import prod_verify` 之后整组判据 ModuleNotFoundError 空跑了五天
+    # （HANDOFF §8.34），而"值不值得"的前提恰恰是"它在跑"。今天现跑 A3 的实跑范围——
+    # `tests/tools/` 整目录 12 个文件 103 条 = 146.2s（本机，与旧登记 160.3s 同量级）；
+    # 同场 A3 的另一组 163 条在 CI 只花 8.81s ⇒ CI 侧大概率落在几十秒这一档。
+    # 接的是 A3（advisory）而不是 A2：INTERNALERROR 只会红一道出声的闸，不会冻部署——
+    # 上面三条留在表里正是因为它们有这个风险。接线由 tests/site_nav_drift/
+    # test_guard_layer_execution.py 两条判据钉住（必须真跑 / 必须保持 advisory）。
 }
 
 # 闸内"真会在收集期退出"的文件：登记后允许存在，但新接进来的必须可收集。
