@@ -2265,20 +2265,63 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      （G1 守门消失、G2 退化成只打印、G3 BASE_SHA 不在 upsert 前记、G4 比较式写反、G5 checkout 漂回 v4）。
    - **判据与电池**：4 条 star-state 行为判据（临时裸仓实跑，`test_star_fast_wiring.py`）+
      6 条读端行为判据（`tests/tools/test_restore_star_state.py`）+ 电池 `tools/mut_star_state.py`
-     **6/6**（S1 推回 main、S2 租约退化成裸 --force、S3 内容面混第三文件、S4 无新星也推、
-     S5 不追加重开历史、**S6 不 fetch 就把远端 sha 当父提交**——S6 就是 10-08 那场真实事故，
-     打上去 `test_star_state_appends…` 回红，证明判据钉的是真实条件而不是理想环境）。
+     **10/10**（S1 推回 main、S2 租约退化成裸 --force、S3 内容面混第三文件、S4 无新星也推、
+     S5 不追加重开历史、**S6 不 fetch 就把远端 sha 当父提交**、**S7 造 tree 前不做写端并集**、
+     **S8 闸门拒绝了也照样推**、**S9 去掉 pipefail**、**S10 ls-remote 写成管道**——
+     S6/S7 是 10-08 真实撞到的两场，S8/S9/S10 是本轮对抗审查命中的三条静默形状；打上去各自判据回红，
+     证明判据钉的是真实条件而不是理想环境。
      `tools/mut_push_retry.py` **已删**——它钉的"撞 main ⇒ merge 重试"链
      整体不存在了，留着等于钉一个不存在的机制（另一种空转）。
-   - 本地读数：gate A OK｜A2 完整 **726 passed**｜A3 **154 passed**｜读端 6 passed｜
-     `mut_star_state` 6/6｜`mut_attention` 9/9｜`daily_insight` 425 passed。
-   - ⚠ **线上读数（10-08 10:0x UTC 现取）**：`refs/heads/star-state` **已存在**，tip = `6728c902`
-     （09:30 那场由 init 路径建出，含新星 `libukai/awesome-deepseek-harness`）⇒ "分支解耦"这一半**已成立**；
-     但 09:45/10:00 两场红在追加路径上 ⇒ **追加链尚未在生产跑通过一次**，读端也就一直只看到那一枚 tip。
-     这笔修复上线后的验收读数（三件都得有）：一场有新星的 star-fast **绿** ＋
-     `git log origin/star-state` 出现 `6728c902` 的**子提交**（不是又被 init 覆盖）＋ update 日志出现
-     `[star-state] … 并集 …` 或 `build_logs` 里有 `star_state_readback` 落痕；再加连续 4 场 update 的
-     `Commit & push if changed` 无 `! [rejected]`（这条验的是"main 只剩一个自动写者"有没有被别的路径破掉）。
+   - 本地读数（对抗审查四条修完后的现跑）：gate A OK（py_compile + compileall + `node --check`）｜
+     A2 完整 **726 passed**｜A3 **158 passed**｜读端+写端脚本判据 **10 passed**｜
+     `mut_star_state` **10/10**｜`mut_attention` 9/9｜`daily_insight` 425 passed。
+   - ⚠ **追加链已跑通（10-08 11:16Z 现取，BJT 19:16）**：11:15 那场真出新星
+     （`[fast] 新星 1 条：imaiwork/IMAI.WORK-AI-Phone`）⇒ run **success**、`star-state` 从
+     `6728c902` 追加到 `9fcca294`（历史两枚：`init` + 不带 init 的那枚 ⇒ 是子提交不是覆盖）。
+     同场读端也在真并集（10:03Z 那次）：`known_categories.json：main 329 键 + 分支 330 键 → 并集 330 键
+     （本场新增 1）`、`known_notes.json：main 325 + 分支 326 → 326（新增 1）`。
+     `main` 侧的写者对账（内容级，不靠日志）：`known_categories.json` 最后一次提交 10:25Z（小时场），
+     而 `chore: fast refresh stars` 在 main 上**最后一次是 06:46Z**（P1 落地 07:32Z 之前）⇒ 快车道确实
+     不再写 main；06:30Z 之后 main 历史里 **merge 提交 0 枚** ⇒ 撞车确实归零。
+   - ⚠ **确证过程又抓出一个真丢键（本车道的第二个"只拿 sha 不拿内容"）**：写端 fetch 到父提交之后
+     只用了它的 sha，**没读它的内容**，而本车道的底本来自 main —— `update.yml` 的 add 清单
+     （`:342`/`:377`）里有 `known_categories.json` **却没有 `known_notes.json`** ⇒ main 上那份点评表
+     自 06:46Z 起就再没人提交。两半叠起来的效果是：分支每被重写一次就丢一批键。
+     实测代价（三处对账）：`libukai/awesome-deepseek-harness` 的点评在 `main@05de02b` 里没有、
+     在分支新 tip `9fcca294` 里也没有，只在被取代的 `6728c902` 里活过一场 ⇒ **真丢了**
+     （`restore_star_state.py` 的"绝不缩小"只保护读端，变不出已经没了的键）。
+     修法：`tools/restore_star_state.py` 加写端入口 `--merge-onto <父提交 sha>`（同键以**本场**为准、
+     分支独有键捞回、同一道地板值闸门；方向与读端刻意相反，各有判据钉住），star-fast 在
+     `fetch → FETCH_HEAD → --merge-onto → hash-object → write-tree` 的顺序里调用它
+     （判据 `test_star_state_content_surface_is_exactly_two_files` 的 `for f in` 锚点仍只有一个循环）。
+     判据：`test_star_state_recovers_a_key_only_the_branch_has`（分支独有键必须捞回）+
+     读端目录两条（捞回/本场赢、写端地板闸门）；电池加 **S7**（删掉并集那一行 ⇒ 该判据回红），
+     现 **10/10**（含 S9/S10）。main 上那份 `known_notes.json` 从此是"停在旧值的副本"——不再有写者，但因为读端
+     每场先把分支并上来再构建，站点看到的是全表；这一条按现状接受，不再给它加第二个写者。
+     丢失的那一条点评要单独补一次内容写（写回 main 的 `known_notes.json`，以现取远端那份为底）。
+   - **提交前对抗审查（2026-10-08 12:1xZ 两个独立审查）命中四条，全部已修并各配判据**：
+     ① **管道尾把失败掩成成功**：`parent=$(git ls-remote … | cut -f1)` 里 ls-remote 非零会被
+        `cut` 的 rc=0 覆盖 ⇒ parent 空 ⇒ 走 init ⇒ 空基线租约必被拒 ⇒ 只剩一条"分支上出现了第二个
+        写者"的**假因** warning，全场绿着把本场分类丢掉。现在分开三种码（0 有分支 / 2 `--exit-code`
+        无匹配=还没有 / 其它=真读不到），读不到就放弃并说清真因；`test_star_state_names_the_real_cause_
+        when_the_baseline_read_fails` 钉的是**原因文本**而不只是"没推"。
+     ② **`python fast_refresh.py | tee fast.log` 没有 pipefail** ⇒ 快车道崩了也绿，末步那句
+        `steps.fast.outcome == 'failure'` 从未响过（一条不会响的铃），崩场还会走进提交步推空提交。
+        加 `set -o pipefail`；`fast_refresh.main()` 只 return 0（无良性非零路径），所以不会把好场次变红。
+     ③ **写端"半并仍放行"**：只有一份文件能并时，`_merge_onto` 原来照样返回 0 ⇒ 推上去的 tree 里
+        另一份仍是 main 的陈旧副本；现在"rev 解析不出 / git 失败 / 工作树或分支那份坏了 /
+        categories 没进并集结果"一律返回 **3**，调用方见非零即放弃（`if ! … ; then`），
+        并有 `test_write_merge_refuses_instead_of_half_merging`、
+        `test_write_merge_refuses_when_parent_object_is_absent` 两条钉住。
+     ④ **诊断文字把原因说错**：push 被拒原本写"唯一可能的原因是第二个写者"，实际租约过期与
+        push 自身失败同走这支 ⇒ 会把一次网络抖动读成有人在抢分支。现写成两种真实原因并列。
+     另记一条**夹具暴露的假绿**（审查之后才发现）：这台 Windows 的默认编码是 GBK，工具打印中文
+     诊断时 `print` 自己就崩（`UnicodeEncodeError: '⇒'`）⇒ rc=1 ⇒ 整步走"并集没做完 ⇒ 放弃"，
+     而那条"放弃"判据**当时照样通过**（它只看 bash 打的放弃消息，看不出并集为什么没做完）。
+     两处都补了：调用点显式 `PYTHONIOENCODING=utf-8`、`_run_state` 的环境同样设 utf-8，
+     并把放弃判据加强为"必须看到工具自己的地板闸门原文"（`known_categories 只有`）——
+     反向判据不给"因为别的原因走到同一分支"留位置。电池现 **10/10**（S9 去 pipefail、
+     S10 ls-remote 写成管道，都是这一轮新钉的失败形状）。
    - 另记一条本轮自查踩到的：**`build-log-summary.yml` 在本地工作树存在，但未被 git 跟踪、
      远端 contents API 404、Actions 也不登记它**——它是当初退役时留下的孤儿文件，不跑、不抢 main。
      我一度据此把 `main` 的写者数写成"4 个"。教训与本节"别拿本地 HEAD 当远端事实"同源：

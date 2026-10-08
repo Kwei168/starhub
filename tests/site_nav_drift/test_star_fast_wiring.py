@@ -230,21 +230,28 @@ def _clone(url, here, who, ci_checkout=False):
     _g(here, "config", "user.email", who[1])
 
 
-def _push_star_state(here, payload, msg):
-    """用 plumbing 在 origin 上造/追加一个只含状态文件的 star-state 提交（模拟"上一场"）。"""
+def _push_star_state(here, files, msg):
+    """用 plumbing 在 origin 上造/追加一个只含状态文件的 star-state 提交（模拟"上一场"）。
+
+    files 给 dict（{文件名: 内容}）；给 str 就当它是 known_categories.json（老写法兼容）。
+    写端并集那条判据需要分支上**两个文件都有**上一场的键，所以这里必须能传多份。
+    """
     import subprocess
+    if isinstance(files, str):
+        files = {"known_categories.json": files}
     idx = os.path.join(here, ".seedidx")
     env = {**os.environ, "GIT_INDEX_FILE": idx}
     if os.path.exists(idx):
         os.remove(idx)
-    p = os.path.join(here, ".seed_kc")
-    with open(p, "w", encoding="utf-8") as f:
-        f.write(payload)
-    sha = subprocess.run(("git", "-C", here, "hash-object", "-w", p),
-                         capture_output=True, text=True, check=True).stdout.strip()
     subprocess.run(("git", "-C", here, "read-tree", "--empty"), env=env, check=True)
-    subprocess.run(("git", "-C", here, "update-index", "--add", "--cacheinfo",
-                    "100644,%s,known_categories.json" % sha), env=env, check=True)
+    for name, payload in files.items():
+        p = os.path.join(here, ".seed_" + name.replace(".", "_"))
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(payload)
+        sha = subprocess.run(("git", "-C", here, "hash-object", "-w", p),
+                             capture_output=True, text=True, check=True).stdout.strip()
+        subprocess.run(("git", "-C", here, "update-index", "--add", "--cacheinfo",
+                        "100644,%s,%s" % (sha, name)), env=env, check=True)
     tree = subprocess.run(("git", "-C", here, "write-tree"), env=env,
                           capture_output=True, text=True, check=True).stdout.strip()
     have = _g(here, "ls-remote", "origin", "refs/heads/star-state")
@@ -257,23 +264,36 @@ def _push_star_state(here, payload, msg):
     os.remove(idx)
 
 
-def _stage(tmp_path, prior_state=None, new_star=True):
+def _stage(tmp_path, prior_state=None, new_star=True, big=False):
     """origin 裸仓 → seed 建 main → work（本场工作树，新星已写进 known_categories）。
     prior_state 给定时先在 star-state 上放一个"上一场"的提交；new_star=False 走无新星分支。
+    big=True 把两张表灌到 FLOOR_KEYS 以上（写端并集要过地板值闸门，见
+    test_star_state_recovers_a_key_only_the_branch_has）。
     返回 work 路径。"""
+    import json
+    import shutil
     import subprocess
     origin = tmp_path / "origin.git"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
     # 裸仓的 HEAD 默认指 master，而 CI 的远端默认分支是 main：不改的话 clone 出来是空工作树。
     _g(str(origin), "symbolic-ref", "HEAD", "refs/heads/main")
 
+    # 地板值闸门按生产规模写死在 tools/restore_star_state.py（FLOOR_KEYS=200），夹具要么跟上
+    # 这个量级，要么就会走上"闸门拒绝写"的分支。210 = 200 + 余量；若哪天改 FLOOR_KEYS，
+    # 这条夹具会红在"分支独有的键没捞回来"上（断言消息里写了原因），不是静默假绿。
+    pad = {"old/%d" % i: "tools" for i in range(210)} if big else {}
+    seed_kc = dict(pad); seed_kc["a/one"] = "agent"
+    seed_notes = dict(pad); seed_notes["a/one"] = "一句话"
+
     seed = str(tmp_path / "seed")
     _clone(str(origin), seed, _ME)
     # 分支必须对齐 CI：actions/checkout 出来就是 main 且跟踪 origin/main，而 clone 空裸仓
     # 得到的是 init.defaultBranch（本机常是 master）⇒ 无参数 git push 会推去 master 被拒。
     _g(seed, "checkout", "-q", "-b", "main")
-    (tmp_path / "seed" / "known_categories.json").write_text('{"a/one": "agent"}\n', encoding="utf-8")
-    (tmp_path / "seed" / "known_notes.json").write_text('{"a/one": "一句话"}\n', encoding="utf-8")
+    (tmp_path / "seed" / "known_categories.json").write_text(
+        json.dumps(seed_kc, ensure_ascii=False) + "\n", encoding="utf-8")
+    (tmp_path / "seed" / "known_notes.json").write_text(
+        json.dumps(seed_notes, ensure_ascii=False) + "\n", encoding="utf-8")
     (tmp_path / "seed" / "other.json").write_text('{"x": 1}\n', encoding="utf-8")
     _g(seed, "add", "known_categories.json", "known_notes.json", "other.json")
     _g(seed, "commit", "-qm", "seed")
@@ -291,9 +311,16 @@ def _stage(tmp_path, prior_state=None, new_star=True):
     # 必须走 file:// 而不是裸路径——本地路径 clone 会硬链整个 objects/ 并打印
     # "--depth is ignored in local clones"，那样浅检出形同没浅，父提交永远在场（10-08 踩过）。
     _clone(origin.as_uri(), work, _BOT, ci_checkout=True)
+    # 写端并集是 tools/restore_star_state.py 干的：CI 的工作树里有它，临时仓里也得有，
+    # 否则这一步会红在 "No such file"——看着像判据挂了，其实是夹具缺件。
+    tool_dir = os.path.join(work, "tools")
+    os.makedirs(tool_dir, exist_ok=True)
+    shutil.copyfile(os.path.join(ROOT, "tools", "restore_star_state.py"),
+                    os.path.join(tool_dir, "restore_star_state.py"))
     if new_star:
+        kc = dict(seed_kc); kc["b/new"] = "tools"
         (tmp_path / "work" / "known_categories.json").write_text(
-            '{"a/one": "agent", "b/new": "tools"}\n', encoding="utf-8")
+            json.dumps(kc, ensure_ascii=False) + "\n", encoding="utf-8")
         (tmp_path / "work" / "fast.log").write_text("[fast] 新星 1 条：b/new\n", encoding="utf-8")
     else:
         (tmp_path / "work" / "known_categories.json").write_text('{"a/one": "agent"}\n', encoding="utf-8")
@@ -306,9 +333,11 @@ def _run_state(work, sh, tmp_path):
     import subprocess
     out = tmp_path / "gh_output"
     out.write_text("", encoding="utf-8")
+    # PYTHONIOENCODING 与 workflow 里那个调用点对齐：不设的话这台工具在 GBK 控制台下
+    # print 中文诊断就崩（rc=1），整步会走"并集没做完 ⇒ 放弃"分支——判据看着绿，实际什么都没测到。
     r = subprocess.run(["bash", "-e", sh], cwd=work, capture_output=True, text=True,
                        encoding="utf-8", errors="replace",
-                       env={**os.environ, "GITHUB_OUTPUT": str(out)})
+                       env={**os.environ, "GITHUB_OUTPUT": str(out), "PYTHONIOENCODING": "utf-8"})
     return r, out.read_text(encoding="utf-8")
 
 
@@ -363,7 +392,10 @@ def test_star_state_appends_and_never_uses_bare_force(tmp_path):
     任何东西，红了也没人看见），所以必须靠租约而不是靠人盯。
     """
     _need_bash()
-    work = _stage(tmp_path, prior_state='{"a/one": "agent", "c/prior": "video"}\n')
+    # big=True：写端并集要过地板值闸门，小表会走上"闸门拒绝 ⇒ 放弃提交"那条分支
+    # （由 test_star_state_gives_up_the_push_when_the_merge_is_refused 专门钉），
+    # 用在这里就测不到追加了。10-08 的教训：夹具规模不对，判据就在测另一个世界。
+    work = _stage(tmp_path, big=True, prior_state='{"a/one": "agent", "c/prior": "video"}\n')
     r, gh = _run_state(work, _state_shell(tmp_path), tmp_path)
     assert r.returncode == 0, "追加提交却非零退出：%s%s" % ((r.stdout or "")[-300:], (r.stderr or "")[-300:])
     _g(work, "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*")
@@ -372,6 +404,98 @@ def test_star_state_appends_and_never_uses_bare_force(tmp_path):
     assert "b/new" in _g(work, "show", "origin/star-state:known_categories.json")
     assert not re.search(r"--force(?!-with-lease)", _code_only(_step_body(_wf_text(), COMMIT_STEP_MARK))), \
         "star-state 的推送里出现裸 --force ⇒ 租约保护失效"
+
+
+def test_star_state_recovers_a_key_only_the_branch_has(tmp_path):
+    """分支上有、main 上没有的那条点评，本场必须捞回来——写端只取父提交的 sha 不取内容就会抹掉它。
+
+    10-08 的真实损失（现取三处对账）：`libukai/awesome-deepseek-harness` 的点评
+    在 main@05de02b 里不存在、在分支新 tip 9fcca294 里不存在，只在被它取代的 6728c902 里活过一场。
+    根因两条叠在一起：① 本车道的底本来自 main，而 main 上 `known_notes.json` 最后一次被写是
+    06:46Z（P1 落地之前）——`update.yml` 的 add 清单（:342/:377）里有 `known_categories.json`
+    **却没有** `known_notes.json`；② 写端造 tree 时直接用工作树，从不读分支 tip 的内容。
+    于是分支每被重写一次就丢一批键，而"绝不缩小"只写在读端，读端再怎么并也变不出已经没了的键。
+    """
+    _need_bash()
+    pad = {"old/%d" % i: "tools" for i in range(210)}
+    kc = dict(pad); kc.update({"a/one": "agent", "c/prior": "video"})
+    notes = dict(pad); notes.update({"a/one": "一句话", "c/prior": "只有分支有的点评"})
+    work = _stage(tmp_path, big=True, prior_state={
+        "known_categories.json": __import__("json").dumps(kc, ensure_ascii=False) + "\n",
+        "known_notes.json": __import__("json").dumps(notes, ensure_ascii=False) + "\n"})
+    r, gh = _run_state(work, _state_shell(tmp_path), tmp_path)
+    assert r.returncode == 0, "带并集的追加提交非零退出：%s%s" % ((r.stdout or "")[-400:], (r.stderr or "")[-400:])
+    _g(work, "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*")
+    out_notes = _g(work, "show", "origin/star-state:known_notes.json")
+    assert "c/prior" in out_notes, (
+        "分支上上一场的点评没被捞回 ⇒ 写端没做并集（10-08 就是这样真丢了一条）。"
+        "若这条是因为地板值闸门拒写而红，看 r.stdout 里有没有『写端并集』那行")
+    assert "a/one" in out_notes, "main 独有的键也不许丢"
+    assert "b/new" in _g(work, "show", "origin/star-state:known_categories.json"), \
+        "本场新星没进分支 ⇒ 分类结果没落库"
+    assert "changed=true" in gh
+
+
+def test_star_state_gives_up_the_push_when_the_merge_is_refused(tmp_path):
+    """地板闸门拒绝并集 ⇒ 这一步必须一个字节都不推，而不是"没并过也照样推"。
+
+    写端独有的一半风险：读端闸门拒绝很安全（main 那份本来就在），写端拒绝后若继续往下走，
+    push 上去的就是基于旧 main 的缩小 tree——把"防丢失"变成"丢得更多"。
+    这条刻意用**小表**夹具走拒绝分支（与追加判据互为对照：同一份 shell，两种规模，两种结局）。
+    """
+    _need_bash()
+    work = _stage(tmp_path, prior_state='{"a/one": "agent", "c/prior": "video"}\n')
+    tip_before = _g(work, "ls-remote", "origin", "refs/heads/star-state").split()[0]
+    r, gh = _run_state(work, _state_shell(tmp_path), tmp_path)
+    assert r.returncode == 0, "闸门拒绝应当干净退出（放弃 + 出声），不该把整步炸红：%s%s" % (
+        (r.stdout or "")[-300:], (r.stderr or "")[-300:])
+    assert "放弃提交" in (r.stdout or ""), "拒绝后没出声 ⇒ 日志里分不清『没撞车』和『并集没做完』"
+    # 必须是**工具的地板闸门**让这一场放弃的，不是别的原因（本地曾因 GBK 打印崩在同一分支上假通过：
+    # 那条消息是 bash 打的，看不出并集到底为什么没做完）。
+    assert "known_categories 只有" in (r.stdout or ""),         "走到了放弃分支，但不是地板闸门拦的 ⇒ 这条判据在测别的失败（看上面工具自己的输出）"
+    assert "changed=false" in gh, "$GITHUB_OUTPUT 要留下 changed=false"
+    assert _g(work, "ls-remote", "origin", "refs/heads/star-state").split()[0] == tip_before, \
+        "并集没做完却把提交推了上去 ⇒ 分支 tip 被缩小的 tree 覆盖"
+
+
+def test_star_state_names_the_real_cause_when_the_baseline_read_fails(tmp_path):
+    """读不到基线（ls-remote 真失败）⇒ 出声必须指对原因，且不许推。
+
+    为什么单独立一条：旧写法 `parent=$(git ls-remote … | cut -f1)` 把 ls-remote 的非零掩成
+    rc=0 + 空串（管道尾是 cut），于是 parent 为空 ⇒ 走 init 路径 ⇒ 空基线租约必被拒 ⇒
+    日志只剩一条"分支上出现了第二个写者"——把一次网络抖动说成有人在抢分支，排障方向整个带偏，
+    而本场的分类其实已经丢了（对抗审查实测）。所以这里断言的是**原因文本**，不只是"没推"。
+    """
+    _need_bash()
+    work = _stage(tmp_path, big=True, prior_state='{"a/one": "agent", "c/prior": "video"}\n')
+    tip_before = _g(work, "ls-remote", "origin", "refs/heads/star-state").split()[0]
+    # 把 origin 指到一个不存在的路径：ls-remote 真失败（rc=128），与"分支还没有"（rc=2）区分开。
+    _g(work, "remote", "set-url", "origin", "file:///no/such/repo.git")
+    r, gh = _run_state(work, _state_shell(tmp_path), tmp_path)
+    out = r.stdout or ""
+    assert r.returncode == 0, "读不到基线不该把整步炸红：%s%s" % (out[-300:], (r.stderr or "")[-300:])
+    assert "读不到 star-state 基线" in out, "没走对分支：既没认出读基线失败，就可能把空串当'分支不存在'"
+    assert "第二个写者" not in out, "把读失败报成'第二个写者' ⇒ 这条假因会让人去查根本不存在的并发"
+    assert "changed=false" in gh
+    # 远端确实没被动过（从另一份完好工作树看，不依赖已被改坏的 origin）
+    prev = str(tmp_path / "prev")
+    assert _g(prev, "ls-remote", "origin", "refs/heads/star-state").split()[0] == tip_before, \
+        "读不到基线却还是推了上去"
+
+
+def test_fast_step_fails_when_fast_refresh_crashes(tmp_path):
+    """`python … | tee fast.log` 必须带 pipefail：否则 tee 的 0 会掩掉 fast_refresh 的崩溃。
+
+    末步 `Mark the run red when fast did not run` 是按 `steps.fast.outcome == 'failure'` 写的，
+    而这一步的退出码一直是 tee 的 ⇒ 那铃从来没响过；崩场还不含 "no change" 那行，
+    于是会继续走进提交步、推一枚没有新内容的提交并写 changed=true。
+    `fast_refresh.main()` 只 return 0（无良性非零路径），所以这条不会把好场次变红。
+    """
+    body = _code_only(_step_body(_wf_text(), "Fast refresh"))
+    i = body.find("set -o pipefail")
+    assert i >= 0, "Fast refresh 步没有 pipefail ⇒ python 崩溃被 tee 掩成绿"
+    j = body.find("tee fast.log")
+    assert 0 <= j and i < j, "pipefail 必须出现在这条管道之前才有意义"
 
 
 def test_no_new_star_pushes_nothing_at_all(tmp_path):

@@ -167,3 +167,74 @@ def test_readback_is_recorded_in_build_logs(ws):
     rec = [json.loads(x) for x in lines]
     assert any(r.get("type") == "star_state_readback" and r.get("kind") == "merged" for r in rec), \
         "落痕里没有 merged 记录"
+
+
+def _branch_tip(here):
+    return _g(here, "ls-remote", "origin", "refs/heads/star-state").split()[0]
+
+
+def test_write_merge_recovers_branch_key_but_local_wins_on_conflict(ws):
+    """写端并集（--merge-onto）与读端刻意相反的两半：分支独有的键要捞回，同键以**工作树**为准。
+
+    方向写反就等于把本车道刚分类出来的结果用分支上的旧值盖掉；而"不并"更坏——10-08 就是这样
+    真丢了 libukai/awesome-deepseek-harness 那条点评（main 上的 known_notes.json 早就没人提交，
+    工作树里没有的键只能从分支捞）。这条钉住"捞回"，下一条钉住"本场赢"。
+    """
+    _make_star_state(ws, {"branch/only": "video", "dup/one": "分支的旧分类"},
+                    {"old/9": "只有分支有的点评"})
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 0
+    kc = _read(ws, "known_categories.json")
+    notes = _read(ws, "known_notes.json")
+    assert kc["branch/only"] == "video", "分支独有的分类没捞回 ⇒ 写端仍是'只取 sha 不取内容'"
+    assert notes["old/9"] == "只有分支有的点评", "分支独有的点评没捞回 ⇒ 就是 10-08 那次真丢键"
+    assert "old/1" in kc and "dup/one" in kc, "工作树独有的键不许丢"
+    assert kc["dup/one"] == "coding", "同名键该由工作树（本场刚算的结果）赢，写端方向反了"
+    assert notes["old/0"] == "老点评", "notes 的同名键同样以工作树为准"
+
+
+def test_write_merge_floor_gate_refuses_to_write(ws, capsys):
+    """地板闸门在写端一样生效：并集后仍不足 FLOOR_KEYS ⇒ 一个文件都不写。
+
+    少这一条的话，"main 上表被谁清空了"会以'分支 tip 也被写小'的形态发生，而分支是唯一还存着
+    历史键的地方——把它写小就真的没有下一场能捞回来了。
+    """
+    small = {"a/1": "tools", "a/2": "agent"}
+    with open(os.path.join(ws, "known_categories.json"), "w", encoding="utf-8") as f:
+        json.dump(small, f)
+    with open(os.path.join(ws, "known_notes.json"), "w", encoding="utf-8") as f:
+        json.dump({"a/1": "工作树点评"}, f)
+    _make_star_state(ws, {"a/3": "video"}, {"a/9": "分支点评"})
+    # 写端闸门返回 3 而不是 0：调用方必须据此**放弃提交**（返回 0 的话，bash -e 一路走到
+    # git push，推上去的就是没并过的缩小 tree —— 那正是本函数要防的事）。
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 3, "写端闸门没给出可判别的非零码"
+    assert "::error::" in capsys.readouterr().out, "地板没过却没报错 ⇒ 闸门形同不存在"
+    assert _read(ws, "known_categories.json") == small, "闸门拒绝后仍写了 categories"
+    assert _read(ws, "known_notes.json") == {"a/1": "工作树点评"}, "闸门拒绝后仍写了 notes"
+
+
+def test_write_merge_refuses_when_parent_object_is_absent(ws):
+    """父提交在本地解析不出（浅检出的真实形状）⇒ 返回 3 且一个字节都不写。
+
+    这条就是 10-08 09:45 那两场的形状：ls-remote 给的是一个**本地没有对象**的 sha。
+    写端必须把它当"并集没做完"，而不是"分支上没有键"——后者会让调用方照推一份缩小的 tree。
+    """
+    before = _read(ws, "known_categories.json")
+    before_notes = _read(ws, "known_notes.json")
+    assert rss.main(["--merge-onto", "0123456789abcdef0123456789abcdef01234567"]) == 3
+    assert _read(ws, "known_categories.json") == before
+    assert _read(ws, "known_notes.json") == before_notes
+
+
+def test_write_merge_refuses_instead_of_half_merging(ws):
+    """两份文件里只有一份能并 ⇒ 整体拒绝（返回 3）且连"成功的那份"也不写。
+
+    半并是最坏的结果：categories 并了、notes 没并，调用方却只看 categories 就放行，
+    推上去的 tree 里 notes 仍是 main 的陈旧副本 ⇒ 分支上那批点评照样被覆盖。
+    """
+    with open(os.path.join(ws, "known_notes.json"), "w", encoding="utf-8") as f:
+        f.write("{坏掉的 json")
+    _make_star_state(ws, {"branch/only": "video"}, {"a/1": "分支点评"})
+    before = _read(ws, "known_categories.json")
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 3, "一份坏了却整体放行 ⇒ 会推半并的 tree"
+    assert "branch/only" not in _read(ws, "known_categories.json"), \
+        "拒绝之后仍写了能并的那份 ⇒ categories/notes 变成两套进度"

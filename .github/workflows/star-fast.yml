@@ -62,7 +62,11 @@ jobs:
         id: fast
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python fast_refresh.py | tee fast.log
+        # pipefail 不是修饰词：`python … | tee` 的退出码本来是 tee 的，快车道崩了也是绿，
+        # 于是末步 `steps.fast.outcome == 'failure'` 永不成立（那铃从来没响过），崩场还会
+        # 带着不含 "no change" 的 fast.log 一路走进提交步 ⇒ 推一枚没有新内容的提交并写 changed=true。
+        # fast_refresh.main() 只 return 0（无良性非零路径），所以这里加了只会把真崩溃如实标红。
+        run: set -o pipefail; python fast_refresh.py | tee fast.log
 
       - name: Commit star state to its own branch
         run: |
@@ -85,6 +89,53 @@ jobs:
           # --force-with-lease 的租约基线取本场刚 fetch 下来的 tip，真冒出第二个写者才会被拒。
           # descriptions_zh.json 不在清单里：它已进 starhub-state 缓存家族（.gitignore + 出树），
           # add 它必被拒，新星场的分类结果会提交不出去（10-04 03:0x 实锤，15 分钟循环炸）。
+          # 读基线不许写成 `parent=$(git ls-remote … | cut -f1)`：管道尾是 cut，ls-remote 非零
+          # 会被掩成 rc=0 + 空串 ⇒ 整块被跳过 ⇒ 走 init 路径 ⇒ `--force-with-lease=star-state:`
+          # （期待分支不存在）必被拒 ⇒ 只剩一条把原因说成"第二个写者"的假因 warning，
+          # 全场绿着把本场分类丢掉（2026-10-08 对抗审查实测）。git 的三种码要分开：
+          # 0=分支在；2=--exit-code 无匹配=分支还没有；其它=真的读不到（网络/权限）。
+          rc=0
+          ls_line=$(git ls-remote --exit-code origin refs/heads/star-state) || rc=$?
+          if [ "$rc" -eq 2 ]; then
+            parent=""
+          elif [ "$rc" -ne 0 ]; then
+            echo "::warning::[fast] 读不到 star-state 基线（ls-remote rc=$rc），本场放弃提交"
+            echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          else
+            parent=$(printf '%s\n' "$ls_line" | cut -f1)
+          fi
+          if [ -n "$parent" ]; then
+            # ⚠ 浅检出里**没有** star-state 的对象，而 commit-tree -p 要的是能在本地解析的对象：
+            # ls-remote 只回一个 sha ⇒ "fatal: <sha> is not a valid object" ⇒ bash -e 整步 exit 128。
+            # 10-08 实锤：分支由 09:30 那场（init 路径、无父）建出来，之后**每一场有新星都必红**
+            # （09:45、10:00、10:11、10:15 连续四场）。判据当时全绿，因为它用的是全量 clone——父提交本来就在场。
+            # 先把 tip fetch 下来；depth=1 够用：commit-tree 只要父对象本身在场，不需要它的祖先。
+            # fetch 失败也是"读不到基线"，与上面同源 ⇒ 同一种处置（放弃 + 出声），别让一次抖动把
+            # 每 15 分钟一场变成连片红，也别让它绿着走 init 路径去覆盖分支。
+            if ! git fetch -q --depth=1 origin refs/heads/star-state; then
+              echo "::warning::[fast] fetch star-state 失败，本场放弃提交（不 fetch 就没法追加）"
+              echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            # 用 FETCH_HEAD 而不是上面那个 sha 当父与租约基线：两者之间若真有第二个写者挤进来，
+            # 基线取"我刚追加上去的那枚"才是对的，取旧 sha 会把别人的提交直接判成租约冲突。
+            parent=$(git rev-parse FETCH_HEAD)
+            # 取到父提交**不能只拿它的 sha**：上一场写进分支的键，本场工作树里没有——工作树底本
+            # 来自 main，而 main 上的 known_notes.json 最后一次被写是 06:46Z（P1 落地之前），因为
+            # update.yml 的 add 清单（:342/:377）里有 known_categories.json 却没有 known_notes.json。
+            # 直接用工作树造 tree 就等于每场把上一场的成果抹掉（10-08 实测：
+            # libukai/awesome-deepseek-harness 的点评在 main 与分支新 tip 里双双不存在，只活过一场）。
+            # 写端并集：同键以本场为准（本场分类更新），分支独有键捞回，同样过地板值闸门，绝不缩小。
+            # PYTHONIOENCODING 不是装饰：这台工具的输出全是中文诊断，控制台编码不认时 print 本身
+            # 会抛 UnicodeEncodeError ⇒ rc=1 ⇒ 这里判成"并集没做完"⇒ 每场静默放弃提交
+            # （本地夹具实测到过：GBK 控制台下崩在 '⇒' 上，判据却照样绿，因为放弃消息是 bash 打的）。
+            if ! PYTHONIOENCODING=utf-8 python tools/restore_star_state.py --merge-onto "$parent"; then
+              # 并集没做完（地板闸门拒绝、或脚本任何异常）⇒ 绝不"照样推"：那推上去的就是没并过的
+              # 缩小 tree，正是这里要防的事。放弃本场提交并出声，下一场重新 diff 补上，数据不丢。
+              # （读端不需要这层：读端"不写"很安全，main 那份本来就在；写端"不写"会一路走到提交。）
+              echo "::warning::[fast] star-state 写端并集未完成，本场放弃提交（推上去会缩小分支）"
+              echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          fi
           idx=$(mktemp)
           GIT_INDEX_FILE="$idx" git read-tree --empty
           for f in known_categories.json known_notes.json; do
@@ -93,17 +144,7 @@ jobs:
           done
           tree=$(GIT_INDEX_FILE="$idx" git write-tree)
           rm -f "$idx"
-          parent=$(git ls-remote origin refs/heads/star-state | cut -f1)
           if [ -n "$parent" ]; then
-            # ⚠ 浅检出里**没有** star-state 的对象，而 commit-tree -p 要的是能在本地解析的对象：
-            # ls-remote 只回一个 sha ⇒ "fatal: <sha> is not a valid object" ⇒ bash -e 整步 exit 128。
-            # 10-08 实锤：分支由 09:30 那场（init 路径、无父）建出来，之后**每一场有新星都必红**
-            # （09:45、10:00 连续两场）。判据当时全绿，因为它用的是全量 clone——父提交本来就在场。
-            # 先把 tip fetch 下来；depth=1 够用：commit-tree 只要父对象本身在场，不需要它的祖先。
-            git fetch -q --depth=1 origin refs/heads/star-state
-            # 用 FETCH_HEAD 而不是上面那个 sha 当父与租约基线：两者之间若真有第二个写者挤进来，
-            # 基线取"我刚追加上去的那枚"才是对的，取旧 sha 会把别人的提交直接判成租约冲突。
-            parent=$(git rev-parse FETCH_HEAD)
             commit=$(git commit-tree "$tree" -p "$parent" \
               -m "chore: star state $(TZ=Asia/Shanghai date +%F' '%H:%M)")
             lease="--force-with-lease=star-state:$parent"
@@ -115,8 +156,10 @@ jobs:
           if git push $lease origin "$commit:refs/heads/star-state"; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            # 唯一可能的原因是出现了第二个写者（租约基线已变）：放弃并出声，绝不 --force 覆盖别人。
-            echo "::warning::[fast] star-state 推送被拒（租约失效 ⇒ 该分支上出现了第二个写者），本场放弃"
+            # 被拒的两种真实原因：租约基线过期（真冒出了第二个写者）、或 push 自身失败（网络/权限）。
+            # 原来这里写成"唯一可能的原因是第二个写者"，是错的——它会把一次网络抖动读成有人在抢分支，
+            # 排障方向整个带偏。绝不 --force 覆盖别人；下一场重新 diff 会补上，数据不丢。
+            echo "::warning::[fast] star-state 推送被拒（租约过期或 push 失败），本场放弃"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
