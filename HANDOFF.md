@@ -2262,6 +2262,13 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      （部署后比对 `BASE_SHA`，漂移即 `exit 1`——否则生产会停在"旧代码 + 新 env"的组合上而 run 显示 success）。
      顺带把 `checkout@v4` 对齐到 v5（P0 期间发现过 `deploy-pages@v4` 与 `@v5` 分叉，同一类"两条车道各自漂"）。
      判据：`tests/site_nav_drift/test_sync_agnes_guards.py` 5 条 + 电池 `tools/mut_sync_agnes.py` **5/5**
+     ——⚠ **但该 workflow 自加守卫后一次都没在 CI 上跑过**（现取运行史：最后一次是 2026-09-08，
+     比守卫加入早一个月）。文本判据只证明"写了"，所以 10-08 把守门一的正文抽出来在本地**四向实跑**：
+     ① 当前无在跑小时场 ⇒ rc=0 且写入 `BASE_SHA`；② 换成必然无匹配的 workflow 名 ⇒ rc=0（放行侧
+     不是恒真）；③ 换成不带 status 的查询（返回 ≥1 行）⇒ `::error::有 1 场…` + **rc=1 且不写 BASE_SHA**
+     （证明"守门在 upsert 之前"是真的，不是注释）；④ 把 gh 路径改坏 ⇒ rc 仍为 1（`running=""` 走
+     `!= "0"` 分支）⇒ **gh 失败时 fail-closed**，不会带着未知状态去部署。
+     真正的 CI 首跑要等一次 key 轮换——那才会触发 `vercel --prod`，属生产动作，不为取证据而做。
      （G1 守门消失、G2 退化成只打印、G3 BASE_SHA 不在 upsert 前记、G4 比较式写反、G5 checkout 漂回 v4）。
    - **判据与电池**：4 条 star-state 行为判据（临时裸仓实跑，`test_star_fast_wiring.py`）+
      6 条读端行为判据（`tests/tools/test_restore_star_state.py`）+ 电池 `tools/mut_star_state.py`
@@ -2273,7 +2280,7 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      `tools/mut_push_retry.py` **已删**——它钉的"撞 main ⇒ merge 重试"链
      整体不存在了，留着等于钉一个不存在的机制（另一种空转）。
    - 本地读数（对抗审查四条修完后的现跑）：gate A OK（py_compile + compileall + `node --check`）｜
-     A2 完整 **726 passed**｜A3 **158 passed**｜读端+写端脚本判据 **10 passed**｜
+     A2 完整 **730 passed**（726 + 读端顺序判据 4 条）｜A3 **163 passed**｜读端+写端脚本判据 **10 passed**｜
      `mut_star_state` **10/10**｜`mut_attention` 9/9｜`daily_insight` 425 passed。
    - ⚠ **追加链已跑通（10-08 11:16Z 现取，BJT 19:16）**：11:15 那场真出新星
      （`[fast] 新星 1 条：imaiwork/IMAI.WORK-AI-Phone`）⇒ run **success**、`star-state` 从
