@@ -2351,6 +2351,21 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
         chunk0 实测 418,975 B（6MB 是 chunk1），而且 200 全读也照样能解析出 `_total` ⇒
         硬要求 206 只会把覆盖面砍成"永远不知道"。已改成"404/410 报坏、其它非 ok 报不知道、
         只在 206 时读 64 字节头部验空壳"。
+   - **线上确证（14:0x–14:2xZ 现取，三笔 + 一次阳性对照）**：
+     ① 14:00 那场小时场部署 Vercel 成功（新 revision `starhub-refresh-1cmxmcudi…`），
+        活接口 `GET https://starhub-refresh.vercel.app/api/health` 返回
+        `{"ok":true,…,"pages_ok":true,"reader_ok":true}` ⇒ 这条面**报的是"知道且好"，不是 null**
+        （null 就等于装了没人守，那才是这条判据真正要防的形状）。
+     ② 同场读端并集原文：`known_notes.json：main 326 键 + 分支 326 键 → 并集 327 键（本场新增 1）`
+        —— 这 1 就是 11:15 写进分支、而 main 上没有的 `imaiwork/IMAI.WORK-AI-Phone` 点评，
+        与我补回的 `libukai/…` 各自在两边，并集后合到一张表上；
+        内容级对账：main 有 libukai 无 imaiwork、分支反之、`|并集| = 327`。
+     ③ **阳性对照**（只把 `DATA_CHUNK_BASE` 换成必然 404 的前缀，逻辑一行不动）：
+        `http=503 ok=false reader_ok=false pages_ok=true` ——
+        这正是 10-07 那天的形状（首页完好、阅读器数据坏），当时全绿，现在会响。
+     ④ 一次取数陷阱实录（写进纪律）：第一次对账把 `known_notes.json` 读成 `0 键`，
+        差点报成"补回的点评没生效"。真因是 `gh api … --jq .content` 偶发返回空串。
+        ⇒ 任何"键数"读数必须先证明**取到了非空正文**再解析（这次改成带重试 + `assert d` 才对上）。
    - **判据与电池**：`tests/site_nav_drift/test_trigger_chain.py` 新增 3 条（内容级+开集与跨文件
      上界对账 / 三态与报坏出处可数 / maxDuration 预算算术）；电池
      `tools/mut_health_reader.py` **7/7**（H1 合成改真值、H2 循环上界写死、H3 单次超时抬到 9s、
