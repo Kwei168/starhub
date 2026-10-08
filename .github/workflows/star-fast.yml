@@ -64,32 +64,52 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python fast_refresh.py | tee fast.log
 
-      - name: Commit star state if changed
+      - name: Commit star state to its own branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if grep -q "no change, skip write" fast.log; then
             echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # star 功能的私有状态，只按具体路径提交（手册硬规：禁 add -A / add .）。
-          # descriptions_zh.json 已进 starhub-state 缓存家族（.gitignore + 出树）——
-          # add 它必被拒，新星场的分类结果会提交不出去（03:0x 实锤，15 分钟循环炸）
-          git add known_categories.json known_notes.json
-          git commit -m "chore: fast refresh stars $(TZ=Asia/Shanghai date +%F' '%H:%M)" \
-            -- known_categories.json known_notes.json || {
-            echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          if ! git push; then
-            # 小时场 bot 并发提交 → merge 远端重试一次；再失败放弃提交（下场重新 diff 补判，
-            # 数据不丢）。放弃优于挡住本步提交（2026-10-07 P0 之后本车道不再发布任何东西）。
-            # ⚠ fetch 的深度不是可有可无的参数：actions/checkout 是浅检出，`--depth=1` 只取远端
-            # tip 一层、把它变成 grafted 历史 ⇒ merge 报 "refusing to merge unrelated histories"
-            # 并被下面的 || true 吞掉 ⇒ 二次 push 照旧 non-fast-forward ⇒ 重试永远走放弃分支
-            # （判据 test_star_fast_lands_after_a_clean_collision 实测：depth=1 推不上去，2/10 可以）。
-            git fetch origin main --depth=10 || true
-            git merge origin/main --no-edit || true
-            git push || echo "::warning::[fast] star 状态提交被拒，本场放弃（下一场补）"
+          # 2026-10-08 P1：状态改推 orphan 分支 star-state，**不再推 main**。
+          # 原来本车道每 15 分钟往 main 提交一次，而小时场单场要跑 ~35 分钟 ⇒ 它的 push 必然
+          # non-fast-forward；重试只有一次、重试本身又要 5 分钟构建，第二次再被拒就整场红、
+          # Pages 整场不发（10-07 04:00 实锤，远端三次 fast 提交夹掉它的两次 push）。
+          # 现在 main 的自动写者只剩 update.yml 一个，撞车从"概率事件"变成"不可能事件"。
+          # 读端在 update.yml 的 Restore star state 步（并集回工作树，绝不缩小 + 地板值闸门）。
+          #
+          # 用 plumbing 造提交，不走 add/commit：actions/checkout 的工作树里躺着整份源码，
+          # 而 star-state 只该装这两个状态文件——把源码一起放进去，读端 fetch 到的就是
+          # "停在旧流程的过期副本"（正是 10-07 事故里库里那份 rss-data-1.js 的坑）。
+          # 本分支唯一写者就是这条车道 ⇒ 不需要 merge、不需要重试链：
+          # --force-with-lease 的租约基线取本场刚 ls-remote 到的 tip，真冒出第二个写者才会被拒。
+          # descriptions_zh.json 不在清单里：它已进 starhub-state 缓存家族（.gitignore + 出树），
+          # add 它必被拒，新星场的分类结果会提交不出去（10-04 03:0x 实锤，15 分钟循环炸）。
+          idx=$(mktemp)
+          GIT_INDEX_FILE="$idx" git read-tree --empty
+          for f in known_categories.json known_notes.json; do
+            sha=$(git hash-object -w "$f")
+            GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$sha,$f"
+          done
+          tree=$(GIT_INDEX_FILE="$idx" git write-tree)
+          rm -f "$idx"
+          parent=$(git ls-remote origin refs/heads/star-state | cut -f1)
+          if [ -n "$parent" ]; then
+            commit=$(git commit-tree "$tree" -p "$parent" \
+              -m "chore: star state $(TZ=Asia/Shanghai date +%F' '%H:%M)")
+            lease="--force-with-lease=star-state:$parent"
+          else
+            commit=$(git commit-tree "$tree" \
+              -m "chore: star state init $(TZ=Asia/Shanghai date +%F' '%H:%M)")
+            lease="--force-with-lease=star-state:"
           fi
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+          if git push $lease origin "$commit:refs/heads/star-state"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            # 唯一可能的原因是出现了第二个写者（租约基线已变）：放弃并出声，绝不 --force 覆盖别人。
+            echo "::warning::[fast] star-state 推送被拒（租约失效 ⇒ 该分支上出现了第二个写者），本场放弃"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # 2026-10-07 P0：这里原有 Stage（从线上 curl 带回 7 个硬编码名字）+ Upload Pages artifact
       # + Deploy to GitHub Pages 三步，已整体删除。删除的理由写在文件头部的架构原则里

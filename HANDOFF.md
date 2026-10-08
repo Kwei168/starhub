@@ -2223,9 +2223,43 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
 每条红在对应判据上，且每条先跑过未变异对照组证明绿。
 
 **未闭合（下一批的账）**
-1. **P1 分支解耦未做**：star-fast 仍推 `main` ⇒ 撞车仍在，但后果已从"数据缺失"降级成"内容陈旧 ≤1 小时"。
-   方案（orphan `star-state` 分支 + 回读地板值闸门 + 顺序必须在 `git reset --hard` 之后）在 SPEC §P1。
-2. **P1.5 告警链未修**：`api/health.js:69-83` 的 `pages_ok` 只看 200+长度 ⇒ 对**陈旧** index.html 恒真；
+1. **P1 分支解耦已完成**（2026-10-08 06:0x–06:3x）：star 状态改推 orphan 分支 `star-state`，
+   `main` 的自动写者从 2 个收成 **1 个（只剩 update.yml）**，撞车从"概率事件"变成"不可能事件"。
+   - **写端**（`star-fast.yml` 的 `Commit star state to its own branch`）：改用 plumbing
+     （`read-tree --empty` / `update-index --cacheinfo` / `commit-tree`）构造**只含两个状态文件**的提交。
+     不走 `git add`/`commit` 是因为 `actions/checkout` 的工作树里躺着整份源码，混进分支就会让读端
+     fetch 到"停在旧流程的过期副本"（10-07 那个坑换个分支重演）。租约基线取当场 `ls-remote` 的 tip，
+     首次创建用 `--force-with-lease=star-state:`（期待不存在）。**merge 重试链整体消失**——单写者不需 merge。
+   - **读端**（`tools/restore_star_state.py`，由 update.yml 在 `git reset --hard` **之后**、构建之前调用）：
+     三条安全属性各有判据与变异自证——① **并集绝不缩小**（分支被清空成 `{}` 也只退化成"没拿到新分类"）；
+     ② 地板值闸门（合并后 `known_categories` < 200 键 ⇒ 一个字节都不写，防 `fast_refresh.py` 按
+     "不在表里"全表 diff 而重烧 293 条 LLM）；③ 读不到只降级 + warning，绝不挡发布
+     （本仓有"A2 blocking + Deploy 无 if"的连坐教训）。
+   - **`known_categories.json` 的双内容写者已被并集语义消化**，不需要再单独收：star-fast 从 main 取底
+     加新星写 star-state，update 从 star-state 并集回写 main，两边都是"读对方 + 并集"⇒ 即使 star-fast
+     与 update 并发（它 checkout 的是旧 main、表里缺 update 刚分类的键），那些键也在 main 上，并集保住。
+   - **Vercel 那条仍在**（未收）：`sync-agnes-env.yml:41` 手动 dispatch 时 `npx vercel --prod`
+     全量重部署，**不看 update.yml 的四类内容哈希门**。风险量级低于 Pages 那条（手动、低频），
+     但同构成立：若它跑在 update 场 prune 之后，会部署出一个缺文件的 API 主机。
+     收法二选一：让它只 upsert env 不触发重部署（靠下一场 update 自然带上），或给它加同一套哈希门
+     ＋"当前无 update 在跑"的守门。
+   - **判据与电池**：4 条 star-state 行为判据（临时裸仓实跑，`test_star_fast_wiring.py`）+
+     6 条读端行为判据（`tests/tools/test_restore_star_state.py`）+ 电池 `tools/mut_star_state.py`
+     **5/5**（S1 推回 main、S2 租约退化成裸 --force、S3 内容面混第三文件、S4 无新星也推、
+     S5 不追加重开历史）。`tools/mut_push_retry.py` **已删**——它钉的"撞 main ⇒ merge 重试"链
+     整体不存在了，留着等于钉一个不存在的机制（另一种空转）。
+   - 本地读数：gate A OK｜A2 完整 **726 passed**｜A3 **149 passed**｜读端 6 passed｜
+     `mut_star_state` 5/5｜`mut_attention` 9/9｜`daily_insight` 425 passed。
+   - ⚠ **线上生效待两场验证**：`star-state` 要等第一场 star-fast 真跑出新星才创建；读端在分支不存在时
+     走降级（行为与今天完全一致），所以"读端已上线"**不等于**"解耦已生效"。验收读数：
+     `git ls-remote origin refs/heads/star-state` 非空 ＋ 连续 4 场 update 的
+     `Commit & push if changed` 无 `! [rejected]` ＋ update 日志出现 `[star-state] … 并集 …`
+     或 `build_logs` 里有 `star_state_readback` 落痕。
+   - 另记一条本轮自查踩到的：**`build-log-summary.yml` 在本地工作树存在，但未被 git 跟踪、
+     远端 contents API 404、Actions 也不登记它**——它是当初退役时留下的孤儿文件，不跑、不抢 main。
+     我一度据此把 `main` 的写者数写成"4 个"。教训与本节"别拿本地 HEAD 当远端事实"同源：
+     **判断 CI 上有什么必须问 GitHub API，不能列本地目录。**该孤儿已移出工作树
+     （→ `_scratch/diag/orphan_workflows/`；未跟踪文件删了不可逆，故不直接 rm）。2. **P1.5 告警链未修**：`api/health.js:69-83` 的 `pages_ok` 只看 200+长度 ⇒ 对**陈旧** index.html 恒真；
    唯一出声口 `buildAge>120` ⇒ 需连红 2 场、滞后 ≥2h 才 503。`star_fast_age_minutes` 数的是 run 成功
    而非状态提交 ⇒ P0 之后它恒绿但不再意味着任何事（本批撞车频率实测 1/30，故登记不修）。
 3. **P2 emb 富度闸门未做**：`template.html:1279` 的 `DATA.some(d=>d.emb)` 会把 emb 归零吞成静默降级
