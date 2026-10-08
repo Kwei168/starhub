@@ -12,7 +12,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 必须 checkout：CLI 从当前目录上传部署，缺 checkout 会用空目录覆盖生产
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      # ── 部署守门（2026-10-08 P1：消掉 Vercel 的第二个写者风险）──────────────
+      # 为什么需要：本 workflow 与 update.yml 都会 `vercel --prod`，但**两者喂给 Vercel 的输入不同**——
+      # update.yml 是在 Prune 步删掉大产物之后才部署（update.yml:538-549），而本 workflow 部署的是
+      # 一份未 prune 的 checkout。所以只要有一场 update 正在跑，本步就可能把生产 API 主机换成
+      # "另一种输入"的版本（同 10-07 Pages 双写者的形状：不是谁改错了，是两条链路各自整棵覆盖）。
+      # 收法照抄本仓已有先例 repo-trim.yml:137-139：不发明新机制，只做"期间有别人在动 ⇒ 中止让人重跑"。
+      - name: Guard — no hourly build in flight
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          running=$(gh api "repos/Kwei168/starhub/actions/runs?workflow=update.yml&status=in_progress&per_page=20" \
+            --jq '[.workflow_runs[] | select(.name=="Update Star Hub")] | length')
+          if [ "$running" != "0" ]; then
+            echo "::error::有 $running 场 update.yml 正在跑，现在部署会和它争同一个 Vercel 生产版本；等它结束再重跑本 workflow"
+            exit 1
+          fi
+          echo "BASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Upsert AGNES_API_KEY on Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -39,3 +60,16 @@ jobs:
         run: |
           set -o pipefail
           npx --yes vercel --prod --yes --token "$VERCEL_TOKEN" 2>&1 | tail -n 5
+
+      # 部署期间 main 若前进了，说明我刚上传的那份已经过期（小时场可能已经推了新代码），
+      # 生产就停在"旧代码 + 新 env"的组合上。不静默接受：报红让人重跑一次（同 repo-trim 的口径）。
+      - name: Guard — main did not move during deploy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LIVE=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$LIVE" != "$BASE_SHA" ]; then
+            echo "::error::部署期间 main 已前进（${BASE_SHA:0:10} -> ${LIVE:0:10}），刚上传的版本已过期；请重跑本 workflow"
+            exit 1
+          fi
+          echo "生产版本对应 main=${LIVE:0:10}，部署期间无人推送"

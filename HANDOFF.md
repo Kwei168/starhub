@@ -2238,11 +2238,18 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
    - **`known_categories.json` 的双内容写者已被并集语义消化**，不需要再单独收：star-fast 从 main 取底
      加新星写 star-state，update 从 star-state 并集回写 main，两边都是"读对方 + 并集"⇒ 即使 star-fast
      与 update 并发（它 checkout 的是旧 main、表里缺 update 刚分类的键），那些键也在 main 上，并集保住。
-   - **Vercel 那条仍在**（未收）：`sync-agnes-env.yml:41` 手动 dispatch 时 `npx vercel --prod`
-     全量重部署，**不看 update.yml 的四类内容哈希门**。风险量级低于 Pages 那条（手动、低频），
-     但同构成立：若它跑在 update 场 prune 之后，会部署出一个缺文件的 API 主机。
-     收法二选一：让它只 upsert env 不触发重部署（靠下一场 update 自然带上），或给它加同一套哈希门
-     ＋"当前无 update 在跑"的守门。
+   - **Vercel 已收（同日 P1.6）**：`sync-agnes-env.yml` 仍是第二个 `vercel --prod` 部署者，
+     但**不能简单砍掉重部署**——key 轮换必须重新部署才生效（env 在部署时快照），砍了就是功能坏。
+     真风险是两条链路**喂给 Vercel 的输入不同**：update.yml 在 Prune 步删掉大产物之后才部署
+     （`update.yml:538-549`），而它部署的是一份未 prune 的 checkout ⇒ 与 10-07 的 Pages 双写者同构
+     （不是谁改错了，是两条链路各自整棵覆盖）。
+     收法照抄本仓先例 `repo-trim.yml:137-139`（"期间有别人在动 ⇒ 中止让人重跑"），不发明新机制：
+     ① `Guard — no hourly build in flight`（按 `workflow=update.yml&status=in_progress` 查，
+     非零即 `exit 1`，且在 upsert **之前**记录 `BASE_SHA`）；② `Guard — main did not move during deploy`
+     （部署后比对 `BASE_SHA`，漂移即 `exit 1`——否则生产会停在"旧代码 + 新 env"的组合上而 run 显示 success）。
+     顺带把 `checkout@v4` 对齐到 v5（P0 期间发现过 `deploy-pages@v4` 与 `@v5` 分叉，同一类"两条车道各自漂"）。
+     判据：`tests/site_nav_drift/test_sync_agnes_guards.py` 5 条 + 电池 `tools/mut_sync_agnes.py` **5/5**
+     （G1 守门消失、G2 退化成只打印、G3 BASE_SHA 不在 upsert 前记、G4 比较式写反、G5 checkout 漂回 v4）。
    - **判据与电池**：4 条 star-state 行为判据（临时裸仓实跑，`test_star_fast_wiring.py`）+
      6 条读端行为判据（`tests/tools/test_restore_star_state.py`）+ 电池 `tools/mut_star_state.py`
      **5/5**（S1 推回 main、S2 租约退化成裸 --force、S3 内容面混第三文件、S4 无新星也推、
