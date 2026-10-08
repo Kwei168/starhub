@@ -2327,7 +2327,20 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      我一度据此把 `main` 的写者数写成"4 个"。教训与本节"别拿本地 HEAD 当远端事实"同源：
      **判断 CI 上有什么必须问 GitHub API，不能列本地目录。**该孤儿已移出工作树
      （→ `_scratch/diag/orphan_workflows/`；未跟踪文件删了不可逆，故不直接 rm）。
-2. **P1.5 告警链：已补上唯一用户可见损坏的内容级探活（2026-10-08 13:3xZ）**
+0. **告警链的一次真实自检（2026-10-08 15:0x–16:2xZ，顺手更正手册里一处错话）**：
+   15:00 那场 `Deploy to GitHub Pages` 报 `Failed to create deployment (status: 500)`——
+   GitHub 服务端的 500，产物与载荷都正常（`Found 1 artifact(s)`、build version 就是当时的 tip），
+   近 30 场里唯一一次步级 Pages 失败。**16:00 那场 Pages=success** ⇒ 判定为偶发，不改代码
+   （改判据/加重试都追不上一次上游 500；真成了常态再查制品形状）。
+   这场偶发正好把告警链跑了一遍实测：`buildAge` 从 119（200 OK）走到 **128 ⇒ `http=503`**，
+   而同一份响应里 `pages_ok / reader_ok / emb_ok` 全为 true——它正确区分了"没发布"与"内容坏"；
+   16:00 发布成功后自动回 200（`last_build_age_minutes: 27`）。
+   ⚠ 由此更正本节旧写法"唯一出声口 `buildAge>120` ⇒ 需连红 2 场、滞后 ≥2h 才 503"：
+   `buildAge` 量的是**最近一场成功 run 的 created_at** 距今，小时场节奏下**漏一场就过 120 分钟**，
+   所以实际灵敏度是"漏一场即响"，不是"漏两场才响"。这句话在 10-07 写下时是推算，今天有读数了。
+   两个已知边角（登记不修）：一场构建若跑超 120 分钟会误响（今天最长 16:00 场 ~28 分钟）；
+   连续两场 `cancelled`（cron-job.org 掉线那种）同样会响——那正是该响的。
+1. **P1.5 告警链：已补上唯一用户可见损坏的内容级探活（2026-10-08 13:3xZ）**
    `api/health.js` 新增 `readerChunksOk()`，handler 合成改成
    `ok = pagesOk && readerOk !== false && buildAge !== null && buildAge <= STALE_BUILD_MINUTES`。
    - **为什么必须新增**：10-07 那次"信源只剩 55"是 `rss-data-1.js` 被抹成 404，而当时
