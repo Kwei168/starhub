@@ -55,19 +55,6 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-      - name: Restore star state from its own branch
-        # 2026-10-08 P1 分支解耦的**读端**。star 状态（known_categories/known_notes）的权威副本
-        # 从此住在 orphan 分支 star-state 上，唯一写者是 star-fast.yml；本步把它并集回工作树，
-        # 于是 main 的自动写者只剩这一个 workflow —— 快车道每 15 分钟一次的提交不再把小时场的
-        # push 撞成 non-fast-forward（10-07 04:00 实锤：撞两次就整场红、Pages 整场不发）。
-        # 顺序硬要求：必须在上面的 reset 之后（否则被 reset 抹掉）、在构建之前。
-        # 三条安全属性由 tests/tools/test_restore_star_state.py 钉住并做过变异自证：
-        # ①并集绝不缩小（分支被清空也只会退化成"没拿到新分类"）；②地板值闸门（防 293 条全量重烧 LLM）；
-        # ③读不到只降级 + warning，绝不挡发布（本仓有"A2 blocking + Deploy 无 if"的连坐教训）。
-        run: |
-          python tools/restore_star_state.py \
-            || echo "::warning::[star-state] 读端异常退出，本场使用 main 上的副本（不阻断发布）"
-
       - name: Determine build mode
         run: |
           # workflow_dispatch 可强制 full；UTC 21:00 (北京 05:00) → full，其余 → incremental
@@ -259,6 +246,23 @@ jobs:
           else
             echo "  MISSING build_logs/（当日累积从空开始，摘要计数会偏低）"
           fi
+
+      - name: Restore star state from its own branch
+        # 2026-10-08 P1 分支解耦的**读端**。star 状态（known_categories/known_notes）的权威副本
+        # 从此住在 orphan 分支 star-state 上，唯一写者是 star-fast.yml；本步把它并集回工作树，
+        # 于是 main 的自动写者只剩这一个 workflow —— 快车道每 15 分钟一次的提交不再把小时场的
+        # push 撞成 non-fast-forward（10-07 04:00 实锤：撞两次就整场红、Pages 整场不发）。
+        # 顺序硬要求（2026-10-08 实测过才写全）：必须在 `Sync to latest remote` 的 reset 之后、
+        # 也在 `Restore worktree after insight tests` 的 `git checkout -- .` + `git clean -fdq` **之后**、
+        # 并在构建之前。放在 reset 之后却放在那次还原之前，并集会被静默回滚——10-08 就是这么让
+        # 分支上的点评到不了页面（读端日志写着"并集 327（新增 1）"，线上首页那条 note 仍是空串）。
+        # 判据 tests/site_nav/test_pages_build_wiring.py 钉住这个先后，防止以后有人把它挪回去。
+        # 三条安全属性由 tests/tools/test_restore_star_state.py 钉住并做过变异自证：
+        # ①并集绝不缩小（分支被清空也只会退化成"没拿到新分类"）；②地板值闸门（防 293 条全量重烧 LLM）；
+        # ③读不到只降级 + warning，绝不挡发布（本仓有"A2 blocking + Deploy 无 if"的连坐教训）。
+        run: |
+          python tools/restore_star_state.py \
+            || echo "::warning::[star-state] 读端异常退出，本场使用 main 上的副本（不阻断发布）"
 
       - name: Fetch stars & build
         id: build

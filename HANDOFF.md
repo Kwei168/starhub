@@ -2297,7 +2297,10 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      判据：`test_star_state_recovers_a_key_only_the_branch_has`（分支独有键必须捞回）+
      读端目录两条（捞回/本场赢、写端地板闸门）；电池加 **S7**（删掉并集那一行 ⇒ 该判据回红），
      现 **10/10**（含 S9/S10）。main 上那份 `known_notes.json` 从此是"停在旧值的副本"——不再有写者，但因为读端
-     每场先把分支并上来再构建，站点看到的是全表；这一条按现状接受，不再给它加第二个写者。
+     每场先把分支并上来再构建 ⇒ 站点看到的是全表；这一条按现状接受，不再给它加第二个写者。
+     ⚠ **这句"站点看到的是全表"在 10-08 17:0xZ 被证伪过，已在下面第 5 条更正并修好**：
+     读端当时排在 `Restore worktree after insight tests` 的 `git checkout -- .` + `git clean -fdq`
+     之前，并集进了工作树却没进构建。
      丢失的那一条点评要单独补一次内容写（写回 main 的 `known_notes.json`，以现取远端那份为底）。
    - **提交前对抗审查（2026-10-08 12:1xZ 两个独立审查）命中四条，全部已修并各配判据**：
      ① **管道尾把失败掩成成功**：`parent=$(git ls-remote … | cut -f1)` 里 ls-remote 非零会被
@@ -2340,6 +2343,25 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
    所以实际灵敏度是"漏一场即响"，不是"漏两场才响"。这句话在 10-07 写下时是推算，今天有读数了。
    两个已知边角（登记不修）：一场构建若跑超 120 分钟会误响（今天最长 16:00 场 ~28 分钟）；
    连续两场 `cancelled`（cron-job.org 掉线那种）同样会响——那正是该响的。
+0. ⚠⚠ **P1 读端当时被排错了位置，"并集成功"却没进页面（10-08 17:0xZ 发现并修）**：
+   现象是线上首页里 `imaiwork/IMAI.WORK-AI-Phone` 的 `note` 是**空串**，而分支
+   `star-state` 的 `known_notes.json` 里明明白白存着"基于无障碍模式的AI手机RPA自动化框架…"；
+   同一场（16:00）读端日志还写着 `known_notes.json：main 326 + 分支 326 → 并集 327（新增 1）`。
+   根因不在读端脚本，在**步骤位置**：它排在第 2 步（`Sync to latest remote` 的 reset 之后，
+   注释里也确实写了"顺序硬要求"），可是工作流里**还有第二个会还原工作树的步骤**——
+   `Restore worktree after insight tests` 的 `git checkout -- .` + `git clean -fdq`（第 9 步，
+   本来是擦洞察测试写脏的文件）。并集写在它前面 ⇒ 被整体回滚 ⇒ "步骤成功 + 日志正确 + 产物里没有"，
+   三道质量闸一条都不会红。这不是某一行写错，是**"我改的东西到底有没有活到最终产物"缺一层核对**。
+   - 修法（最小化）：读端整步移到第 16 步——还原步之后、`Fetch stars & build`（第 17 步）之前。
+     不动脚本、不加新机制。
+   - 判据：新增 A2 blocking `tests/site_nav/test_pages_build_wiring.py` 4 条（顺序、读端到构建之间
+     不许再有还原命令、run 必须真调脚本、读端不许变成 blocking/不许 exit 1）。
+     电池 `tools/mut_build_wiring.py` **4/4**：X1 就是把读端**搬回原来那个错误位置**，
+     判据回红 ⇒ 这条坑以后被机制挡住，而不是靠我记得。
+   - 写判据时又踩一次本仓老坑：为了说明这个 bug，注释里合法写着 `git checkout -- .` 与
+     `git clean -fdq` 两个字面量，判据不剔注释就会**假红**（第 5 次遇到，`_code_only` 是必需的）。
+   - 待线上确证：下一场小时场的首页里，`imaiwork` 的 `note` 必须是非空。这一步没做完之前，
+     "点评已全量上线"这句话不许写进任何结论。
 1. **P1.5 告警链：已补上唯一用户可见损坏的内容级探活（2026-10-08 13:3xZ）**
    `api/health.js` 新增 `readerChunksOk()`，handler 合成改成
    `ok = pagesOk && readerOk !== false && buildAge !== null && buildAge <= STALE_BUILD_MINUTES`。
