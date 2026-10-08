@@ -1567,7 +1567,12 @@ function renderSearchResults(j, append){
   const list = $('#sList');
   if(!append) list.innerHTML = '';
   if(!j.items || !j.items.length){
-    if(!append) renderSearchState('empty');
+    if(!append){
+      renderSearchState('empty');
+      // total>0 却一条没剩下时，只报「未找到相关仓库」会把人支去换词——得说明是被屏蔽了
+      const fo = j.filtered_out || 0;
+      if(fo) $('#sFoot').textContent = '本页 ' + fo + ' 条结果已屏蔽（低质或不相关），试试换更具体的关键词';
+    }
     return;
   }
   j.items.forEach(x => {
@@ -1594,10 +1599,14 @@ function renderSearchResults(j, append){
   // 分页状态：已加载条数 + 是否还有下一页（滚动触发加载更多）
   searchLoaded += (j.items || []).length;
   const total = j.total || 0;
-  searchHasMore = (j.items || []).length === SEARCH_PER_PAGE && searchLoaded < Math.min(total, 1000);
-  $('#sFoot').textContent = searchHasMore
+  // 「还有下一页」看服务端原始条数，不能看过滤后的 items.length —— 后者一屏蔽就误判到底。
+  // 旧部署/旧缓存没这个字段时回退成 items.length，保持与改动前同形。
+  const rawCount = (typeof j.raw_count === 'number') ? j.raw_count : (j.items || []).length;
+  searchHasMore = rawCount === SEARCH_PER_PAGE && searchLoaded < Math.min(total, 1000);
+  const spamNote = j.filtered_out ? ' · 已屏蔽 ' + j.filtered_out + ' 条低质或不相关结果' : '';
+  $('#sFoot').textContent = (searchHasMore
     ? '已显示 ' + searchLoaded + ' / 共 ' + Math.min(total, 1000) + ' 条 · 滚动加载更多'
-    : (total > 1000 ? '已显示前 ' + searchLoaded + ' 条（共 ' + total + ' 个结果，GitHub 最多返回前 1000 条）' : '已显示全部 ' + searchLoaded + ' 条');
+    : (total > 1000 ? '已显示前 ' + searchLoaded + ' 条（共 ' + total + ' 个结果，GitHub 最多返回前 1000 条）' : '已显示全部 ' + searchLoaded + ' 条')) + spamNote;
 }
 
 function editSearchQuery(){

@@ -105,6 +105,28 @@ function enJoined(zhTerms, enMap) {
 
 export { buildQueryPlan };
 
+// ── 低质/骗排名仓库判据（2026-10-08）────────────────────────────────
+// 只信 /search/repositories 自带字段 ⇒ 零额外请求、不建关键词表。
+// 阈值来自实测（不是估的）：三页真样本里正常仓库的 description 最长 350 字符（GitHub UI
+// 的写入上限就是 350 ⇒ 超过它只能是走 API 塞进来的异常长文）；靶样本
+// （cirosantilli/china-dictatorship）把 **64,765 字符**正文塞进 description 骗排名，
+// 而搜索接口**原样返回**该字段 ⇒ 一条垃圾就把整页响应撑到 63KB，前端渲染成文字墙。
+//
+// 曾经有判据②「topics 顶格 20 + 描述 >200 + 无代码语言 ⇒ 关键词堆砌」，已删除：
+// 它在第二页就把 **144,081 星的 x1xhlol/system-prompts-and-models-of-ai-tools** 误杀了
+// （它恰好 topics=20、desc=328、language=null）。这三条特征合法热门清单仓库全都有，
+// 不具区分度。判据③「无代码/只有 README」同理不做独立屏蔽（见 tests 里的真样本清单）。
+// 两条判据的回归锚点都钉在 tests/site_nav_drift/test_search_p0.py，防止以后被重新加回来。
+const SPAM_DESC_MAX = 400;   // ① 描述长度硬门：>400 只能是绕开 UI 上限写入的异常长文
+const DESC_KEEP = 300;       // 保留条目也截断：350 字符的合法长描述仍会成倍放大响应
+
+// 跑在**原始 item** 上，不能跑在映射后的条目上：映射时 topics 只留 3 个，
+// 任何依赖 topics 的判据会永远不成立。
+export function spamReason(x) {
+  const desc = x.description || '';
+  return desc.length > SPAM_DESC_MAX ? 'desc_len' : null;
+}
+
 async function githubSearch(q, sort, page) {
   const u = new URL('https://api.github.com/search/repositories');
   u.searchParams.set('q', q);
@@ -196,9 +218,16 @@ export default async function handler(req, res) {
       }
       const j = await r.json();
       if (j.total_count > 0 || plans.length === 1) {
-        let items = (j.items || []).map(x => ({
+        const raw = j.items || [];
+        let spamOut = 0;
+        let items = raw.filter(x => {
+          if (spamReason(x)) { spamOut++; return false; }
+          return true;
+        }).map(x => ({
           full_name: x.full_name,
-          desc: x.description,
+          desc: x.description
+            ? (x.description.length > DESC_KEEP ? x.description.slice(0, DESC_KEEP) + '…' : x.description)
+            : null,
           language: x.language,
           stars: x.stargazers_count,
           updated_at: x.updated_at,
@@ -207,12 +236,17 @@ export default async function handler(req, res) {
         }));
         // 翻译不可用时的结果侧兜底：GitHub 对 CJK 分词过宽（原词直搜会匹配数万无关项），
         // 在返回页内做一次关键词包含过滤，把"完全无关"的条目剔掉
+        let relevanceOut = 0;
         if (!translated && hasZh) {
           const words = zhTerms.map(t => t.toLowerCase());
           const before = items.length;
           items = items.filter(x => words.some(w =>
             ((x.desc || '') + ' ' + (x.full_name || '')).toLowerCase().includes(w)));
+          relevanceOut = before - items.length;
           console.log(JSON.stringify({ ts: new Date().toISOString(), type: 'search_local_filter', before, after: items.length }));
+        }
+        if (spamOut) {
+          console.log(JSON.stringify({ ts: new Date().toISOString(), type: 'search_spam_filtered', out: spamOut, of: raw.length }));
         }
         data = {
           query,
@@ -220,6 +254,10 @@ export default async function handler(req, res) {
           strategy: query,
           page,
           total: j.total_count,
+          // 分页判据必须用原始条数：前端旧写法是 items.length === 30，
+          // 服务端一过滤就会把「还有下一页」判成到底（那段兜底早就踩了这个坑）。
+          raw_count: raw.length,
+          filtered_out: spamOut + relevanceOut,
           items,
         };
         cacheSet(searchCache, ck, data);
