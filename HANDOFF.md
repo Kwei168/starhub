@@ -2327,9 +2327,41 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      我一度据此把 `main` 的写者数写成"4 个"。教训与本节"别拿本地 HEAD 当远端事实"同源：
      **判断 CI 上有什么必须问 GitHub API，不能列本地目录。**该孤儿已移出工作树
      （→ `_scratch/diag/orphan_workflows/`；未跟踪文件删了不可逆，故不直接 rm）。
-2. **P1.5 告警链未修**：`api/health.js:69-83` 的 `pages_ok` 只看 200+长度 ⇒ 对**陈旧** index.html 恒真；
-   唯一出声口 `buildAge>120` ⇒ 需连红 2 场、滞后 ≥2h 才 503。`star_fast_age_minutes` 数的是 run 成功
-   而非状态提交 ⇒ P0 之后它恒绿但不再意味着任何事（本批撞车频率实测 1/30，故登记不修）。
+2. **P1.5 告警链：已补上唯一用户可见损坏的内容级探活（2026-10-08 13:3xZ）**
+   `api/health.js` 新增 `readerChunksOk()`，handler 合成改成
+   `ok = pagesOk && readerOk !== false && buildAge !== null && buildAge <= STALE_BUILD_MINUTES`。
+   - **为什么必须新增**：10-07 那次"信源只剩 55"是 `rss-data-1.js` 被抹成 404，而当时
+     `pages_ok` 只看首页 200+体积、`buildAge` 只看 run 成功 ⇒ 唯一用户可见的损坏安静了两个小时，
+     告警链对真正的坏完全失明（旧 P1.5 登记的两条"说谎"就是这件事的认知根源）。
+   - **开集纪律**：块总数**从线上 `rss-data-0.js` 尾部的 `_total` 现读**（生成端
+     `build_rss_aggregator.py:7433` 只把声明写在 0 块里，实测 1/2/3 块尾部都没有），
+     再逐块验。上界 `MAX_TOTAL_CHUNKS = 25` = 生成端 `MAX_CHUNKS(24) + chunk0`
+     （`:7463` `n_chunks=min(…,24)` 之后 `_write_chunk0(1 + n_chunks)`）——
+     写 24 会在数据量最大的那场恰好"不知道"，这是对抗审查命中的第 5 条。
+   - **三态而不是二态**：报坏只有三个确定出处（0 块 404/410、某块 404/410、某块是
+     `"sources":[]` 空壳）；5xx、超时、Range 被忽略、解析不出总数、时间截止到了 ⇒ `null`=不知道，
+     **不参与 `ok`**。判据把"报坏出处必须恰好 3 处"钉死，多一处（把抖动报成坏）或少一处
+     （把确定损坏报成不知道）都红。
+   - **审查命中的两条我已复现/复核后处置**：
+     ① gzip + Range 的静默失效：`Content-Range` 是按压缩体切的，切下来的半截流解压会抛
+        ⇒ 探针永远 `null`（"装了但没人守"）。本机 A/B 两种请求都回 206 无压缩、复现不出来，
+        但处置与 POP 无关：两处 Range 请求统一走带 `Accept-Encoding: 'identity'` 的 headers 构造器。
+        改完之后**线上真实跑通**：`reader_ok: true`，整次健康计算 5.7s（预算 15s）。
+     ② 我原先写的 `if (r.status !== 206) return null` 那条"防 6MB 进 128MB"是**错前提**：
+        chunk0 实测 418,975 B（6MB 是 chunk1），而且 200 全读也照样能解析出 `_total` ⇒
+        硬要求 206 只会把覆盖面砍成"永远不知道"。已改成"404/410 报坏、其它非 ok 报不知道、
+        只在 206 时读 64 字节头部验空壳"。
+   - **判据与电池**：`tests/site_nav_drift/test_trigger_chain.py` 新增 3 条（内容级+开集与跨文件
+     上界对账 / 三态与报坏出处可数 / maxDuration 预算算术）；电池
+     `tools/mut_health_reader.py` **7/7**（H1 合成改真值、H2 循环上界写死、H3 单次超时抬到 9s、
+     H4 0 块 404 报成不知道、H5 去掉 identity、H6 上界写死成今天的块数、H7 不验空壳块）。
+     判据靠 `HEALTH_JS` 注入点读副本（与 `STAR_FAST_YML` 同形）。
+   - **登记不修（两条，理由写在这）**：
+     ① `buildAge !== null` 让 GitHub API 一次失败就 503 —— 这是**改动前就有**的形状，且方向是
+        "读不到 ⇒ 不敢说健康"。改成 null 不门禁会换来"探活瞎了时全线静默"，属取舍不属 bug，
+        留给用户裁定；本轮不动它，避免在一次修数据面的批次里偷偷改掉告警的敏感度。
+     ② `pages_ok` 只打 `index.html`，阅读器页 `rss-aggregator.html` 自身没被探活 ——
+        数据面已由 `reader_ok` 覆盖（坏的是块不是那页），加一条 HTML 探活是扩面，暂不做。
 3. **P2 emb 富度闸门未做**：`template.html:1279` 的 `DATA.some(d=>d.emb)` 会把 emb 归零吞成静默降级
    （SILICONFLOW 配额耗尽也会）。P0 后 HTML 唯一产地是小时场，主病灶自动归位，闸门放 update.yml 的 Stage 步。
 4. `.qoder/repowiki/` 那份流水线卡片仍在描述"三件套权限 + Stage 带回清单"——它**未被 git 跟踪**

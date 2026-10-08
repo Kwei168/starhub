@@ -17,9 +17,13 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REFRESH = os.path.join(ROOT, "api", "refresh.js")
-HEALTH = os.path.join(ROOT, "api", "health.js")
+# 变异电池（tools/mut_health_reader.py）在临时副本上打坏改动，靠这个注入点指过去；
+# 不设就读真实文件——判据平时读的也是它。（与 test_star_fast_wiring.py 的 STAR_FAST_YML 同形）
+HEALTH = os.environ.get("HEALTH_JS") or os.path.join(ROOT, "api", "health.js")
 UPDATE_YML = os.path.join(ROOT, ".github", "workflows", "update.yml")
 VERCEL_JSON = os.path.join(ROOT, "vercel.json")
+# 探活上界要和生成端的分块上限对账（跨文件一致性，本仓惯用手法）
+AGG = os.path.join(ROOT, "build_rss_aggregator.py")
 
 
 def _read(path):
@@ -104,6 +108,81 @@ def test_health_pages_probe_rejects_placeholder_body():
     assert "kwei168.github.io/starhub/index.html" in src, "pages 探活必须打真实首页"
     # 占位体 ~698B 假绿教训（HANDOFF §8.20）：只认 200 不够，必须卡最小体积
     assert "MIN_INDEX_BYTES" in src, "pages 判定必须含最小体积信号（防限流占位页假绿）"
+
+
+def test_health_reader_probe_reads_chunk_count_from_the_shipped_file():
+    """阅读器数据面探活必须是「内容级 + 开集」：块总数从线上 rss-data-0.js 尾部现读。
+
+    为什么单独立一条：本仓为「闭集表追不上开集」付过一次大代价（10-07 那份带回清单写死 7 个
+    名字，每发布一次就把阅读器后台抹掉一次）。探活如果也写死块数（`i < 8`），块数一浮动就永远
+    只验前几块 ⇒ 后面的块 404 无人知晓——把事故的认知根源换个地方重演一遍。
+    """
+    src = _read(HEALTH)
+    assert "rss-data-" in src, "reader 探活必须打真实的分块文件"
+    assert 'match(/"_total"' in src, \
+        "块总数必须从 0 块正文里解析出来（写死数字就是闭集表达开集）"
+    m = re.search(r"for\s*\(let i = 1;\s*i < (\w+);\s*i\+\+\)", src)
+    assert m, "逐块校验的循环找不到 ⇒ 这条探活可能压根没跑"
+    assert m.group(1) == "total", \
+        "循环上界必须是现读到的 total（现在是 %s）" % m.group(1)
+    # 上界必须跟生成端对齐：build_rss_aggregator 里 n_chunks=min(…,MAX_CHUNKS) 之后写
+    # _write_chunk0(1 + n_chunks) ⇒ 实际可达上限是 MAX_CHUNKS + 1。写小会在数据量最大的那场
+    # 恰好退化成"不知道"——正是最需要它说话的时候闭嘴（2026-10-08 对抗审查命中）。
+    gen_max = int(re.search(r"MAX_CHUNKS = (\d+)", _read(AGG)).group(1))
+    probe_max = re.search(r"const MAX_TOTAL_CHUNKS = (\d+)", src)
+    assert probe_max, "现读的总数必须设上界（它同时是假警闸门与请求数闸门）"
+    assert int(probe_max.group(1)) >= gen_max + 1, \
+        "探活上界 %s < 生成端可达 %d 块 ⇒ 数据量最大那场会正好变成『不知道』" % (
+            probe_max.group(1), gen_max + 1)
+    # Range 切片遇上中间层压缩会静默失效：Content-Range 是按压缩体切的，切下来的半截流解压就抛
+    # ⇒ 探针永远返回 null，这条面"装了但没人守"。显式要 identity 把静默失效变成不可能。
+    # （10-08 实测：本机两种请求都回 206 无压缩，但 POP 不同 ⇒ 这是廉价保险，不是臆测。）
+    # 钉法用"共用一个头构造器 + 两处都用它"，不数 identity 字面量出现次数：实现把它抽成
+    # headers(range) 后字面量只有一处，按次数断言会把更好的写法判红（判据不许偏爱啰嗦）。
+    assert "'Accept-Encoding': 'identity'" in src, "Range 请求必须显式要 identity"
+    assert src.count("headers: headers(") == 2, \
+        "取总数与逐块校验两处 Range 请求必须共用同一个头构造器（现在 %d 处用它）" % src.count("headers: headers(")
+
+
+def test_health_reader_probe_is_tri_state_not_binary():
+    """探活必须能表达第三种状态「读不到」，且报坏只能来自确定性 HTTP 信号。
+
+    两个方向都会咬人：把合成写成 `readerOk`（真值判断）⇒「不知道」变 503 ⇒ 监控天天报警
+    ⇒ 下一步一定有人加绕过开关，防线自毁；反过来把网络抖动/5xx 写成 return false ⇒ 一次
+    Pages 抖动就是一场假警。所以钉的是「报坏的出处必须可数，且每一处都对应一个确定信号」。
+    """
+    src = _read(HEALTH)
+    assert re.search(r"readerOk\s*!==\s*false", src), \
+        "ok 的合成必须是『不为 false 才拉黑』；写成 readerOk 真值判断会把『不知道』报成坏"
+    fn = src[src.index("async function readerChunksOk"):src.index("export default")]
+    # 报坏恰好三处：0 块没了、某块 404/410、空壳块。多一处=把不确定报成坏，少一处=某种确定损坏不响。
+    lines = [l.strip() for l in fn.splitlines() if "return false" in l]
+    assert len(lines) == 3, \
+        "readerChunksOk 报坏应当是 3 处（gone×2 + 空壳×1），实际 %d 处：%s" % (len(lines), lines)
+    assert sum(1 for l in fn.splitlines() if re.search(r"gone\(r\.status\)\) return false", l)) == 2, \
+        "0 块与逐块的『404/410 才算坏』必须都在——0 块没了等于整页空白，不该报『不知道』"
+    assert sum(1 for l in fn.splitlines() if "EMPTY_SOURCES" in l and "return false" in l) == 1, \
+        "空壳块（\"sources\":[]）必须算坏：生成端『旧块清空不删除』会留下这种 200 空文件"
+    assert "if (!(total >= 1 && total <= MAX_TOTAL_CHUNKS)) return null" in src, \
+        "解析出荒谬总数必须退化成不知道"
+    assert "Date.now() > deadline" in fn, "没有时间截止 ⇒ 整条探活可能顶穿 maxDuration 被杀成假警"
+
+
+def test_health_reader_probe_fits_inside_max_duration():
+    """整条 reader 探活的时间预算必须留在函数 maxDuration 之内。
+
+    不是洁癖：顶穿 maxDuration ⇒ 函数被杀 ⇒ 监控按「非 2xx 告警」报的是「探活死了」
+    这种最难查的形状。算式：首块读取 + 循环截止 + 末次请求 ≤ maxDuration。
+    """
+    src = _read(HEALTH)
+    mt = re.search(r"const READER_TIMEOUT_MS = (\d+)", src)
+    md = re.search(r"const READER_DEADLINE_MS = (\d+)", src)
+    assert mt and md, "reader 探活必须有单次超时与整体截止（否则时间预算无从核算）"
+    m = re.search(r'"api/health\.js"\s*:\s*\{\s*"maxDuration"\s*:\s*(\d+)\s*\}', _read(VERCEL_JSON))
+    budget = int(m.group(1)) * 1000
+    worst = 2 * int(mt.group(1)) + int(md.group(1))
+    assert worst < budget, \
+        "reader 探活最坏耗时 %dms 逼近/超过 maxDuration %ds ⇒ 会被杀成假警" % (worst, budget // 1000)
 
 
 def test_health_unhealthy_is_503_for_uptime_monitors():
