@@ -156,6 +156,18 @@ def test_the_only_remote_writers_are_inside_the_commit_step():
     assert writers, (
         "整个 workflow 里没抓到任何 `git push` ⇒ 是这个解析器瞎了（正文写法变了？），"
         "不能据此说『只有 Commit 步会写远端』")
-    assert writers == [D.REF_WRITE_STEP], (
-        "除「%s」之外还有步骤会 git push：%s ⇒ will_write_main 只盯一步会漏，先把判据扩到这些步骤"
-        % (D.REF_WRITE_STEP, writers))
+    # 除主提交步外还有一个写者：`Ensure Vercel sees a bot-authored commit`（Vercel 身份标记，
+    # 10-03 加的）。它排在主提交步**之后**，所以守门按主提交步收口是对的：那一步推的是
+    # `--allow-empty` 的空提交、无 --force、且 `continue-on-error: true` ⇒ 若我在这之后推过，
+    # 它的 push 只会 non-fast-forward 失败并被容忍，**顶不掉我的提交**（最坏是那场 Vercel 被 Blocked）。
+    # 这条判据从 10-03 起就红着（电池不进 CI ⇒ 没人发现），今天才按作者留的指令把集合补全。
+    assert set(writers) == {D.REF_WRITE_STEP, "Ensure Vercel sees a bot-authored commit"}, \
+        "写 main 的步骤集合变了：%s ⇒ 先确认新写者能不能顶掉别人的推送，再更新这里的期望值" % sorted(writers)
+    # 上面那段"它顶不掉别人的提交"不许只当注释：有人给那一步加个 --force，我的论证立刻失效，
+    # 而判据照绿 ⇒ 守卫看着更绿、实际更松。所以把前提的两个支点拆成断言。
+    marker = dict(step_of.values())["Ensure Vercel sees a bot-authored commit"]
+    mtext = "\n".join(marker)
+    assert not re.search(r"--force(?!-with-lease)", mtext), \
+        "Vercel 标记步出现裸 --force ⇒ 它能覆盖别人的提交，守门只盯主提交步就不再成立"
+    assert "--allow-empty" in mtext, \
+        "Vercel 标记步不再只推空提交 ⇒ 『只会被 non-fast-forward 拒、顶不掉别人』要重新论证"

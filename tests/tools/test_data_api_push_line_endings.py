@@ -71,10 +71,21 @@ def _drive(paths, api, monkeypatch, tmp_path):
 
 
 def test_crlf_text_is_normalized_before_it_reaches_the_blob(monkeypatch, tmp_path):
-    disk = open(os.path.join(ROOT, TEXT), "rb").read()
-    assert b"\r\n" in disk, (
-        "%s 在工作树里已经不是 CRLF 了 ⇒ 这条判据失去被测条件，换个 CRLF 文件或改测别的形状，"
-        "不要让它变成空跑的绿" % TEXT)
+    # 原来这里直接读工作树的 template.html 并 assert 它是 CRLF——那等于把判据的成立与否
+    # 交给"上一个碰这个文件的人用了什么行尾"（10-08 实测：Edit/python 以 LF 落盘之后，
+    # 这条判据就只剩"拒绝执行"，而它拒绝的那个条件恰恰是它要测的形状）。
+    # 现在**自己造** CRLF 输入：取真实文件的字节，强制转成 CRLF，再把工具的读文件入口指过去。
+    # 判据的语义不变（工具必须把它归一回 LF），但不再依赖本地工作树状态，也不会空跑：
+    # 归一逻辑一旦被删，发出去的字节就带 \r\n ⇒ 下面第一条断言立刻红。
+    # 先归一再翻成 CRLF：本机 core.autocrlf=true，工作树那份可能本来就是 CRLF，
+    # 直接 replace(b"\n", b"\r\n") 会造出 \r\r\n —— 归一一步之后仍残留 \r\n ⇒ 假红（对抗审查抓到）。
+    disk = open(os.path.join(ROOT, TEXT), "rb").read().replace(b"\r\n", b"\n")
+    crlf_path = tmp_path / TEXT
+    crlf_path.write_bytes(disk.replace(b"\n", b"\r\n"))
+    fixture = crlf_path.read_bytes()
+    assert b"\r\n" in fixture and b"\r\r" not in fixture, \
+        "造的 CRLF 夹具无效（出现 \\r\\r 说明源里本来就带 CR）⇒ 这条会退化成假红或空跑"
+    monkeypatch.setattr(D, "_abs", lambda p: str(crlf_path))
     api = Api()
     api.current = TEXT
     rc = _drive([TEXT], api, monkeypatch, tmp_path)
