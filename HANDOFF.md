@@ -2377,8 +2377,30 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
         留给用户裁定；本轮不动它，避免在一次修数据面的批次里偷偷改掉告警的敏感度。
      ② `pages_ok` 只打 `index.html`，阅读器页 `rss-aggregator.html` 自身没被探活 ——
         数据面已由 `reader_ok` 覆盖（坏的是块不是那页），加一条 HTML 探活是扩面，暂不做。
-3. **P2 emb 富度闸门未做**：`template.html:1279` 的 `DATA.some(d=>d.emb)` 会把 emb 归零吞成静默降级
-   （SILICONFLOW 配额耗尽也会）。P0 后 HTML 唯一产地是小时场，主病灶自动归位，闸门放 update.yml 的 Stage 步。
+3. **P2 emb 富度闸门：已按 P1.5 同一形状收口（2026-10-08 14:4xZ，未拦发布）**
+   `template.html` 的语义扩展分支写作 `DATA.some(d=>d.emb)`，而 `fetch_and_build.py` 的
+   `embed_star_entries`（`:396-409`）在 SiliconFlow 任一批失败时**保持原数组不变**（不写 emb 键）
+   ⇒ 整段语义召回静默消失，页面 200、体积 1.2MB、构建绿——原来只有 stderr 一行打印，没人看。
+   - **收口方式**：`api/health.js` 的 `pagesProbe()` 在同一次正文读取里数 `"emb":[` 的条数，
+     **归零 = false**（确定坏）、`1..MIN_EMB_ENTRIES-1`（=50）= null（不确定，不许据此报坏）、
+     `≥50` = true；合成用 `embOk !== false`，与 reader 面同一套三态纪律。
+   - **为什么不放在 update.yml 的 Stage 步做闸门**（原登记的建议）：拦发布等于在配额耗尽时
+     把整站冻住，而"新鲜但只有关键词搜索"明显好于"陈旧但语义完整"——这条取舍留给用户改，
+     现按不拦实施。产物也已退出 git，库内读不到 emb，只能从线上产物数。
+   - **线上现值**：`index.html` 里 `"emb":[` **330 条 / 331 个分类键**（10-08 14:4xZ 现取）
+     ⇒ 水位线 50 有 6 倍余量，不会因正常波动误报。
+   - **顺带修掉我自己新增的假警**：把首页改成"每次读正文"后，本机一次慢网络实测
+     `http=503 / pages_ok=false / reader_ok=null / emb_ok=null`——那是我的通道慢不是站点坏。
+     现在网络层取不到 ⇒ `{pages: null}`（不知道），服务端明确非 2xx ⇒ `pages: false`（坏）；
+     `PAGES_TIMEOUT` 6s→10s，并把 maxDuration 预算判据改成取**三支并发的最慢支**
+     （`max(2*READER_TIMEOUT+DEADLINE, PAGES_TIMEOUT, GH_TIMEOUT) < 15000`）。
+   - **判据与电池**：`test_trigger_chain.py` 再 +2 条（emb 从正文数且三态 / 三探针的"取不到≠坏"），
+     现 24 条；`tools/mut_health_reader.py` 加 H8 退回 content-length 短路、H9 emb 归零报不知道、
+     H10 网络失败报坏，现 **10/10**。踩到一次老坑：判据全文搜 `content-length` 被我自己的
+     **注释**喂成假红 ⇒ 收窄到函数体并先剔注释行（本仓第四次记这条）。
+   - **待线上确证**：下一次小时场部署后读活接口，`emb_ok` 必须是 **true**；
+     若生产上也长期是 null，说明 Vercel→Pages 读 1.2MB 超 10s，要调超时或改用别的水位来源，
+     不能让它"装了没人守"。
 4. `.qoder/repowiki/` 那份流水线卡片仍在描述"三件套权限 + Stage 带回清单"——它**未被 git 跟踪**
    （`git ls-files .qoder/` = 0）⇒ 不是交付面、不改；但谁下次读它会被误导，以本节为准。
 5. **cadence 重估（P0 之后新增的判断，别误砍）**：摘掉发布权后本车道**不是空转**，有两个不可替代

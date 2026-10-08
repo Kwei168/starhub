@@ -181,8 +181,55 @@ def test_health_reader_probe_fits_inside_max_duration():
     m = re.search(r'"api/health\.js"\s*:\s*\{\s*"maxDuration"\s*:\s*(\d+)\s*\}', _read(VERCEL_JSON))
     budget = int(m.group(1)) * 1000
     worst = 2 * int(mt.group(1)) + int(md.group(1))
+    # 首页探针从"只看头"改成"读正文"之后它成了最慢那一支（10s）；三个探针是 Promise.all 并发，
+    # 所以预算取**最慢支**而不是加和。漏掉这条的话，改 PAGES_TIMEOUT 不会有任何判据响应。
+    pto = re.search(r"const PAGES_TIMEOUT = (\d+)", src)
+    gho = re.search(r"const GH_TIMEOUT = (\d+)", src)
+    worst_overall = max(worst, int(pto.group(1)), int(gho.group(1)))
+    assert worst_overall < budget, \
+        "最慢探针 %dms 逼近/超过 maxDuration %ds ⇒ 函数被杀，监控报的是『探活死了』" % (
+            worst_overall, budget // 1000)
     assert worst < budget, \
         "reader 探活最坏耗时 %dms 逼近/超过 maxDuration %ds ⇒ 会被杀成假警" % (worst, budget // 1000)
+
+
+def test_health_emb_probe_counts_from_the_fetched_body():
+    """语义向量富度必须从**线上正文**数出来，且归零才算坏（P2）。
+
+    `template.html` 的语义扩展分支写作 `DATA.some(d=>d.emb)`：SILICONFLOW 配额耗尽时
+    `embed_star_entries` 保持原数组不变（不写 emb 键）⇒ 整段语义召回静默消失，页面照常 200、
+    体积照常 1.2MB、构建照样绿。所以这一面只能数产物里的 `"emb":[` 条数，别的路子都看不见它。
+    """
+    src = _read(HEALTH)
+    assert r'"emb":\[' in src, "emb 条数必须从正文正则数出来"
+    assert "MIN_EMB_ENTRIES" in src, "必须有一条『确定还在』的水位线，否则 1 条也算健康"
+    # 三态：归零 = false；0 < n < 水位 = null（早期规模本可能小，不许据此报坏）；≥ 水位 = true
+    assert re.search(r"if \(n === 0\) emb = false", src), "emb 归零必须报坏——那正是静默降级的形状"
+    assert re.search(r"n >= MIN_EMB_ENTRIES\) emb = true", src), "过水位才算好"
+    assert "let emb = null;" in src, "中间地带必须是『不知道』，不能默认成好或坏"
+    # 不许退回"只看 content-length 就返回"的快路径：那条路对体积正常但向量归零的首页是瞎的。
+    # 只看 pagesProbe 的**代码行**——本文件注释里正合法地叙述着这段历史，
+    # 全文搜字面量会把注释当成行为（本仓为这个坑写过 _code_only，这里是又一次用到）。
+    probe = src[src.index("async function pagesProbe()"):src.index("async function readerChunksOk")]
+    probe_code = "\n".join(l for l in probe.splitlines() if not l.strip().startswith("//"))
+    assert "content-length" not in probe_code, \
+        "首页探针必须真读正文；靠 content-length 短路就等于不数 emb（这一版最初就是这样）"
+
+
+def test_health_probes_treat_network_failure_as_unknown_not_broken():
+    """三个探针遇到『取不到』一律 null，遇到服务端明确的非 2xx 才算坏。
+
+    形状来自 10-08 的实测：把首页改成"每次读正文"之后，本机一次慢网络直接跑出
+    `http=503 / pages_ok=false / reader_ok=null / emb_ok=null`——那是我的通道慢，不是站点坏。
+    假警比无警更糟：它下一步一定催生绕过开关。真停更不会因此漏掉：发布停下 ⇒ buildAge 越过 120 ⇒ 仍 503。
+    """
+    src = _read(HEALTH)
+    assert re.search(r"catch \(e\) \{\n[^}]*?return \{ pages: null, emb: null \};", src), \
+        "首页探针的 catch 必须给『不知道』，不能给 false"
+    assert re.search(r"const ok = pagesOk !== false && readerOk !== false && embOk !== false", src), \
+        "合成必须对三个信号都用『不为 false 才拉黑』，写成真值判断会把 null 报成坏"
+    assert "if (!r.ok) return { pages: false, emb: null }" in src, \
+        "服务端明确回了非 2xx 仍算坏（Pages 真挂了要响），这一半不许被三态化"
 
 
 def test_health_unhealthy_is_503_for_uptime_monitors():

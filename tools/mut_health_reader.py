@@ -63,6 +63,22 @@ MUTATIONS = [
      "      if (r.status === 206 && EMPTY_SOURCES.test(await r.text())) return false;",
      "",
      "test_health_reader_probe_is_tri_state_not_binary"),
+    # H8 退回 content-length 快路径：首页体积正常但 emb 归零的那种坏就永远看不见
+    # （P2 的整个意义所在——这一版最初就是这么写的，实测过一次慢网络假警后才改成读正文）。
+    ("H8 首页探针退回 content-length 短路（不读正文就数不了 emb）",
+     "    const body = await r.text();\n    const pages = body.length >= MIN_INDEX_BYTES;",
+     "    const len = Number(r.headers.get('content-length') || 0);\n    if (len) return { pages: len >= MIN_INDEX_BYTES, emb: null };\n    const body = await r.text();\n    const pages = body.length >= MIN_INDEX_BYTES;",
+     "test_health_emb_probe_counts_from_the_fetched_body"),
+    # H9：emb 归零只报"不知道"。配额耗尽时前端整段语义召回消失，却没人响——这就是 P2 要防的。
+    ("H9 emb 归零报成『不知道』（静默降级不响）",
+     "    if (n === 0) emb = false;",
+     "    if (n === 0) emb = null;",
+     "test_health_emb_probe_counts_from_the_fetched_body"),
+    # H10：把"取不到"报成坏。本机 10-08 实测过一次慢网络直接 503，那是通道的问题不是站点的。
+    ("H10 网络层取不到报成坏（一次抖动=一场假警）",
+     "    return { pages: null, emb: null };",
+     "    return { pages: false, emb: null };",
+     "test_health_probes_treat_network_failure_as_unknown_not_broken"),
 ]
 
 

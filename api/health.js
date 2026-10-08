@@ -8,11 +8,14 @@
 //   star_fast_age_minutes  = star-fast.yml 同口径
 //   pages_ok               = Pages 首页 200 且体积 ≥ MIN_INDEX_BYTES——限流占位页 ~698B
 //                            曾假绿（HANDOFF §8.20），只认 200 不够
+//   emb_ok                 = 线上首页里 "emb":[ 的条数：归零 = false（语义扩展整段静默消失，
+//                            前端 DATA.some(d=>d.emb) 直接不走那一支）；1..49 = null（不确定，
+//                            不报坏）；≥50 = true。与 pages_ok 共用同一次正文读取，不多打一发。
 //   reader_ok              = 阅读器数据面：从线上 rss-data-0.js 尾部现读块总数（开集，不许写死），
 //                            再逐块验在不在。true / false / null（探不到 = 不知道）。
 //                            2026-10-07 那次"信源只剩 55"就是这条面坏了而 pages_ok 与 run 颜色全绿。
 //   secrets.*              = Boolean 包装，只报"配没配"，原始值绝不进响应
-//   ok                     = pages_ok 且 reader_ok 不为 false 且成功构建年龄 ≤ STALE_BUILD_MINUTES
+//   ok                     = pages_ok 且 reader_ok/emb_ok 均不为 false 且成功构建年龄 ≤ 阈值
 //                            （reader_ok=null 不参与：宁可不报，也不制造假警）
 //
 // 不健康时 HTTP 503（body 仍是同结构 JSON）：外部探活（UptimeRobot 类）按
@@ -30,6 +33,7 @@ const REPO = 'Kwei168/starhub';
 const PAGES_INDEX = 'https://kwei168.github.io/starhub/index.html';
 const DATA_CHUNK_BASE = 'https://kwei168.github.io/starhub/rss-data-';
 const MIN_INDEX_BYTES = 5000;   // 真首页 ≥250KB；698B 是限流占位页
+const MIN_EMB_ENTRIES = 50;     // 语义向量条数的"确定还在"水位（10-08 现取线上 330/331）
 const STALE_BUILD_MINUTES = 120; // 小时场连续 2 场缺席视为管线不健康
 const MAX_TOTAL_CHUNKS = 25;  // = 生成端 MAX_CHUNKS(24) + chunk0 自己：build_rss_aggregator.py:7463
                               // `n_chunks=min(n_chunks,24)` 后写 `_write_chunk0(1+n_chunks)` ⇒ 上限 25。
@@ -41,7 +45,9 @@ const READER_DEADLINE_MS = 5000; // 见下：整条探活必须留在函数 maxD
 const READER_TIMEOUT_MS = 2500;  // 单次请求封顶：6s×(1+N) 会顶穿 maxDuration ⇒ 函数被杀 ⇒ 监控看到非 2xx = 假警
 const TTL_MS = 60 * 1000;
 const GH_TIMEOUT = 8000;
-const PAGES_TIMEOUT = 6000;
+// 首页现在每次都要读正文（emb 只能从正文数），1.2MB 在 6s 里偏紧 ⇒ 抬到 10s。
+// 三个探针是 Promise.all 并发，所以预算看的是最慢那支而不是加和：max(10000, 8000, 2*2500+5000) < 15000。
+const PAGES_TIMEOUT = 10000;
 
 const cache = { t: 0, ok: true, body: null };
 
@@ -79,19 +85,34 @@ async function lastSuccessAgeMinutes(workflow) {
   return ageMinutes(newest);
 }
 
-async function pagesProbeOk() {
+// 一次取回首页正文，同时得出两个信号：pages（在不在、够不够大）与 emb（语义向量还剩几条）。
+// 为什么合成一个探针而不是再加一个请求：正文就是 1.2MB 那一份，分两次取等于让探活自己翻倍花销；
+// 而 emb 只有从**线上产物**数才说明问题——库里读不到（产物 10-06 起已退出 git），构建日志又只有
+// 当时的打印，跨不过"上一场好、这一场坏"这件事。
+async function pagesProbe() {
   try {
     const r = await fetch(PAGES_INDEX, {
       headers: { 'User-Agent': 'starhub-refresh' },
       signal: AbortSignal.timeout(PAGES_TIMEOUT),
     });
-    if (!r.ok) return false;
-    const len = Number(r.headers.get('content-length') || 0);
-    if (len) return len >= MIN_INDEX_BYTES;
+    if (!r.ok) return { pages: false, emb: null };
+    // 必须真读正文：以前只看 content-length 就返回，那条路对"体积够但语义向量归零"是瞎的
     const body = await r.text();
-    return body.length >= MIN_INDEX_BYTES;
+    const pages = body.length >= MIN_INDEX_BYTES;   // 占位体 ~698B 假绿教训（§8.20）
+    if (!pages) return { pages: false, emb: null };
+    const n = (body.match(/"emb":\[/g) || []).length;
+    // 三态：归零 = 确定坏（语义扩展整段消失）；1..MIN-1 = 不确定（早期规模本就可能小，不许据此报坏）；
+    // ≥MIN = 好。"不确定"仍然是 null，不参与 ok——同 readerChunksOk 的纪律。
+    let emb = null;
+    if (n === 0) emb = false;
+    else if (n >= MIN_EMB_ENTRIES) emb = true;
+    return { pages: true, emb };
   } catch (e) {
-    return false;
+    // 网络层取不到（DNS/超时/连接断）与"服务端明确回了非 2xx"不是一回事：
+    // 前者算不知道，后者才算坏。把抖动报成坏会催生绕过开关——这一版最初就是这么写的，
+    // 本机实测一次慢网络直接 503（pages_ok=false / reader_ok=null / emb_ok=null），据此改。
+    // 真停更仍会由 buildAge 抓到：发布停下来 ⇒ 成功构建年龄越过 120 分钟 ⇒ 503。
+    return { pages: null, emb: null };
   }
 }
 
@@ -168,14 +189,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [buildAge, starAge, pagesOk, readerOk] = await Promise.all([
+    const [buildAge, starAge, pageSig, readerOk] = await Promise.all([
       lastSuccessAgeMinutes('update.yml'),
       lastSuccessAgeMinutes('star-fast.yml'),
-      pagesProbeOk(),
+      pagesProbe(),
       readerChunksOk(),
     ]);
+    // null = 取不到（不参与 ok）；false = 服务端明确回了非 2xx 或正文过小
+    const pagesOk = pageSig.pages;
+    const embOk = pageSig.emb;
     // readerOk === false 才拉黑；null 是"不知道"，不参与判断（假警会催生绕过开关）
-    const ok = pagesOk && readerOk !== false && buildAge !== null && buildAge <= STALE_BUILD_MINUTES;
+    const ok = pagesOk !== false && readerOk !== false && embOk !== false
+           && buildAge !== null && buildAge <= STALE_BUILD_MINUTES;
     const payload = {
       ok,
       last_build_age_minutes: buildAge,
@@ -187,6 +212,7 @@ export default async function handler(req, res) {
       },
       pages_ok: pagesOk,
       reader_ok: readerOk,
+      emb_ok: embOk,
     };
     cache.t = Date.now();
     cache.ok = ok;
