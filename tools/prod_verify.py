@@ -131,14 +131,33 @@ def internal_names(baseline):
             if v == "200" and not k.startswith(RUNTIME_KEEP) and not k.startswith(("api/", "lib/"))]
 
 
+PUBLISH_WORKFLOW = "Update Star Hub"   # 唯一会写 Pages 的车道
+
+
+def select_publish_runs(runs, n=8, workflow=PUBLISH_WORKFLOW):
+    """只保留"会产出发布事实"的那条车道，取最近 n 场（新→旧的原顺序进、按旧→新出）。
+
+    为什么必须有这一层（2026-10-08 22:19 实测）：取样曾经不分 workflow 直接取最近 8 场，
+    而 star-fast 每 15 分钟一场 ⇒ 近 12 场里 10 场是 star-fast。那些场**根本没有
+    `Deploy to GitHub Pages` 步**，读出来 `pages=None`；`verdict()` 把 None 读成"还没走到 Pages"
+    （那是对在飞场的正确解释），于是 `done` 为空 ⇒ 门槛判 BLOCKING「读到的场都还在跑」。
+    后果不是误报那么简单：小时场在飞的 20~40 分钟里门槛**每次**都挡，正好挡在我需要推送的缝上。
+    改名/删掉这条车道 ⇒ 这里返回空 ⇒ verdict 报"一场都读不到"（响亮地坏，不是安静地绿）。
+    """
+    picked = [r for r in runs if (r.get("name") or "") == workflow][:n]
+    return list(reversed(picked))
+
+
 def read_runs(n=8):
     import subprocess
-    p = subprocess.run(["gh", "api", "repos/%s/actions/runs?per_page=%d" % (REPO, n)],
+    # 30 是为了过滤后仍能凑够 n 场 update（star-fast 占比约 10/12，取 8 会一场 update 都不剩）
+    p = subprocess.run(["gh", "api", "repos/%s/actions/runs?per_page=30" % REPO],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode:
         return []
     out = []
-    for r in reversed(json.loads(p.stdout).get("workflow_runs", [])):
+    for r in select_publish_runs(json.loads(p.stdout).get("workflow_runs", []), n=n):
+
         j = subprocess.run(["gh", "api", "repos/%s/actions/runs/%s/jobs" % (REPO, r["id"])],
                            capture_output=True, text=True, encoding="utf-8", errors="replace")
         con = {}

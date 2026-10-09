@@ -214,3 +214,70 @@ def test_channel_blocked_pages_still_block():
                                              "rss-aggregator.html": 200,
                                              "daily-insight-history.html": 200}))
     assert level == "blocking", "首页读不到还放行 ⇒ 站点停了也可能推东西上去（实得 %s）" % why
+
+
+# ── 取样口径：门槛的"发布事实"只能来自会写 Pages 的那条车道 ─────────────────
+# 2026-10-08 22:19 实测到的自伤：`read_runs()` 不分 workflow，直接取最近 8 场。
+# 而 star-fast 每 15 分钟一场（现取近 12 场 = 10 场 Star Fast Refresh + 2 场 Update Star Hub），
+# 那些场**根本没有** `Deploy to GitHub Pages` 步 ⇒ 每条读数都是 `pages=None`；
+# `verdict()` 把 None 解释成"那场还没走到 Pages"（对在飞场是正确的）⇒ `done` 为空
+# ⇒ 判 BLOCKING「读到的场都还在跑」。后果不是误报那么简单：小时场在飞的 20~40 分钟里
+# 门槛**每次**都挡，正好挡在我需要推送的那道缝上（闸门挡自己人，下一站就是有人加绕过开关）。
+
+
+def _mix(update=2, fast=10):
+    """造一份与生产同形的 run 清单（GitHub 返回的顺序是新→旧）。"""
+    rows = [{u"name": V.PUBLISH_WORKFLOW, u"run_number": 1760 - i} for i in range(update)]
+    rows += [{u"name": u"Star Fast Refresh", u"run_number": 900 - i} for i in range(fast)]
+    return rows
+
+
+def test_sampling_ignores_lanes_that_never_publish_pages():
+    """① 取样必须只留会写 Pages 的那条车道，且输出顺序是旧→新（verdict 用 done[-1] 当"最近一场"）。"""
+    sel = V.select_publish_runs(_mix())
+    assert len(sel) == 2, (
+        u"取样 %d 条（应为 2）⇒ 门槛又在把没有 Pages 步的场读成\u201c还在跑\u201d" % len(sel))
+    assert all(x.get(u"name") == V.PUBLISH_WORKFLOW for x in sel), (
+        u"样本里混进了不发布 Pages 的车道：%s" % [x.get(u"name") for x in sel])
+    assert sel[0][u"run_number"] < sel[-1][u"run_number"], (
+        u"输出必须是旧→新，否则 verdict 的 done[-1] 取到的是最旧一场")
+    # 反向控制：过滤不许把 update 场自己滤掉（若哪天 run 里没了 name 键，这里必须炸而不是静默空集）
+    nameless = [{u"run_number": 1}, {u"run_number": 2}]
+    assert V.select_publish_runs(nameless) == [], (
+        u"没有 name 的样本被当成发布场收下了 ⇒ 未来的取样会静默收下任意车道")
+
+
+def test_publish_lane_name_is_derived_not_handwaved():
+    """② `PUBLISH_WORKFLOW` 这个常量必须真的等于"含 Deploy to GitHub Pages 步"的那个 workflow 名。
+
+    写死一个名字 = 有人改名后门槛又开始稀释取样（本条就是防这件事）。这里不引第三方 YAML 库，
+    按 `name:` 出现在文件首个非注释行这一事实取，避免把 jobs 下的同名键误当工作流名。
+    """
+    wf_dir = os.path.join(ROOT, u".github", u"workflows")
+    holders = set()
+    for fn in sorted(os.listdir(wf_dir)):
+        if not fn.endswith((u".yml", u".yaml")):
+            continue
+        text = open(os.path.join(wf_dir, fn), encoding=u"utf-8").read()
+        if u"Deploy to GitHub Pages" not in text:
+            continue
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith(u"#") or not s:
+                continue
+            if s.startswith(u"name:"):
+                holders.add(s.split(u":", 1)[1].strip().strip(u"\"'"))
+            break
+    assert holders, u"没有任何 workflow 含 `Deploy to GitHub Pages` 步 ⇒ 发布链被挪走了，门槛口径要重定"
+    assert V.PUBLISH_WORKFLOW in holders, (
+        u"PUBLISH_WORKFLOW=%r 与实际发布车道 %r 不符 ⇒ 取样会再次被 star-fast 挤空"
+        % (V.PUBLISH_WORKFLOW, sorted(holders)))
+
+
+def test_empty_publish_sample_is_blocking_not_ok():
+    """③ 反向护栏：过滤后若无任何发布场，门槛必须响亮地判 blocking，而不是把空样本读成"没问题"。"""
+    only_fast = [{u"name": u"Star Fast Refresh", u"run_number": 900 - i} for i in range(12)]
+    assert V.select_publish_runs(only_fast) == [], u"star-fast 场不该进发布样本"
+    level, why = V.verdict(_readings(last_runs=[]))
+    assert level == "blocking", u"发布样本为空却判 %s ⇒ 空读数被当成发布事实（实得 %r）" % (level, why)
+    assert u"读不到" in why or u"一场都" in why, u"blocking 必须说清是取不到，不是站点坏了：%r" % why
