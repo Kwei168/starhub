@@ -2496,6 +2496,48 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
      - 同场回归读数（现取）：20:00 那场 `Update Star Hub` 三门 726 passed/4 skipped + 163 passed、
        读端并集已在重排后的位置执行（`known_notes.json：main 326 + 分支 326 → 并集 327（本场新增 1）`）、
        "Pages 没发就把场判红"那步未响；`/api/health` = `ok/pages_ok/reader_ok/emb_ok` 全 true。
-       **仍缺样本的那条**：写端并集日志（`捞回 N 个分支独有键`）——20:30 那场 star-fast 跑在新提交上，
-       读数是 `[fast] no change, skip write（330 条，无新星）`，即该路径至今没在真实新星场执行过；
-       造它需要在用户账号上加星，不做。
+        ~~仍缺样本的那条~~ **已在 2026-10-09 01:15Z 的真实新星场拿到，见下面第 9 条**
+  9. **快车道写端并集：真实新星场的闭环读数（2026-10-09 01:15–03:0xZ，用户加星后现取）**：
+     ① 写端首次执行原文（run 37868878979，job 113622054133）：
+
+        `[fast] 新星 1 条：morluto/rea` → `[fast] wrote 1（状态已写回，待 CI 提交）` →
+        `[star-state] 写端并集 known_categories.json：工作树 333 键 + 分支 332 键 → 333 键（捞回 0 个分支独有键）` /
+        `[star-state] 写端并集 known_notes.json：工作树 327 键 + 分支 328 键 → 329 键（捞回 2 个分支独有键）` →
+        `02f3528..dad063d  -> star-state`。**"捞回 2"就是这层的价值本身**：没有并集，这一场推送会抹掉
+        `Ebony-Vinyl/dsh-our-free-model` 与 `imaiwork/IMAI.WORK-AI-Phone` 两条点评（正是 10-08 事故的同形损失）。
+        同时 `02f3528..dad063d` 追加成功，说明"浅检出里 `commit-tree -p` 拿到远端 sha 而 exit 128"
+        那条已在真实新星场不复现（此前只有合成夹具与无新星场样本）。
+
+     ② 内容级：分支 tip `dad063dd48` 实测 known_notes=329 / known_categories=333，与日志逐字对上，
+        329 条点评**全非空**；分支独有键 3 个（main 只有 326）。
+
+     ③ 端到端（下一场小时场 run 37872487501）：读端并集 `known_notes.json：main 326 键 + 分支 329 键 →
+        并集 329 键（本场新增 3）`；出厂页面上那 2 条分支独有点评**逐字承接住了**，
+        `morluto/rea` 的卡片则是小时场自己重新生成的（该卡 `updated_today:true`）⇒ 不是丢数据，
+        但**并集里已存在的键仍被再生成一次**，与"查表命中不烧 LLM"那条优化不一致（每颗新星多花一次调用）——
+        这条属已知未修，要动需用户点单。
+
+     ④ 门禁接线读数（同一场）：A2 `728 passed, 4 skipped`（含新加的两条解耦判据）、
+        A3 `271 passed` 且 FAILED 0 条（= site_nav_drift 165 + tools 106，与本地预测逐条命中）。
+
+     ⑤ 两条自我更正（都写进过远端历史，必须就地纠正）：
+        · **A3 首跑（22:00 场）是 `11 failed, 257 passed`，红在我**：上一批只推了
+          `tests/tools/test_wiki_sync_checker.py`，没推它的被测体 `check_wiki_sync.py`
+          （远端 6,786 B 旧实现里真有"核心文件不存在"那条，工作树 16,884 B 当前实现没有）
+          ⇒ CI 用新测试打旧实现。补推 `a89abcfd4c` 后 22:00→00:55 场 A3 变 `268 passed / FAILED 0`。
+          教训：**推判据必须连被测体一起推**，判"在不在库里"只问远端树。
+
+        · 我在提交说明与口头汇报里都说过"A3 带 continue-on-error，所以步结论 success 就是 pytest 退出 0"
+          ——**这是错的**：`continue-on-error: true` 会把步结论洗成 success（11 条红那场 A3 仍显示 success）。
+          判 advisory 闸只认日志里的 `N failed` 汇总行，不认步色。与 10-02 记过的"缺件那场 job 仍 success"同族。
+
+     ⑥ 门槛自身的一处自伤（已修 `6e34d5adb1`）：`prod_verify.read_runs()` 不分 workflow 取最近 8 场，
+        而近 12 场里 10 场是 star-fast（无 Pages 步 ⇒ `pages=null`）⇒ `done` 为空 ⇒ 判 BLOCKING
+        「读到的场都还在跑」，效果是小时场在飞的 20~40 分钟里门槛每次都挡在推送缝上。
+        改为只收发布车道（`select_publish_runs` 纯函数 + `per_page` 8→30），并由三条判据钉住
+        （只留发布场/常量必须从 `.github/workflows/*.yml` 现推/样本为空必须响亮判 blocking），
+        变异 5/5 各中各靶。修复后真实读数：BLOCKING → **WARN**，样本 6 场全带 Pages 结论。
+
+        ⚠ 附带噪声：A3 里 `test_restore_star_state.py` 的负向控制会让被测试的子进程打印一条
+        `::error::[star-state] 工作树 known_notes.json 读不出可解析的 JSON…`，Actions 会把它收成**错误注解**
+        挂在绿场上。它是测试正文而不是生产故障，读日志的人别把它当事故（工具正文的前缀是对的，不改）。
