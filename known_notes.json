@@ -328,5 +328,6 @@
  "libukai/awesome-deepseek-harness": "DeepSeek Harness 的资源导航与 awesom",
  "Ebony-Vinyl/dsh-our-free-model": "D SH 插件，免登录免费调用前沿LLM的开发工具链",
  "morluto/rea": "基于Agent的智能逆向工程框架，支持二进制分析、反汇编与M",
- "jacksonhuangfly/first-principles-skill": "聚焦第一性原理与批判性思维模型，提供结构化问题解决的方法论。"
+ "jacksonhuangfly/first-principles-skill": "提供第一性原理思维框架，用于厘清定义、识别假设与决策。",
+ "ghoustghoust/dsh-workbuddy-native": "DeepSeek 的原生适配器插件，面向开发者提供进程内直连"
 }
