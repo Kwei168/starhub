@@ -336,5 +336,6 @@
  "vultur/comfyui-workflow": "ComfyUI 工作流教程，聚焦 AI 视频/图像生成实战创",
  "ZHO-ZHO-ZHO/ComfyUI-Workflows-ZHO": "ComfyUI 工作流合集，属于 AI 图像生成工作流资源。",
  "Comfy-Org/ComfyUI-Manager": "ComfyUI 节点管理扩展，提供安装、启停及 Hub 管理",
- "Comfy-Org/ComfyUI": "本地Stable Diffusion/Flux节点式推理引擎"
+ "Comfy-Org/ComfyUI": "本地Stable Diffusion/Flux节点式推理引擎",
+ "StartLuxLabs/StartLux-Decision-v1": "开源大模型决策推理模块，支持多选项概率输出。"
 }
