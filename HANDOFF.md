@@ -2647,4 +2647,31 @@ P5 不写名单 / P6 无变化也写盘 / P7 纯剪枝跑 assemble）全中靶�
        `test_restore_star_state.py` 的负向控制打印（假 sha、故意造的坏 JSON），三条是 yml 里
        `echo "::error::…"` 脚本正文被回显（带未展开的 `$must`）。本次改动零新增错误注解。
 
+**第三笔：修第二笔自己造出来的空推（同日 13:5x BJT，`81983c6b3c`）**
+
+第二笔上线后我自查 CI 日志，发现 05:30 与 05:45 两场 star-fast **各剪了同样 4 把、各推了一枚
+与上一场逐字节相同的 tree**。这是"修老问题造新问题"，而且是我上一笔那个错误的同形重演
+（上一笔只清存量没治机制；这一笔治机制时把"有没有变化"判错了）。
+
+根因：`main/known_notes.json` 是一份**没有写者、却参与读端并集**的冻结副本——`update.yml` 的
+add 清单里有 `known_categories.json` 却没有它（这事实 `restore_star_state.py:97` 早就记过，
+我读了却没推演出后果）。star-fast 检出 main 就每场带着它那批早已不在收藏的键 ⇒ 用
+"`dropped` 非空"当"有变化"永远成立 ⇒ 每 15 分钟一枚空提交，正是
+`test_no_new_star_pushes_nothing_at_all` 明确反对的形态。
+
+处置：`fast_refresh` 只剪 categories（它拿 categories 做新星 diff），notes 交给写端
+`_prune_to_live`（那边本来就两表都剪，05:30 已把 star-state notes 从 341 剪到 337 并被验证）。
+新判据 `test_notes_dead_keys_alone_never_trigger_a_write` 精确复现该形状，新变异
+**P8「顺手在本车道剪 notes」** 钉住它不许回来。电池 8/8、专项 44 passed。
+
+生产侧收敛确认 = run#825（06:00 star-fast）：`[fast] no change, skip write（341 条，无新星）`，
+`[fast] 剪枝` 与 `[star-state] 剪枝` 均 **0 条**；star-state 终态 categories 341 键（与收藏
+双向零差）、notes 337 键，两边死键都是 0。
+
+⚠ **这一笔与上面 desc_zh 那条合起来是同一个教训**：三张状态表的键集**并不相同**，
+"一起剪才对称"看着最像正确答案，实际每张表都要先问"谁写它、谁读它、它的键集是不是收藏的
+投影"——`descriptions_zh` 装着排行榜项目的简介（键集 ⊄ 收藏），`main/known_notes` 是没人写的
+冻结副本（每场把已删的键带回来）。下次要给这套剪枝"补齐"之前，先读这两条。
+
+
 
