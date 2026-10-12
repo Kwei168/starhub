@@ -36,7 +36,62 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BRANCH = "star-state"
 FILES = ("known_categories.json", "known_notes.json")
 FLOOR_KEYS = 200          # 见②：现取 main 上 known_categories 有 293 键
+# fast_refresh 本场写的"当前收藏 full_name 名单"。刻意放 .deploy-tmp/（已 gitignore）：
+# 它是**场内传递**，不是跨场状态——写端并集是只增不减的，死键只能靠这份名单才认得出来，
+# 而名单每场重算，存下来反而会多一个需要人维护的跨场文件。
+LIVE_LIST_REL = os.path.join(".deploy-tmp", "star_live_names.json")
 BJT = timezone(timedelta(hours=8))
+
+
+def _live_names():
+    """读 fast_refresh 本场写的 live 名单。读不到/坏掉/空 ⇒ None，调用方一律不剪。
+
+    启用条件刻意保守：剪枝是"有意缩小"，与本脚本默认的"绝不缩小"方向相反，
+    所以宁可漏剪也不能错剪——名单缺失或形状不对时，最坏只是"这一场没清死键"，
+    而反过来会把还在收藏的键剪没（下一场全量重烧 LLM）。
+    """
+    try:
+        with open(os.path.join(ROOT, LIVE_LIST_REL), encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:  # noqa: BLE001 —— 读不到就是不剪，不需要区分原因
+        return None
+    if not isinstance(d, list) or not d:
+        return None
+    return {x for x in d if isinstance(x, str) and x} or None
+
+
+def _prune_to_live(merged_out, live):
+    """把并集结果剪成 live 名单的投影。返回剪掉的键数，0 表示没动。
+
+    为什么必须在这一侧剪：`--merge-onto` 是 `dict(incoming)` 打底，父提交上的死键一定会被
+    捞回来，所以在 `fast_refresh` 里剪是白剪——那是本仓"每次改名都要人手工清一次分支"的
+    唯一原因（main 侧的 prune_star_state 管不到这条车道）。
+
+    剪完仍不足 FLOOR_KEYS ⇒ 判定名单不可信，**只放弃缩小、不放弃并集**：返回 0 而不是 3，
+    因为并集本身是完整的，返回 3 会让调用方连分类结果都不提交，把"名单坏了"升级成"丢分类"。
+    """
+    if not live:
+        return 0
+    trial = {name: {k: v for k, v in d.items() if k in live}
+             for name, d in merged_out.items()}
+    kc = trial.get("known_categories.json")
+    if kc is not None and len(kc) < FLOOR_KEYS:
+        print("::warning::[star-state] 拒绝剪枝：按 live 名单剪后 known_categories 只剩 %d 键"
+              "（地板 %d，名单 %d 条）⇒ 判定名单不可信，本场只并集不缩小"
+              % (len(kc), FLOOR_KEYS, len(live)))
+        _stamp("prune_refused_under_floor",
+               "after=%d floor=%d live=%d" % (len(kc), FLOOR_KEYS, len(live)))
+        return 0
+    dropped = sum(len(merged_out[n]) - len(trial[n]) for n in merged_out)
+    if not dropped:
+        return 0
+    for name in merged_out:
+        merged_out[name] = trial[name]
+    print("[star-state] 剪枝：按本场 live 名单（%d 条）移除 %d 个已不在收藏的键"
+          % (len(live), dropped))
+    _stamp("pruned", "live=%d dropped=%d" % (len(live), dropped))
+    return dropped
+
 
 
 def _sh(*args):
@@ -178,6 +233,14 @@ def _merge_onto(rev, strict=False):
         # 走到"照样把没并过的 tree 推上去"——那正是本函数要防的缩小。调用方（star-fast.yml）
         # 见非零就放弃本场提交并出声；下一场重新 diff 会补上，数据不丢。
         return 3 if not strict else 1
+
+    # 剪枝排在地板闸门**之后**：先验"并集没缩小"，再执行有意缩小。反过来会让一份垃圾名单
+    # 把表剪到地板以下还照样推上去，而分支是唯一还存着历史键的地方。
+    _prune_to_live(merged_out, _live_names())
+    # 剪枝改动了键数 ⇒ 刷新计数，否则下面 print 的"→ N 键"是剪之前的，读日志的人会算错账
+    for name, info in merged_info.items():
+        if info[0] == "merged" and name in merged_out:
+            merged_info[name] = ("merged", len(merged_out[name]), info[2], info[3], info[4])
 
     for name, info in merged_info.items():
         if info[0] != "merged":

@@ -238,3 +238,84 @@ def test_write_merge_refuses_instead_of_half_merging(ws):
     assert rss.main(["--merge-onto", _branch_tip(ws)]) == 3, "一份坏了却整体放行 ⇒ 会推半并的 tree"
     assert "branch/only" not in _read(ws, "known_categories.json"), \
         "拒绝之后仍写了能并的那份 ⇒ categories/notes 变成两套进度"
+
+
+# ── star-state 侧的剪枝（2026-10-12）────────────────────────────────────────
+# 为什么这一半必须存在：main 侧的构建期剪枝（fetch_and_build.prune_star_state）剪不动
+# star-state —— 写端的 --merge-onto 是 dict(incoming) 打底，父提交上的死键必然被捞回来。
+# 于是"每次仓库改名都要人手工清一次分支"，而这正是用户裁定要消灭的东西
+# （「取消关注这个行为本身就是删除」）。
+# 启用条件刻意保守：剪枝是"有意缩小"，与本脚本默认方向（绝不缩小）相反，
+# 所以只有 fast_refresh 本场写的 live 名单真在场、可解析、非空时才动，
+# 且剪完仍要过已有的 FLOOR_KEYS 闸门（不引入第二个阈值常量，避免两处门槛分叉）。
+
+def _write_live_list(ws, names):
+    d = os.path.join(ws, ".deploy-tmp")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "star_live_names.json"), "w", encoding="utf-8") as f:
+        json.dump(names, f)
+
+
+def _live_of(ws, extra=()):
+    """造一份"当前收藏"名单：工作树里已有的键 + extra（用来模拟分支独有的活键）。"""
+    return sorted(set(_read(ws, "known_categories.json")) | set(extra))
+
+
+def test_write_prune_drops_branch_only_dead_key(ws, capsys):
+    """名单在场时，分支独有且不在收藏里的键必须被剪掉——这是本半的全部意义。"""
+    _make_star_state(ws, {"branch/alive": "video", "branch/dead": "coding"},
+                     {"branch/dead": "该剪的死键点评"})
+    _write_live_list(ws, _live_of(ws, extra=["branch/alive"]))
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 0
+    kc = _read(ws, "known_categories.json")
+    assert "branch/alive" in kc, "名单里的活键被剪了 ⇒ 与 10-08 那条'分支独有键要捞回'直接冲突"
+    assert "branch/dead" not in kc, "死键没剪 ⇒ 分支仍是只增不减的坟场，每小时都要重剪一遍"
+    assert "branch/dead" not in _read(ws, "known_notes.json"), \
+        "categories 剪了 notes 没剪 ⇒ 两表口径分叉"
+    assert "剪枝" in capsys.readouterr().out, "剪了不出声 ⇒ 日志里分不清『本来就没死键』和『没启用』"
+
+
+def test_write_without_live_list_is_byte_identical(ws):
+    """名单缺失 ⇒ 一个键都不剪，行为与加这个功能之前逐字节同形。
+
+    这条是"降级即兼容"的凭据：star-fast.yml 那 6 条实跑 shell 的行为判据都没写名单文件，
+    所以它们必须继续绿；否则就是我用新判据去推翻旧判据保护的真东西。
+    """
+    _make_star_state(ws, {"branch/dead": "coding"}, {"branch/dead": "点评"})
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 0
+    kc = _read(ws, "known_categories.json")
+    assert "branch/dead" in kc, "没有名单却动了剪枝 ⇒ 降级路径没生效，会误删还在收藏的键"
+
+
+def test_write_prune_refuses_when_list_is_empty(ws, capsys):
+    """空名单 = 拉取异常，不是"用户取消了所有收藏"：一律不剪（与 main 侧同源的那条免疫）。"""
+    _make_star_state(ws, {"branch/dead": "coding"})
+    _write_live_list(ws, [])
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 0
+    assert "branch/dead" in _read(ws, "known_categories.json"), "空名单把整张表剪空了"
+
+
+def test_write_prune_refuses_when_result_under_floors(ws, capsys):
+    """名单是垃圾（剪完不足 FLOOR_KEYS）⇒ 拒绝剪并出声，但**并集结果照常写**。
+
+    刻意不返回 3：并集本身是完整的，拒绝的只是缩小这一步。返回 3 会让调用方放弃整场提交，
+    把"名单坏了"升级成"分类结果没落库"，那是更坏的结果。
+    """
+    _make_star_state(ws, {"branch/only": "video"})
+    _write_live_list(ws, ["a/1", "a/2"])
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 0
+    out = capsys.readouterr().out
+    assert "branch/only" in _read(ws, "known_categories.json"), "门槛没拦住，把表剪到 FLOOR 以下了"
+    assert "拒绝剪枝" in out, "拦住了却不出声 ⇒ 与『没有死键可剪』混在一起，线上查不出来"
+
+
+def test_write_prune_survives_corrupt_list(ws):
+    """名单文件存在但不是合法 JSON ⇒ 按缺失处理（不剪、不崩、返回 0）。"""
+    _make_star_state(ws, {"branch/dead": "coding"})
+    d = os.path.join(ws, ".deploy-tmp")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "star_live_names.json"), "w", encoding="utf-8") as f:
+        f.write("[坏掉")
+    assert rss.main(["--merge-onto", _branch_tip(ws)]) == 0
+    assert "branch/dead" in _read(ws, "known_categories.json")
+

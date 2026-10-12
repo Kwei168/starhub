@@ -27,6 +27,11 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 KC_PATH = os.path.join(ROOT, "known_categories.json")
 NOTES_PATH = os.path.join(ROOT, "known_notes.json")
 DESC_PATH = os.path.join(ROOT, "descriptions_zh.json")
+# 本场"当前收藏有哪些"的名单，写给 `tools/restore_star_state.py --merge-onto` 读。
+# 放 .deploy-tmp/（已 gitignore）是刻意的：它是**场内传递**而不是跨场状态，每场重算，
+# 存进 git 反而会多出一个需要人维护的文件。两侧路径字面量各写一份，由
+# tests/tools/test_fast_refresh_prune.py::test_live_list_path_is_the_same_on_both_sides 钉住。
+LIVE_LIST_PATH = os.path.join(ROOT, ".deploy-tmp", "star_live_names.json")
 
 
 def _load_json(path, default):
@@ -35,6 +40,19 @@ def _load_json(path, default):
             return json.load(f)
     except Exception:  # noqa: BLE001
         return default
+
+
+def _write_live_list(names):
+    """写 live 名单。失败只降级、绝不挡路：读不到名单时写端一律不剪，
+    最坏是"这一场没清死键"，而反过来（写了错的名单）会把还在收藏的键剪没。"""
+    try:
+        os.makedirs(os.path.dirname(LIVE_LIST_PATH), exist_ok=True)
+        tmp = LIVE_LIST_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(sorted(names), f)
+        os.replace(tmp, LIVE_LIST_PATH)
+    except Exception as e:  # noqa: BLE001
+        print("::warning::[fast] live 名单写失败，本场 star-state 不剪枝：%s" % e)
 
 
 def _atomic_write_json(path, data):
@@ -51,13 +69,33 @@ def main():
         print("::warning::[fast] 拉取 star 失败（限流/网络），本场跳过——状态文件不写回，下一场重新 diff 补判")
         return 0
 
+    live = {r.get("full_name") for r in repos if r.get("full_name")}
+    _write_live_list(live)
+
     known = _load_json(KC_PATH, {})
     notes = _load_json(NOTES_PATH, {})
     desc_zh = _load_json(DESC_PATH, {})
+    # 取消关注即删除（用户 2026-10-12 裁定）。这两张表原本只增不减，于是仓库改名后旧名永久
+    # 留在 star-state 上，而写端 `--merge-onto` 一定会把它捞回工作树 ⇒ main 每场重剪一遍、
+    # `[剪枝]` 日志每场谎报一次。门槛在 prune_star_state 内部（空集与拉取缩水一律不剪），
+    # 这里不另设第二套判据，避免两处门槛分叉。
+    dropped = fab.prune_star_state(known, live) + fab.prune_star_state(notes, live)
     new_repos = [r for r in repos if r.get("full_name") and r["full_name"] not in known]
-    if not new_repos:
+    if not new_repos and not dropped:
         print("[fast] no change, skip write（%d 条，无新星）" % len(repos))
         return 0
+    if dropped:
+        print("[fast] 剪枝：移除 %d 个已不在收藏的键：%s"
+              % (len(dropped), ", ".join(dropped[:8])))
+    if not new_repos:
+        # 纯剪枝的场次（用户只取关、没关注新的）：**绝不**走 assemble_entries。它对全表做
+        # 翻译与 README 摘要，原本靠上面那句 `return 0` 挡掉，现在多了这条出口就得自己挡；
+        # 为剪几个键烧一轮 LLM 是本车道最不该犯的错。desc_zh 没变，所以也不写它。
+        _atomic_write_json(KC_PATH, known)
+        _atomic_write_json(NOTES_PATH, notes)
+        print("[fast] wrote（纯剪枝 %d 键，无新星，状态已写回待 CI 提交）" % len(dropped))
+        return 0
+
     print("[fast] 新星 %d 条：%s" % (len(new_repos), ", ".join(r["full_name"] for r in new_repos[:8])))
 
     cat_label = {c["key"]: c["label"] for c in fab.CATS}
