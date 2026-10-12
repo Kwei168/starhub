@@ -2542,7 +2542,7 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
         `::error::[star-state] 工作树 known_notes.json 读不出可解析的 JSON…`，Actions 会把它收成**错误注解**
         挂在绿场上。它是测试正文而不是生产故障，读日志的人别把它当事故（工具正文的前缀是对的，不改）。
 
-### 8.35 分类表剪成收藏的投影：取消关注即删除指令（2026-10-12，**本地全绿，尚未推送**）
+### 8.35 分类表剪成收藏的投影：取消关注即删除指令（2026-10-12 01:36–03:26 BJT，**已推送 + 已部署 + 已线上验收**）
 
 **用户报的缺陷**：首页那个「分类表里有 4 个名字不在你当前的收藏列表中」的提醒条，"取消关注再重新关注"之后**仍然在报**。他问"是不是只有增加的逻辑，没有取消删除减少的逻辑"。
 
@@ -2573,7 +2573,41 @@ V4 flow 风格带回权限、V5 flow 风格塞进一条 deploy-pages 步、V6 `g
 
 **已知未收口（三条，都不是本次改动引入的回归）**：
 
-1. **star-state 分支上的 4 把死键没人清**：快车道的 `--merge-onto` 是 `dict(incoming)` 打底，剪了也会被父提交灌回，所以在那条车道剪枝是白剪。后果是 main 每场重剪同一批 4 把、`[剪枝]` 日志每小时报一次 phantom 清理（约 96 次/天）。**需要一次性手工清 star-state 才能真正收敛到"剪 0 条"**，这一步动的是另一个分支的数据，待用户批准。
+1. **star-state 现存的 4 把死键已一次性清掉（`3abfce8694`）**：快车道的 `--merge-onto` 是 `dict(incoming)` 打底，剪了也会被父提交灌回，所以在那条车道剪枝是白剪——只能手工清这一笔。清理前先核验过：star-state 独有的 4 把**全部不在收藏（0 把活键）**、剪后键集==live、存活键值改动 0，且与 main 那 341 键**逐字节相同**（13171 B），所以这一笔零丢失风险。
+   ⚠ **但这只是清了存量，机制上没治**：未来每次仓库改名仍会在 star-state 攒下死键（快车道的 `fast_refresh` 拿不到 live 全集，剪不动）。攒到约 85 把才会撞上面那条门槛熄火，期间表现为"main 每场重剪同一批 + `[剪枝]` 日志每小时谎报"。下一次再看到那种谎报，处置就是重复这一笔手工清理（不是去改门槛）。
 2. **限流场会把死键重新提交回 main**：读端无条件写盘，而剪枝挂在 `if stars_ok` 里不执行，`known_categories.json` 照样进 add 清单 ⇒ 每次限流 ≈ 2 笔提交、表在 340↔344 之间来回。线上页面不受影响（限流场走 `write_index_fallback`，提示条不会重现），只脏文件与审计口径。
 3. **裁定只落了 1/3 的状态文件**：`known_notes.json` 与 `descriptions_zh.json`（518 键里 365 把不在 live）都没剪。取关后重新关注**同名**仓库时，类别是重烧的新结果、点评却会被 `assemble_entries` 的 `if not note: note = notes.get(fn)` 从旧表请回来 —— 同一次裁定下两种新旧不一致。在 `fetch_and_build` 里剪 notes 是**空转**（那个文件不在小时场的写盘清单里），要真治得去 `fast_refresh` 并动它"无新星零文件写"的既有约束，本轮按最小化不做。
+
+**推送与线上验收读数（现取，非步骤结论）**
+
+提交链：`612a38c5d6`（main，4 路径代码+判据+手册）→ `3abfce8694`（star-state，清 4 把死键）。
+回退基线：main `c64c8a4561`、star-state `c48a0e67aa`。两笔都过 `remote_drift_check`：`内容不同=0`。
+
+    ① 携带改动的首场 = run#1844（02:00:27Z，41 步全绿）。CI 日志原文：
+       [剪枝] 分类表移除 4 个已不在收藏的名字：OpenFDEAI/OpenFDE, StartLuxLabs/StartLux-Decision,
+              justinhuangai/first-principles-skill, xintaofei/codeg
+       该场之前 main 与 star-state 都是 345 键，之后 main = 341。
+
+    ② 不变量独立复核（不靠日志）：现取 GitHub 公开 starred 全集 341 条（分页 100+100+100+41，
+       去重后仍 341），与 main 那 341 键做双向对账 ⇒ 表−收藏 = 0、收藏−表 = 0。
+
+    ③ 线上产物 `https://kwei168.github.io/starhub/index.html`：改动前基线（08:15 场）是
+       `data-attention`=1、`attn-row`=4、四把旧名全在场；改动后（11:07 场）是
+       `data-attention`=0、`attn-row`=0，四把旧名按**边界匹配**全部不存在。
+       ⚠ 别用 `旧名 in html` 判：`StartLuxLabs/StartLux-Decision-v1` 含旧名作前缀，子串匹配会
+       报假阳性（本条实测撞到过一次）。
+
+    ④ 收敛确认 = run#1845（03:00 场）：日志里 `[剪枝]` **零行**（读端灌回的已是干净的 341，
+       to_drop=0），main 与 star-state 都稳在 341、死键 0；中间 02:15/02:30/02:45/03:00/03:15
+       五场 star-fast 都没把死键带回 star-state。
+
+    ⑤ ubuntu 侧门禁读数（本地绿不算数）：A2 `737 passed, 4 skipped`（=741，与本地逐条对上，
+       含本次 9 条新判据）、A3 `271 passed`、gate B `425 passed`，全日志无一行 `N failed`。
+       A2 是 blocking，它绿即证明新判据在 ubuntu 上真跑得通；A3/B 是 continue-on-error，
+       只认日志汇总行不认步色（口径同 §8.34 ⑤）。
+
+    ⑥ 噪声核对：该场 5 条 `::error::` 注解与上一场**逐条同形**——两条是
+       `test_restore_star_state.py` 的负向控制打印（假 sha、故意造的坏 JSON），三条是 yml 里
+       `echo "::error::…"` 脚本正文被回显（带未展开的 `$must`）。本次改动零新增错误注解。
+
 
