@@ -74,13 +74,20 @@ def test_fast_writes_live_list_for_the_merge_side(ws, capsys):
     assert sorted(_read(fr.LIVE_LIST_PATH)) == sorted(LIVE), "名单内容与收藏不一致"
 
 
-def test_fast_prunes_both_state_tables(ws):
-    """两张表都要剪：只剪 categories 会让 notes 与它口径分叉（点评表继续攒死键）。"""
+def test_fast_prunes_categories_and_leaves_notes_to_the_merge_side(ws):
+    """本车道只剪 categories；notes 交给写端并集剪（那边两表都剪）。
+
+    分工的理由见 fast_refresh 里那条注释：notes 那份冻结副本会让"剪 notes"永远判成有变化，
+    从而每 15 分钟推一枚内容没变的空提交。两表口径最终仍一致，由
+    test_restore_star_state.py::test_write_prune_drops_branch_only_dead_key 钉住。
+    """
     assert fr.main() == 0
     assert "old/renamed" not in _read(fr.KC_PATH), "categories 里的死键没剪"
-    assert "old/renamed" not in _read(fr.NOTES_PATH), "notes 里的死键没剪 ⇒ 两表分叉"
+    assert "old/renamed" in _read(fr.NOTES_PATH), \
+        "本车道动了 notes ⇒ 会造出每 15 分钟一次的空提交（见 test_notes_dead_keys_alone_never_trigger_a_write）"
     for n in LIVE:
         assert n in _read(fr.KC_PATH), "活键被误删：%s" % n
+
 
 
 def test_unstar_without_new_star_still_writes(ws, capsys):
@@ -137,6 +144,32 @@ def test_pure_prune_never_runs_assemble_entries(ws, monkeypatch):
     assert fr.main() == 0
     assert "old/renamed" not in _read(fr.KC_PATH), "夹具没造出死键 ⇒ 本条会空转"
     assert not hits, "纯剪枝场跑了 assemble_entries ⇒ 白烧一轮翻译与 LLM"
+
+
+def test_notes_dead_keys_alone_never_trigger_a_write(ws, monkeypatch, capsys):
+    """notes 里有死键、categories 干净、又没有新星 ⇒ 必须走跳过路径，一个字都不写。
+
+    这条是修我自己犯的那个错：2026-10-12 05:45 与 05:30 两场各剪了"同样 4 把"并各推一次
+    star-state，而推出去的 tree 与上一场**完全相同**。根因是 `main/known_notes.json` 是一份
+    没人写、却参与读端并集的冻结副本（update.yml 的 add 清单里没有它），star-fast 检出 main
+    就每场带着它那 4 把死键 ⇒ 用"dropped 非空"当"有变化"会永远判成有变化，
+    变成每 15 分钟一枚空提交（手册 test_no_new_star_pushes_nothing_at_all 明确反对的形态）。
+    notes 的剪枝归 merge-onto 管（那边两表都剪，已由 test_write_prune_drops_branch_only_dead_key 钉住）。
+    """
+    clean = {n: "agent" for n in LIVE}
+    with open(fr.KC_PATH, "w", encoding="utf-8") as f:
+        json.dump(clean, f)
+    dirty_notes = {n: "点评" for n in LIVE}
+    dirty_notes["old/renamed"] = "main 冻结副本带来的死键"
+    with open(fr.NOTES_PATH, "w", encoding="utf-8") as f:
+        json.dump(dirty_notes, f)
+    kc_before = open(fr.KC_PATH, "rb").read()
+    notes_before = open(fr.NOTES_PATH, "rb").read()
+    assert fr.main() == 0
+    assert "no change, skip write" in capsys.readouterr().out, \
+        "只因为 notes 有死键就不跳过 ⇒ 每 15 分钟往 star-state 推一枚内容没变的空提交"
+    assert open(fr.KC_PATH, "rb").read() == kc_before, "跳过路径上却写了 categories"
+    assert open(fr.NOTES_PATH, "rb").read() == notes_before, "fast_refresh 不该动 notes（归 merge-onto）"
 
 
 def test_live_list_path_is_the_same_on_both_sides():

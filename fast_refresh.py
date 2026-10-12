@@ -75,11 +75,18 @@ def main():
     known = _load_json(KC_PATH, {})
     notes = _load_json(NOTES_PATH, {})
     desc_zh = _load_json(DESC_PATH, {})
-    # 取消关注即删除（用户 2026-10-12 裁定）。这两张表原本只增不减，于是仓库改名后旧名永久
-    # 留在 star-state 上，而写端 `--merge-onto` 一定会把它捞回工作树 ⇒ main 每场重剪一遍、
-    # `[剪枝]` 日志每场谎报一次。门槛在 prune_star_state 内部（空集与拉取缩水一律不剪），
-    # 这里不另设第二套判据，避免两处门槛分叉。
-    dropped = fab.prune_star_state(known, live) + fab.prune_star_state(notes, live)
+    # 取消关注即删除（用户 2026-10-12 裁定）：这张表原本只增不减，仓库改名后旧名永久留在
+    # star-state 上，而写端并集一定把它捞回工作树 ⇒ main 每场重剪一遍。门槛在
+    # prune_star_state 内部（空集与拉取缩水一律不剪），这里不另设第二套判据，避免分叉。
+    #
+    # ⚠ 只剪 categories，notes 交给写端 `_prune_to_live`（它两表都剪）。这不是少做一半：
+    # `main/known_notes.json` 是一份**没有写者、却参与读端并集**的冻结副本（update.yml 的
+    # add 清单里有 categories 却没有 notes），star-fast 每场检出 main 就带着它那批早已不在
+    # 收藏的键 ⇒ 若在这里也剪 notes，"dropped 非空"就永远成立 ⇒ 每 15 分钟往分支推一枚与
+    # 上一场逐字节相同的空提交。05:30 与 05:45 两场实测各剪了同样 4 把、各推一次，就是这么来的。
+    # 判据：tests/tools/test_fast_refresh_prune.py::test_notes_dead_keys_alone_never_trigger_a_write
+    dropped = fab.prune_star_state(known, live)
+
     new_repos = [r for r in repos if r.get("full_name") and r["full_name"] not in known]
     if not new_repos and not dropped:
         print("[fast] no change, skip write（%d 条，无新星）" % len(repos))

@@ -43,11 +43,19 @@ MUTATIONS = [
      "    if False:",
      os.path.join("tests", "tools", "test_restore_star_state.py"),
      "test_write_prune_refuses_when_result_under_floors"),
-    ("P4 只剪分类表不剪点评表", "fast_refresh.py",
-     "    dropped = fab.prune_star_state(known, live) + fab.prune_star_state(notes, live)",
-     "    dropped = fab.prune_star_state(known, live) + []",
+    ("P4 本车道不剪 categories", "fast_refresh.py",
+     "    dropped = fab.prune_star_state(known, live)",
+     "    dropped = []",
      os.path.join("tests", "tools", "test_fast_refresh_prune.py"),
-     "test_fast_prunes_both_state_tables"),
+     "test_fast_prunes_categories_and_leaves_notes_to_the_merge_side"),
+    # P8 = 我自己 2026-10-12 真犯过的错（05:30/05:45 两场各推一枚内容相同的空提交）：
+    # 在本车道顺手剪 notes。main 那份 notes 是冻结副本、每场都会带回来，所以"有变化"永远成立。
+    ("P8 顺手在本车道剪 notes（每 15 分钟空推）", "fast_refresh.py",
+     "    dropped = fab.prune_star_state(known, live)",
+     "    dropped = fab.prune_star_state(known, live) + fab.prune_star_state(notes, live)",
+     os.path.join("tests", "tools", "test_fast_refresh_prune.py"),
+     "test_notes_dead_keys_alone_never_trigger_a_write"),
+
     ("P5 不写 live 名单（下游永远读不到）", "fast_refresh.py",
      "    _write_live_list(live)",
      "    pass  # _write_live_list(live)",
