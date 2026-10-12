@@ -25,7 +25,7 @@ MUTATIONS = [
      "for fn in sorted(set(known) & live):",
      "test_attention_lists_table_names_missing_from_current_stars"),
     ("M2 假警措辞", "fetch_and_build.py",
-     'ATTENTION_TITLE = "分类表里有 %d 个名字不在你当前的收藏列表中——点开确认是改了名还是仓库已消失"',
+     'ATTENTION_TITLE = "分类表里有 %d 个名字不在当前收藏中——本场未自动清理（拉取条数低于门槛），请核对收藏是否完整拉到"',
      'ATTENTION_TITLE = "收藏丢失 %d 条，请检查拉取是否漏拉"',
      "test_rendered_text_never_claims_stars_are_missing"),
     ("M3 空清单留容器", "fetch_and_build.py",
@@ -61,6 +61,23 @@ MUTATIONS = [
      "    shown = items[:ATTENTION_MAX_ROWS]",
      "    shown = items",
      "test_attention_block_is_capped"),
+    # ---- 剪枝（2026-10-12）：三种各自独立的失败形状，各钉一条判据 ----
+    ("M10 剪枝没接进主链", "fetch_and_build.py",
+     '        dropped = prune_star_state(known, {e["full_name"] for e in out})',
+     "        dropped = []",
+     "test_prune_is_wired_before_attention"),
+    ("M11 缩水门槛被拆", "fetch_and_build.py",
+     "    if not live or len(live) < len(known) * PRUNE_LIVE_MIN_RATIO:",
+     "    if False:",
+     "test_prune_skips_when_live_shrinks_below_floor"),
+    ("M12 剪枝集合算反", "fetch_and_build.py",
+     "    dropped = sorted(fn for fn in known if fn not in live)",
+     "    dropped = sorted(fn for fn in known if fn in live)",
+     "test_prune_drops_names_absent_from_current_stars"),
+    ("M13 正文教人判定改名", "fetch_and_build.py",
+     '\'<p class="attn-note">本场未自动清理：拉到的收藏条数低于分类表门槛。\'',
+     '\'<p class="attn-note">本页只列名字、不下结论：改名与删除在 GitHub 上点开一眼可辨。\'',
+     "test_attention_block_does_not_ask_user_to_adjudicate_renames"),
 ]
 
 

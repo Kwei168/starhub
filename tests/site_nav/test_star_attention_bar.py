@@ -194,3 +194,110 @@ def test_attention_block_is_capped():
     assert n == fab.ATTENTION_MAX_ROWS, "应当正好截到实现声明的档位，实得 %d" % n
     assert ("另有" in html) and ("60" in html or "%d" % (60 - n) in html), \
         "截断必须如实报剩余，不许静默丢条目"
+
+
+# ==================== 剪枝：分类表 = 当前收藏的投影 ====================
+# 上面整块提醒条的本领是"把旧名交给人判定"，但 2026-10-12 用户实测它修不掉：取消关注再重新
+# 关注拿回来的是**改名后的新名**（`xintaofei/codeg`→`spacering-net/codeg` 等 4 条，全部经
+# GitHub 301 重定向按 repository id 确证），旧名那条没有任何代码会删 ⇒ 提示永久挂着。
+# 用户裁定口径：「取消关注这个行为本身就是删除，重新关注是另一个行为（走新增分类）」。
+# 所以构建期直接把表剪成收藏的投影，人不再需要判定。
+# 全案唯一能删错人的路径是拉取缩水：表 344 键而分页只拉到 100 条 ⇒ 差集 244，照剪等于清空
+# 分类表、下一场全量重烧 LLM。故设门槛，且门槛不许严到永不生效（那会让页面看着像修好了）。
+
+def test_prune_drops_names_absent_from_current_stars():
+    """差集必须被删掉：剪完表 == 收藏的键集。
+    夹具基数刻意取 11 键剪 1 条（90.9%）而不是 3 键剪 1 条：后者落在门槛之下，会因为"根本没
+    敢剪"而通过，那就成了一条空转判据。"""
+    known = {"r%02d/keep" % i: "agent" for i in range(10)}
+    known["old/gone"] = "coding"
+    live = set(known) - {"old/gone"}
+    dropped = _fab().prune_star_state(known, live)
+    assert "old/gone" not in known, "旧名没被剪掉，实剩 %s" % sorted(known)
+    assert len(known) == 10, "剪多了或剪少了，实剩 %d 键" % len(known)
+    assert sorted(dropped) == ["old/gone"], "要如实报删了什么，实得 %s" % (dropped,)
+
+
+def test_prune_leaves_live_entries_untouched():
+    """只删键，绝不改活着的键的值：分类是每场查表复用的，动值会让别的仓库串台。
+    同样必须让剪枝真的发生（11→10），否则这条只是在验"门槛拦住了"。"""
+    known = {"r%02d/keep" % i: "cat%02d" % i for i in range(10)}
+    known["old/gone"] = "coding"
+    before = dict(known)
+    dropped = _fab().prune_star_state(known, set(before) - {"old/gone"})
+    assert len(dropped) == 1, "夹具没落在门槛之上，本条会空转：%s" % (dropped,)
+    for fn, cat in before.items():
+        if fn in known:
+            assert known[fn] == cat, "live 里的键 %s 的值被动过：%r -> %r" % (fn, cat, known[fn])
+
+
+def test_prune_skips_when_live_is_empty():
+    """收藏被拉成空集 ⇒ 一个都不许删。与提醒条同源的那条免疫，在删除上致命得多。"""
+    known = {"a/keep": "agent", "b/keep2": "tools"}
+    dropped = _fab().prune_star_state(known, set())
+    assert known == {"a/keep": "agent", "b/keep2": "tools"}, "空收藏却把整张表剪了"
+    assert list(dropped) == [], "空集本该整体跳过，却报删了 %d 条" % len(list(dropped))
+
+
+def test_prune_skips_when_live_shrinks_below_floor():
+    """拉取缩水到门槛之下 ⇒ 一律不剪。形状照抄真实事故：表 100 键只拉到 20 条。"""
+    known = {"r%03d/repo" % i: "agent" for i in range(100)}
+    dropped = _fab().prune_star_state(known, {"r%03d/repo" % i for i in range(20)})
+    assert len(known) == 100, "缩水到 20% 却照剪，实剩 %d 键" % len(known)
+    assert list(dropped) == [], "门槛没拦住，实删 %d 条" % len(list(dropped))
+
+
+def test_prune_acts_on_bulk_unstar_within_floor():
+    """反向那半：门槛不许严到永不生效。一次取关 10% 必须照剪，
+    否则这条判据会退化成"永远不剪"，而页面上看着像已经修好了。"""
+    known = {"r%03d/repo" % i: "agent" for i in range(100)}
+    dropped = _fab().prune_star_state(known, {"r%03d/repo" % i for i in range(90)})
+    assert len(known) == 90, "10% 的批量取关被门槛挡住，实剩 %d" % len(known)
+    assert len(list(dropped)) == 10, "剪了却没如实报数，实得 %d" % len(list(dropped))
+
+
+def test_prune_makes_attention_empty():
+    """端到端：剪完再算提醒必须归零——这才是"用户再也看不到那个提示"的唯一真出口。
+    只钉剪枝函数本身不够，两条链各自对也可能接不上。"""
+    fab = _fab()
+    known = {"a/keep": "agent", "old/renamed": "coding"}
+    live_repos = [{"full_name": "a/keep"}, {"full_name": "new/renamed"}]
+    fab.prune_star_state(known, {r["full_name"] for r in live_repos})
+    items = fab.star_attention_items(live_repos, known, {}, {})
+    assert items == [], "剪枝后仍报孤儿，提示条不会消失：%s" % [i["item"] for i in items]
+
+
+def test_prune_floor_ratio_is_in_safe_band():
+    """门槛常量必须真的参与判定，且落在安全区间：>0.5 才不至于"删掉一半以上也算正常"。
+    上面两条用 20% 与 90% 各钉一端，任何 0.2<x<=0.9 的取值都能过，所以这里补下界。"""
+    assert 0.5 < _fab().PRUNE_LIVE_MIN_RATIO <= 1, \
+        "门槛 %r 不在安全区间" % (_fab().PRUNE_LIVE_MIN_RATIO,)
+
+
+def test_prune_is_wired_before_attention():
+    """剪枝必须真的接在主链里，且排在算提醒条**之前**。
+
+    上面那些判据全都是直接调函数，一条都不碰 main()：函数写对而忘了接线的话它们全绿，
+    而页面上那个提示一条都不会少。形状照抄 test_index_html_has_exactly_one_producer
+    （同一份"只钉实现不钉接线会假绿"的教训）。
+    """
+    src = io.open(os.path.join(ROOT, "fetch_and_build.py"), encoding="utf-8").read()
+    assert _call_blocks(src, "prune_star_state"), \
+        "主链里找不到 prune_star_state 的调用点 ⇒ 剪枝根本没生效"
+    i_prune = src.index("= prune_star_state(")
+    i_attn = src.index("star_attention_items(out")
+    assert i_prune < i_attn, "剪枝排在算提醒条之后，提示条仍会报旧名"
+
+
+# 提示块里不许再出现"请你去判定是改名还是消失"的措辞。这条判定已被用户裁定为不需要人做
+# （「取消关注这个行为本身就是删除」），而剪枝生效后这块唯一的到达路径就是门槛拦下那场——
+# 标题写着"本场未自动清理"、正文却教人逐个核对改名，是同一块里的两头话（2026-10-12 对抗审查 P2-3）。
+ADJUDICATION_WORDS = ("点开确认", "一眼可辨", "待人工判定", "点开后确认")
+
+
+def test_attention_block_does_not_ask_user_to_adjudicate_renames():
+    fab = _fab()
+    html = fab.render_star_attention(fab.star_attention_items(LIVE, TABLE, {}, {}))
+    assert html, "给定有孤儿却渲染出空串 ⇒ 本条会空转，禁词查的是空气"
+    for w in ADJUDICATION_WORDS:
+        assert w not in html, "提示块仍写着「%s」：与标题口径相反，且这判定已不需要人做" % w

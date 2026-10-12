@@ -1130,23 +1130,53 @@ def _safe_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
-# ==================== 首页顶部「待人工判定」提醒条 ====================
+# ==================== 首页顶部「未自动清理」提醒条 ====================
 # 来由（2026-10-04 实测）：known_categories.json 有 304 个键，而 GitHub 公开 starred 全集与
 # 线上 DATA 都是 293 条、双向零差 ⇒ 多出的 11 个是**旧名残留**（仓库改名/转移后真身 id 仍在
 # 收藏，或旧路径已消失），不是收藏缺失。判同一性只能用 repository id，名字只能当线索，
 # 所以这里只把"表里有、收藏里没有"如实列出来交给人判定：不猜结论，也不写"丢了"。
+#
+# 2026-10-12 角色变更（见下面 prune_star_state 的来由）：常态下旧名在算提醒之前就被剪掉了，
+# 所以这块从"每日常驻的待办清单"变成"剪枝门槛触发时的报警器"。文案随之改成异常口吻——
+# 它现在意味着"这一场收藏没拉全，所以没敢清理"，而不再是"请你去核对哪个仓库改名了"。
+# 禁止词表（tests/site_nav/test_star_attention_bar.py::LOST_WORDS）仍然成立：门槛触发时
+# 收藏也确实一条没少，少的只是拉取。
 ATTENTION_KIND_STAR_ORPHAN = "star_orphan"
-ATTENTION_TITLE = "分类表里有 %d 个名字不在你当前的收藏列表中——点开确认是改了名还是仓库已消失"
+ATTENTION_TITLE = "分类表里有 %d 个名字不在当前收藏中——本场未自动清理（拉取条数低于门槛），请核对收藏是否完整拉到"
 ATTENTION_SAME_HINT = "同名候选（仅参考，同名不等于同一仓库）"
 # 页面层最多列几条：index.html 每场重写进 git，无上限的清单就是把体积增长留在历史里。
 ATTENTION_MAX_ROWS = 25
+
+# 剪枝门槛：当前收藏条数必须 ≥ 分类表键数 × 此比例，否则本场一个都不删。
+PRUNE_LIVE_MIN_RATIO = 0.8
+
+
+def prune_star_state(known, live_names):
+    """把分类表剪成当前收藏的投影：删掉不在 live_names 里的键，原地改，返回被删的键。
+
+    口径是用户 2026-10-12 的裁定：「取消关注这个行为本身就是删除，重新关注是另一个行为」。
+    改名与主动取关不必区分——处置相同，而重新关注回来的新名会照常走 classify_repo 重新分类
+    （实测 4 条改名仓库的新名都已自动分类并生成点评）。所以这里既不需要人工表，也不必去问
+    GitHub 某个旧名是改名还是消失，那条"不在 CI 里逐场探测 301/404"的界仍然成立。
+
+    唯一能删错人的路径是拉取缩水：表 344 键而分页只拉到 100 条 ⇒ 差集 244，照剪等于清空分类表，
+    下一场全量重烧 LLM。故空集与不足门槛一律不剪，且门槛不许严到永不生效（判据两头都钉）。
+    """
+    live = set(live_names)
+    if not live or len(live) < len(known) * PRUNE_LIVE_MIN_RATIO:
+        return []
+    dropped = sorted(fn for fn in known if fn not in live)
+    for fn in dropped:
+        del known[fn]
+    return dropped
 
 
 def star_attention_items(repos, known, notes=None, desc_zh=None):
     """列「表里有而当前收藏没有」的旧名。
 
-    repos 传原始 API 响应或已组装条目都行（只取 full_name）；纯函数，不发网络、不做定性——
-    区分"改名"与"已删除"要问 GitHub，那是人工这一步的活，不在构建里每场重问。
+    repos 传原始 API 响应或已组装条目都行（只取 full_name）；纯函数，不发网络、不做定性。
+    剪枝（见下面 prune_star_state）生效后这里常态为空：旧名在算提醒之前就被清掉了，只有门槛
+    拦下那一场会带内容，此时它的含义是"本场没敢清理"，不再是"请你判定哪个仓库改名了"。
     """
     notes = notes or {}
     desc_zh = desc_zh or {}
@@ -1212,7 +1242,8 @@ def render_star_attention(items):
     return ('<details class="attn" data-attention="star">'
             '<summary class="attn-sum">%s</summary>'
             '<ul class="attn-list">%s</ul>%s'
-            '<p class="attn-note">本页只列名字、不下结论：改名与删除在 GitHub 上点开一眼可辨。'
+            '<p class="attn-note">本场未自动清理：拉到的收藏条数低于分类表门槛。'
+            '两种可能——某一页没拉全，或你一次取关了太多。核对 GitHub 收藏后重新构建即可收敛。'
             '收藏条数另有对账，当前收藏与本页条目双向零差。</p>'
             '</details>'
             % (esc(ATTENTION_TITLE % len(items), quote=False), "".join(rows), more))
@@ -1362,6 +1393,13 @@ def main(mode="full"):
     out = assemble_entries(repos or [], known, desc_zh, cat_label, token, notes=notes)
 
     if stars_ok:
+        # 表 = 收藏的投影：先剪掉已不在收藏的旧名，再算提醒条（剪干净了它自然归零）。
+        # 必须挂在 stars_ok 里面：拉取失败时 out 是空表，"表−收藏"=整张 known，那时剪下去
+        # 就是清空分类表 —— 门槛那道保护量的是 live 条数，拿不到条数时它也没法判。
+        dropped = prune_star_state(known, {e["full_name"] for e in out})
+        if dropped:
+            print("[剪枝] 分类表移除 %d 个已不在收藏的名字：%s"
+                  % (len(dropped), ", ".join(dropped[:8])))
         trending = build_trending(token, desc_zh)
 
         # AI 态势一句话：构建时生成，注入涨星榜区域
