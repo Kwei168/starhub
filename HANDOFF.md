@@ -2673,53 +2673,5 @@ add 清单里有 `known_categories.json` 却没有它（这事实 `restore_star_
 投影"——`descriptions_zh` 装着排行榜项目的简介（键集 ⊄ 收藏），`main/known_notes` 是没人写的
 冻结副本（每场把已删的键带回来）。下次要给这套剪枝"补齐"之前，先读这两条。
 
-### 8.36 热榜数字型标题咬穿两处 str 拼接：六场连续红与"自己活过来"的假象（2026-10-14 11:00–18:54 BJT，**已推送 + 已部署 + 已线上验收**）
-
-**症状**：11:00/12:00/13:00/14:00/15:00/16:00 六场连续红，全部同一 commit `553c8741e`、
-同一栈、同一缺件 `daily-insight-history.html`。站点冻在 10:00 那份制品（Pages 是整棵替换，
-缺件就不发）。
-
-**根因**：NewsNow 把 pcbeta 一条标题**恰好是裸版本号 `26300.9711`** 的帖子序列化成 JSON
-number ⇒ Python `json.loads` 解成 `float`。`fetch_newsnow_snapshot` 原类型透传落盘，而热榜
-在 `build_daily_insight.py:5330` 被明确"不过滤（本身就是平台精选）"，于是同一个 float 咬穿
-两处按 str 拼接的代码：
-
-- `build_daily_insight.py:125` `_classify_topic` → 洞察整条流水线崩 → 历史页不生成 →
-  Stage 缺件 → **Pages 不发、run 红**。这是全场唯一报警者（Stage 带 `continue-on-error`，
-  靠末尾守卫步读 `steps.stage.outcome=='failure'` 才红得起来）。
-- `build_rss_aggregator.py:8912` `_cross_platform_topics` → 被 `9641` 的 except 吞成一行
-  **不带 `::error::`** 的 stderr，`analysis_data=None`，关键词/话题/AI 结构化摘要/信源评分/
-  跨平台整块丢失，构建仍是绿的。
-
-**为什么 17:00 那场"自己好了"**：那条 float 从第 3 位漂到第 13 位，而入口只取 `items[:10]`。
-这不是修复，是病灶走出取样窗口——同一帖今天已在第 3/9/13 位之间漂动过，任何一次排名抖动
-都会再连续红。**判据别写成"这场绿了就好了"。**
-
-**为什么不是代码回归**：六场红跑的都是 `553c8741e`；10:00 那场同一条 title 是
-`"26300.9711来了"`（带中文后缀⇒str）。外部数据形状，不是本仓改动引入。
-
-**处置（只在入口收一处）**：`fetch_newsnow_snapshot` 落盘前把 title 收窄——
-`_t if (not _t or isinstance(_t, str)) else str(_t)`。**只收"真值且非 str"**，
-`None/0/0.0/""` 原样保留，使下游 `if not title: continue` 的条目取舍与改动前逐字节同形
-（无条件 `str()` 会把 `None` 变成 `"None"` 这种真值，凭空多塞条目）。一处覆盖两个消费点
-与两份持久化文件；没在 `:125`/`:8912` 各加 isinstance，那是把一个类型缺陷摊成两个补丁。
-RSS 侧 `:782` 同形状但来自 XML 解析必然 str，未动。
-
-**验证**：新判据 `tests/rss_source_coverage/test_hot_title_type.py` 对未修代码先红
-（`[('float', 26300.9711), ('int', 2026)]`）后绿；**四个变异体全杀**（透传回退 / 无条件 str /
-只治 float 漏 int / 替身返回空）；测试自带反向判据"2 平台 4 条目 / 7 条目"，空集不许假通过。
-现取真数据阳性对照：回退版在 `_classify_topic` 复现同一 `TypeError`，修后两个崩溃点都跑通。
-CI 侧硬差值：修前两场 A2 均 **737 passed**，修复场 **739 passed**（正好 +2，证明新判据真被
-收集执行而非步骤颜色）；`Sync to latest remote HEAD is now at 180c8fc0` 确认跑的是这笔提交；
-线上 `daily-insight-history.html` `Last-Modified=10:54:11 GMT`、快照 399 条非 str=0。
-
-⚠ **两条留给下次的约束**：① `[分析] 智能分析失败` 今天至今仍是**无报警**的静默降级，
-且只在**轻量场**出现——重分析场在 `9259` 提前 `return`，根本走不到 `9302`，所以"这场没报"
-不等于"已恢复"，拿它当判据会得出假绿。是否升成 `::error::` 仍待用户裁定（本笔刻意不 bundled）。
-② `update.yml` 的 Commit 步 add 清单含 `build_rss_aggregator.py`，而竞态守卫
-`git checkout origin/main --` 只护 `build_daily_insight.py / insight_engine.py / test_daily_insight.py`
-——**`build_rss_aggregator.py` 无守卫**，在有构建在跑时推它会被旧检出写回（本次实测到 18 点场
-Commit 步 10:27:36 走完才推，正是为了避开这个洞）。
-
 
 
