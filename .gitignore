@@ -82,10 +82,13 @@ rss-data-0.js
 # 以前只做了「禁发布」（HANDOFF.md/CLAUDE.md 在 tests/site_nav_drift/test_pages_artifact_scope.py
 # 的 NON_SITE 名单里、docs/ 与 .qoder/ 被 NONCODE 两道判据挡着），文件本身仍留在公开仓里，
 # raw.githubusercontent.com 直接 200 —— 「没跟着 Pages 发出去」不等于「没公开」。
-# 这里把内部件从跟踪里摘掉（本地文件保留，一个字不删）；README.md 是仓库门面、CLAUDE.md 是
-# AI 协作规范，是否也撤由用户单独定，本笔不动。
+# 这里把内部件从跟踪里摘掉（本地文件保留，一个字不删）。判据口径同步改成
+# 「不再被跟踪 或 仍在忽略集合里」（tests/site_nav_drift/test_vercel_ignore_scope.py），
+# 这样它们哪天被人加回来仍会被拦。README.md 保留：它是对外说明（项目简介+在线地址+仓库结构），
+# 不是内部件。
 # ⚠ 与 rm --cached 必须同一笔提交：test_ignored_not_tracked 读的是「索引 ∩ 忽略规则」，
 #   只加规则不摘索引 = 那道判据当场红。
 /HANDOFF.md
 /REFRESH_VERIFICATION_REPORT.md
+/CLAUDE.md
 /.workbuddy/

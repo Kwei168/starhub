@@ -218,11 +218,12 @@ def test_vercel_ignore_covers_the_non_site_root_files():
     assert "template.html" in must, (
         "`template.html` 是根级唯一被跟踪的 .html（四个页面 HTML 已停止提交）且线上实测 200/116,509 B —— "
         "它不在该忽略集合里说明 keep 又退化成后缀规则了")
-    assert "CLAUDE.md" in must, "文档必须在该忽略集合里，实测线上 200"
-    # 2026-10-14 用户裁定「GitHub 只放代码」：HANDOFF.md 已退出索引，不在仓里就不可能随部署包公开，
-    # 这比"在仓里但被忽略"更强。留这条是为了它哪天被加回来时，不许悄悄漏在忽略集合之外。
-    assert "HANDOFF.md" not in tracked or "HANDOFF.md" in must, (
-        "HANDOFF.md 又回到索引却不在该忽略集合里 ⇒ 会随 Vercel 部署包公开（实测曾 200/84,323 B）")
+    # 2026-10-14 用户裁定「GitHub 只放代码」：HANDOFF.md / CLAUDE.md 已退出索引，不在仓里就不可能
+    # 随部署包公开，这比"在仓里但被忽略"更强。留这条是为了它们哪天被加回来时，不许悄悄漏在
+    # 忽略集合之外（实测曾 200：HANDOFF.md 84,323 B / CLAUDE.md 4,8xx B）。
+    for _doc in ("HANDOFF.md", "CLAUDE.md"):
+        assert _doc not in tracked or _doc in must, (
+            "%s 又回到索引却不在该忽略集合里 ⇒ 会随 Vercel 部署包公开" % _doc)
     covered = _covered_by_ignore(must)
     naked = sorted(set(must) - covered)
     assert not naked, (
