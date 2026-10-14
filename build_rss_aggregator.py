@@ -376,9 +376,12 @@ def fetch_newsnow_snapshot():
             continue
         entries = []
         for idx, it in enumerate(items[:10]):
+            _t = it.get("title", "")
+            # 上游把纯数字标题写成 JSON number（10-14 pcbeta "26300.9711" 连红三场），
+            # 热榜又不过 _filter_noise ⇒ 只收"真值且非 str"；None/0/"" 原样留着，别改条目取舍。
             entries.append({
                 "rank": idx + 1,
-                "title": it.get("title", ""),
+                "title": _t if (not _t or isinstance(_t, str)) else str(_t),
                 "url": it.get("url", ""),
                 "hot": "",
             })
