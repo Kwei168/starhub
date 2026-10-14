@@ -106,7 +106,9 @@ def _drive_push(tmp_path, monkeypatch, stamp_body=None):
 
     必须把 ROOT 也钉回真仓库根：电池是**从副本目录导入模块**的，
     而推送器的 ROOT = 自己文件的上上级 ⇒ 在 `.deploy-tmp/_mut_*/` 里会变成 `.deploy-tmp`，
-    于是 `HANDOFF.md` 被当成"不存在且被 gitignore"，在走到门槛之前就先退了（读数会像门槛失效）。
+    于是示例路径被当成"不存在且被 gitignore"，在走到门槛之前就先退了（读数会像门槛失效）。
+    示例路径也必须是**仍在索引里且未被忽略**的那类（2026-10-14 起 `HANDOFF.md` 已按
+    「GitHub 只放代码」退出索引，再拿它当示例会先撞 `--allow-ignored` 那道拒推）。
     """
     stamp = tmp_path / "_prod_verify.json"
     if stamp_body is not None:
@@ -115,7 +117,7 @@ def _drive_push(tmp_path, monkeypatch, stamp_body=None):
     monkeypatch.setattr(D, "PROD_STAMP", str(stamp))
     monkeypatch.setattr(D, "gate", lambda: (True, "测试守门通过"))
     monkeypatch.setattr(D, "runs", lambda per_page=10: [])
-    monkeypatch.setattr(sys, "argv", ["data_api_push.py", "--check-only", "HANDOFF.md"])
+    monkeypatch.setattr(sys, "argv", ["data_api_push.py", "--check-only", "README.md"])
     return D.main()
 
 

@@ -25,8 +25,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # .workbuddy/*（另一条工作线的用户内容，不碰）与 .vercel/project.json（120 B，
 # CI 走 VERCEL_PROJECT_ID 环境变量不依赖它，但用户本地 vercel CLI 可能要 ⇒ 不为 120 B 冒断供风险）。
 LEGACY = {
-    ".workbuddy/backup/build_ai_daily.py.bak-20260827",  # 19,304 B：另一条工作线的 .bak
-    ".workbuddy/memory/2026-08-20.md",                   # 1,447 B：另一条工作线的记忆文件
     ".vercel/project.json",                             # 120 B：Vercel 项目链接，删前先确认 CLI 不需要
 }
 
