@@ -338,5 +338,6 @@
  "JimLiu/baocut": "AI 视频剪辑与制作 Agent，支持转录、字幕、配音、剪辑",
  "StartLuxLabs/StartLux-Decision": "提供多模态决策概率模型，面向认知建模而非通用交互或编程工具。",
  "ifixai-ai/iFixAi": "AI Agent 独立审计与评估 CLI 工具",
- "MakazhanAlpamys/Soup": "LLM微调CLI工具，支持低显存环境与YAML配置，实用开发"
+ "MakazhanAlpamys/Soup": "LLM微调CLI工具，支持低显存环境与YAML配置，实用开发",
+ "OpenBMB/PilotDeck": "任务导向型AI Agent生产力平台，支持多智能体编排与工作"
 }
