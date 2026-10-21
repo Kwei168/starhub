@@ -361,5 +361,7 @@
  "sorsama/deepseek-harness-mobile": "assistant",
  "zeng6125-rgb/suixing": "agent",
  "sy220284/777": "tools",
- "zai-org/Open-AutoGLM": "agent"
+ "zai-org/Open-AutoGLM": "agent",
+ "langchain-ai/deepagents": "agent",
+ "xerj-org/xerj": "agent"
 }
