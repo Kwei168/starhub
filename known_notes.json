@@ -352,9 +352,9 @@
  "ardeyouxipianyi/workbuddy2api-hub": "提供多账号代理网关，打通 Codex/Claude Code",
  "Turbo1123/roubao": "基于视觉语言模型的Android自动化运行工具",
  "Illuminated2020/DeepAgents-AutoGLM": "基于LangChain的多智能体GUI自动化框架，集成Aut",
- "rogelioRuiz/capacitor-mobile-claw": "Capacitor 移动端本地 AI Agent 引擎，支持",
- "Zhou-Shilin/Aether": "面向多端的 AI 助手客户端应用，支持 Android、iO",
- "sorsama/deepseek-harness-mobile": "DeepSeek 移动端 Agent 配套工具，Kotlin",
- "zeng6125-rgb/suixing": "纯本地手机端 AI Agent，通过读屏与点按实现设备自动化",
- "sy220284/777": "Kotlin 开发的实用工具项目，具体功能待进一步确认。"
+ "rogelioRuiz/capacitor-mobile-claw": "基于Capacitor的端侧AI Agent引擎，集成Cla",
+ "Zhou-Shilin/Aether": "跨平台AI助手应用，支持Android/iOS/Mac端点。",
+ "sorsama/deepseek-harness-mobile": "DeepSeek移动终端配套应用，提供聊天、目标管理等功能",
+ "zeng6125-rgb/suixing": "纯本地运行的手机AI Agent，具备读屏、点击和命令执行能",
+ "sy220284/777": "Kotlin 通用效率工具，无名仓库适合归入实用型工具类目"
 }
