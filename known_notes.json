@@ -357,7 +357,7 @@
  "sorsama/deepseek-harness-mobile": "DeepSeek移动终端配套应用，提供聊天、目标管理等功能",
  "zeng6125-rgb/suixing": "纯本地运行的手机AI Agent，具备读屏、点击和命令执行能",
  "sy220284/777": "Kotlin 通用效率工具，无名仓库适合归入实用型工具类目",
- "zai-org/Open-AutoGLM": "开源手机端AI Agent框架，支持多智能体编排与手机控制。",
- "langchain-ai/deepagents": "基于LangGraph的Agent框架运行时，提供多智能体编",
- "xerj-org/xerj": "本地优先的 MCP 服务端，支持 BM25/向量混合搜索与 "
+ "zai-org/Open-AutoGLM": "开源手机智能体框架，让AI能操作手机，具备自动执行任务的能力",
+ "langchain-ai/deepagents": "LangChain 官方多智能体编排框架，带完整工具链的 A",
+ "xerj-org/xerj": "本地优先的 MCP 服务端与搜索引擎，为 AI Agent "
 }
