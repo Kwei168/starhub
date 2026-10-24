@@ -363,5 +363,6 @@
  "zai-org/Open-AutoGLM": "agent",
  "langchain-ai/deepagents": "agent",
  "xerj-org/xerj": "agent",
- "AGenUI/AGenUI": "frontend"
+ "AGenUI/AGenUI": "frontend",
+ "SnailSploit/Claude-Red": "agent"
 }
