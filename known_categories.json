@@ -374,9 +374,9 @@
  "YuJunZhiXue/dsh-purge": "tools",
  "basketikun/chatgpt2api": "coding",
  "anthropics/skills": "agent",
- "ai-evals-course/evals-skills": "learning",
- "paipiange/nvzhuang": "video",
+ "ai-evals-course/evals-skills": "agent",
+ "paipiange/nvzhuang": "tools",
  "togg53192-cmd/jailbreaks": "coding",
  "paipiange/mpider": "tools",
- "Tencent-Hunyuan/Hy-Memory": "coding"
+ "Tencent-Hunyuan/Hy-Memory": "tools"
 }
