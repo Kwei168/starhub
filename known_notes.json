@@ -369,5 +369,7 @@
  "elayadesign/ai-design-skills": "AI设计技能，属于可运行的Agent能力模块。",
  "YuJunZhiXue/dsh-purge": "Model-agnostic jailbreak promp",
  "basketikun/chatgpt2api": "ChatGPT接口逆向开源项目，兼容OpenAI协议并支持图",
- "anthropics/skills": "Anthropic 官方 Agent Skills 公共仓库"
+ "anthropics/skills": "Anthropic 官方 Agent Skills 公共仓库",
+ "ai-evals-course/evals-skills": "AI评测技能教程，指导Coding Agent构建产品专项评",
+ "paipiange/nvzhuang": "Go写的虚拟试穿工具，支持多模型API集成与中英文检索。"
 }
