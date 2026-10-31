@@ -370,9 +370,9 @@
  "YuJunZhiXue/dsh-purge": "Model-agnostic jailbreak promp",
  "basketikun/chatgpt2api": "ChatGPT接口逆向开源项目，兼容OpenAI协议并支持图",
  "anthropics/skills": "Anthropic 官方 Agent Skills 公共仓库",
- "ai-evals-course/evals-skills": "AI评测技能教程，引导编码Agent构建产品专用评测。",
- "paipiange/nvzhuang": "AI虚拟试穿网站，支持多模型调用与中英检索的图像生成应用。",
- "togg53192-cmd/jailbreaks": "Jailbreak 资源列表/导航，属于资讯聚合或 awes",
- "paipiange/mpider": "公众号采集与离线阅读工具，支持续采和导出",
- "Tencent-Hunyuan/Hy-Memory": "腾讯混元记忆模块，属 AI Agent 核心组件。"
+ "ai-evals-course/evals-skills": "AI评估技能教程，指导AI编码代理构建产品专属评估。",
+ "paipiange/nvzhuang": "基于Go的虚拟试穿前端应用，提供多模型API支持与图片检索功",
+ "togg53192-cmd/jailbreaks": "Jailbreak列表合集，属于资源导航类信息聚合仓库。",
+ "paipiange/mpider": "微信公众号采集、离线阅读与内容导出工具",
+ "Tencent-Hunyuan/Hy-Memory": "腾讯混元记忆模块，支持Agent长期记忆存储与检索。"
 }
