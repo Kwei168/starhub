@@ -372,5 +372,6 @@
  "Derpyu520/qq-bridge": "agent",
  "elayadesign/ai-design-skills": "agent",
  "YuJunZhiXue/dsh-purge": "tools",
- "basketikun/chatgpt2api": "coding"
+ "basketikun/chatgpt2api": "coding",
+ "anthropics/skills": "agent"
 }
