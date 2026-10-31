@@ -2303,19 +2303,40 @@ applyView(getView());
 renderLangBar();
 renderCats();
 renderLangSel();
-// 封面图 error 监听必须在 renderList 之前注册，否则首次渲染的图片加载错误会漏掉
-// 加 500ms 延迟确认 + 一次重试，避免 lazy/async 加载的瞬时误判
+// 封面图 error 监听必须在 renderList 之前注册，否则首次渲染的图片加载错误会漏掉。
+// 封面走 GitHub 的 OG 图接口，该接口按窗口限流（响应头 X-RateLimit-Limit: 100），
+// 一页几百张里偶发 429 是常态；过去的「失败一次就锁死首字母」会把它变成长期占位。
+// 改成退避重试 3 轮（每次换 r= 参数绕开失败缓存），仍失败才降级；回到前台/恢复联网再补拉。
+const COVER_RETRY_DELAYS = [1200, 4000, 12000];
+function coverFallback(img){
+  const c = img.closest('.cover-card'); if (c) c.classList.add('no-img');
+}
 document.addEventListener('error', e => {
   const t = e.target;
-  if (t && t.classList && t.classList.contains('cover-img') && !t.dataset.errRetried) {
-    t.dataset.errRetried = '1';
-    setTimeout(() => { if (!t.complete || t.naturalWidth === 0) { t.src = t.src; } }, 500);
-    return;
-  }
-  if (t && t.classList && t.classList.contains('cover-img')) {
-    const c = t.closest('.cover-card'); if (c) c.classList.add('no-img');
-  }
+  if (!t || !t.classList || !t.classList.contains('cover-img')) return;
+  const base = t.dataset.src || (t.dataset.src = t.getAttribute('src') || '');
+  if (!base) return;
+  const attempt = +(t.dataset.retry || 0);
+  if (attempt >= COVER_RETRY_DELAYS.length) { coverFallback(t); return; }
+  t.dataset.retry = String(attempt + 1);
+  setTimeout(() => {
+    if (t.naturalWidth > 0) return;
+    t.src = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'r=' + (attempt + 1);
+  }, COVER_RETRY_DELAYS[attempt]);
 }, true);
+function retryFailedCovers(){
+  document.querySelectorAll('.cover-card.no-img img.cover-img').forEach(img => {
+    const c = img.closest('.cover-card'); if (c) c.classList.remove('no-img');
+    delete img.dataset.retry;
+    if (img.dataset.src) img.src = img.dataset.src;
+  });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) retryFailedCovers(); });
+window.addEventListener('online', retryFailedCovers);
+// 限流窗口是按小时的：日志页开着时每 5 分钟给已降级的补一次，窗口一过就自己长回来
+setInterval(() => {
+  if (!document.hidden && document.querySelector('.cover-card.no-img')) retryFailedCovers();
+}, 5 * 60 * 1000);
 renderList();
 renderTrending();
 renderFeed();
