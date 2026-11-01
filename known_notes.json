@@ -374,5 +374,7 @@
  "paipiange/nvzhuang": "基于多模型的AI女装虚拟试穿工具，支持自定义API与中英检索",
  "togg53192-cmd/jailbreaks": "列出 Jailbreak 命令，偏向开发测试工具的使用参考。",
  "paipiange/mpider": "微信公众号采集与离线阅读工具，支持Markdown导出和断点",
- "Tencent-Hunyuan/Hy-Memory": "腾讯混元多模态记忆库，通用数据处理工具。"
+ "Tencent-Hunyuan/Hy-Memory": "腾讯混元多模态记忆库，通用数据处理工具。",
+ "liangdabiao/Amazon-Skills-Liang": "亚马逊卖家数据分析工具，针对中国卖家优化功能",
+ "liangdabiao/ecom-details-image": "面向电商场景的视觉创作 Agent Skill，含案例与提示"
 }
