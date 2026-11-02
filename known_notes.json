@@ -294,7 +294,6 @@
  "czg86389-hub/muse2api": "逆向封装 Muse.ai 为 OpenAI 兼容接口，实用工",
  "Vincentwei1021/video-shotcraft": "Claude Code 技能，使用 Remotion 生成电",
  "DietrichGebert/ponytail": "Claude Code 插件，让 AI Agent 遵循 Y",
- "DiscoverBox/awesome-ai-reverse": "AI 逆向工程工具清单，属于 awesome 合集类资源导航",
  "iceker/GPT-5.6-Instruct-GPT-5.5-Codex-Claude-Cursor": "逆向破解客户端的CTF渗透工具，属于实用型黑客工具。",
  "AlienwareHe/awesome-reverse": "逆向工程入门学习资源合集，涵盖JS与安卓APP/Native",
  "open-webui/open-webui": "自托管本地化AI聊天客户端，支持Ollama与OpenAI等",
@@ -378,5 +377,6 @@
  "liangdabiao/Amazon-Skills-Liang": "针对中国卖家的亚马逊数据分析工具，偏向跨境电商运营实战",
  "liangdabiao/ecom-details-image": "面向电商Agent的视觉创作Skill，提供提示词案例与Ca",
  "leepokai/Codync": "多平台 AI Agent 统一客户端，支持自托管，跨系统整合",
- "wangzan101/Mika": "Android 端本地运行的 AI Agent，通过无障碍服"
+ "wangzan101/Mika": "Android 端本地运行的 AI Agent，通过无障碍服",
+ "DiscoverBox/awesome-ai-reverse-engineering": "逆向工程工具清单与资源合集，符合 awesome 列表类型。"
 }
