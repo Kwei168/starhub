@@ -366,7 +366,6 @@
  "experientiallabs/experiential": "BYOK模型网关，通过流量学习降低成本并推荐模型。",
  "Derpyu520/qq-bridge": "基于DeepSeek Harness的QQ机器人桥接，实现多",
  "elayadesign/ai-design-skills": "AI设计技能，属于可运行的Agent能力模块。",
- "YuJunZhiXue/dsh-purge": "Model-agnostic jailbreak promp",
  "basketikun/chatgpt2api": "ChatGPT接口逆向开源项目，兼容OpenAI协议并支持图",
  "anthropics/skills": "Anthropic 官方 Agent Skills 公共仓库",
  "ai-evals-course/evals-skills": "专为AI coding agent设计的evals技能，直接",
@@ -378,5 +377,6 @@
  "liangdabiao/ecom-details-image": "面向电商Agent的视觉创作Skill，提供提示词案例与Ca",
  "leepokai/Codync": "多平台 AI Agent 统一客户端，支持自托管，跨系统整合",
  "wangzan101/Mika": "Android 端本地运行的 AI Agent，通过无障碍服",
- "DiscoverBox/awesome-ai-reverse-engineering": "逆向工程领域资源汇总，典型awesome合集。"
+ "DiscoverBox/awesome-ai-reverse-engineering": "逆向工程领域资源汇总，典型awesome合集。",
+ "HunYiSage/dsh-purge": "LLM越狱提示词仓库，提供各模型破解提示词，非可运行软件或教"
 }
