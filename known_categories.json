@@ -370,7 +370,6 @@
  "experientiallabs/experiential": "tools",
  "Derpyu520/qq-bridge": "agent",
  "elayadesign/ai-design-skills": "agent",
- "YuJunZhiXue/dsh-purge": "tools",
  "basketikun/chatgpt2api": "coding",
  "anthropics/skills": "agent",
  "ai-evals-course/evals-skills": "agent",
@@ -382,5 +381,6 @@
  "liangdabiao/ecom-details-image": "agent",
  "leepokai/Codync": "assistant",
  "wangzan101/Mika": "agent",
- "DiscoverBox/awesome-ai-reverse-engineering": "info"
+ "DiscoverBox/awesome-ai-reverse-engineering": "info",
+ "HunYiSage/dsh-purge": "tools"
 }
