@@ -380,5 +380,6 @@
  "DiscoverBox/awesome-ai-reverse-engineering": "逆向工程领域资源汇总，典型awesome合集。",
  "HunYiSage/dsh-purge": "DeepSeek Harness 的 Jailbreak 插",
  "storytold/craft-anything": "软件原理与动手构建指南，属于学习教程类资源。",
- "Minglink/dsh-jailbreak-workflow": "LLM 越狱提示词生成工具，辅助对抗安全限制"
+ "Minglink/dsh-jailbreak-workflow": "LLM 越狱提示词生成工具，辅助对抗安全限制",
+ "KKKKhazix/agent-autoloop": "基于MCP与多CLI的后台自驱Agent框架，支持事件驱动与"
 }
