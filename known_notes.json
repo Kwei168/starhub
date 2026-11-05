@@ -116,7 +116,6 @@
  "bojieli/ai-agent-book": "AI Agent 主题开源书籍与配套代码，属学习资料。",
  "bojieli/greenbubbles": "微信记忆插件，为AI代理提供实时历史数据访问能力",
  "c1028874817-beep/openclaw-skill-ai-daily-report": "自动抓取并聚合AI行业新闻资讯的日报工具。",
- "cactus-compute/needle": "面向边缘设备的微型AI基础模型，提供Python推理工具链与",
  "caigee-cmd/cli2api": "自托管OpenAI兼容API代理，支持多账户路由，面向开发者",
  "calesthio/OpenMontage": "AI视频制作系统，整合多种AI工具完成视频生成全流程。",
  "calmrocks/ai-engineer-notebooks": "AI工程师技能集实践教程，涵盖RAG、代理与微调等主题的免框",
@@ -382,5 +381,6 @@
  "storytold/craft-anything": "软件原理与动手构建指南，属于学习教程类资源。",
  "Minglink/dsh-jailbreak-workflow": "LLM 越狱提示词生成工具，辅助对抗安全限制",
  "KKKKhazix/agent-autoloop": "后台自主跟进任务的 CLI Agent 编排工具，专注多智能",
- "OpenSelena/omniget": "跨平台开源下载管理器，支持课程和多媒体下载，基于Tauri构"
+ "OpenSelena/omniget": "跨平台开源下载管理器，支持课程和多媒体下载，基于Tauri构",
+ "cactus-compute/cactus": "端侧多模态模型库，适合本地部署与边缘AI应用"
 }

@@ -114,7 +114,6 @@
  "bojieli/ai-agent-book": "learning",
  "bojieli/greenbubbles": "agent",
  "c1028874817-beep/openclaw-skill-ai-daily-report": "info",
- "cactus-compute/needle": "coding",
  "caigee-cmd/cli2api": "coding",
  "calesthio/OpenMontage": "video",
  "calmrocks/ai-engineer-notebooks": "learning",
@@ -386,5 +385,6 @@
  "storytold/craft-anything": "learning",
  "Minglink/dsh-jailbreak-workflow": "tools",
  "KKKKhazix/agent-autoloop": "agent",
- "OpenSelena/omniget": "tools"
+ "OpenSelena/omniget": "tools",
+ "cactus-compute/cactus": "tools"
 }
