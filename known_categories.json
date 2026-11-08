@@ -115,7 +115,6 @@
  "bojieli/greenbubbles": "agent",
  "c1028874817-beep/openclaw-skill-ai-daily-report": "info",
  "caigee-cmd/cli2api": "coding",
- "calesthio/OpenMontage": "video",
  "calmrocks/ai-engineer-notebooks": "learning",
  "career-ops-hq/career-ops": "tools",
  "chatfire-AI/huobao-canvas": "video",
@@ -386,5 +385,6 @@
  "KKKKhazix/agent-autoloop": "agent",
  "OpenSelena/omniget": "tools",
  "cactus-compute/cactus": "tools",
- "MartinDelophy/ai-video-editor": "video"
+ "MartinDelophy/ai-video-editor": "video",
+ "OpenMontageInc/OpenMontage": "agent"
 }
