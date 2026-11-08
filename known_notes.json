@@ -117,7 +117,6 @@
  "bojieli/greenbubbles": "微信记忆插件，为AI代理提供实时历史数据访问能力",
  "c1028874817-beep/openclaw-skill-ai-daily-report": "自动抓取并聚合AI行业新闻资讯的日报工具。",
  "caigee-cmd/cli2api": "自托管OpenAI兼容API代理，支持多账户路由，面向开发者",
- "calesthio/OpenMontage": "AI视频制作系统，整合多种AI工具完成视频生成全流程。",
  "calmrocks/ai-engineer-notebooks": "AI工程师技能集实践教程，涵盖RAG、代理与微调等主题的免框",
  "career-ops-hq/career-ops": "本地 CLI 职位搜索与求职效率工具，支持简历定制与申请跟踪",
  "chatfire-AI/huobao-canvas": "集成文生图、图生图及图生视频功能，支持多模型切换的AI创作工",
@@ -382,5 +381,6 @@
  "KKKKhazix/agent-autoloop": "后台自主跟进任务的 CLI Agent 编排工具，专注多智能",
  "OpenSelena/omniget": "跨平台开源下载管理器，支持课程和多媒体下载，基于Tauri构",
  "cactus-compute/cactus": "面向消费设备的轻量级端侧 AI 模型库，提供语音、视觉及智能",
- "MartinDelophy/ai-video-editor": "本地优先的AI视频编辑器，支持创作者与Agent协同编辑时间"
+ "MartinDelophy/ai-video-editor": "本地优先的AI视频编辑器，支持创作者与Agent协同编辑时间",
+ "OpenMontageInc/OpenMontage": "开源 Agentic 视频制作系统，整合多Pipeline与"
 }
