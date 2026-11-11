@@ -386,7 +386,8 @@
  "Anil-matcha/Open-Generative-AI": "自托管的AI图像与视频生成平台，集成600+模型替代主流服务",
  "coaidev/coai": "企业级多租户 AI 网关与计费系统，支持200+模型路由、负",
  "starai-platform/starai": "功能完备的AI聚合平台，集成多模态生成与Agent能力，提供",
- "whewgg/skill-The-Twenty-Four-Histories-history": "知识蒸馏型Skill，将史学智慧注入LLM以提升推理能力",
- "sddzlsc/zizhitongjian-skill": "基于《资治通鉴》提炼的史学智慧与决策思维模型。",
- "gujilab/chinese-classical-corpus": "中国古典文献结构化语料集，涵盖十三经、史书及24史等珍贵知识"
+ "whewgg/skill-The-Twenty-Four-Histories-history": "将二十四史等典籍蒸馏为RAG知识，提升LLM历史与文化底蕴。",
+ "sddzlsc/zizhitongjian-skill": "以现代Agent技能形式重构史学经典，融合传统智慧与现代AI",
+ "gujilab/chinese-classical-corpus": "古典文献语料库，涵盖十三经、说文解字及二十四史等，用于传统文",
+ "davidyeh51/zhouyi-answers": "《周易·答案之書》元宇宙心智導航，包含 Web 應用與 Ag"
 }

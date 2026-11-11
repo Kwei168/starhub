@@ -392,5 +392,6 @@
  "starai-platform/starai": "assistant",
  "whewgg/skill-The-Twenty-Four-Histories-history": "distill",
  "sddzlsc/zizhitongjian-skill": "distill",
- "gujilab/chinese-classical-corpus": "distill"
+ "gujilab/chinese-classical-corpus": "distill",
+ "davidyeh51/zhouyi-answers": "agent"
 }
