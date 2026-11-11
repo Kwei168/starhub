@@ -386,8 +386,10 @@
  "Anil-matcha/Open-Generative-AI": "自托管的AI图像与视频生成平台，集成600+模型替代主流服务",
  "coaidev/coai": "企业级多租户 AI 网关与计费系统，支持200+模型路由、负",
  "starai-platform/starai": "功能完备的AI聚合平台，集成多模态生成与Agent能力，提供",
- "whewgg/skill-The-Twenty-Four-Histories-history": "通过整合二十四史等史料知识，提升 LLM 历史领域认知与推理",
- "sddzlsc/zizhitongjian-skill": "将资治通鉴转化为AI技能的学习资料，属于知识型内容而非可运行",
- "gujilab/chinese-classical-corpus": "中国古典文献结构化语料集，含十三经及二十四史等",
- "davidyeh51/zhouyi-answers": "基于梁冬《周易·答案之书》的 Agent Skill 与 W"
+ "whewgg/skill-The-Twenty-Four-Histories-history": "将二十四史等经典史料蒸馏为LLM可用的知识技能，属于认知与方",
+ "sddzlsc/zizhitongjian-skill": "基于Shell的资治通鉴AI技能，属于经典著作的学习与资料类",
+ "gujilab/chinese-classical-corpus": "古典文献语料与指令对，属AI学习训练资料",
+ "davidyeh51/zhouyi-answers": "《周易·答案之书》Web应用与Agent Skill工具",
+ "25175/tvyuan": "TVbox源聚合，提供视频流媒体播放源配置",
+ "jipinwa/tvbox-master-aggregator": "TVBox资源聚合与定时更新引擎，提供实用的影视资源管理工具"
 }
