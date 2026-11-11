@@ -390,6 +390,7 @@
  "sddzlsc/zizhitongjian-skill": "基于Shell的资治通鉴AI技能，属于经典著作的学习与资料类",
  "gujilab/chinese-classical-corpus": "古典文献语料与指令对，属AI学习训练资料",
  "davidyeh51/zhouyi-answers": "《周易·答案之书》Web应用与Agent Skill工具",
- "25175/tvyuan": "TVbox源聚合，提供视频流媒体播放源配置",
- "jipinwa/tvbox-master-aggregator": "TVBox资源聚合与定时更新引擎，提供实用的影视资源管理工具"
+ "25175/tvyuan": "TVBox源聚合工具，专注视频流媒体解析与播放源管理。",
+ "jipinwa/tvbox-master-aggregator": "TVBox资源聚合与定时更新引擎，属于影音播放与IPTV类工",
+ "Lightconer/tvbox-ysc-config": "TVBox影视仓配置源聚合，自动化更新多个直播源"
 }
