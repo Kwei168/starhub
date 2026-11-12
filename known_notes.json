@@ -394,5 +394,8 @@
  "jipinwa/tvbox-master-aggregator": "TVBox资源整合与自动更新引擎，面向影视聚合播放场景",
  "Lightconer/tvbox-ysc-config": "TVBox影视配置聚合，每日自动更新多源接口",
  "tang-bugu/dsh-connect-qwenwork": "DeepSeek Harness 接入千问办公的协议桥接插件",
- "multica-ai/multica": "开源自托管的多智能体协作框架，让人与AI Agent协同工作"
+ "multica-ai/multica": "开源多智能体协作框架，支持自托管。",
+ "joeseesun/xnews": "聚合X平台创始人帖与AI视频资讯的RSS源工具。",
+ "router-for-me/CLIProxyAPI": "多模型API代理工具，兼容OpenAI格式，集中管理多个AI",
+ "ggml-org/llama.cpp": "LLM推理引擎，C++实现的高效本地推理工具链"
 }
