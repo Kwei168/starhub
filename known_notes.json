@@ -379,7 +379,6 @@
  "storytold/craft-anything": "软件原理与动手构建指南，属于学习教程类资源。",
  "Minglink/dsh-jailbreak-workflow": "LLM 越狱提示词生成工具，辅助对抗安全限制",
  "KKKKhazix/agent-autoloop": "后台自主跟进任务的 CLI Agent 编排工具，专注多智能",
- "OpenSelena/omniget": "跨平台开源下载管理器，支持课程和多媒体下载，基于Tauri构",
  "cactus-compute/cactus": "面向消费设备的轻量级端侧 AI 模型库，提供语音、视觉及智能",
  "MartinDelophy/ai-video-editor": "本地优先的AI视频编辑器，支持创作者与Agent协同编辑时间",
  "OpenMontageInc/OpenMontage": "开源 Agentic 视频制作系统，整合多管道与工具链实现全",
@@ -398,6 +397,6 @@
  "joeseesun/xnews": "聚合X平台创始人动态与AI视频资讯的RSS源，归类为资讯聚合",
  "router-for-me/CLIProxyAPI": "聚合多家AI编程工具API的统一代理服务，方便开发者调用。",
  "ggml-org/llama.cpp": "C/C++ 编写的 LLM 推理引擎，面向开发者的核心推理工",
- "Abdul-Rehman7826/ai-manus": "通用 AI Agent 系统，支持沙箱环境和多工具调用。",
- "homeassistant-ai/ha-mcp": "基于MCP协议将AI助手接入Home Assistant的运"
+ "Abdul-Rehman7826/ai-manus": "基于MCP架构的通用AI Agent系统，支持沙箱内运行工具",
+ "homeassistant-ai/ha-mcp": "MCP 协议网关，让 AI 助手控制 Home Assist"
 }
