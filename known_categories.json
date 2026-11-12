@@ -383,7 +383,6 @@
  "storytold/craft-anything": "learning",
  "Minglink/dsh-jailbreak-workflow": "tools",
  "KKKKhazix/agent-autoloop": "agent",
- "OpenSelena/omniget": "tools",
  "cactus-compute/cactus": "tools",
  "MartinDelophy/ai-video-editor": "video",
  "OpenMontageInc/OpenMontage": "video",
@@ -401,5 +400,7 @@
  "multica-ai/multica": "agent",
  "joeseesun/xnews": "info",
  "router-for-me/CLIProxyAPI": "coding",
- "ggml-org/llama.cpp": "coding"
+ "ggml-org/llama.cpp": "coding",
+ "Abdul-Rehman7826/ai-manus": "agent",
+ "homeassistant-ai/ha-mcp": "tools"
 }
