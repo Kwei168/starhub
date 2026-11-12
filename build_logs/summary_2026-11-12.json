@@ -1,27 +1,27 @@
 {
   "date": "2026-11-12",
-  "builds": 1,
-  "triggers": 1,
+  "builds": 25,
+  "triggers": 25,
   "deploys": 0,
   "refreshes": 0,
   "last_build": {
     "type": "build",
     "mode": "incremental",
-    "duration_s": 350.1,
+    "duration_s": 384.2,
     "sources_total": 952,
-    "sources_fetched": 935,
-    "sources_with_data": 935,
-    "sources_failed": 17,
-    "items_fetched": 16338,
-    "items_snapshot": 10761,
-    "sources_after_gate": 752,
-    "sources_empty_after_gate": 184,
+    "sources_fetched": 923,
+    "sources_with_data": 923,
+    "sources_failed": 29,
+    "items_fetched": 16047,
+    "items_snapshot": 10912,
+    "sources_after_gate": 743,
+    "sources_empty_after_gate": 192,
     "sources_empty_detail": [
       {
         "key": "mcp_spec_rel_18",
         "name": "MCP Specification Releases",
         "n_items": 9,
-        "newest_age_h": 2543.4,
+        "newest_age_h": 2566.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -29,7 +29,7 @@
         "key": "juliaevans_0",
         "name": "Julia Evans",
         "n_items": 20,
-        "newest_age_h": 1096.2,
+        "newest_age_h": 1119.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -37,7 +37,7 @@
         "key": "overreacted_2",
         "name": "Overreacted",
         "n_items": 30,
-        "newest_age_h": 1312.2,
+        "newest_age_h": 1335.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -45,15 +45,31 @@
         "key": "mozilla_hacks_77",
         "name": "Mozilla Hacks",
         "n_items": 20,
-        "newest_age_h": 1896.7,
+        "newest_age_h": 1919.7,
         "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "stripe_blog_80",
+        "name": "Stripe Blog",
+        "n_items": 10,
+        "newest_age_h": 183.2,
+        "window_h": 144.0,
         "undatable": 0
       },
       {
         "key": "构建被动收入_9",
         "name": "构建被动收入",
         "n_items": 30,
-        "newest_age_h": 880.2,
+        "newest_age_h": 903.2,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "月光博客_15",
+        "name": "月光博客",
+        "n_items": 10,
+        "newest_age_h": 265.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -61,7 +77,7 @@
         "key": "扯氮集_25",
         "name": "扯氮集",
         "n_items": 10,
-        "newest_age_h": 171.8,
+        "newest_age_h": 194.8,
         "window_h": 100.7,
         "undatable": 0
       },
@@ -69,7 +85,7 @@
         "key": "太隐_4",
         "name": "太隐",
         "n_items": 30,
-        "newest_age_h": 278.4,
+        "newest_age_h": 301.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -77,7 +93,7 @@
         "key": "程序员的喵_7",
         "name": "程序员的喵",
         "n_items": 20,
-        "newest_age_h": 1059.6,
+        "newest_age_h": 1082.6,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -85,7 +101,7 @@
         "key": "oldjblog_8",
         "name": "oldj blog",
         "n_items": 10,
-        "newest_age_h": 1232.8,
+        "newest_age_h": 1255.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -93,7 +109,7 @@
         "key": "风雪之隅_14",
         "name": "风雪之隅",
         "n_items": 30,
-        "newest_age_h": 294.5,
+        "newest_age_h": 317.5,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -101,7 +117,7 @@
         "key": "离别歌_15",
         "name": "离别歌",
         "n_items": 10,
-        "newest_age_h": 1415.6,
+        "newest_age_h": 1438.6,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -109,7 +125,7 @@
         "key": "hellogithub_17",
         "name": "HelloGitHub",
         "n_items": 30,
-        "newest_age_h": 352.1,
+        "newest_age_h": 375.1,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -117,7 +133,7 @@
         "key": "mactalk池建强_22",
         "name": "MacTalk池建强",
         "n_items": 10,
-        "newest_age_h": 247.4,
+        "newest_age_h": 270.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -125,7 +141,7 @@
         "key": "反斗限免_24",
         "name": "反斗限免",
         "n_items": 3,
-        "newest_age_h": 313.5,
+        "newest_age_h": 336.5,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -133,7 +149,7 @@
         "key": "baiyun_30",
         "name": "BAI YUN",
         "n_items": 30,
-        "newest_age_h": 732.9,
+        "newest_age_h": 755.9,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -141,7 +157,7 @@
         "key": "elmagnifico_31",
         "name": "elmagnifico",
         "n_items": 10,
-        "newest_age_h": 168.2,
+        "newest_age_h": 191.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -149,7 +165,7 @@
         "key": "全栈应用开发_36",
         "name": "全栈应用开发",
         "n_items": 20,
-        "newest_age_h": 296.8,
+        "newest_age_h": 319.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -157,7 +173,7 @@
         "key": "tinyprojects_37",
         "name": "Tiny Projects",
         "n_items": 15,
-        "newest_age_h": 37336.2,
+        "newest_age_h": 37359.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -165,7 +181,7 @@
         "key": "笨方法学写作_38",
         "name": "笨方法学写作",
         "n_items": 9,
-        "newest_age_h": 2852.1,
+        "newest_age_h": 2875.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -173,7 +189,7 @@
         "key": "rust_weekly_91",
         "name": "This Week in Rust",
         "n_items": 4,
-        "newest_age_h": 179.2,
+        "newest_age_h": 202.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -181,7 +197,7 @@
         "key": "法广中文_4",
         "name": "法广中文",
         "n_items": 20,
-        "newest_age_h": 483.0,
+        "newest_age_h": 506.0,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -189,7 +205,7 @@
         "key": "bbc中文_5",
         "name": "BBC中文",
         "n_items": 30,
-        "newest_age_h": 677.6,
+        "newest_age_h": 700.7,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -197,7 +213,7 @@
         "key": "NHK World_21",
         "name": "NHK World",
         "n_items": 30,
-        "newest_age_h": 1736.0,
+        "newest_age_h": 1759.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -205,7 +221,7 @@
         "key": "三点下班_4",
         "name": "三点下班",
         "n_items": 30,
-        "newest_age_h": 201.1,
+        "newest_age_h": 224.1,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -213,15 +229,23 @@
         "key": "前端早读课_7",
         "name": "前端早读课",
         "n_items": 10,
-        "newest_age_h": 2487.1,
+        "newest_age_h": 2510.1,
         "window_h": 96.0,
+        "undatable": 0
+      },
+      {
+        "key": "web3天空之城_17",
+        "name": "Web3天空之城",
+        "n_items": 10,
+        "newest_age_h": 169.1,
+        "window_h": 168.0,
         "undatable": 0
       },
       {
         "key": "deepseek_31",
         "name": "DeepSeek",
         "n_items": 10,
-        "newest_age_h": 535.3,
+        "newest_age_h": 558.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -229,7 +253,7 @@
         "key": "jina_ai_32",
         "name": "Jina AI",
         "n_items": 10,
-        "newest_age_h": 1305.2,
+        "newest_age_h": 1328.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -237,7 +261,7 @@
         "key": "语言即世界language_is_world_35",
         "name": "语言即世界language is world",
         "n_items": 10,
-        "newest_age_h": 1576.2,
+        "newest_age_h": 1599.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -245,7 +269,7 @@
         "key": "dify_36",
         "name": "Dify",
         "n_items": 10,
-        "newest_age_h": 460.9,
+        "newest_age_h": 483.9,
         "window_h": 149.3,
         "undatable": 0
       },
@@ -253,7 +277,7 @@
         "key": "智谱_37",
         "name": "智谱",
         "n_items": 10,
-        "newest_age_h": 1307.6,
+        "newest_age_h": 1330.6,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -261,15 +285,31 @@
         "key": "通义实验室_38",
         "name": "通义实验室",
         "n_items": 10,
-        "newest_age_h": 2743.3,
+        "newest_age_h": 2766.3,
         "window_h": 147.3,
+        "undatable": 0
+      },
+      {
+        "key": "腾讯混元_40",
+        "name": "腾讯混元",
+        "n_items": 10,
+        "newest_age_h": 173.3,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "ai炼金术_44",
+        "name": "AI炼金术",
+        "n_items": 10,
+        "newest_age_h": 177.2,
+        "window_h": 97.8,
         "undatable": 0
       },
       {
         "key": "deeplearningai_48",
         "name": "DeeplearningAI",
         "n_items": 10,
-        "newest_age_h": 1475.5,
+        "newest_age_h": 1498.5,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -277,7 +317,7 @@
         "key": "阶跃星辰_50",
         "name": "阶跃星辰",
         "n_items": 10,
-        "newest_age_h": 175.3,
+        "newest_age_h": 198.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -285,7 +325,7 @@
         "key": "李继刚_57",
         "name": "李继刚",
         "n_items": 10,
-        "newest_age_h": 726.2,
+        "newest_age_h": 749.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -293,7 +333,7 @@
         "key": "优设_63",
         "name": "优设",
         "n_items": 10,
-        "newest_age_h": 410.7,
+        "newest_age_h": 433.7,
         "window_h": 96.0,
         "undatable": 0
       },
@@ -301,7 +341,7 @@
         "key": "体验进阶_64",
         "name": "体验进阶",
         "n_items": 10,
-        "newest_age_h": 1575.9,
+        "newest_age_h": 1598.9,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -309,7 +349,7 @@
         "key": "强少来了_68",
         "name": "强少来了",
         "n_items": 10,
-        "newest_age_h": 1407.2,
+        "newest_age_h": 1430.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -317,7 +357,7 @@
         "key": "哔哩哔哩技术_70",
         "name": "哔哩哔哩技术",
         "n_items": 10,
-        "newest_age_h": 540.2,
+        "newest_age_h": 563.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -325,7 +365,7 @@
         "key": "奇舞精选_73",
         "name": "奇舞精选",
         "n_items": 10,
-        "newest_age_h": 632.7,
+        "newest_age_h": 655.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -333,7 +373,7 @@
         "key": "前端充电宝_76",
         "name": "前端充电宝",
         "n_items": 10,
-        "newest_age_h": 1359.2,
+        "newest_age_h": 1382.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -341,7 +381,7 @@
         "key": "qunar技术沙龙_77",
         "name": "Qunar技术沙龙",
         "n_items": 10,
-        "newest_age_h": 446.3,
+        "newest_age_h": 469.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -349,7 +389,7 @@
         "key": "42章经_86",
         "name": "42章经",
         "n_items": 10,
-        "newest_age_h": 243.2,
+        "newest_age_h": 266.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -357,7 +397,7 @@
         "key": "投资实习所_92",
         "name": "投资实习所",
         "n_items": 10,
-        "newest_age_h": 339.6,
+        "newest_age_h": 362.6,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -365,7 +405,7 @@
         "key": "暗涌waves_101",
         "name": "暗涌Waves",
         "n_items": 10,
-        "newest_age_h": 231.2,
+        "newest_age_h": 254.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -373,7 +413,7 @@
         "key": "43_talks_110",
         "name": "43 Talks",
         "n_items": 10,
-        "newest_age_h": 1519.5,
+        "newest_age_h": 1542.5,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -381,7 +421,15 @@
         "key": "言午_111",
         "name": "言午",
         "n_items": 10,
-        "newest_age_h": 2408.9,
+        "newest_age_h": 2431.9,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "思特沃克洞见_112",
+        "name": "思特沃克洞见",
+        "n_items": 10,
+        "newest_age_h": 179.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -389,7 +437,7 @@
         "key": "xiaomi_mimo_139",
         "name": "Xiaomi MiMo",
         "n_items": 10,
-        "newest_age_h": 1160.9,
+        "newest_age_h": 1183.9,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -397,7 +445,7 @@
         "key": "携程技术_142",
         "name": "携程技术",
         "n_items": 10,
-        "newest_age_h": 319.2,
+        "newest_age_h": 342.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -405,7 +453,7 @@
         "key": "秋芝2046_164",
         "name": "秋芝2046",
         "n_items": 10,
-        "newest_age_h": 199.2,
+        "newest_age_h": 222.2,
         "window_h": 75.7,
         "undatable": 0
       },
@@ -413,15 +461,23 @@
         "key": "高可用架构_168",
         "name": "高可用架构",
         "n_items": 10,
-        "newest_age_h": 3060.4,
+        "newest_age_h": 3083.4,
         "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "从码农到工匠_177",
+        "name": "从码农到工匠",
+        "n_items": 10,
+        "newest_age_h": 171.9,
+        "window_h": 104.9,
         "undatable": 0
       },
       {
         "key": "快刀青衣_178",
         "name": "快刀青衣",
         "n_items": 10,
-        "newest_age_h": 353.2,
+        "newest_age_h": 376.2,
         "window_h": 124.0,
         "undatable": 0
       },
@@ -429,23 +485,15 @@
         "key": "hellosreagent_179",
         "name": "HelloSREAgent",
         "n_items": 10,
-        "newest_age_h": 204.8,
+        "newest_age_h": 227.8,
         "window_h": 110.7,
-        "undatable": 0
-      },
-      {
-        "key": "刘言飞语_181",
-        "name": "刘言飞语",
-        "n_items": 10,
-        "newest_age_h": 1183.9,
-        "window_h": 168.0,
         "undatable": 0
       },
       {
         "key": "产品二姐_182",
         "name": "产品二姐",
         "n_items": 10,
-        "newest_age_h": 1526.0,
+        "newest_age_h": 1549.0,
         "window_h": 166.2,
         "undatable": 0
       },
@@ -453,7 +501,7 @@
         "key": "二一的笔记_198",
         "name": "二一的笔记",
         "n_items": 10,
-        "newest_age_h": 1122.9,
+        "newest_age_h": 1145.9,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -461,7 +509,7 @@
         "key": "一泽eze_199",
         "name": "一泽Eze",
         "n_items": 10,
-        "newest_age_h": 469.5,
+        "newest_age_h": 492.5,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -469,7 +517,7 @@
         "key": "phodal_207",
         "name": "phodal",
         "n_items": 10,
-        "newest_age_h": 319.8,
+        "newest_age_h": 342.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -477,7 +525,7 @@
         "key": "毛有话说_208",
         "name": "毛有话说",
         "n_items": 10,
-        "newest_age_h": 482.2,
+        "newest_age_h": 505.2,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -485,7 +533,7 @@
         "key": "泽平宏观_210",
         "name": "泽平宏观",
         "n_items": 6,
-        "newest_age_h": 480.2,
+        "newest_age_h": 503.2,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -493,7 +541,7 @@
         "key": "高瓴时间_212",
         "name": "高瓴时间",
         "n_items": 10,
-        "newest_age_h": 1144.7,
+        "newest_age_h": 1167.7,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -501,7 +549,7 @@
         "key": "高瓴创投_213",
         "name": "高瓴创投",
         "n_items": 10,
-        "newest_age_h": 228.0,
+        "newest_age_h": 251.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -509,7 +557,7 @@
         "key": "也谈钱_216",
         "name": "也谈钱",
         "n_items": 10,
-        "newest_age_h": 322.7,
+        "newest_age_h": 345.7,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -517,7 +565,7 @@
         "key": "山行资本_217",
         "name": "山行资本",
         "n_items": 10,
-        "newest_age_h": 658.2,
+        "newest_age_h": 681.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -525,7 +573,7 @@
         "key": "郑立涛_226",
         "name": "郑立涛",
         "n_items": 10,
-        "newest_age_h": 2481.2,
+        "newest_age_h": 2504.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -533,7 +581,15 @@
         "key": "佳芮的创业笔记_227",
         "name": "佳芮的创业笔记",
         "n_items": 10,
-        "newest_age_h": 2066.2,
+        "newest_age_h": 2089.2,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "晚点ai_258",
+        "name": "晚点AI",
+        "n_items": 10,
+        "newest_age_h": 181.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -541,7 +597,7 @@
         "key": "心智工具箱_276",
         "name": "心智工具箱",
         "n_items": 10,
-        "newest_age_h": 383.8,
+        "newest_age_h": 406.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -549,15 +605,23 @@
         "key": "陈鲁豫的电影沙发_286",
         "name": "陈鲁豫的电影沙发",
         "n_items": 10,
-        "newest_age_h": 2334.8,
+        "newest_age_h": 2357.9,
         "window_h": 115.7,
+        "undatable": 0
+      },
+      {
+        "key": "饭统戴老板_288",
+        "name": "饭统戴老板",
+        "n_items": 10,
+        "newest_age_h": 172.2,
+        "window_h": 168.0,
         "undatable": 0
       },
       {
         "key": "孟岩_292",
         "name": "孟岩",
         "n_items": 10,
-        "newest_age_h": 175.5,
+        "newest_age_h": 198.5,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -565,7 +629,7 @@
         "key": "星球研究所_296",
         "name": "星球研究所",
         "n_items": 10,
-        "newest_age_h": 372.7,
+        "newest_age_h": 395.7,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -573,7 +637,7 @@
         "key": "小众消息_298",
         "name": "小众消息",
         "n_items": 10,
-        "newest_age_h": 446.2,
+        "newest_age_h": 469.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -581,15 +645,7 @@
         "key": "investguru_304",
         "name": "investguru",
         "n_items": 10,
-        "newest_age_h": 1093.3,
-        "window_h": 168.0,
-        "undatable": 0
-      },
-      {
-        "key": "廖信忠_306",
-        "name": "廖信忠",
-        "n_items": 10,
-        "newest_age_h": 169.7,
+        "newest_age_h": 1116.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -597,7 +653,7 @@
         "key": "王建硕_324",
         "name": "王建硕",
         "n_items": 10,
-        "newest_age_h": 2113.3,
+        "newest_age_h": 2136.3,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -605,7 +661,7 @@
         "key": "阿虚同学_342",
         "name": "阿虚同学",
         "n_items": 10,
-        "newest_age_h": 299.7,
+        "newest_age_h": 322.7,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -613,7 +669,7 @@
         "key": "得到_358",
         "name": "得到",
         "n_items": 10,
-        "newest_age_h": 173.7,
+        "newest_age_h": 196.7,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -621,7 +677,7 @@
         "key": "三折人生_372",
         "name": "三折人生",
         "n_items": 10,
-        "newest_age_h": 184.2,
+        "newest_age_h": 207.2,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -629,7 +685,7 @@
         "key": "张小珺jùn｜商业访谈录_0",
         "name": "张小珺Jùn｜商业访谈录",
         "n_items": 15,
-        "newest_age_h": 520.2,
+        "newest_age_h": 543.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -637,7 +693,7 @@
         "key": "罗永浩的十字路口_1",
         "name": "罗永浩的十字路口",
         "n_items": 15,
-        "newest_age_h": 180.2,
+        "newest_age_h": 203.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -645,7 +701,7 @@
         "key": "硬地骇客_4",
         "name": "硬地骇客",
         "n_items": 15,
-        "newest_age_h": 2420.6,
+        "newest_age_h": 2443.6,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -653,7 +709,7 @@
         "key": "开始连接_linkstart_7",
         "name": "开始连接 LinkStart",
         "n_items": 15,
-        "newest_age_h": 184.2,
+        "newest_age_h": 207.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -661,7 +717,7 @@
         "key": "此话当真_9",
         "name": "此话当真",
         "n_items": 15,
-        "newest_age_h": 1176.2,
+        "newest_age_h": 1199.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -669,7 +725,15 @@
         "key": "牛油果烤面包_10",
         "name": "牛油果烤面包",
         "n_items": 15,
-        "newest_age_h": 1333.3,
+        "newest_age_h": 1356.4,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "枫言枫语_20",
+        "name": "枫言枫语",
+        "n_items": 15,
+        "newest_age_h": 184.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -677,7 +741,7 @@
         "key": "保持偏见_21",
         "name": "保持偏见",
         "n_items": 15,
-        "newest_age_h": 708.1,
+        "newest_age_h": 731.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -685,7 +749,7 @@
         "key": "三五环_22",
         "name": "三五环",
         "n_items": 15,
-        "newest_age_h": 196.2,
+        "newest_age_h": 219.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -693,7 +757,15 @@
         "key": "信号与噪声_26",
         "name": "信号与噪声",
         "n_items": 15,
-        "newest_age_h": 289.2,
+        "newest_age_h": 312.2,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "人民公园说ai_27",
+        "name": "人民公园说AI",
+        "n_items": 15,
+        "newest_age_h": 184.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -701,7 +773,7 @@
         "key": "无人知晓_34",
         "name": "无人知晓",
         "n_items": 15,
-        "newest_age_h": 1876.2,
+        "newest_age_h": 1899.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -709,7 +781,7 @@
         "key": "纵横四海_35",
         "name": "纵横四海",
         "n_items": 15,
-        "newest_age_h": 1228.0,
+        "newest_age_h": 1251.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -717,7 +789,7 @@
         "key": "自我进化论_36",
         "name": "自我进化论",
         "n_items": 15,
-        "newest_age_h": 1444.2,
+        "newest_age_h": 1467.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -725,7 +797,7 @@
         "key": "自习室_study_room_37",
         "name": "自习室 STUDY ROOM",
         "n_items": 15,
-        "newest_age_h": 195.0,
+        "newest_age_h": 218.1,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -733,7 +805,15 @@
         "key": "谭立人_40",
         "name": "谭立人",
         "n_items": 15,
-        "newest_age_h": 264.2,
+        "newest_age_h": 287.2,
+        "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "李诞_41",
+        "name": "李诞",
+        "n_items": 15,
+        "newest_age_h": 179.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -741,7 +821,7 @@
         "key": "岩中花述_42",
         "name": "岩中花述",
         "n_items": 15,
-        "newest_age_h": 1192.2,
+        "newest_age_h": 1215.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -749,7 +829,7 @@
         "key": "宝玉的分享_383",
         "name": "宝玉的分享",
         "n_items": 30,
-        "newest_age_h": 544.2,
+        "newest_age_h": 567.2,
         "window_h": 96.0,
         "undatable": 0
       },
@@ -757,7 +837,7 @@
         "key": "next_js_blog_388",
         "name": "Next.js Blog",
         "n_items": 30,
-        "newest_age_h": 190.2,
+        "newest_age_h": 213.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -765,7 +845,7 @@
         "key": "david_heinemeier_hansson_389",
         "name": "David Heinemeier Hansson",
         "n_items": 30,
-        "newest_age_h": 432.3,
+        "newest_age_h": 455.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -773,23 +853,15 @@
         "key": "qdrant_417",
         "name": "Qdrant",
         "n_items": 30,
-        "newest_age_h": 184.2,
+        "newest_age_h": 207.2,
         "window_h": 168.0,
         "undatable": 22
-      },
-      {
-        "key": "elevenlabs_blog_424",
-        "name": "ElevenLabs Blog",
-        "n_items": 30,
-        "newest_age_h": 544.2,
-        "window_h": 168.0,
-        "undatable": 0
       },
       {
         "key": "anthropic_news_428",
         "name": "Anthropic News",
         "n_items": 10,
-        "newest_age_h": 600.2,
+        "newest_age_h": 623.2,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -797,7 +869,7 @@
         "key": "ai_at_meta_blog_429",
         "name": "AI at Meta Blog",
         "n_items": 12,
-        "newest_age_h": 2592.2,
+        "newest_age_h": 2615.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -805,7 +877,7 @@
         "key": "sam_altman_sama_434",
         "name": "Sam Altman(@sama)",
         "n_items": 30,
-        "newest_age_h": 179.1,
+        "newest_age_h": 202.1,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -813,23 +885,23 @@
         "key": "dario_amodei_darioamodei_436",
         "name": "Dario Amodei(@DarioAmodei)",
         "n_items": 20,
-        "newest_age_h": 517.8,
+        "newest_age_h": 540.8,
         "window_h": 72.0,
         "undatable": 0
       },
       {
-        "key": "marc_andreessen_pmarca_441",
-        "name": "Marc Andreessen 🇺🇸(@pmarca)",
+        "key": "andrew_ng_andrewyng_453",
+        "name": "Andrew Ng(@AndrewYNg)",
         "n_items": 30,
-        "newest_age_h": 384.1,
-        "window_h": 72.0,
+        "newest_age_h": 187.3,
+        "window_h": 168.0,
         "undatable": 0
       },
       {
         "key": "sualeh_asif_sualehasif996_463",
         "name": "Sualeh Asif(@sualehasif996)",
         "n_items": 21,
-        "newest_age_h": 2034.8,
+        "newest_age_h": 2057.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -837,7 +909,7 @@
         "key": "binyuan_hui_huybery_466",
         "name": "Binyuan Hui(@huybery)",
         "n_items": 25,
-        "newest_age_h": 1472.2,
+        "newest_age_h": 1495.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -845,7 +917,7 @@
         "key": "ian_goodfellow_goodfellow_ian_469",
         "name": "Ian Goodfellow(@goodfellow_ian)",
         "n_items": 19,
-        "newest_age_h": 619.2,
+        "newest_age_h": 642.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -853,23 +925,23 @@
         "key": "groq_inc_groqinc_470",
         "name": "Groq Inc(@GroqInc)",
         "n_items": 27,
-        "newest_age_h": 646.2,
+        "newest_age_h": 669.2,
         "window_h": 142.3,
         "undatable": 0
       },
       {
-        "key": "weaviate_vector_database_weaviate_io_476",
-        "name": "Weaviate • vector database(@weaviate_io)",
+        "key": "scott_wu_scottwu46_474",
+        "name": "Scott Wu(@ScottWu46)",
         "n_items": 30,
-        "newest_age_h": 169.2,
-        "window_h": 119.1,
+        "newest_age_h": 178.2,
+        "window_h": 90.2,
         "undatable": 0
       },
       {
         "key": "geoffrey_hinton_geoffreyhinton_480",
         "name": "Geoffrey Hinton(@geoffreyhinton)",
         "n_items": 28,
-        "newest_age_h": 626.1,
+        "newest_age_h": 649.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -877,7 +949,7 @@
         "key": "jina_ai_jinaai_484",
         "name": "Jina AI(@JinaAI_)",
         "n_items": 30,
-        "newest_age_h": 411.5,
+        "newest_age_h": 434.5,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -885,7 +957,7 @@
         "key": "character_ai_character_ai_491",
         "name": "Character.AI(@character_ai)",
         "n_items": 30,
-        "newest_age_h": 1002.7,
+        "newest_age_h": 1025.8,
         "window_h": 81.1,
         "undatable": 0
       },
@@ -893,15 +965,15 @@
         "key": "taranjeet_taranjeetio_493",
         "name": "Taranjeet(@taranjeetio)",
         "n_items": 29,
-        "newest_age_h": 262.6,
+        "newest_age_h": 285.6,
         "window_h": 168.0,
         "undatable": 0
       },
       {
-        "key": "xai_xai_509",
-        "name": "xAI(@xai)",
+        "key": "manusai_manusai_hq_520",
+        "name": "ManusAI(@ManusAI_HQ)",
         "n_items": 30,
-        "newest_age_h": 475.8,
+        "newest_age_h": 168.3,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -909,7 +981,7 @@
         "key": "aman_sanger_amanrsanger_525",
         "name": "Aman Sanger(@amanrsanger)",
         "n_items": 25,
-        "newest_age_h": 2184.4,
+        "newest_age_h": 2207.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -917,7 +989,7 @@
         "key": "satya_nadella_satyanadella_527",
         "name": "Satya Nadella(@satyanadella)",
         "n_items": 30,
-        "newest_age_h": 329.3,
+        "newest_age_h": 352.3,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -925,7 +997,7 @@
         "key": "google_ai_developers_googleaidevs_533",
         "name": "Google AI Developers(@googleaidevs)",
         "n_items": 30,
-        "newest_age_h": 1221.4,
+        "newest_age_h": 1244.4,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -933,7 +1005,7 @@
         "key": "deepseek_deepseek_ai_542",
         "name": "DeepSeek(@deepseek_ai)",
         "n_items": 30,
-        "newest_age_h": 534.7,
+        "newest_age_h": 557.7,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -941,15 +1013,23 @@
         "key": "skywork_skywork_ai_545",
         "name": "Skywork(@Skywork_ai)",
         "n_items": 30,
-        "newest_age_h": 658.0,
+        "newest_age_h": 681.0,
         "window_h": 72.0,
+        "undatable": 0
+      },
+      {
+        "key": "cat_catwu_549",
+        "name": "cat(@_catwu)",
+        "n_items": 30,
+        "newest_age_h": 182.8,
+        "window_h": 95.6,
         "undatable": 0
       },
       {
         "key": "augment_code_augmentcode_550",
         "name": "Augment Code(@augmentcode)",
         "n_items": 30,
-        "newest_age_h": 817.1,
+        "newest_age_h": 840.1,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -957,7 +1037,7 @@
         "key": "poe_poe_platform_555",
         "name": "Poe(@poe_platform)",
         "n_items": 30,
-        "newest_age_h": 1512.6,
+        "newest_age_h": 1535.6,
         "window_h": 81.1,
         "undatable": 0
       },
@@ -965,23 +1045,15 @@
         "key": "lilian_weng_lilianweng_560",
         "name": "Lilian Weng(@lilianweng)",
         "n_items": 30,
-        "newest_age_h": 2559.3,
+        "newest_age_h": 2582.3,
         "window_h": 168.0,
-        "undatable": 0
-      },
-      {
-        "key": "andrew_chen_andrewchen_563",
-        "name": "andrew chen(@andrewchen)",
-        "n_items": 30,
-        "newest_age_h": 262.5,
-        "window_h": 72.0,
         "undatable": 0
       },
       {
         "key": "nick_st_pierre_nickfloats_572",
         "name": "Nick St. Pierre(@nickfloats)",
         "n_items": 30,
-        "newest_age_h": 757.6,
+        "newest_age_h": 780.6,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -989,7 +1061,7 @@
         "key": "jan_leike_janleike_576",
         "name": "Jan Leike(@janleike)",
         "n_items": 30,
-        "newest_age_h": 1486.7,
+        "newest_age_h": 1509.7,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -997,7 +1069,7 @@
         "key": "adam_d_angelo_adamdangelo_579",
         "name": "Adam D'Angelo(@adamdangelo)",
         "n_items": 17,
-        "newest_age_h": 1847.5,
+        "newest_age_h": 1870.5,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1005,7 +1077,7 @@
         "key": "abyss的小屋_603",
         "name": "Abyss的小屋",
         "n_items": 10,
-        "newest_age_h": 587.8,
+        "newest_age_h": 610.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1013,7 +1085,7 @@
         "key": "bboysoul_s_blog_606",
         "name": "Bboysoul's Blog",
         "n_items": 20,
-        "newest_age_h": 365.9,
+        "newest_age_h": 388.9,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1021,7 +1093,7 @@
         "key": "canva_engineering_blog_607",
         "name": "Canva - Engineering Blog",
         "n_items": 10,
-        "newest_age_h": 1336.2,
+        "newest_age_h": 1359.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1029,7 +1101,7 @@
         "key": "engineering_at_slack_608",
         "name": "Engineering at Slack",
         "n_items": 8,
-        "newest_age_h": 2880.1,
+        "newest_age_h": 2903.1,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1037,7 +1109,7 @@
         "key": "eric_s_blog_609",
         "name": "Eric's Blog",
         "n_items": 30,
-        "newest_age_h": 400.2,
+        "newest_age_h": 423.2,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1045,7 +1117,7 @@
         "key": "etsy_engineering_code_as_craft_610",
         "name": "Etsy Engineering | Code as Craft",
         "n_items": 20,
-        "newest_age_h": 1034.8,
+        "newest_age_h": 1057.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1053,7 +1125,7 @@
         "key": "icodex_前端技术博客_专注_react_typescript_ai_与性能优化_blog_611",
         "name": "icodex | 前端技术博客 | 专注 React、TypeScript、AI 与性能优化 Blog",
         "n_items": 20,
-        "newest_age_h": 1096.2,
+        "newest_age_h": 1119.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1061,7 +1133,7 @@
         "key": "liesauer_s_blog_613",
         "name": "LiesAuer's Blog",
         "n_items": 10,
-        "newest_age_h": 253.2,
+        "newest_age_h": 276.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1069,7 +1141,7 @@
         "key": "rxliuli_blog_620",
         "name": "rxliuli blog",
         "n_items": 20,
-        "newest_age_h": 1967.5,
+        "newest_age_h": 1990.5,
         "window_h": 147.7,
         "undatable": 0
       },
@@ -1077,7 +1149,7 @@
         "key": "sjdhome_623",
         "name": "sjdhome",
         "n_items": 23,
-        "newest_age_h": 321.8,
+        "newest_age_h": 344.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1085,7 +1157,7 @@
         "key": "tianhe_gao_631",
         "name": "Tianhe Gao",
         "n_items": 20,
-        "newest_age_h": 240.2,
+        "newest_age_h": 263.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1093,7 +1165,7 @@
         "key": "tw93_blog_632",
         "name": "Tw93 Blog",
         "n_items": 10,
-        "newest_age_h": 216.2,
+        "newest_age_h": 239.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1101,7 +1173,7 @@
         "key": "农码生涯_无酒无花_the_coding_life_no_wine_no_shine_637",
         "name": "农码生涯，无酒无花 – The coding life, no wine, no shine.",
         "n_items": 10,
-        "newest_age_h": 2044.8,
+        "newest_age_h": 2067.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1109,7 +1181,7 @@
         "key": "千里之豪的格物垛_638",
         "name": "千里之豪的格物垛",
         "n_items": 10,
-        "newest_age_h": 671.2,
+        "newest_age_h": 694.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1117,7 +1189,7 @@
         "key": "后端技术杂谈_639",
         "name": "后端技术杂谈",
         "n_items": 20,
-        "newest_age_h": 1322.3,
+        "newest_age_h": 1345.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1125,7 +1197,7 @@
         "key": "唐巧的博客_640",
         "name": "唐巧的博客",
         "n_items": 20,
-        "newest_age_h": 242.7,
+        "newest_age_h": 265.7,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1133,7 +1205,7 @@
         "key": "喵喵小站_博客志_641",
         "name": "喵喵小站・博客志",
         "n_items": 10,
-        "newest_age_h": 173.0,
+        "newest_age_h": 196.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1141,7 +1213,7 @@
         "key": "夜法之书_642",
         "name": "夜法之书",
         "n_items": 10,
-        "newest_age_h": 1478.2,
+        "newest_age_h": 1501.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1149,7 +1221,7 @@
         "key": "如有乐享_643",
         "name": "如有乐享",
         "n_items": 10,
-        "newest_age_h": 183.5,
+        "newest_age_h": 206.5,
         "window_h": 144.3,
         "undatable": 0
       },
@@ -1157,23 +1229,15 @@
         "key": "寒夜雨_644",
         "name": "寒夜雨",
         "n_items": 10,
-        "newest_age_h": 364.1,
+        "newest_age_h": 387.1,
         "window_h": 168.0,
-        "undatable": 0
-      },
-      {
-        "key": "愆伏_647",
-        "name": "愆伏",
-        "n_items": 30,
-        "newest_age_h": 193.8,
-        "window_h": 72.0,
         "undatable": 0
       },
       {
         "key": "王圆圆_iconpik_648",
         "name": "王圆圆 - ICONPIK",
         "n_items": 15,
-        "newest_age_h": 1041.0,
+        "newest_age_h": 1064.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1181,7 +1245,7 @@
         "key": "王福强的个人博客_一个架构士的思考与沉淀_649",
         "name": "王福强的个人博客：一个架构士的思考与沉淀",
         "n_items": 11,
-        "newest_age_h": 192.2,
+        "newest_age_h": 215.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1189,7 +1253,7 @@
         "key": "粥里有勺糖_651",
         "name": "粥里有勺糖",
         "n_items": 20,
-        "newest_age_h": 270.8,
+        "newest_age_h": 293.8,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1197,7 +1261,7 @@
         "key": "虹墨空间站_654",
         "name": "虹墨空间站",
         "n_items": 10,
-        "newest_age_h": 438.2,
+        "newest_age_h": 461.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1205,7 +1269,7 @@
         "key": "阁子_656",
         "name": "阁子",
         "n_items": 20,
-        "newest_age_h": 1080.0,
+        "newest_age_h": 1103.0,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1213,7 +1277,7 @@
         "key": "鸟窝_657",
         "name": "鸟窝",
         "n_items": 20,
-        "newest_age_h": 1115.5,
+        "newest_age_h": 1138.5,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1221,15 +1285,23 @@
         "key": "黑羽的个人博客_658",
         "name": "黑羽的个人博客",
         "n_items": 20,
-        "newest_age_h": 1277.0,
+        "newest_age_h": 1300.0,
         "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "aaas_science_table_of_contents_670",
+        "name": "AAAS: Science: Table of Contents",
+        "n_items": 30,
+        "newest_age_h": 175.2,
+        "window_h": 72.0,
         "undatable": 0
       },
       {
         "key": "61_s_life_690",
         "name": "61’s life",
         "n_items": 30,
-        "newest_age_h": 264.5,
+        "newest_age_h": 287.5,
         "window_h": 78.2,
         "undatable": 0
       },
@@ -1237,7 +1309,7 @@
         "key": "jax_691",
         "name": "jax",
         "n_items": 10,
-        "newest_age_h": 2088.3,
+        "newest_age_h": 2111.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1245,23 +1317,15 @@
         "key": "阿里云设计中心_694",
         "name": "阿里云设计中心",
         "n_items": 20,
-        "newest_age_h": 296.5,
+        "newest_age_h": 319.5,
         "window_h": 117.5,
-        "undatable": 0
-      },
-      {
-        "key": "知足常乐_水星投资理财的基本意念_696",
-        "name": "知足常乐-水星投资理财的基本意念",
-        "n_items": 10,
-        "newest_age_h": 328.1,
-        "window_h": 168.0,
         "undatable": 0
       },
       {
         "key": "雷蒙三十_幫助忙碌現代人的聰明工作_好好生活的生產力指南_698",
         "name": "雷蒙三十｜幫助忙碌現代人的聰明工作、好好生活的生產力指南",
         "n_items": 10,
-        "newest_age_h": 534.7,
+        "newest_age_h": 557.7,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1269,7 +1333,7 @@
         "key": "abb00717_699",
         "name": "ABB00717",
         "n_items": 30,
-        "newest_age_h": 1346.9,
+        "newest_age_h": 1369.9,
         "window_h": 116.7,
         "undatable": 0
       },
@@ -1277,7 +1341,7 @@
         "key": "dort_的博客_701",
         "name": "Dort 的博客",
         "n_items": 15,
-        "newest_age_h": 1288.2,
+        "newest_age_h": 1311.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1285,7 +1349,7 @@
         "key": "jake_blog_703",
         "name": "Jake blog",
         "n_items": 20,
-        "newest_age_h": 1222.7,
+        "newest_age_h": 1245.7,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1293,7 +1357,7 @@
         "key": "justzht_s_echochamber_705",
         "name": "JustZht's EchoChamber",
         "n_items": 15,
-        "newest_age_h": 225.3,
+        "newest_age_h": 248.3,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1301,7 +1365,7 @@
         "key": "印记_713",
         "name": "印记",
         "n_items": 20,
-        "newest_age_h": 256.2,
+        "newest_age_h": 279.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1309,7 +1373,7 @@
         "key": "四喜丸子_714",
         "name": "四喜丸子",
         "n_items": 30,
-        "newest_age_h": 2080.2,
+        "newest_age_h": 2103.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1317,7 +1381,7 @@
         "key": "如鱼饮水_715",
         "name": "如鱼饮水",
         "n_items": 20,
-        "newest_age_h": 385.0,
+        "newest_age_h": 408.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1325,7 +1389,7 @@
         "key": "局域自由博客_716",
         "name": "局域自由博客",
         "n_items": 30,
-        "newest_age_h": 436.0,
+        "newest_age_h": 459.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1333,15 +1397,23 @@
         "key": "廊桥遗梦_717",
         "name": "廊桥遗梦",
         "n_items": 15,
-        "newest_age_h": 1805.9,
+        "newest_age_h": 1829.0,
         "window_h": 168.0,
+        "undatable": 0
+      },
+      {
+        "key": "kaix_in_727",
+        "name": "KAIX.IN",
+        "n_items": 6,
+        "newest_age_h": 171.9,
+        "window_h": 72.0,
         "undatable": 0
       },
       {
         "key": "tripper_press_take_photo_think_seriously_730",
         "name": "Tripper Press - Take Photo, Think Seriously.",
         "n_items": 21,
-        "newest_age_h": 1792.2,
+        "newest_age_h": 1815.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1349,7 +1421,7 @@
         "key": "东评西就_731",
         "name": "东评西就",
         "n_items": 20,
-        "newest_age_h": 2328.7,
+        "newest_age_h": 2351.7,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1357,7 +1429,7 @@
         "key": "darknet_diaries_735",
         "name": "Darknet Diaries",
         "n_items": 30,
-        "newest_age_h": 200.2,
+        "newest_age_h": 223.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1365,7 +1437,7 @@
         "key": "data4fun_746",
         "name": "Data4Fun",
         "n_items": 20,
-        "newest_age_h": 732.4,
+        "newest_age_h": 755.4,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1373,7 +1445,7 @@
         "key": "for_the_zero的个人博客_748",
         "name": "for_the_zero的个人博客",
         "n_items": 30,
-        "newest_age_h": 288.2,
+        "newest_age_h": 311.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1381,7 +1453,7 @@
         "key": "rokcso_s_blog_749",
         "name": "Rokcso's Blog",
         "n_items": 10,
-        "newest_age_h": 494.2,
+        "newest_age_h": 517.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1389,7 +1461,7 @@
         "key": "sekyoro的博客小屋_750",
         "name": "Sekyoro的博客小屋",
         "n_items": 20,
-        "newest_age_h": 744.5,
+        "newest_age_h": 767.5,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1397,7 +1469,7 @@
         "key": "冰冻大西瓜_753",
         "name": "冰冻大西瓜",
         "n_items": 30,
-        "newest_age_h": 1571.0,
+        "newest_age_h": 1594.0,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1405,7 +1477,7 @@
         "key": "创见思考_怎样度过这一生_754",
         "name": "创见思考——怎样度过这一生",
         "n_items": 30,
-        "newest_age_h": 746.8,
+        "newest_age_h": 769.8,
         "window_h": 72.0,
         "undatable": 0
       },
@@ -1413,7 +1485,7 @@
         "key": "明立非_mingnify的博客_756",
         "name": "明立非|Mingnify的博客",
         "n_items": 20,
-        "newest_age_h": 1161.5,
+        "newest_age_h": 1184.5,
         "window_h": 128.8,
         "undatable": 0
       },
@@ -1421,7 +1493,7 @@
         "key": "fragmented_ai_developer_podcast_763",
         "name": "Fragmented - AI Developer Podcast",
         "n_items": 23,
-        "newest_age_h": 544.2,
+        "newest_age_h": 567.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1429,7 +1501,7 @@
         "key": "大橘和朋友们的周刊_764",
         "name": "大橘和朋友们的周刊",
         "n_items": 5,
-        "newest_age_h": 2944.2,
+        "newest_age_h": 2967.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1437,7 +1509,7 @@
         "key": "google_security_blog_785",
         "name": "Google Security Blog",
         "n_items": 20,
-        "newest_age_h": 503.2,
+        "newest_age_h": 526.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1445,7 +1517,7 @@
         "key": "astro_blog_790",
         "name": "Astro Blog",
         "n_items": 30,
-        "newest_age_h": 280.2,
+        "newest_age_h": 303.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1453,7 +1525,7 @@
         "key": "svelte_blog_791",
         "name": "Svelte Blog",
         "n_items": 30,
-        "newest_age_h": 1000.2,
+        "newest_age_h": 1023.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1461,7 +1533,7 @@
         "key": "nuxt_blog_792",
         "name": "Nuxt Blog",
         "n_items": 30,
-        "newest_age_h": 352.2,
+        "newest_age_h": 375.2,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1469,7 +1541,7 @@
         "key": "tailwind_css_blog_793",
         "name": "Tailwind CSS Blog",
         "n_items": 30,
-        "newest_age_h": 1515.0,
+        "newest_age_h": 1538.0,
         "window_h": 168.0,
         "undatable": 0
       },
@@ -1477,37 +1549,45 @@
         "key": "react_blog_798",
         "name": "React Blog",
         "n_items": 24,
-        "newest_age_h": 1528.2,
+        "newest_age_h": 1551.2,
         "window_h": 168.0,
-        "undatable": 0
-      },
-      {
-        "key": "ev_news_933",
-        "name": "ev.news",
-        "n_items": 30,
-        "newest_age_h": 218.2,
-        "window_h": 72.0,
         "undatable": 0
       }
     ],
-    "items_after_gate": 10814,
-    "items_le_base_h": 10491,
-    "items_base_to_hard_h": 322,
-    "items_over_hard_h": 1,
-    "history_before": 21413,
-    "history_after": 21487,
-    "history_expired": 217,
-    "trans_cache_hit": 8653,
+    "items_after_gate": 10966,
+    "items_le_base_h": 10665,
+    "items_base_to_hard_h": 301,
+    "items_over_hard_h": 0,
+    "history_before": 22199,
+    "history_after": 22253,
+    "history_expired": 305,
+    "trans_cache_hit": 8360,
     "trans_cache_size": 30000,
-    "trans_cache_trimmed": 169,
-    "trans_google": 119,
-    "trans_agnes": 23,
+    "trans_cache_trimmed": 189,
+    "trans_google": 145,
+    "trans_agnes": 6,
     "trans_zen": 0,
-    "trans_mymemory": 29,
+    "trans_mymemory": 43,
     "trans_dict": 0,
-    "trans_skip": 7514,
+    "trans_skip": 7493,
     "trans_fail": 0,
     "per_source": [
+      {
+        "key": "arxiv_ml_5",
+        "name": "arXiv 机器学习",
+        "cat": "ai",
+        "tier": 1,
+        "status": "empty",
+        "items": 0
+      },
+      {
+        "key": "arxiv_ai_4",
+        "name": "arXiv AI",
+        "cat": "ai",
+        "tier": 1,
+        "status": "empty",
+        "items": 0
+      },
       {
         "key": "openai_blog_1",
         "name": "OpenAI 博客",
@@ -1515,6 +1595,14 @@
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "arxiv_nlp_6",
+        "name": "arXiv NLP",
+        "cat": "ai",
+        "tier": 1,
+        "status": "empty",
+        "items": 0
       },
       {
         "key": "huggingface_11",
@@ -1533,36 +1621,20 @@
         "items": 30
       },
       {
-        "key": "arxiv_ai_4",
-        "name": "arXiv AI",
-        "cat": "ai",
-        "tier": 1,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "arxiv_ml_5",
-        "name": "arXiv 机器学习",
-        "cat": "ai",
-        "tier": 1,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "agihunt_0",
-        "name": "AGI Hunt",
+        "key": "hn_ai_7",
+        "name": "Hacker News AI",
         "cat": "ai",
         "tier": 2,
         "status": "ok",
-        "items": 30
+        "items": 20
       },
       {
-        "key": "arxiv_nlp_6",
-        "name": "arXiv NLP",
+        "key": "google_deepmind_2",
+        "name": "Google DeepMind",
         "cat": "ai",
-        "tier": 1,
-        "status": "ok",
-        "items": 30
+        "tier": 3,
+        "status": "error",
+        "items": 0
       },
       {
         "key": "google_research_10",
@@ -1573,14 +1645,6 @@
         "items": 30
       },
       {
-        "key": "hn_llm_8",
-        "name": "Hacker News LLM",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
         "key": "google_ai_blog_3",
         "name": "Google AI Blog",
         "cat": "ai",
@@ -1589,12 +1653,12 @@
         "items": 20
       },
       {
-        "key": "google_deepmind_2",
-        "name": "Google DeepMind",
+        "key": "claude_code_rel_16",
+        "name": "Claude Code Releases",
         "cat": "ai",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 10
       },
       {
         "key": "reddit_artificial_105",
@@ -1613,6 +1677,14 @@
         "items": 0
       },
       {
+        "key": "reddit_ml_103",
+        "name": "r/MachineLearning",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 8
+      },
+      {
         "key": "codex_rel_15",
         "name": "OpenAI Codex Releases",
         "cat": "ai",
@@ -1621,20 +1693,12 @@
         "items": 10
       },
       {
-        "key": "reddit_ml_103",
-        "name": "r/MachineLearning",
-        "cat": "ai",
+        "key": "juliaevans_0",
+        "name": "Julia Evans",
+        "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 5
-      },
-      {
-        "key": "claude_code_rel_16",
-        "name": "Claude Code Releases",
-        "cat": "ai",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
+        "items": 20
       },
       {
         "key": "techcrunch_7",
@@ -1669,34 +1733,10 @@
         "items": 10
       },
       {
-        "key": "theverge_8",
-        "name": "The Verge",
-        "cat": "tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "juliaevans_0",
-        "name": "Julia Evans",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
         "key": "wired_10",
         "name": "WIRED",
         "cat": "tech",
         "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "arxiv_cs_14",
-        "name": "arXiv CS",
-        "cat": "tech",
-        "tier": 3,
         "status": "ok",
         "items": 30
       },
@@ -1707,6 +1747,30 @@
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "mcp_spec_rel_18",
+        "name": "MCP Specification Releases",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 9
+      },
+      {
+        "key": "gemini_cli_rel_17",
+        "name": "Gemini CLI Releases",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "arxiv_cs_14",
+        "name": "arXiv CS",
+        "cat": "tech",
+        "tier": 3,
+        "status": "empty",
+        "items": 0
       },
       {
         "key": "arstechnica_60",
@@ -1725,14 +1789,6 @@
         "items": 10
       },
       {
-        "key": "krebs_62",
-        "name": "Krebs on Security",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "redisblog_12",
         "name": "Redis Blog",
         "cat": "tech",
@@ -1741,16 +1797,8 @@
         "items": 30
       },
       {
-        "key": "thehackernews_63",
-        "name": "The Hacker News",
-        "cat": "tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "github_changelog_71",
-        "name": "GitHub Changelog",
+        "key": "krebs_62",
+        "name": "Krebs on Security",
         "cat": "tech",
         "tier": 3,
         "status": "ok",
@@ -1773,20 +1821,12 @@
         "items": 10
       },
       {
-        "key": "gemini_cli_rel_17",
-        "name": "Gemini CLI Releases",
-        "cat": "ai",
+        "key": "github_changelog_71",
+        "name": "GitHub Changelog",
+        "cat": "tech",
         "tier": 3,
         "status": "ok",
         "items": 10
-      },
-      {
-        "key": "mcp_spec_rel_18",
-        "name": "MCP Specification Releases",
-        "cat": "ai",
-        "tier": 3,
-        "status": "ok",
-        "items": 9
       },
       {
         "key": "github_copilot_72",
@@ -1797,12 +1837,12 @@
         "items": 10
       },
       {
-        "key": "aws_blog_74",
-        "name": "AWS Blog",
+        "key": "thehackernews_63",
+        "name": "The Hacker News",
         "cat": "tech",
-        "tier": 3,
+        "tier": 2,
         "status": "ok",
-        "items": 20
+        "items": 30
       },
       {
         "key": "cloudflare_blog_75",
@@ -1813,26 +1853,18 @@
         "items": 20
       },
       {
-        "key": "supabase_blog_79",
-        "name": "Supabase Blog",
+        "key": "aws_blog_74",
+        "name": "AWS Blog",
         "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 20
       },
       {
-        "key": "vercel_blog_78",
-        "name": "Vercel Blog",
+        "key": "theverge_8",
+        "name": "The Verge",
         "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "stripe_blog_80",
-        "name": "Stripe Blog",
-        "cat": "tech",
-        "tier": 3,
+        "tier": 2,
         "status": "ok",
         "items": 10
       },
@@ -1845,6 +1877,38 @@
         "items": 20
       },
       {
+        "key": "stripe_blog_80",
+        "name": "Stripe Blog",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "netflix_tech_73",
+        "name": "Netflix Tech Blog",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "vercel_blog_78",
+        "name": "Vercel Blog",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "supabase_blog_79",
+        "name": "Supabase Blog",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "meta_eng_81",
         "name": "Meta Engineering",
         "cat": "tech",
@@ -1853,9 +1917,9 @@
         "items": 9
       },
       {
-        "key": "netflix_tech_73",
-        "name": "Netflix Tech Blog",
-        "cat": "tech",
+        "key": "mcp_servers_rel_19",
+        "name": "MCP Servers Releases",
+        "cat": "ai",
         "tier": 3,
         "status": "ok",
         "items": 10
@@ -1869,16 +1933,16 @@
         "items": 30
       },
       {
-        "key": "mcp_servers_rel_19",
-        "name": "MCP Servers Releases",
-        "cat": "ai",
-        "tier": 3,
+        "key": "it之家_13",
+        "name": "IT之家",
+        "cat": "cn_tech",
+        "tier": 2,
         "status": "ok",
-        "items": 10
+        "items": 30
       },
       {
-        "key": "少数派_4",
-        "name": "少数派",
+        "key": "小众软件_8",
+        "name": "小众软件",
         "cat": "cn_tech",
         "tier": 3,
         "status": "ok",
@@ -1893,36 +1957,28 @@
         "items": 20
       },
       {
-        "key": "solidot_3",
-        "name": "Solidot",
-        "cat": "cn_tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "小众软件_8",
-        "name": "小众软件",
-        "cat": "cn_tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "hackernews_6",
-        "name": "Hacker News",
-        "cat": "tech",
-        "tier": 1,
-        "status": "ok",
-        "items": 20
-      },
-      {
         "key": "潮流周刊_21",
         "name": "潮流周刊",
         "cat": "cn_tech",
         "tier": 3,
         "status": "ok",
         "items": 12
+      },
+      {
+        "key": "aihot_summary_20",
+        "name": "AI Hot 精选摘要",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "agihunt_0",
+        "name": "AGI Hunt",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "mit科技评论_28",
@@ -1941,6 +1997,14 @@
         "items": 30
       },
       {
+        "key": "月光博客_15",
+        "name": "月光博客",
+        "cat": "cn_tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "cnbeta_41",
         "name": "cnBeta",
         "cat": "cn_tech",
@@ -1949,12 +2013,12 @@
         "items": 25
       },
       {
-        "key": "v2ex技术_44",
-        "name": "V2EX技术",
+        "key": "solidot_3",
+        "name": "Solidot",
         "cat": "cn_tech",
         "tier": 2,
         "status": "ok",
-        "items": 30
+        "items": 20
       },
       {
         "key": "阮一峰的网络日志_0",
@@ -1965,12 +2029,28 @@
         "items": 3
       },
       {
-        "key": "月光博客_15",
-        "name": "月光博客",
+        "key": "hackernews_6",
+        "name": "Hacker News",
+        "cat": "tech",
+        "tier": 1,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "aihot_pool_22",
+        "name": "AI Hot 7天公开池",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "v2ex技术_44",
+        "name": "V2EX技术",
         "cat": "cn_tech",
-        "tier": 3,
-        "status": "error",
-        "items": 0
+        "tier": 2,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "太隐_4",
@@ -1981,20 +2061,12 @@
         "items": 30
       },
       {
-        "key": "hn_ai_7",
-        "name": "Hacker News AI",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "美团技术团队_0",
-        "name": "美团技术团队",
-        "cat": "cn_tech",
+        "key": "程序员的喵_7",
+        "name": "程序员的喵",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 20
       },
       {
         "key": "胡涂说_6",
@@ -2005,17 +2077,9 @@
         "items": 30
       },
       {
-        "key": "云风的blog_5",
-        "name": "云风的BLOG",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "it之家_13",
-        "name": "IT之家",
-        "cat": "cn_tech",
+        "key": "aihot_full_21",
+        "name": "AI Hot 精选全文",
+        "cat": "ai",
         "tier": 2,
         "status": "ok",
         "items": 30
@@ -2029,44 +2093,20 @@
         "items": 20
       },
       {
-        "key": "aihot_summary_20",
-        "name": "AI Hot 精选摘要",
-        "cat": "ai",
+        "key": "云风的blog_5",
+        "name": "云风的BLOG",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 15
       },
       {
-        "key": "扯氮集_25",
-        "name": "扯氮集",
-        "cat": "cn_tech",
+        "key": "离别歌_15",
+        "name": "离别歌",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
         "items": 10
-      },
-      {
-        "key": "aihot_full_21",
-        "name": "AI Hot 精选全文",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "程序员的喵_7",
-        "name": "程序员的喵",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "infoq推荐_26",
-        "name": "InfoQ推荐",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
       },
       {
         "key": "人人都是产品经理_39",
@@ -2077,6 +2117,14 @@
         "items": 15
       },
       {
+        "key": "少数派_4",
+        "name": "少数派",
+        "cat": "cn_tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "卡瓦邦噶_13",
         "name": "卡瓦邦噶",
         "cat": "dev",
@@ -2085,8 +2133,16 @@
         "items": 10
       },
       {
-        "key": "离别歌_15",
-        "name": "离别歌",
+        "key": "infoq推荐_26",
+        "name": "InfoQ推荐",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "oldjblog_8",
+        "name": "oldj blog",
         "cat": "dev",
         "tier": 3,
         "status": "ok",
@@ -2101,36 +2157,20 @@
         "items": 30
       },
       {
-        "key": "tonybai_33",
-        "name": "Tony Bai",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "oldjblog_8",
-        "name": "oldj blog",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "钛媒体_38",
-        "name": "钛媒体",
-        "cat": "cn_tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 16
-      },
-      {
         "key": "反斗限免_24",
         "name": "反斗限免",
         "cat": "dev",
         "tier": 3,
         "status": "ok",
         "items": 3
+      },
+      {
+        "key": "美团技术团队_0",
+        "name": "美团技术团队",
+        "cat": "cn_tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
       },
       {
         "key": "tinyprojects_37",
@@ -2141,60 +2181,20 @@
         "items": 15
       },
       {
-        "key": "aihot_pool_22",
-        "name": "AI Hot 7天公开池",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "涛叔_41",
-        "name": "涛叔",
-        "cat": "dev",
-        "tier": 3,
-        "status": "error",
-        "items": 0
-      },
-      {
-        "key": "全栈应用开发_36",
-        "name": "全栈应用开发",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "小球飞鱼_42",
-        "name": "小球飞鱼",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 1
-      },
-      {
-        "key": "v2ex_all_50",
-        "name": "V2EX 全站最新",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "nodeseek_54",
-        "name": "NodeSeek",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
         "key": "张鑫旭_18",
         "name": "张鑫旭",
         "cat": "dev",
         "tier": 3,
         "status": "ok",
         "items": 5
+      },
+      {
+        "key": "风雪之隅_14",
+        "name": "风雪之隅",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "笨方法学写作_38",
@@ -2205,20 +2205,20 @@
         "items": 9
       },
       {
-        "key": "hn_newest_56",
-        "name": "Hacker News 最新",
+        "key": "涛叔_41",
+        "name": "涛叔",
+        "cat": "dev",
+        "tier": 3,
+        "status": "error",
+        "items": 0
+      },
+      {
+        "key": "v2ex_all_50",
+        "name": "V2EX 全站最新",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "js_weekly_90",
-        "name": "JavaScript Weekly",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 4
+        "items": 30
       },
       {
         "key": "hellogithub_17",
@@ -2227,6 +2227,70 @@
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "小球飞鱼_42",
+        "name": "小球飞鱼",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 1
+      },
+      {
+        "key": "nodeseek_54",
+        "name": "NodeSeek",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "全栈应用开发_36",
+        "name": "全栈应用开发",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "tonybai_33",
+        "name": "Tony Bai",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "hn_newest_56",
+        "name": "Hacker News 最新",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "hn_ask_57",
+        "name": "Hacker News Ask",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "钛媒体_38",
+        "name": "钛媒体",
+        "cat": "cn_tech",
+        "tier": 2,
+        "status": "ok",
+        "items": 17
+      },
+      {
+        "key": "js_weekly_90",
+        "name": "JavaScript Weekly",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 4
       },
       {
         "key": "reddit_programming_100",
@@ -2253,6 +2317,22 @@
         "items": 0
       },
       {
+        "key": "rust_weekly_91",
+        "name": "This Week in Rust",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 4
+      },
+      {
+        "key": "mactalk池建强_22",
+        "name": "MacTalk池建强",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "naixi_55",
         "name": "奶昔论坛",
         "cat": "dev",
@@ -2269,28 +2349,12 @@
         "items": 30
       },
       {
-        "key": "法广中文_4",
-        "name": "法广中文",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "hn_ask_57",
-        "name": "Hacker News Ask",
+        "key": "golang_weekly_92",
+        "name": "Golang Weekly",
         "cat": "dev",
-        "tier": 2,
+        "tier": 3,
         "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "hn_show_58",
-        "name": "Hacker News Show",
-        "cat": "dev",
-        "tier": 1,
-        "status": "ok",
-        "items": 20
+        "items": 4
       },
       {
         "key": "bytebytego_93",
@@ -2301,44 +2365,12 @@
         "items": 20
       },
       {
-        "key": "rust_weekly_91",
-        "name": "This Week in Rust",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 4
-      },
-      {
-        "key": "财富中文网_6",
-        "name": "财富中文网",
-        "cat": "news",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "elmagnifico_31",
-        "name": "elmagnifico",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "bbc中文_5",
-        "name": "BBC中文",
+        "key": "法广中文_4",
+        "name": "法广中文",
         "cat": "news",
         "tier": 2,
         "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "mactalk池建强_22",
-        "name": "MacTalk池建强",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
+        "items": 20
       },
       {
         "key": "澎湃新闻_7",
@@ -2349,36 +2381,20 @@
         "items": 21
       },
       {
-        "key": "人民网_8",
-        "name": "人民网",
+        "key": "财富中文网_6",
+        "name": "财富中文网",
+        "cat": "news",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "bbc中文_5",
+        "name": "BBC中文",
         "cat": "news",
         "tier": 2,
         "status": "ok",
         "items": 30
-      },
-      {
-        "key": "golang_weekly_92",
-        "name": "Golang Weekly",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 4
-      },
-      {
-        "key": "半岛电视台_15",
-        "name": "半岛电视台",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 25
-      },
-      {
-        "key": "南方周末anyfeeder_9",
-        "name": "南方周末anyfeeder",
-        "cat": "news",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
       },
       {
         "key": "求是网_14",
@@ -2389,6 +2405,30 @@
         "items": 30
       },
       {
+        "key": "南方周末anyfeeder_9",
+        "name": "南方周末anyfeeder",
+        "cat": "news",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "半岛电视台_15",
+        "name": "半岛电视台",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 25
+      },
+      {
+        "key": "人民网_8",
+        "name": "人民网",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 29
+      },
+      {
         "key": "新华社_17",
         "name": "新华社",
         "cat": "news",
@@ -2397,28 +2437,12 @@
         "items": 30
       },
       {
-        "key": "纽约时报中文网_10",
-        "name": "纽约时报中文网",
-        "cat": "news",
+        "key": "elmagnifico_31",
+        "name": "elmagnifico",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "起朱楼宴宾客_8",
-        "name": "起朱楼宴宾客",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "NHK World_21",
-        "name": "NHK World",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
+        "items": 10
       },
       {
         "key": "42章经_1",
@@ -2431,6 +2455,22 @@
       {
         "key": "三点下班_4",
         "name": "三点下班",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "起朱楼宴宾客_8",
+        "name": "起朱楼宴宾客",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "tedradiohour_10",
+        "name": "TED Radio Hour",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -2453,32 +2493,56 @@
         "items": 10
       },
       {
-        "key": "新智元_5",
-        "name": "新智元",
+        "key": "阿里技术_2",
+        "name": "阿里技术",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "腾讯云开发者_6",
-        "name": "腾讯云开发者",
+        "key": "扯氮集_25",
+        "name": "扯氮集",
+        "cat": "cn_tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "NHK World_21",
+        "name": "NHK World",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "香港01_19",
+        "name": "香港01",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "西秦公子_39",
+        "name": "西秦公子",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "阿里云开发者_3",
+        "name": "阿里云开发者",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "founder_park_8",
-        "name": "Founder Park",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "前端早读课_7",
-        "name": "前端早读课",
+        "key": "大淘宝技术_4",
+        "name": "大淘宝技术",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2493,8 +2557,48 @@
         "items": 20
       },
       {
+        "key": "腾讯科技_10",
+        "name": "腾讯科技",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "歸藏的ai工具箱_9",
         "name": "歸藏的AI工具箱",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "赛博禅心_12",
+        "name": "赛博禅心",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "数字生命卡兹克_13",
+        "name": "数字生命卡兹克",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "hn_llm_8",
+        "name": "Hacker News LLM",
+        "cat": "ai",
+        "tier": 2,
+        "status": "error",
+        "items": 0
+      },
+      {
+        "key": "极客公园_15",
+        "name": "极客公园",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2509,64 +2613,8 @@
         "items": 6
       },
       {
-        "key": "腾讯科技_10",
-        "name": "腾讯科技",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "西秦公子_39",
-        "name": "西秦公子",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "赛博禅心_12",
-        "name": "赛博禅心",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "十字路口crossing_14",
         "name": "十字路口Crossing",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "香港01_19",
-        "name": "香港01",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "京东技术_16",
-        "name": "京东技术",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "风雪之隅_14",
-        "name": "风雪之隅",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "51cto技术栈_19",
-        "name": "51CTO技术栈",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2581,12 +2629,20 @@
         "items": 10
       },
       {
-        "key": "二丫讲梵_27",
-        "name": "二丫讲梵",
-        "cat": "dev",
+        "key": "51cto技术栈_19",
+        "name": "51CTO技术栈",
+        "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 10
+      },
+      {
+        "key": "稀土掘金技术社区_20",
+        "name": "稀土掘金技术社区",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
       },
       {
         "key": "dbaplus社群_21",
@@ -2599,6 +2655,14 @@
       {
         "key": "深思圈_22",
         "name": "深思圈",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "海外独角兽_23",
+        "name": "海外独角兽",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2621,16 +2685,16 @@
         "items": 10
       },
       {
-        "key": "月之暗面_kimi_26",
-        "name": "月之暗面 Kimi",
+        "key": "腾讯研究院_27",
+        "name": "腾讯研究院",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "腾讯研究院_27",
-        "name": "腾讯研究院",
+        "key": "月之暗面_kimi_26",
+        "name": "月之暗面 Kimi",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2645,20 +2709,20 @@
         "items": 10
       },
       {
+        "key": "二丫讲梵_27",
+        "name": "二丫讲梵",
+        "cat": "dev",
+        "tier": 3,
+        "status": "error",
+        "items": 0
+      },
+      {
         "key": "甲子光年_29",
         "name": "甲子光年",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
-      },
-      {
-        "key": "tedradiohour_10",
-        "name": "TED Radio Hour",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
       },
       {
         "key": "z_potentials_30",
@@ -2669,8 +2733,8 @@
         "items": 10
       },
       {
-        "key": "deepseek_31",
-        "name": "DeepSeek",
+        "key": "jina_ai_32",
+        "name": "Jina AI",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2701,14 +2765,6 @@
         "items": 10
       },
       {
-        "key": "语言即世界language_is_world_35",
-        "name": "语言即世界language is world",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "智谱_37",
         "name": "智谱",
         "cat": "wechat",
@@ -2717,12 +2773,12 @@
         "items": 10
       },
       {
-        "key": "百度文心_39",
-        "name": "百度文心",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
+        "key": "hn_show_58",
+        "name": "Hacker News Show",
+        "cat": "dev",
+        "tier": 1,
+        "status": "error",
+        "items": 0
       },
       {
         "key": "通义实验室_38",
@@ -2741,6 +2797,14 @@
         "items": 10
       },
       {
+        "key": "纽约时报中文网_10",
+        "name": "纽约时报中文网",
+        "cat": "news",
+        "tier": 3,
+        "status": "error",
+        "items": 0
+      },
+      {
         "key": "智东西_41",
         "name": "智东西",
         "cat": "wechat",
@@ -2749,8 +2813,8 @@
         "items": 10
       },
       {
-        "key": "agent橘_42",
-        "name": "AGENT橘",
+        "key": "大模型智能_43",
+        "name": "大模型智能",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2759,14 +2823,6 @@
       {
         "key": "ai炼金术_44",
         "name": "AI炼金术",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "大模型智能_43",
-        "name": "大模型智能",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2783,6 +2839,14 @@
       {
         "key": "山行ai_46",
         "name": "山行AI",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "语言即世界language_is_world_35",
+        "name": "语言即世界language is world",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2861,16 +2925,16 @@
         "items": 10
       },
       {
-        "key": "李继刚_57",
-        "name": "李继刚",
+        "key": "硅基观察pro_56",
+        "name": "硅基观察Pro",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "硅基观察pro_56",
-        "name": "硅基观察Pro",
+        "key": "李继刚_57",
+        "name": "李继刚",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2885,6 +2949,14 @@
         "items": 10
       },
       {
+        "key": "ai科技大本营_60",
+        "name": "AI科技大本营",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "袋鼠帝ai客栈_59",
         "name": "袋鼠帝AI客栈",
         "cat": "wechat",
@@ -2893,8 +2965,8 @@
         "items": 10
       },
       {
-        "key": "ai科技大本营_60",
-        "name": "AI科技大本营",
+        "key": "阿真irene_62",
+        "name": "阿真Irene",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2917,14 +2989,6 @@
         "items": 10
       },
       {
-        "key": "体验进阶_64",
-        "name": "体验进阶",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "超人的电话亭_65",
         "name": "超人的电话亭",
         "cat": "wechat",
@@ -2933,8 +2997,8 @@
         "items": 10
       },
       {
-        "key": "阿真irene_62",
-        "name": "阿真Irene",
+        "key": "前端早读课_7",
+        "name": "前端早读课",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -2989,16 +3053,16 @@
         "items": 10
       },
       {
-        "key": "字节跳动技术团队_71",
-        "name": "字节跳动技术团队",
+        "key": "奇舞精选_73",
+        "name": "奇舞精选",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "奇舞精选_73",
-        "name": "奇舞精选",
+        "key": "字节跳动技术团队_71",
+        "name": "字节跳动技术团队",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3013,16 +3077,16 @@
         "items": 10
       },
       {
-        "key": "前端充电宝_76",
-        "name": "前端充电宝",
+        "key": "百度geek说_75",
+        "name": "百度Geek说",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "百度geek说_75",
-        "name": "百度Geek说",
+        "key": "前端充电宝_76",
+        "name": "前端充电宝",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3077,16 +3141,16 @@
         "items": 10
       },
       {
-        "key": "逛逛github_83",
-        "name": "逛逛GitHub",
+        "key": "架构师之路_84",
+        "name": "架构师之路",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "架构师之路_84",
-        "name": "架构师之路",
+        "key": "逛逛github_83",
+        "name": "逛逛GitHub",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3101,20 +3165,20 @@
         "items": 10
       },
       {
-        "key": "42章经_86",
-        "name": "42章经",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "随机小分队_87",
         "name": "随机小分队",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 9
+      },
+      {
+        "key": "42章经_86",
+        "name": "42章经",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
       },
       {
         "key": "阿里研究院_88",
@@ -3141,16 +3205,8 @@
         "items": 10
       },
       {
-        "key": "阿里云开发者_3",
-        "name": "阿里云开发者",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "投资实习所_92",
-        "name": "投资实习所",
+        "key": "吴晓波频道_91",
+        "name": "吴晓波频道",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3165,16 +3221,16 @@
         "items": 10
       },
       {
-        "key": "少数派_94",
-        "name": "少数派",
+        "key": "投资实习所_92",
+        "name": "投资实习所",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "网易科技_95",
-        "name": "网易科技",
+        "key": "少数派_94",
+        "name": "少数派",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3189,16 +3245,16 @@
         "items": 10
       },
       {
-        "key": "真格基金_97",
-        "name": "真格基金",
+        "key": "网易科技_95",
+        "name": "网易科技",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "白鲸出海_99",
-        "name": "白鲸出海",
+        "key": "真格基金_97",
+        "name": "真格基金",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3213,14 +3269,6 @@
         "items": 10
       },
       {
-        "key": "暗涌waves_101",
-        "name": "暗涌Waves",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "硅星人pro_100",
         "name": "硅星人Pro",
         "cat": "wechat",
@@ -3229,8 +3277,16 @@
         "items": 10
       },
       {
-        "key": "l先生说_103",
-        "name": "L先生说",
+        "key": "暗涌waves_101",
+        "name": "暗涌Waves",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "白鲸出海_99",
+        "name": "白鲸出海",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3245,16 +3301,24 @@
         "items": 10
       },
       {
-        "key": "晚点latepost_105",
-        "name": "晚点LatePost",
+        "key": "有新newin_104",
+        "name": "有新Newin",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "有新newin_104",
-        "name": "有新Newin",
+        "key": "l先生说_103",
+        "name": "L先生说",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "晚点latepost_105",
+        "name": "晚点LatePost",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3317,14 +3381,6 @@
         "items": 10
       },
       {
-        "key": "数据可视化_antv_113",
-        "name": "数据可视化 AntV",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "晚点再听latercast_114",
         "name": "晚点再听LaterCast",
         "cat": "wechat",
@@ -3333,8 +3389,8 @@
         "items": 10
       },
       {
-        "key": "ai异类弗兰克_116",
-        "name": "AI异类弗兰克",
+        "key": "数据可视化_antv_113",
+        "name": "数据可视化 AntV",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3365,16 +3421,16 @@
         "items": 10
       },
       {
-        "key": "哈佛商业评论_120",
-        "name": "哈佛商业评论",
+        "key": "ai异类弗兰克_116",
+        "name": "AI异类弗兰克",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "paperagent_121",
-        "name": "PaperAgent",
+        "key": "哈佛商业评论_120",
+        "name": "哈佛商业评论",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3405,16 +3461,8 @@
         "items": 10
       },
       {
-        "key": "极客公园_15",
-        "name": "极客公园",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "playwright实战教程_125",
-        "name": "Playwright实战教程",
+        "key": "体验进阶_64",
+        "name": "体验进阶",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3429,6 +3477,14 @@
         "items": 30
       },
       {
+        "key": "paperagent_121",
+        "name": "PaperAgent",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "青稞ai_127",
         "name": "青稞AI",
         "cat": "wechat",
@@ -3437,8 +3493,24 @@
         "items": 10
       },
       {
-        "key": "华尔街见闻_126",
-        "name": "华尔街见闻",
+        "key": "playwright实战教程_125",
+        "name": "Playwright实战教程",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "武志红_130",
+        "name": "武志红",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "罗西的思考_129",
+        "name": "罗西的思考",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3469,8 +3541,8 @@
         "items": 10
       },
       {
-        "key": "武志红_130",
-        "name": "武志红",
+        "key": "周国平_134",
+        "name": "周国平",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3485,24 +3557,8 @@
         "items": 10
       },
       {
-        "key": "周国平_134",
-        "name": "周国平",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "财新_136",
         "name": "财新",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "三联生活周刊_137",
-        "name": "三联生活周刊",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3541,16 +3597,16 @@
         "items": 10
       },
       {
-        "key": "携程技术_142",
-        "name": "携程技术",
+        "key": "三联生活周刊_137",
+        "name": "三联生活周刊",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "蚂蚁技术anttech_143",
-        "name": "蚂蚁技术AntTech",
+        "key": "携程技术_142",
+        "name": "携程技术",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3565,8 +3621,8 @@
         "items": 10
       },
       {
-        "key": "丁香医生_145",
-        "name": "丁香医生",
+        "key": "蚂蚁技术anttech_143",
+        "name": "蚂蚁技术AntTech",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3597,6 +3653,22 @@
         "items": 10
       },
       {
+        "key": "丁香医生_145",
+        "name": "丁香医生",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "小林coding_149",
+        "name": "小林coding",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "斯坦福社会创新评论_150",
         "name": "斯坦福社会创新评论",
         "cat": "wechat",
@@ -3607,14 +3679,6 @@
       {
         "key": "谷雨实验室_151",
         "name": "谷雨实验室",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "小林coding_149",
-        "name": "小林coding",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3645,16 +3709,16 @@
         "items": 10
       },
       {
-        "key": "凤凰网财经_156",
-        "name": "凤凰网财经",
+        "key": "knowyourself_155",
+        "name": "KnowYourself",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "knowyourself_155",
-        "name": "KnowYourself",
+        "key": "凤凰网财经_156",
+        "name": "凤凰网财经",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3669,18 +3733,18 @@
         "items": 10
       },
       {
-        "key": "财联社_159",
-        "name": "财联社",
-        "cat": "wechat",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "雪球_158",
         "name": "雪球",
         "cat": "wechat",
         "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "财联社_159",
+        "name": "财联社",
+        "cat": "wechat",
+        "tier": 2,
         "status": "ok",
         "items": 10
       },
@@ -3773,24 +3837,8 @@
         "items": 10
       },
       {
-        "key": "央视财经_162",
-        "name": "央视财经",
-        "cat": "wechat",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "钛媒体_172",
         "name": "钛媒体",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "智能涌现_174",
-        "name": "智能涌现",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3805,8 +3853,8 @@
         "items": 10
       },
       {
-        "key": "从码农到工匠_177",
-        "name": "从码农到工匠",
+        "key": "智能涌现_174",
+        "name": "智能涌现",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3815,6 +3863,22 @@
       {
         "key": "水木人工智能学堂_176",
         "name": "水木人工智能学堂",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "央视财经_162",
+        "name": "央视财经",
+        "cat": "wechat",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "从码农到工匠_177",
+        "name": "从码农到工匠",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3861,16 +3925,16 @@
         "items": 10
       },
       {
-        "key": "ai大模型应用实践_183",
-        "name": "AI大模型应用实践",
+        "key": "王吉伟_184",
+        "name": "王吉伟",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "王吉伟_184",
-        "name": "王吉伟",
+        "key": "ai大模型应用实践_183",
+        "name": "AI大模型应用实践",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3901,16 +3965,16 @@
         "items": 10
       },
       {
-        "key": "砺石商业评论_189",
-        "name": "砺石商业评论",
+        "key": "通往agi之路_190",
+        "name": "通往AGI之路",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "通往agi之路_190",
-        "name": "通往AGI之路",
+        "key": "砺石商业评论_189",
+        "name": "砺石商业评论",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3925,16 +3989,16 @@
         "items": 10
       },
       {
-        "key": "喔家archiself_192",
-        "name": "喔家ArchiSelf",
+        "key": "乱翻书_193",
+        "name": "乱翻书",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "乱翻书_193",
-        "name": "乱翻书",
+        "key": "喔家archiself_192",
+        "name": "喔家ArchiSelf",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3949,16 +4013,16 @@
         "items": 10
       },
       {
-        "key": "产品犬舍_196",
-        "name": "产品犬舍",
+        "key": "zartbot_195",
+        "name": "zartbot",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "字节跳动开源_197",
-        "name": "字节跳动开源",
+        "key": "产品犬舍_196",
+        "name": "产品犬舍",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -3973,16 +4037,16 @@
         "items": 10
       },
       {
-        "key": "一泽eze_199",
-        "name": "一泽Eze",
+        "key": "字节跳动开源_197",
+        "name": "字节跳动开源",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "zartbot_195",
-        "name": "zartbot",
+        "key": "一泽eze_199",
+        "name": "一泽Eze",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4029,14 +4093,6 @@
         "items": 10
       },
       {
-        "key": "写代码的宝哥_206",
-        "name": "写代码的宝哥",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "方伟看十年_205",
         "name": "方伟看十年",
         "cat": "wechat",
@@ -4045,8 +4101,8 @@
         "items": 10
       },
       {
-        "key": "phodal_207",
-        "name": "phodal",
+        "key": "写代码的宝哥_206",
+        "name": "写代码的宝哥",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4061,20 +4117,20 @@
         "items": 10
       },
       {
-        "key": "nov心理_209",
-        "name": "NOV心理",
+        "key": "phodal_207",
+        "name": "phodal",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "泽平宏观_210",
-        "name": "泽平宏观",
+        "key": "nov心理_209",
+        "name": "NOV心理",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 6
+        "items": 10
       },
       {
         "key": "峰瑞资本_211",
@@ -4101,12 +4157,12 @@
         "items": 10
       },
       {
-        "key": "聪明投资者_214",
-        "name": "聪明投资者",
+        "key": "泽平宏观_210",
+        "name": "泽平宏观",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 6
       },
       {
         "key": "中金点睛_215",
@@ -4133,6 +4189,14 @@
         "items": 10
       },
       {
+        "key": "聪明投资者_214",
+        "name": "聪明投资者",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "格隆汇app_218",
         "name": "格隆汇APP",
         "cat": "wechat",
@@ -4143,14 +4207,6 @@
       {
         "key": "棱镜_219",
         "name": "棱镜",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "海豚研究_220",
-        "name": "海豚研究",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4169,6 +4225,14 @@
         "name": "21世纪经济报道",
         "cat": "wechat",
         "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "海豚研究_220",
+        "name": "海豚研究",
+        "cat": "wechat",
+        "tier": 3,
         "status": "ok",
         "items": 10
       },
@@ -4197,6 +4261,14 @@
         "items": 10
       },
       {
+        "key": "佳芮的创业笔记_227",
+        "name": "佳芮的创业笔记",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "财经早餐_228",
         "name": "财经早餐",
         "cat": "wechat",
@@ -4205,8 +4277,8 @@
         "items": 10
       },
       {
-        "key": "佳芮的创业笔记_227",
-        "name": "佳芮的创业笔记",
+        "key": "中国新闻周刊_229",
+        "name": "中国新闻周刊",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4217,14 +4289,6 @@
         "name": "第一财经",
         "cat": "wechat",
         "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "中国新闻周刊_229",
-        "name": "中国新闻周刊",
-        "cat": "wechat",
-        "tier": 3,
         "status": "ok",
         "items": 10
       },
@@ -4261,14 +4325,6 @@
         "items": 10
       },
       {
-        "key": "杨毅侃球_237",
-        "name": "杨毅侃球",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "单读_232",
         "name": "单读",
         "cat": "wechat",
@@ -4282,11 +4338,11 @@
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 9
       },
       {
-        "key": "足球报_239",
-        "name": "足球报",
+        "key": "杨毅侃球_237",
+        "name": "杨毅侃球",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4295,6 +4351,14 @@
       {
         "key": "体坛周报_240",
         "name": "体坛周报",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "足球报_239",
+        "name": "足球报",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4317,18 +4381,18 @@
         "items": 10
       },
       {
-        "key": "央视网体育_244",
-        "name": "央视网体育",
+        "key": "五星体育_242",
+        "name": "五星体育",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "央视新闻_245",
-        "name": "央视新闻",
+        "key": "央视网体育_244",
+        "name": "央视网体育",
         "cat": "wechat",
-        "tier": 2,
+        "tier": 3,
         "status": "ok",
         "items": 10
       },
@@ -4353,14 +4417,6 @@
         "name": "每日经济新闻",
         "cat": "wechat",
         "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "五星体育_242",
-        "name": "五星体育",
-        "cat": "wechat",
-        "tier": 3,
         "status": "ok",
         "items": 10
       },
@@ -4393,6 +4449,14 @@
         "name": "央广网",
         "cat": "wechat",
         "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "央视新闻_245",
+        "name": "央视新闻",
+        "cat": "wechat",
+        "tier": 2,
         "status": "ok",
         "items": 10
       },
@@ -4453,14 +4517,6 @@
         "items": 10
       },
       {
-        "key": "人民日报_261",
-        "name": "人民日报",
-        "cat": "wechat",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "央视网_262",
         "name": "央视网",
         "cat": "wechat",
@@ -4479,6 +4535,22 @@
       {
         "key": "梅斯医学_265",
         "name": "梅斯医学",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "人民日报_261",
+        "name": "人民日报",
+        "cat": "wechat",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "每晚一卷书_267",
+        "name": "每晚一卷书",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4509,14 +4581,6 @@
         "items": 10
       },
       {
-        "key": "每晚一卷书_267",
-        "name": "每晚一卷书",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "叶檀财经_270",
         "name": "叶檀财经",
         "cat": "wechat",
@@ -4541,16 +4605,16 @@
         "items": 10
       },
       {
-        "key": "功夫财经_273",
-        "name": "功夫财经",
+        "key": "混知_274",
+        "name": "混知",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "混知_274",
-        "name": "混知",
+        "key": "功夫财经_273",
+        "name": "功夫财经",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4586,19 +4650,11 @@
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 9
       },
       {
         "key": "中国国家地理_279",
         "name": "中国国家地理",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "携隐melody_281",
-        "name": "携隐Melody",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4613,8 +4669,8 @@
         "items": 10
       },
       {
-        "key": "格兰投研_283",
-        "name": "格兰投研",
+        "key": "携隐melody_281",
+        "name": "携隐Melody",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4631,6 +4687,14 @@
       {
         "key": "区块链头条_284",
         "name": "区块链头条",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "格兰投研_283",
+        "name": "格兰投研",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4669,16 +4733,16 @@
         "items": 10
       },
       {
-        "key": "caoz的梦呓_290",
-        "name": "caoz的梦呓",
+        "key": "孤独大脑_291",
+        "name": "孤独大脑",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "孤独大脑_291",
-        "name": "孤独大脑",
+        "key": "caoz的梦呓_290",
+        "name": "caoz的梦呓",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4693,14 +4757,6 @@
         "items": 10
       },
       {
-        "key": "i食色摇闲情_294",
-        "name": "i食色摇闲情",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "孟岩_292",
         "name": "孟岩",
         "cat": "wechat",
@@ -4709,8 +4765,8 @@
         "items": 10
       },
       {
-        "key": "地球知识局_295",
-        "name": "地球知识局",
+        "key": "i食色摇闲情_294",
+        "name": "i食色摇闲情",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4719,6 +4775,14 @@
       {
         "key": "星球研究所_296",
         "name": "星球研究所",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "地球知识局_295",
+        "name": "地球知识局",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4765,14 +4829,6 @@
         "items": 10
       },
       {
-        "key": "warfalcon_303",
-        "name": "warfalcon",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "deeptech深科技_302",
         "name": "DeepTech深科技",
         "cat": "wechat",
@@ -4789,8 +4845,8 @@
         "items": 10
       },
       {
-        "key": "环球科学_305",
-        "name": "环球科学",
+        "key": "warfalcon_303",
+        "name": "warfalcon",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4813,16 +4869,16 @@
         "items": 10
       },
       {
-        "key": "老张投研_309",
-        "name": "老张投研",
+        "key": "新京报书评周刊_308",
+        "name": "新京报书评周刊",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 9
+        "items": 10
       },
       {
-        "key": "新京报书评周刊_308",
-        "name": "新京报书评周刊",
+        "key": "环球科学_305",
+        "name": "环球科学",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4837,16 +4893,16 @@
         "items": 10
       },
       {
-        "key": "知乎日报_311",
-        "name": "知乎日报",
+        "key": "老张投研_309",
+        "name": "老张投研",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 9
       },
       {
-        "key": "真实故事计划_312",
-        "name": "真实故事计划",
+        "key": "知乎日报_311",
+        "name": "知乎日报",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4861,6 +4917,14 @@
         "items": 10
       },
       {
+        "key": "真实故事计划_312",
+        "name": "真实故事计划",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "理想国imaginist_314",
         "name": "理想国imaginist",
         "cat": "wechat",
@@ -4869,16 +4933,16 @@
         "items": 10
       },
       {
-        "key": "智族life_315",
-        "name": "智族Life",
+        "key": "神经现实_316",
+        "name": "神经现实",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "神经现实_316",
-        "name": "神经现实",
+        "key": "智族life_315",
+        "name": "智族Life",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -4949,6 +5013,14 @@
         "items": 10
       },
       {
+        "key": "返朴_325",
+        "name": "返朴",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 9
+      },
+      {
         "key": "澎湃新闻_326",
         "name": "澎湃新闻",
         "cat": "wechat",
@@ -4965,14 +5037,6 @@
         "items": 9
       },
       {
-        "key": "半月谈_328",
-        "name": "半月谈",
-        "cat": "wechat",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "国家人文历史_329",
         "name": "国家人文历史",
         "cat": "wechat",
@@ -4981,18 +5045,18 @@
         "items": 10
       },
       {
-        "key": "返朴_325",
-        "name": "返朴",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 9
-      },
-      {
         "key": "人民日报评论_330",
         "name": "人民日报评论",
         "cat": "wechat",
         "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "半月谈_328",
+        "name": "半月谈",
+        "cat": "wechat",
+        "tier": 2,
         "status": "ok",
         "items": 10
       },
@@ -5013,18 +5077,18 @@
         "items": 10
       },
       {
-        "key": "人民网_331",
-        "name": "人民网",
-        "cat": "wechat",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "正和岛_334",
         "name": "正和岛",
         "cat": "wechat",
         "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "人民网_331",
+        "name": "人民网",
+        "cat": "wechat",
+        "tier": 2,
         "status": "ok",
         "items": 10
       },
@@ -5045,14 +5109,6 @@
         "items": 10
       },
       {
-        "key": "浪潮工作室_336",
-        "name": "浪潮工作室",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 9
-      },
-      {
         "key": "红杉汇_338",
         "name": "红杉汇",
         "cat": "wechat",
@@ -5069,16 +5125,16 @@
         "items": 10
       },
       {
-        "key": "etf进化论_341",
-        "name": "ETF进化论",
+        "key": "浪潮工作室_336",
+        "name": "浪潮工作室",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "集思录_340",
-        "name": "集思录",
+        "key": "etf进化论_341",
+        "name": "ETF进化论",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5093,8 +5149,24 @@
         "items": 10
       },
       {
+        "key": "集思录_340",
+        "name": "集思录",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "虹膜_343",
         "name": "虹膜",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "环球设计_344",
+        "name": "环球设计",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5111,14 +5183,6 @@
       {
         "key": "memm设计知识分享_346",
         "name": "Memm设计知识分享",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "环球设计_344",
-        "name": "环球设计",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5149,16 +5213,16 @@
         "items": 10
       },
       {
-        "key": "游戏葡萄_351",
-        "name": "游戏葡萄",
+        "key": "澎湃思想市场_350",
+        "name": "澎湃思想市场",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "澎湃思想市场_350",
-        "name": "澎湃思想市场",
+        "key": "后浪研究所_352",
+        "name": "后浪研究所",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5173,8 +5237,8 @@
         "items": 10
       },
       {
-        "key": "后浪研究所_352",
-        "name": "后浪研究所",
+        "key": "游戏葡萄_351",
+        "name": "游戏葡萄",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5202,19 +5266,19 @@
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
-        "items": 7
+        "items": 8
       },
       {
-        "key": "财经杂志_357",
-        "name": "财经杂志",
+        "key": "得到_358",
+        "name": "得到",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "得到_358",
-        "name": "得到",
+        "key": "财经杂志_357",
+        "name": "财经杂志",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5229,8 +5293,8 @@
         "items": 10
       },
       {
-        "key": "中国金融四十人论坛_360",
-        "name": "中国金融四十人论坛",
+        "key": "barrons巴伦_361",
+        "name": "Barrons巴伦",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5245,16 +5309,8 @@
         "items": 10
       },
       {
-        "key": "barrons巴伦_361",
-        "name": "Barrons巴伦",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "运营研究社_363",
-        "name": "运营研究社",
+        "key": "中国金融四十人论坛_360",
+        "name": "中国金融四十人论坛",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5271,6 +5327,14 @@
       {
         "key": "界面文化_365",
         "name": "界面文化",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "运营研究社_363",
+        "name": "运营研究社",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5301,22 +5365,6 @@
         "items": 10
       },
       {
-        "key": "wallpaper中文版_369",
-        "name": "Wallpaper中文版",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "点拾投资_371",
-        "name": "点拾投资",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "工业设计_370",
         "name": "工业设计",
         "cat": "wechat",
@@ -5325,8 +5373,8 @@
         "items": 10
       },
       {
-        "key": "刀法研究所_374",
-        "name": "刀法研究所",
+        "key": "wallpaper中文版_369",
+        "name": "Wallpaper中文版",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5341,6 +5389,30 @@
         "items": 10
       },
       {
+        "key": "刀法研究所_374",
+        "name": "刀法研究所",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "张小珺jùn｜商业访谈录_0",
+        "name": "张小珺Jùn｜商业访谈录",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "华尔街见闻_126",
+        "name": "华尔街见闻",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "罗永浩的十字路口_1",
         "name": "罗永浩的十字路口",
         "cat": "podcast",
@@ -5349,16 +5421,16 @@
         "items": 15
       },
       {
-        "key": "ai前线_18",
-        "name": "AI前线",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "屠龙之术_2",
         "name": "屠龙之术",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "42章经_3",
+        "name": "42章经",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5373,14 +5445,6 @@
         "items": 15
       },
       {
-        "key": "张小珺jùn｜商业访谈录_0",
-        "name": "张小珺Jùn｜商业访谈录",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
         "key": "硅谷101_5",
         "name": "硅谷101",
         "cat": "podcast",
@@ -5389,20 +5453,12 @@
         "items": 15
       },
       {
-        "key": "罗西的思考_129",
-        "name": "罗西的思考",
+        "key": "点拾投资_371",
+        "name": "点拾投资",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
-      },
-      {
-        "key": "开始连接_linkstart_7",
-        "name": "开始连接 LinkStart",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
       },
       {
         "key": "半拿铁_|_商业沉浮录_6",
@@ -5413,32 +5469,24 @@
         "items": 15
       },
       {
-        "key": "此话当真_9",
-        "name": "此话当真",
+        "key": "开始连接_linkstart_7",
+        "name": "开始连接 LinkStart",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
         "items": 15
       },
       {
-        "key": "晚点聊_latetalk_11",
-        "name": "晚点聊 LateTalk",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "阿里技术_2",
-        "name": "阿里技术",
+        "key": "腾讯云开发者_6",
+        "name": "腾讯云开发者",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "牛油果烤面包_10",
-        "name": "牛油果烤面包",
+        "key": "此话当真_9",
+        "name": "此话当真",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5453,6 +5501,22 @@
         "items": 15
       },
       {
+        "key": "牛油果烤面包_10",
+        "name": "牛油果烤面包",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "京东技术_16",
+        "name": "京东技术",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "科技乱炖_15",
         "name": "科技乱炖",
         "cat": "podcast",
@@ -5461,20 +5525,20 @@
         "items": 15
       },
       {
-        "key": "稀土掘金技术社区_20",
-        "name": "稀土掘金技术社区",
-        "cat": "wechat",
+        "key": "声动早咖啡_14",
+        "name": "声动早咖啡",
+        "cat": "podcast",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 15
       },
       {
-        "key": "infoq_11",
-        "name": "InfoQ",
-        "cat": "wechat",
+        "key": "疯投圈_18",
+        "name": "疯投圈",
+        "cat": "podcast",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 15
       },
       {
         "key": "声东击西_17",
@@ -5485,16 +5549,16 @@
         "items": 15
       },
       {
-        "key": "数字生命卡兹克_13",
-        "name": "数字生命卡兹克",
+        "key": "百度文心_39",
+        "name": "百度文心",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "what's_next｜科技早知道_16",
-        "name": "What's Next｜科技早知道",
+        "key": "商业就是这样_19",
+        "name": "商业就是这样",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5507,6 +5571,14 @@
         "tier": 3,
         "status": "ok",
         "items": 15
+      },
+      {
+        "key": "deepseek_31",
+        "name": "DeepSeek",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
       },
       {
         "key": "三五环_22",
@@ -5525,48 +5597,32 @@
         "items": 15
       },
       {
-        "key": "jina_ai_32",
-        "name": "Jina AI",
+        "key": "infoq_11",
+        "name": "InfoQ",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "ai炼金术_24",
-        "name": "AI炼金术",
+        "key": "新智元_5",
+        "name": "新智元",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "信号与噪声_26",
+        "name": "信号与噪声",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
         "items": 15
       },
       {
-        "key": "人民公园说ai_27",
-        "name": "人民公园说AI",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "十字路口crossing_25",
-        "name": "十字路口Crossing",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "跨国串门儿计划_28",
-        "name": "跨国串门儿计划",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "海外独角兽_23",
-        "name": "海外独角兽",
+        "key": "agent橘_42",
+        "name": "AGENT橘",
         "cat": "wechat",
         "tier": 3,
         "status": "ok",
@@ -5581,8 +5637,32 @@
         "items": 15
       },
       {
-        "key": "搞钱女孩_30",
-        "name": "搞钱女孩",
+        "key": "十字路口crossing_25",
+        "name": "十字路口Crossing",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "ai前线_18",
+        "name": "AI前线",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "founder_park_8",
+        "name": "Founder Park",
+        "cat": "wechat",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "起朱楼宴宾客_31",
+        "name": "起朱楼宴宾客",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5597,36 +5677,12 @@
         "items": 15
       },
       {
-        "key": "第一财经_33",
-        "name": "第一财经",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "无人知晓_34",
-        "name": "无人知晓",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
         "key": "纵横四海_35",
         "name": "纵横四海",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
         "items": 15
-      },
-      {
-        "key": "大淘宝技术_4",
-        "name": "大淘宝技术",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
       },
       {
         "key": "自我进化论_36",
@@ -5639,6 +5695,14 @@
       {
         "key": "自习室_study_room_37",
         "name": "自习室 STUDY ROOM",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "慢速生长_38",
+        "name": "慢速生长",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5685,14 +5749,6 @@
         "items": 15
       },
       {
-        "key": "一席_45",
-        "name": "一席",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
         "key": "独树不成林_46",
         "name": "独树不成林",
         "cat": "podcast",
@@ -5703,6 +5759,14 @@
       {
         "key": "文化有限_47",
         "name": "文化有限",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "一席_45",
+        "name": "一席",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5733,16 +5797,16 @@
         "items": 15
       },
       {
-        "key": "天真不天真_52",
-        "name": "天真不天真",
+        "key": "凹凸电波_53",
+        "name": "凹凸电波",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
         "items": 15
       },
       {
-        "key": "凹凸电波_53",
-        "name": "凹凸电波",
+        "key": "天真不天真_52",
+        "name": "天真不天真",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5781,14 +5845,6 @@
         "items": 15
       },
       {
-        "key": "声动早咖啡_14",
-        "name": "声动早咖啡",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
         "key": "卫诗婕｜漫谈light_the_star_59",
         "name": "卫诗婕｜漫谈Light the Star",
         "cat": "podcast",
@@ -5797,16 +5853,8 @@
         "items": 15
       },
       {
-        "key": "起朱楼宴宾客_31",
-        "name": "起朱楼宴宾客",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "疯投圈_18",
-        "name": "疯投圈",
+        "key": "人民公园说ai_27",
+        "name": "人民公园说AI",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5821,88 +5869,8 @@
         "items": 30
       },
       {
-        "key": "aws_machine_learning_blog_379",
-        "name": "AWS Machine Learning Blog",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "商业就是这样_19",
-        "name": "商业就是这样",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "grafana_labs_382",
-        "name": "Grafana Labs",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "信号与噪声_26",
-        "name": "信号与噪声",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "吴晓波频道_91",
-        "name": "吴晓波频道",
-        "cat": "wechat",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "elastic_blog_381",
-        "name": "Elastic Blog",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "保持偏见_21",
-        "name": "保持偏见",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "掘金本周最热_384",
-        "name": "掘金本周最热",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "next_js_blog_388",
-        "name": "Next.js Blog",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "last_week_in_ai_387",
-        "name": "Last Week in AI",
-        "cat": "ai",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "慢速生长_38",
-        "name": "慢速生长",
+        "key": "跨国串门儿计划_28",
+        "name": "跨国串门儿计划",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -5917,36 +5885,52 @@
         "items": 15
       },
       {
-        "key": "宝玉的分享_383",
-        "name": "宝玉的分享",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "david_heinemeier_hansson_389",
-        "name": "David Heinemeier Hansson",
+        "key": "aws_machine_learning_blog_379",
+        "name": "AWS Machine Learning Blog",
         "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 20
       },
       {
-        "key": "42章经_3",
-        "name": "42章经",
+        "key": "grafana_labs_382",
+        "name": "Grafana Labs",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "搞钱女孩_30",
+        "name": "搞钱女孩",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
         "items": 15
       },
       {
-        "key": "the_jetbrains_blog_395",
-        "name": "The JetBrains Blog",
+        "key": "what's_next｜科技早知道_16",
+        "name": "What's Next｜科技早知道",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "elastic_blog_381",
+        "name": "Elastic Blog",
         "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 12
+        "items": 30
+      },
+      {
+        "key": "第一财经_33",
+        "name": "第一财经",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
       },
       {
         "key": "deeplearning_ai_385",
@@ -5955,6 +5939,38 @@
         "tier": 3,
         "status": "ok",
         "items": 16
+      },
+      {
+        "key": "last_week_in_ai_387",
+        "name": "Last Week in AI",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "next_js_blog_388",
+        "name": "Next.js Blog",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "无人知晓_34",
+        "name": "无人知晓",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "晚点聊_latetalk_11",
+        "name": "晚点聊 LateTalk",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
       },
       {
         "key": "martin_fowler_391",
@@ -5973,12 +5989,44 @@
         "items": 4
       },
       {
-        "key": "量子位_377",
-        "name": "量子位",
-        "cat": "cn_tech",
+        "key": "david_heinemeier_hansson_389",
+        "name": "David Heinemeier Hansson",
+        "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 30
+      },
+      {
+        "key": "掘金本周最热_384",
+        "name": "掘金本周最热",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "保持偏见_21",
+        "name": "保持偏见",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "google_deepmind_blog_390",
+        "name": "Google DeepMind Blog",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "宝玉的分享_383",
+        "name": "宝玉的分享",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "阮一峰的网络日志_401",
@@ -5997,20 +6045,20 @@
         "items": 20
       },
       {
-        "key": "databricks_404",
-        "name": "Databricks",
-        "cat": "ai",
+        "key": "ai炼金术_24",
+        "name": "AI炼金术",
+        "cat": "podcast",
         "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 15
       },
       {
-        "key": "google_deepmind_blog_390",
-        "name": "Google DeepMind Blog",
-        "cat": "ai",
+        "key": "the_jetbrains_blog_395",
+        "name": "The JetBrains Blog",
+        "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 12
       },
       {
         "key": "visual_studio_blog_405",
@@ -6029,12 +6077,20 @@
         "items": 10
       },
       {
-        "key": "infoq_397",
-        "name": "InfoQ",
-        "cat": "dev",
+        "key": "databricks_404",
+        "name": "Databricks",
+        "cat": "ai",
         "tier": 3,
         "status": "ok",
-        "items": 15
+        "items": 10
+      },
+      {
+        "key": "量子位_377",
+        "name": "量子位",
+        "cat": "cn_tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
       },
       {
         "key": "google_developers_blog_406",
@@ -6053,12 +6109,12 @@
         "items": 30
       },
       {
-        "key": "smashing_magazine_398",
-        "name": "Smashing Magazine",
-        "cat": "dev",
+        "key": "docker_408",
+        "name": "Docker",
+        "cat": "tech",
         "tier": 3,
         "status": "ok",
-        "items": 30
+        "items": 10
       },
       {
         "key": "the_keyword_blog_google_415",
@@ -6069,14 +6125,6 @@
         "items": 20
       },
       {
-        "key": "docker_408",
-        "name": "Docker",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "ai_musings_by_mu_421",
         "name": "AI Musings by Mu",
         "cat": "ai",
@@ -6085,20 +6133,12 @@
         "items": 0
       },
       {
-        "key": "qdrant_417",
-        "name": "Qdrant",
-        "cat": "ai",
+        "key": "smashing_magazine_398",
+        "name": "Smashing Magazine",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
         "items": 30
-      },
-      {
-        "key": "the_cloudflare_blog_411",
-        "name": "The Cloudflare Blog",
-        "cat": "tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
       },
       {
         "key": "supertechfans_418",
@@ -6117,16 +6157,8 @@
         "items": 0
       },
       {
-        "key": "elevate_430",
-        "name": "Elevate",
-        "cat": "ai",
-        "tier": 3,
-        "status": "error",
-        "items": 0
-      },
-      {
-        "key": "google_cloud_blog_386",
-        "name": "Google Cloud Blog",
+        "key": "the_cloudflare_blog_411",
+        "name": "The Cloudflare Blog",
         "cat": "tech",
         "tier": 3,
         "status": "ok",
@@ -6141,12 +6173,52 @@
         "items": 12
       },
       {
+        "key": "elevate_430",
+        "name": "Elevate",
+        "cat": "ai",
+        "tier": 3,
+        "status": "error",
+        "items": 0
+      },
+      {
+        "key": "qdrant_417",
+        "name": "Qdrant",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "anthropic_news_428",
         "name": "Anthropic News",
         "cat": "ai",
         "tier": 3,
         "status": "ok",
         "items": 10
+      },
+      {
+        "key": "google_cloud_blog_386",
+        "name": "Google Cloud Blog",
+        "cat": "tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "ai_at_meta_blog_429",
+        "name": "AI at Meta Blog",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 12
+      },
+      {
+        "key": "infoq_397",
+        "name": "InfoQ",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
       },
       {
         "key": "elevenlabs_blog_424",
@@ -6181,8 +6253,24 @@
         "items": 30
       },
       {
-        "key": "kevin_weil_kevinweil_440",
-        "name": "Kevin Weil 🇺🇸(@kevinweil)",
+        "key": "microsoft_research_msftresearch_442",
+        "name": "Microsoft Research(@MSFTResearch)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "andrej_karpathy_karpathy_443",
+        "name": "Andrej Karpathy(@karpathy)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "google_ai_googleai_444",
+        "name": "Google AI(@GoogleAI)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6205,24 +6293,16 @@
         "items": 10
       },
       {
-        "key": "microsoft_research_msftresearch_442",
-        "name": "Microsoft Research(@MSFTResearch)",
+        "key": "yann_lecun_ylecun_445",
+        "name": "Yann LeCun(@ylecun)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "ai_at_meta_blog_429",
-        "name": "AI at Meta Blog",
-        "cat": "ai",
-        "tier": 3,
-        "status": "ok",
-        "items": 12
-      },
-      {
-        "key": "yann_lecun_ylecun_445",
-        "name": "Yann LeCun(@ylecun)",
+        "key": "anton_osika_eu_acc_antonosika_446",
+        "name": "Anton Osika – eu/acc(@antonosika)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6237,32 +6317,8 @@
         "items": 0
       },
       {
-        "key": "andrej_karpathy_karpathy_443",
-        "name": "Andrej Karpathy(@karpathy)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "lovable_lovable_dev_447",
-        "name": "Lovable(@lovable_dev)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "replit_replit_450",
-        "name": "Replit ⠕(@Replit)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "amjad_masad_amasad_449",
-        "name": "Amjad Masad(@amasad)",
+        "key": "fei_fei_li_drfeifei_448",
+        "name": "Fei-Fei Li(@drfeifei)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6277,14 +6333,6 @@
         "items": 30
       },
       {
-        "key": "andrew_ng_andrewyng_453",
-        "name": "Andrew Ng(@AndrewYNg)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "hugging_face_huggingface_452",
         "name": "Hugging Face(@huggingface)",
         "cat": "twitter",
@@ -6293,8 +6341,24 @@
         "items": 30
       },
       {
+        "key": "andrew_ng_andrewyng_453",
+        "name": "Andrew Ng(@AndrewYNg)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "deeplearning_ai_deeplearningai_454",
         "name": "DeepLearning.AI(@DeepLearningAI)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "thomas_wolf_thom_wolf_455",
+        "name": "Thomas Wolf(@Thom_Wolf)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6317,16 +6381,16 @@
         "items": 30
       },
       {
-        "key": "rowan_cheung_rowancheung_458",
-        "name": "Rowan Cheung(@rowancheung)",
+        "key": "amjad_masad_amasad_449",
+        "name": "Amjad Masad(@amasad)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "thomas_wolf_thom_wolf_455",
-        "name": "Thomas Wolf(@Thom_Wolf)",
+        "key": "rowan_cheung_rowancheung_458",
+        "name": "Rowan Cheung(@rowancheung)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6349,16 +6413,16 @@
         "items": 30
       },
       {
-        "key": "demis_hassabis_demishassabis_460",
-        "name": "Demis Hassabis(@demishassabis)",
+        "key": "mustafa_suleyman_mustafasuleyman_462",
+        "name": "Mustafa Suleyman(@mustafasuleyman)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "mustafa_suleyman_mustafasuleyman_462",
-        "name": "Mustafa Suleyman(@mustafasuleyman)",
+        "key": "demis_hassabis_demishassabis_460",
+        "name": "Demis Hassabis(@demishassabis)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6381,20 +6445,20 @@
         "items": 30
       },
       {
-        "key": "binyuan_hui_huybery_466",
-        "name": "Binyuan Hui(@huybery)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 25
-      },
-      {
         "key": "qwen_alibaba_qwen_465",
         "name": "Qwen(@Alibaba_Qwen)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "binyuan_hui_huybery_466",
+        "name": "Binyuan Hui(@huybery)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 25
       },
       {
         "key": "google_deepmind_googledeepmind_467",
@@ -6477,16 +6541,16 @@
         "items": 30
       },
       {
-        "key": "scott_wu_scottwu46_474",
-        "name": "Scott Wu(@ScottWu46)",
+        "key": "ai_at_meta_aiatmeta_478",
+        "name": "AI at Meta(@AIatMeta)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "ai_at_meta_aiatmeta_478",
-        "name": "AI at Meta(@AIatMeta)",
+        "key": "scott_wu_scottwu46_474",
+        "name": "Scott Wu(@ScottWu46)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6501,16 +6565,16 @@
         "items": 28
       },
       {
-        "key": "patrick_loeber_patloeber_481",
-        "name": "Patrick Loeber(@patloeber)",
+        "key": "stanford_ai_lab_stanfordailab_479",
+        "name": "Stanford AI Lab(@StanfordAILab)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "stanford_ai_lab_stanfordailab_479",
-        "name": "Stanford AI Lab(@StanfordAILab)",
+        "key": "patrick_loeber_patloeber_481",
+        "name": "Patrick Loeber(@patloeber)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6613,6 +6677,14 @@
         "items": 30
       },
       {
+        "key": "taranjeet_taranjeetio_493",
+        "name": "Taranjeet(@taranjeetio)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 29
+      },
+      {
         "key": "heygen_heygen_official_495",
         "name": "HeyGen(@HeyGen_Official)",
         "cat": "twitter",
@@ -6637,22 +6709,6 @@
         "items": 30
       },
       {
-        "key": "taranjeet_taranjeetio_493",
-        "name": "Taranjeet(@taranjeetio)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 29
-      },
-      {
-        "key": "harrison_chase_hwchase17_498",
-        "name": "Harrison Chase(@hwchase17)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "recraft_recraftai_499",
         "name": "Recraft(@recraftai)",
         "cat": "twitter",
@@ -6663,6 +6719,14 @@
       {
         "key": "perplexity_perplexity_ai_500",
         "name": "Perplexity(@perplexity_ai)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "harrison_chase_hwchase17_498",
+        "name": "Harrison Chase(@hwchase17)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6765,16 +6829,16 @@
         "items": 30
       },
       {
-        "key": "fish_audio_fishaudio_515",
-        "name": "Fish Audio(@FishAudio)",
+        "key": "ai_sdk_aisdk_514",
+        "name": "AI SDK(@aisdk)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "ai_sdk_aisdk_514",
-        "name": "AI SDK(@aisdk)",
+        "key": "fish_audio_fishaudio_515",
+        "name": "Fish Audio(@FishAudio)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6829,16 +6893,16 @@
         "items": 30
       },
       {
-        "key": "宝玉_dotey_519",
-        "name": "宝玉(@dotey)",
+        "key": "figma_figma_523",
+        "name": "Figma(@figma)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "figma_figma_523",
-        "name": "Figma(@figma)",
+        "key": "宝玉_dotey_519",
+        "name": "宝玉(@dotey)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6933,14 +6997,6 @@
         "items": 30
       },
       {
-        "key": "eric_jing_ericjing_ai_536",
-        "name": "Eric Jing(@ericjing_ai)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "lenny_rachitsky_lennysan_537",
         "name": "Lenny Rachitsky(@lennysan)",
         "cat": "twitter",
@@ -6949,8 +7005,8 @@
         "items": 30
       },
       {
-        "key": "jim_fan_drjimfan_538",
-        "name": "Jim Fan(@DrJimFan)",
+        "key": "eric_jing_ericjing_ai_536",
+        "name": "Eric Jing(@ericjing_ai)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6965,8 +7021,8 @@
         "items": 30
       },
       {
-        "key": "ai_breakfast_aibreakfast_541",
-        "name": "AI Breakfast(@AiBreakfast)",
+        "key": "jim_fan_drjimfan_538",
+        "name": "Jim Fan(@DrJimFan)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6975,6 +7031,14 @@
       {
         "key": "akshay_kothari_akothari_540",
         "name": "Akshay Kothari(@akothari)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "ai_breakfast_aibreakfast_541",
+        "name": "AI Breakfast(@AiBreakfast)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -6997,16 +7061,16 @@
         "items": 30
       },
       {
-        "key": "歸藏_guizang_ai_op7418_543",
-        "name": "歸藏(guizang.ai)(@op7418)",
+        "key": "skywork_skywork_ai_545",
+        "name": "Skywork(@Skywork_ai)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "skywork_skywork_ai_545",
-        "name": "Skywork(@Skywork_ai)",
+        "key": "歸藏_guizang_ai_op7418_543",
+        "name": "歸藏(guizang.ai)(@op7418)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7045,16 +7109,16 @@
         "items": 30
       },
       {
-        "key": "cat_catwu_549",
-        "name": "cat(@_catwu)",
+        "key": "向阳乔木_vista8_551",
+        "name": "向阳乔木(@vista8)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "向阳乔木_vista8_551",
-        "name": "向阳乔木(@vista8)",
+        "key": "cat_catwu_549",
+        "name": "cat(@_catwu)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7069,16 +7133,16 @@
         "items": 30
       },
       {
-        "key": "kling_ai_kling_ai_553",
-        "name": "Kling AI(@Kling_ai)",
+        "key": "poe_poe_platform_555",
+        "name": "Poe(@poe_platform)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "poe_poe_platform_555",
-        "name": "Poe(@poe_platform)",
+        "key": "kling_ai_kling_ai_553",
+        "name": "Kling AI(@Kling_ai)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7117,16 +7181,16 @@
         "items": 30
       },
       {
-        "key": "a16z_a16z_558",
-        "name": "a16z(@a16z)",
+        "key": "paul_graham_paulg_561",
+        "name": "Paul Graham(@paulg)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "paul_graham_paulg_561",
-        "name": "Paul Graham(@paulg)",
+        "key": "a16z_a16z_558",
+        "name": "a16z(@a16z)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7261,16 +7325,16 @@
         "items": 17
       },
       {
-        "key": "gary_marcus_garymarcus_578",
-        "name": "Gary Marcus(@GaryMarcus)",
+        "key": "suhail_suhail_580",
+        "name": "Suhail(@Suhail)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "suhail_suhail_580",
-        "name": "Suhail(@Suhail)",
+        "key": "gary_marcus_garymarcus_578",
+        "name": "Gary Marcus(@GaryMarcus)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7301,14 +7365,6 @@
         "items": 30
       },
       {
-        "key": "idoubi_idoubicc_583",
-        "name": "idoubi(@idoubicc)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "martin_fowler_martinfowler_585",
         "name": "Martin Fowler(@martinfowler)",
         "cat": "twitter",
@@ -7317,8 +7373,8 @@
         "items": 30
       },
       {
-        "key": "viking_vikingmute_586",
-        "name": "Viking(@vikingmute)",
+        "key": "idoubi_idoubicc_583",
+        "name": "idoubi(@idoubicc)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7327,6 +7383,14 @@
       {
         "key": "geek_geekbb_587",
         "name": "Geek(@geekbb)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "viking_vikingmute_586",
+        "name": "Viking(@vikingmute)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
@@ -7354,7 +7418,7 @@
         "cat": "news",
         "tier": 2,
         "status": "ok",
-        "items": 25
+        "items": 27
       },
       {
         "key": "bbc_top_stories_592",
@@ -7373,6 +7437,14 @@
         "items": 30
       },
       {
+        "key": "lovable_lovable_dev_447",
+        "name": "Lovable(@lovable_dev)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "bbc_technology_594",
         "name": "BBC Technology",
         "cat": "tech",
@@ -7381,20 +7453,20 @@
         "items": 21
       },
       {
-        "key": "npr_news_596",
-        "name": "NPR News",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "ai_开发者日报_597",
         "name": "AI 开发者日报",
         "cat": "ai",
         "tier": 2,
         "status": "error",
         "items": 0
+      },
+      {
+        "key": "npr_news_596",
+        "name": "NPR News",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
       },
       {
         "key": "apple_machine_learning_research_598",
@@ -7421,20 +7493,20 @@
         "items": 20
       },
       {
-        "key": "hidecloud_hidecloud_590",
-        "name": "hidecloud(@hidecloud)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "新智元_602",
         "name": "新智元",
         "cat": "wechat",
         "tier": 2,
         "status": "ok",
         "items": 20
+      },
+      {
+        "key": "hidecloud_hidecloud_590",
+        "name": "hidecloud(@hidecloud)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "amiya的书桌_604",
@@ -7445,50 +7517,10 @@
         "items": 30
       },
       {
-        "key": "android_performance_605",
-        "name": "Android Performance",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "greg_brockman_gdb_438",
-        "name": "Greg Brockman(@gdb)",
+        "key": "mike_krieger_mikeyk_439",
+        "name": "Mike Krieger(@mikeyk)",
         "cat": "twitter",
         "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "bboysoul_s_blog_606",
-        "name": "Bboysoul's Blog",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "engineering_at_slack_608",
-        "name": "Engineering at Slack",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 8
-      },
-      {
-        "key": "fei_fei_li_drfeifei_448",
-        "name": "Fei-Fei Li(@drfeifei)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "eric_s_blog_609",
-        "name": "Eric's Blog",
-        "cat": "dev",
-        "tier": 2,
         "status": "ok",
         "items": 30
       },
@@ -7501,28 +7533,36 @@
         "items": 10
       },
       {
-        "key": "icodex_前端技术博客_专注_react_typescript_ai_与性能优化_blog_611",
-        "name": "icodex | 前端技术博客 | 专注 React、TypeScript、AI 与性能优化 Blog",
+        "key": "bboysoul_s_blog_606",
+        "name": "Bboysoul's Blog",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 20
       },
       {
-        "key": "etsy_engineering_code_as_craft_610",
-        "name": "Etsy Engineering | Code as Craft",
-        "cat": "dev",
-        "tier": 2,
+        "key": "replit_replit_450",
+        "name": "Replit ⠕(@Replit)",
+        "cat": "twitter",
+        "tier": 3,
         "status": "ok",
-        "items": 20
+        "items": 30
       },
       {
-        "key": "nicksxs_s_blog_614",
-        "name": "Nicksxs's Blog",
+        "key": "engineering_at_slack_608",
+        "name": "Engineering at Slack",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 20
+        "items": 8
+      },
+      {
+        "key": "eric_s_blog_609",
+        "name": "Eric's Blog",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "chatgpt_chatgptapp_433",
@@ -7533,12 +7573,44 @@
         "items": 30
       },
       {
+        "key": "nicksxs_s_blog_614",
+        "name": "Nicksxs's Blog",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "android_performance_605",
+        "name": "Android Performance",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "etsy_engineering_code_as_craft_610",
+        "name": "Etsy Engineering | Code as Craft",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
         "key": "python_insider_618",
         "name": "Python Insider",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "icodex_前端技术博客_专注_react_typescript_ai_与性能优化_blog_611",
+        "name": "icodex | 前端技术博客 | 专注 React、TypeScript、AI 与性能优化 Blog",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
       },
       {
         "key": "rust_blog_619",
@@ -7565,20 +7637,20 @@
         "items": 30
       },
       {
-        "key": "abyss的小屋_603",
-        "name": "Abyss的小屋",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "sjdhome_623",
         "name": "sjdhome",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 23
+      },
+      {
+        "key": "kevin_weil_kevinweil_440",
+        "name": "Kevin Weil 🇺🇸(@kevinweil)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "smallyu的博客_624",
@@ -7589,18 +7661,10 @@
         "items": 30
       },
       {
-        "key": "mike_krieger_mikeyk_439",
-        "name": "Mike Krieger(@mikeyk)",
+        "key": "sam_altman_sama_434",
+        "name": "Sam Altman(@sama)",
         "cat": "twitter",
         "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "stack_overflow_blog_626",
-        "name": "Stack Overflow Blog",
-        "cat": "dev",
-        "tier": 2,
         "status": "ok",
         "items": 30
       },
@@ -7613,20 +7677,12 @@
         "items": 5
       },
       {
-        "key": "taxodium_627",
-        "name": "Taxodium",
+        "key": "stack_overflow_blog_626",
+        "name": "Stack Overflow Blog",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "tianhe_gao_631",
-        "name": "Tianhe Gao",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
+        "items": 30
       },
       {
         "key": "the_airbnb_tech_blog_medium_628",
@@ -7637,12 +7693,12 @@
         "items": 10
       },
       {
-        "key": "tw93_blog_632",
-        "name": "Tw93 Blog",
+        "key": "tianhe_gao_631",
+        "name": "Tianhe Gao",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 10
+        "items": 20
       },
       {
         "key": "the_new_stack_630",
@@ -7653,18 +7709,42 @@
         "items": 26
       },
       {
-        "key": "sam_altman_sama_434",
-        "name": "Sam Altman(@sama)",
+        "key": "tw93_blog_632",
+        "name": "Tw93 Blog",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "anthropic_anthropicai_435",
+        "name": "Anthropic(@AnthropicAI)",
         "cat": "twitter",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
+        "key": "taxodium_627",
+        "name": "Taxodium",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 15
+      },
+      {
         "key": "usubeni_fantasy_633",
         "name": "Usubeni Fantasy",
         "cat": "dev",
         "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "dario_amodei_darioamodei_436",
+        "name": "Dario Amodei(@DarioAmodei)",
+        "cat": "twitter",
+        "tier": 3,
         "status": "ok",
         "items": 20
       },
@@ -7677,20 +7757,12 @@
         "items": 0
       },
       {
-        "key": "anthropic_anthropicai_435",
-        "name": "Anthropic(@AnthropicAI)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "农码生涯_无酒无花_the_coding_life_no_wine_no_shine_637",
-        "name": "农码生涯，无酒无花 – The coding life, no wine, no shine.",
+        "key": "东东_s_blog_636",
+        "name": "东东's Blog",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 10
+        "items": 30
       },
       {
         "key": "千里之豪的格物垛_638",
@@ -7701,14 +7773,6 @@
         "items": 10
       },
       {
-        "key": "东东_s_blog_636",
-        "name": "东东's Blog",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "唐巧的博客_640",
         "name": "唐巧的博客",
         "cat": "dev",
@@ -7717,36 +7781,20 @@
         "items": 20
       },
       {
-        "key": "夜法之书_642",
-        "name": "夜法之书",
+        "key": "农码生涯_无酒无花_the_coding_life_no_wine_no_shine_637",
+        "name": "农码生涯，无酒无花 – The coding life, no wine, no shine.",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "dario_amodei_darioamodei_436",
-        "name": "Dario Amodei(@DarioAmodei)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "google_ai_googleai_444",
-        "name": "Google AI(@GoogleAI)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "愆伏_647",
-        "name": "愆伏",
+        "key": "夜法之书_642",
+        "name": "夜法之书",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 30
+        "items": 10
       },
       {
         "key": "如有乐享_643",
@@ -7765,20 +7813,28 @@
         "items": 20
       },
       {
+        "key": "obaby_𝐢_𝐧_void_615",
+        "name": "obaby 𝐢‍𝐧⃝ void",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "愆伏_647",
+        "name": "愆伏",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "王圆圆_iconpik_648",
         "name": "王圆圆 - ICONPIK",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 15
-      },
-      {
-        "key": "anton_osika_eu_acc_antonosika_446",
-        "name": "Anton Osika – eu/acc(@antonosika)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
       },
       {
         "key": "寒夜雨_644",
@@ -7789,12 +7845,12 @@
         "items": 10
       },
       {
-        "key": "喵喵小站_博客志_641",
-        "name": "喵喵小站・博客志",
-        "cat": "dev",
-        "tier": 2,
+        "key": "alex_albert_alexalbert_437",
+        "name": "Alex Albert(@alexalbert__)",
+        "cat": "twitter",
+        "tier": 3,
         "status": "ok",
-        "items": 10
+        "items": 30
       },
       {
         "key": "维基萌_652",
@@ -7805,8 +7861,24 @@
         "items": 10
       },
       {
-        "key": "obaby_𝐢_𝐧_void_615",
-        "name": "obaby 𝐢‍𝐧⃝ void",
+        "key": "greg_brockman_gdb_438",
+        "name": "Greg Brockman(@gdb)",
+        "cat": "twitter",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "老范讲故事_ai_大模型与商业世界的故事_653",
+        "name": "老范讲故事｜AI、大模型与商业世界的故事",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "abyss的小屋_603",
+        "name": "Abyss的小屋",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
@@ -7821,40 +7893,16 @@
         "items": 11
       },
       {
-        "key": "豌豆花下猫_655",
-        "name": "豌豆花下猫",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "alex_albert_alexalbert_437",
-        "name": "Alex Albert(@alexalbert__)",
-        "cat": "twitter",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "seven_s_blog_622",
-        "name": "Seven's blog",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "阁子_656",
-        "name": "阁子",
+        "key": "鸟窝_657",
+        "name": "鸟窝",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 20
       },
       {
-        "key": "鸟窝_657",
-        "name": "鸟窝",
+        "key": "阁子_656",
+        "name": "阁子",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
@@ -7869,33 +7917,41 @@
         "items": 5
       },
       {
-        "key": "老范讲故事_ai_大模型与商业世界的故事_653",
-        "name": "老范讲故事｜AI、大模型与商业世界的故事",
+        "key": "seven_s_blog_622",
+        "name": "Seven's blog",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 10
+        "items": 30
       },
       {
-        "key": "腾讯玄武实验室_665",
-        "name": "腾讯玄武实验室",
-        "cat": "wechat",
+        "key": "豌豆花下猫_655",
+        "name": "豌豆花下猫",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "张洪heo_645",
+        "name": "张洪Heo",
+        "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 20
       },
       {
+        "key": "皓子的小站_650",
+        "name": "皓子的小站",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "schneier_on_security_661",
         "name": "Schneier on Security",
         "cat": "tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "虹墨空间站_654",
-        "name": "虹墨空间站",
-        "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 10
@@ -7909,65 +7965,17 @@
         "items": 25
       },
       {
+        "key": "腾讯玄武实验室_665",
+        "name": "腾讯玄武实验室",
+        "cat": "wechat",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
         "key": "engadget_667",
         "name": "Engadget",
         "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "liesauer_s_blog_613",
-        "name": "LiesAuer's Blog",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "flowingdata_673",
-        "name": "FlowingData",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "aigc_weekly_668",
-        "name": "AIGC Weekly",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "粥里有勺糖_651",
-        "name": "粥里有勺糖",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "bbc_news_science_671",
-        "name": "BBC News — Science",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "皓子的小站_650",
-        "name": "皓子的小站",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "黑羽的个人博客_658",
-        "name": "黑羽的个人博客",
-        "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 20
@@ -7981,6 +7989,22 @@
         "items": 30
       },
       {
+        "key": "bbc_news_science_671",
+        "name": "BBC News — Science",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "liesauer_s_blog_613",
+        "name": "LiesAuer's Blog",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "nasa_674",
         "name": "NASA",
         "cat": "ai",
@@ -7989,8 +8013,40 @@
         "items": 10
       },
       {
+        "key": "flowingdata_673",
+        "name": "FlowingData",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "elife_latest_articles_672",
         "name": "eLife: latest articles",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "aigc_weekly_668",
+        "name": "AIGC Weekly",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "nyt_science_676",
+        "name": "NYT > Science",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "phys_org_latest_science_and_technology_news_stories_677",
+        "name": "Phys.org - latest science and technology news stories",
         "cat": "ai",
         "tier": 2,
         "status": "ok",
@@ -8013,129 +8069,17 @@
         "items": 30
       },
       {
-        "key": "security_affairs_662",
-        "name": "Security Affairs",
-        "cat": "tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
         "key": "nature_675",
         "name": "Nature",
         "cat": "ai",
         "tier": 2,
-        "status": "ok",
-        "items": 30
+        "status": "error",
+        "items": 0
       },
       {
         "key": "scientific_american_content_global_680",
         "name": "Scientific American Content: Global",
         "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "npr_topics_world_685",
-        "name": "NPR Topics: World",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "phys_org_latest_science_and_technology_news_stories_677",
-        "name": "Phys.org - latest science and technology news stories",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "nyt_technology_686",
-        "name": "NYT > Technology",
-        "cat": "tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "world_news_the_guardian_688",
-        "name": "World news | The Guardian",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "propublica_687",
-        "name": "ProPublica",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "space_the_guardian_681",
-        "name": "Space | The Guardian",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "nyt_science_676",
-        "name": "NYT > Science",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 29
-      },
-      {
-        "key": "张洪heo_645",
-        "name": "张洪Heo",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "infoq_news_684",
-        "name": "InfoQ — News",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "61_s_life_690",
-        "name": "61’s life",
-        "cat": "tech",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "another_dayu_700",
-        "name": "Another Dayu",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "阿里云设计中心_694",
-        "name": "阿里云设计中心",
-        "cat": "wechat",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "abb00717_699",
-        "name": "ABB00717",
-        "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 30
@@ -8149,24 +8093,160 @@
         "items": 30
       },
       {
+        "key": "虹墨空间站_654",
+        "name": "虹墨空间站",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "npr_topics_world_685",
+        "name": "NPR Topics: World",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "nyt_technology_686",
+        "name": "NYT > Technology",
+        "cat": "tech",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "黑羽的个人博客_658",
+        "name": "黑羽的个人博客",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "world_news_the_guardian_688",
+        "name": "World news | The Guardian",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "粥里有勺糖_651",
+        "name": "粥里有勺糖",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "space_the_guardian_681",
+        "name": "Space | The Guardian",
+        "cat": "ai",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "security_affairs_662",
+        "name": "Security Affairs",
+        "cat": "tech",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "propublica_687",
+        "name": "ProPublica",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "阿里云设计中心_694",
+        "name": "阿里云设计中心",
+        "cat": "wechat",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "61_s_life_690",
+        "name": "61’s life",
+        "cat": "tech",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "infoq_news_684",
+        "name": "InfoQ — News",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 15
+      },
+      {
         "key": "知足常乐_水星投资理财的基本意念_696",
         "name": "知足常乐-水星投资理财的基本意念",
         "cat": "news",
         "tier": 2,
         "status": "ok",
-        "items": 10
+        "items": 11
       },
       {
-        "key": "雷蒙三十_幫助忙碌現代人的聰明工作_好好生活的生產力指南_698",
-        "name": "雷蒙三十｜幫助忙碌現代人的聰明工作、好好生活的生產力指南",
-        "cat": "news",
+        "key": "space_latest_in_science_and_technology_new_scientist_682",
+        "name": "Space – latest in science and technology | New Scientist",
+        "cat": "ai",
         "tier": 2,
         "status": "ok",
         "items": 10
       },
       {
+        "key": "macin_695",
+        "name": "Macin",
+        "cat": "news",
+        "tier": 2,
+        "status": "error",
+        "items": 0
+      },
+      {
+        "key": "abb00717_699",
+        "name": "ABB00717",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "dort_的博客_701",
         "name": "Dort 的博客",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "happy_xiao_702",
+        "name": "happy xiao",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 6
+      },
+      {
+        "key": "another_dayu_700",
+        "name": "Another Dayu",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "justzht_s_echochamber_705",
+        "name": "JustZht's EchoChamber",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
@@ -8181,46 +8261,6 @@
         "items": 26
       },
       {
-        "key": "macin_695",
-        "name": "Macin",
-        "cat": "news",
-        "tier": 2,
-        "status": "error",
-        "items": 0
-      },
-      {
-        "key": "happy_xiao_702",
-        "name": "happy xiao",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 6
-      },
-      {
-        "key": "m_x_chris_an_emacser_706",
-        "name": "M-x Chris-An-Emacser",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "justzht_s_echochamber_705",
-        "name": "JustZht's EchoChamber",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 15
-      },
-      {
-        "key": "seisamuse_707",
-        "name": "SEISAMUSE",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "一派胡言_blog_710",
         "name": "一派胡言 · Blog",
         "cat": "dev",
@@ -8229,48 +8269,16 @@
         "items": 10
       },
       {
-        "key": "space_latest_in_science_and_technology_new_scientist_682",
-        "name": "Space – latest in science and technology | New Scientist",
-        "cat": "ai",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "不吐不快_711",
-        "name": "不吐不快",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "虎嗅_689",
-        "name": "虎嗅",
+        "key": "36氪_666",
+        "name": "36氪",
         "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 1
-      },
-      {
-        "key": "印记_713",
-        "name": "印记",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "wsh_709",
-        "name": "WSH",
-        "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "局域自由博客_716",
-        "name": "局域自由博客",
+        "key": "seisamuse_707",
+        "name": "SEISAMUSE",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
@@ -8285,36 +8293,28 @@
         "items": 30
       },
       {
-        "key": "廊桥遗梦_717",
-        "name": "廊桥遗梦",
+        "key": "wsh_709",
+        "name": "WSH",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 15
+        "items": 30
       },
       {
-        "key": "梅之夏_718",
-        "name": "梅之夏",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "shuibaco_水八口_708",
-        "name": "Shuibaco • 水八口",
-        "cat": "dev",
+        "key": "雷蒙三十_幫助忙碌現代人的聰明工作_好好生活的生產力指南_698",
+        "name": "雷蒙三十｜幫助忙碌現代人的聰明工作、好好生活的生產力指南",
+        "cat": "news",
         "tier": 2,
         "status": "ok",
         "items": 10
       },
       {
-        "key": "hacker_news_723",
-        "name": "Hacker News",
+        "key": "不吐不快_711",
+        "name": "不吐不快",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 30
+        "items": 10
       },
       {
         "key": "jax_691",
@@ -8325,28 +8325,28 @@
         "items": 10
       },
       {
-        "key": "祝融说_720",
-        "name": "祝融说。",
+        "key": "局域自由博客_716",
+        "name": "局域自由博客",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "印记_713",
+        "name": "印记",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
         "items": 20
       },
       {
-        "key": "資工小廢物_jn_721",
-        "name": "資工小廢物 - JN",
+        "key": "廊桥遗梦_717",
+        "name": "廊桥遗梦",
         "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "36氪_666",
-        "name": "36氪",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
+        "items": 15
       },
       {
         "key": "四喜丸子_714",
@@ -8357,6 +8357,46 @@
         "items": 30
       },
       {
+        "key": "m_x_chris_an_emacser_706",
+        "name": "M-x Chris-An-Emacser",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "梅之夏_718",
+        "name": "梅之夏",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "祝融说_720",
+        "name": "祝融说。",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "喵喵小站_博客志_641",
+        "name": "喵喵小站・博客志",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "shuibaco_水八口_708",
+        "name": "Shuibaco • 水八口",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 10
+      },
+      {
         "key": "闲人life_722",
         "name": "闲人LIFE",
         "cat": "dev",
@@ -8365,12 +8405,28 @@
         "items": 25
       },
       {
-        "key": "kaix_in_727",
-        "name": "KAIX.IN",
-        "cat": "news",
+        "key": "jake_blog_703",
+        "name": "Jake blog",
+        "cat": "dev",
         "tier": 2,
         "status": "ok",
-        "items": 6
+        "items": 20
+      },
+      {
+        "key": "hacker_news_723",
+        "name": "Hacker News",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "資工小廢物_jn_721",
+        "name": "資工小廢物 - JN",
+        "cat": "dev",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "涵哲子居_719",
@@ -8397,12 +8453,20 @@
         "items": 25
       },
       {
+        "key": "kaix_in_727",
+        "name": "KAIX.IN",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 6
+      },
+      {
         "key": "linux_do_文档共建_724",
         "name": "LINUX DO · 文档共建",
         "cat": "dev",
         "tier": 2,
-        "status": "ok",
-        "items": 2
+        "status": "empty",
+        "items": 0
       },
       {
         "key": "先生制造_732",
@@ -8433,24 +8497,8 @@
         "name": "arXiv 计算机视觉",
         "cat": "ai",
         "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "jake_blog_703",
-        "name": "Jake blog",
-        "cat": "dev",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "darknet_diaries_735",
-        "name": "Darknet Diaries",
-        "cat": "podcast",
-        "tier": 2,
-        "status": "ok",
-        "items": 30
+        "status": "empty",
+        "items": 0
       },
       {
         "key": "nixos_development_726",
@@ -8467,6 +8515,22 @@
         "tier": 2,
         "status": "ok",
         "items": 1
+      },
+      {
+        "key": "虎嗅_689",
+        "name": "虎嗅",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "for_the_zero的个人博客_748",
+        "name": "for_the_zero的个人博客",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
       },
       {
         "key": "data4fun_746",
@@ -8493,9 +8557,9 @@
         "items": 30
       },
       {
-        "key": "release_notes_from_openclaw_743",
-        "name": "Release notes from openclaw",
-        "cat": "ai",
+        "key": "rokcso_s_blog_749",
+        "name": "Rokcso's Blog",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
         "items": 10
@@ -8509,17 +8573,9 @@
         "items": 10
       },
       {
-        "key": "for_the_zero的个人博客_748",
-        "name": "for_the_zero的个人博客",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "rokcso_s_blog_749",
-        "name": "Rokcso's Blog",
-        "cat": "dev",
+        "key": "release_notes_from_openclaw_743",
+        "name": "Release notes from openclaw",
+        "cat": "ai",
         "tier": 3,
         "status": "ok",
         "items": 10
@@ -8541,20 +8597,20 @@
         "items": 30
       },
       {
+        "key": "maohang_gao_s_blog_728",
+        "name": "Maohang Gao's Blog",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
         "key": "reddit_linux_self_hosted_devops_ai_762",
         "name": "Reddit · Linux, Self-Hosted, DevOps & AI",
         "cat": "dev",
         "tier": 3,
         "status": "rate_limited",
         "items": 0
-      },
-      {
-        "key": "东评西就_731",
-        "name": "东评西就",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
       },
       {
         "key": "明立非_mingnify的博客_756",
@@ -8565,12 +8621,12 @@
         "items": 20
       },
       {
-        "key": "maohang_gao_s_blog_728",
-        "name": "Maohang Gao's Blog",
-        "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 20
+        "key": "openai_developer_community_api_761",
+        "name": "OpenAI Developer Community · API",
+        "cat": "dev",
+        "tier": 3,
+        "status": "rate_limited",
+        "items": 0
       },
       {
         "key": "码录集_757",
@@ -8581,36 +8637,28 @@
         "items": 20
       },
       {
+        "key": "东评西就_731",
+        "name": "东评西就",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
+        "key": "darknet_diaries_735",
+        "name": "Darknet Diaries",
+        "cat": "podcast",
+        "tier": 2,
+        "status": "ok",
+        "items": 30
+      },
+      {
         "key": "nyt_world_news_766",
         "name": "NYT World News",
         "cat": "news",
         "tier": 3,
         "status": "ok",
         "items": 30
-      },
-      {
-        "key": "阿尔的代码屋_全栈技术笔记_760",
-        "name": "阿尔的代码屋 | 全栈技术笔记",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 20
-      },
-      {
-        "key": "openai_developer_community_api_761",
-        "name": "OpenAI Developer Community · API",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 25
-      },
-      {
-        "key": "翔宇工作流_758",
-        "name": "翔宇工作流",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 15
       },
       {
         "key": "times_of_india_world_769",
@@ -8621,36 +8669,12 @@
         "items": 20
       },
       {
-        "key": "mit科技评论热榜_765",
-        "name": "MIT科技评论热榜",
-        "cat": "cn_tech",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "大橘和朋友们的周刊_764",
-        "name": "大橘和朋友们的周刊",
+        "key": "阿尔的代码屋_全栈技术笔记_760",
+        "name": "阿尔的代码屋 | 全栈技术笔记",
         "cat": "dev",
         "tier": 3,
         "status": "ok",
-        "items": 5
-      },
-      {
-        "key": "fragmented_ai_developer_podcast_763",
-        "name": "Fragmented - AI Developer Podcast",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 23
-      },
-      {
-        "key": "sciencedaily_top_772",
-        "name": "ScienceDaily Top",
-        "cat": "ai",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
+        "items": 20
       },
       {
         "key": "sekyoro的博客小屋_750",
@@ -8661,12 +8685,36 @@
         "items": 20
       },
       {
-        "key": "sciencedaily_all_774",
-        "name": "ScienceDaily All",
+        "key": "翔宇工作流_758",
+        "name": "翔宇工作流",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 15
+      },
+      {
+        "key": "mit科技评论热榜_765",
+        "name": "MIT科技评论热榜",
+        "cat": "cn_tech",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "sciencedaily_top_772",
+        "name": "ScienceDaily Top",
         "cat": "ai",
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "大橘和朋友们的周刊_764",
+        "name": "大橘和朋友们的周刊",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 5
       },
       {
         "key": "amazon_science_773",
@@ -8685,12 +8733,28 @@
         "items": 20
       },
       {
-        "key": "economist_782",
-        "name": "The Economist",
+        "key": "sciencedaily_all_774",
+        "name": "ScienceDaily All",
+        "cat": "ai",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "dw_chinese_777",
+        "name": "DW 中文",
         "cat": "news",
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "fragmented_ai_developer_podcast_763",
+        "name": "Fragmented - AI Developer Podcast",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 23
       },
       {
         "key": "deutsche_welle_776",
@@ -8709,12 +8773,12 @@
         "items": 30
       },
       {
-        "key": "le_monde_784",
-        "name": "Le Monde",
-        "cat": "news",
+        "key": "冰冻大西瓜_753",
+        "name": "冰冻大西瓜",
+        "cat": "dev",
         "tier": 3,
         "status": "ok",
-        "items": 16
+        "items": 30
       },
       {
         "key": "google_security_blog_785",
@@ -8725,8 +8789,24 @@
         "items": 20
       },
       {
-        "key": "dw_chinese_777",
-        "name": "DW 中文",
+        "key": "le_monde_784",
+        "name": "Le Monde",
+        "cat": "news",
+        "tier": 3,
+        "status": "ok",
+        "items": 16
+      },
+      {
+        "key": "站长之家_770",
+        "name": "站长之家",
+        "cat": "news",
+        "tier": 3,
+        "status": "ok",
+        "items": 10
+      },
+      {
+        "key": "economist_782",
+        "name": "The Economist",
         "cat": "news",
         "tier": 3,
         "status": "ok",
@@ -8773,12 +8853,20 @@
         "items": 30
       },
       {
-        "key": "svelte_blog_791",
-        "name": "Svelte Blog",
+        "key": "product_hunt_797",
+        "name": "Product Hunt",
         "cat": "dev",
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "react_blog_798",
+        "name": "React Blog",
+        "cat": "dev",
+        "tier": 3,
+        "status": "ok",
+        "items": 24
       },
       {
         "key": "swift_blog_801",
@@ -8789,8 +8877,8 @@
         "items": 0
       },
       {
-        "key": "product_hunt_797",
-        "name": "Product Hunt",
+        "key": "svelte_blog_791",
+        "name": "Svelte Blog",
         "cat": "dev",
         "tier": 3,
         "status": "ok",
@@ -8805,20 +8893,12 @@
         "items": 30
       },
       {
-        "key": "react_blog_798",
-        "name": "React Blog",
-        "cat": "dev",
-        "tier": 3,
+        "key": "hf_daily_papers_803",
+        "name": "HF Daily Papers",
+        "cat": "ai",
+        "tier": 2,
         "status": "ok",
-        "items": 24
-      },
-      {
-        "key": "go_blog_800",
-        "name": "Go Blog",
-        "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
+        "items": 18
       },
       {
         "key": "csstricks_789",
@@ -8829,9 +8909,9 @@
         "items": 15
       },
       {
-        "key": "david_senra_901",
-        "name": "David Senra",
-        "cat": "podcast",
+        "key": "rfi_cn_779",
+        "name": "RFI 中文",
+        "cat": "news",
         "tier": 3,
         "status": "ok",
         "items": 30
@@ -8845,34 +8925,10 @@
         "items": 20
       },
       {
-        "key": "rfi_cn_779",
-        "name": "RFI 中文",
-        "cat": "news",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "冰冻大西瓜_753",
-        "name": "冰冻大西瓜",
+        "key": "如鱼饮水_715",
+        "name": "如鱼饮水",
         "cat": "dev",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "hf_daily_papers_803",
-        "name": "HF Daily Papers",
-        "cat": "ai",
         "tier": 2,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "蓝点网_771",
-        "name": "蓝点网",
-        "cat": "news",
-        "tier": 3,
         "status": "ok",
         "items": 20
       },
@@ -8885,40 +8941,32 @@
         "items": 2
       },
       {
-        "key": "machine_learning_tech_brief_by_hackernoo_922",
-        "name": "Machine Learning Tech Brief By HackerNoon",
+        "key": "david_senra_901",
+        "name": "David Senra",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "wallstreetcn_live_805",
-        "name": "华尔街见闻直播",
+        "key": "蓝点网_771",
+        "name": "蓝点网",
         "cat": "news",
-        "tier": 1,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "如鱼饮水_715",
-        "name": "如鱼饮水",
-        "cat": "dev",
-        "tier": 2,
+        "tier": 3,
         "status": "ok",
         "items": 20
       },
       {
-        "key": "bbc_world_rsshub_804",
-        "name": "BBC World (RSSHub)",
-        "cat": "news",
-        "tier": 2,
+        "key": "go_blog_800",
+        "name": "Go Blog",
+        "cat": "dev",
+        "tier": 3,
         "status": "ok",
-        "items": 25
+        "items": 10
       },
       {
-        "key": "the_ai_daily_brief_artificial_intelligen_926",
-        "name": "The AI Daily Brief: Artificial Intelligence News and Analysis",
+        "key": "machine_learning_tech_brief_by_hackernoo_922",
+        "name": "Machine Learning Tech Brief By HackerNoon",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -8933,24 +8981,24 @@
         "items": 1
       },
       {
-        "key": "caixin_latest_rsshub_806",
-        "name": "财新最新 (RSSHub)",
+        "key": "wallstreetcn_live_805",
+        "name": "华尔街见闻直播",
         "cat": "news",
-        "tier": 2,
-        "status": "ok",
-        "items": 19
-      },
-      {
-        "key": "programming_tech_brief_by_hackernoon_923",
-        "name": "Programming Tech Brief By HackerNoon",
-        "cat": "podcast",
-        "tier": 3,
+        "tier": 1,
         "status": "ok",
         "items": 30
       },
       {
-        "key": "seventy3_903",
-        "name": "Seventy3",
+        "key": "bbc_world_rsshub_804",
+        "name": "BBC World (RSSHub)",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 27
+      },
+      {
+        "key": "programming_tech_brief_by_hackernoon_923",
+        "name": "Programming Tech Brief By HackerNoon",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -8965,14 +9013,6 @@
         "items": 1
       },
       {
-        "key": "wsj_tech_news_briefing_929",
-        "name": "WSJ Tech News Briefing",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 1
-      },
-      {
         "key": "tbpn_921",
         "name": "TBPN",
         "cat": "podcast",
@@ -8981,40 +9021,56 @@
         "items": 30
       },
       {
+        "key": "seventy3_903",
+        "name": "Seventy3",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "wsj_tech_news_briefing_929",
+        "name": "WSJ Tech News Briefing",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 1
+      },
+      {
+        "key": "ev_news_933",
+        "name": "ev.news",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "the_ai_daily_brief_artificial_intelligen_926",
+        "name": "The AI Daily Brief: Artificial Intelligence News and Analysis",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "caixin_latest_rsshub_806",
+        "name": "财新最新 (RSSHub)",
+        "cat": "news",
+        "tier": 2,
+        "status": "ok",
+        "items": 20
+      },
+      {
         "key": "hacker_news_daily_927",
         "name": "Hacker News Daily",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
-        "items": 4
-      },
-      {
-        "key": "站长之家_770",
-        "name": "站长之家",
-        "cat": "news",
-        "tier": 3,
-        "status": "ok",
-        "items": 10
-      },
-      {
-        "key": "隔夜市场_905",
-        "name": "隔夜市场",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
+        "items": 3
       },
       {
         "key": "晚安咖啡_902",
         "name": "晚安咖啡GoodNightCoffee",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "ev_news_933",
-        "name": "ev.news",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -9029,14 +9085,6 @@
         "items": 30
       },
       {
-        "key": "每日AI_937",
-        "name": "每日AI",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
         "key": "daily_tech_news_show_930",
         "name": "Daily Tech News Show",
         "cat": "podcast",
@@ -9045,40 +9093,8 @@
         "items": 30
       },
       {
-        "key": "全球科技金融3分钟_940",
-        "name": "全球科技金融3分钟",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "科技最前沿_936",
-        "name": "科技最前沿 | 最新科技前沿解读，做有态度的科技课",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "code_story_startup_podcast_for_ctos_ceos_932",
-        "name": "Code Story | Startup Podcast for CTOs, CEOs and Technical Founders",
-        "cat": "podcast",
-        "tier": 3,
-        "status": "ok",
-        "items": 30
-      },
-      {
-        "key": "washington_post_world_768",
-        "name": "Washington Post World",
-        "cat": "news",
-        "tier": 3,
-        "status": "error",
-        "items": 0
-      },
-      {
-        "key": "科技報橘_938",
-        "name": "科技報橘",
+        "key": "每日AI_937",
+        "name": "每日AI",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -9093,8 +9109,16 @@
         "items": 30
       },
       {
-        "key": "聊聊Sci_935",
-        "name": "聊聊Sci",
+        "key": "washington_post_world_768",
+        "name": "Washington Post World",
+        "cat": "news",
+        "tier": 3,
+        "status": "error",
+        "items": 0
+      },
+      {
+        "key": "科技最前沿_936",
+        "name": "科技最前沿 | 最新科技前沿解读，做有态度的科技课",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -9109,8 +9133,32 @@
         "items": 30
       },
       {
-        "key": "睡前短资讯_941",
-        "name": "睡前短资讯",
+        "key": "隔夜市场_905",
+        "name": "隔夜市场",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "科技報橘_938",
+        "name": "科技報橘",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "全球科技金融3分钟_940",
+        "name": "全球科技金融3分钟",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "code_story_startup_podcast_for_ctos_ceos_932",
+        "name": "Code Story | Startup Podcast for CTOs, CEOs and Technical Founders",
         "cat": "podcast",
         "tier": 3,
         "status": "ok",
@@ -9123,12 +9171,28 @@
         "tier": 3,
         "status": "ok",
         "items": 30
+      },
+      {
+        "key": "睡前短资讯_941",
+        "name": "睡前短资讯",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
+      },
+      {
+        "key": "聊聊Sci_935",
+        "name": "聊聊Sci",
+        "cat": "podcast",
+        "tier": 3,
+        "status": "ok",
+        "items": 30
       }
     ],
-    "ts": "2026-11-12T00:14:57.028528+08:00"
+    "ts": "2026-11-12T23:16:10.705823+08:00"
   },
   "last_deploy": null,
-  "total_items_latest": 10761,
+  "total_items_latest": 10912,
   "total_items_oldest": 10761,
-  "items_delta": 0
+  "items_delta": 151
 }
