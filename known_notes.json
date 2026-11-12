@@ -397,6 +397,6 @@
  "joeseesun/xnews": "聚合X平台创始人动态与AI视频资讯的RSS源，归类为资讯聚合",
  "router-for-me/CLIProxyAPI": "聚合多家AI编程工具API的统一代理服务，方便开发者调用。",
  "ggml-org/llama.cpp": "C/C++ 编写的 LLM 推理引擎，面向开发者的核心推理工",
- "Abdul-Rehman7826/ai-manus": "基于MCP架构的通用AI Agent系统，支持沙箱内运行工具",
- "homeassistant-ai/ha-mcp": "MCP 协议网关，让 AI 助手控制 Home Assist"
+ "Abdul-Rehman7826/ai-manus": "通用AI Agent系统，支持多工具调用与沙箱运行，符合Ag",
+ "homeassistant-ai/ha-mcp": "Home Assistant 的 MCP 服务端，支持多 A"
 }
