@@ -32,7 +32,6 @@
  "Hy-U1free/TapCanvas": "AI 可视化内容生产工作台，侧重图像生成与工作流创作。",
  "JCodesMore/ai-website-cloner-template": "AI 编码代理+命令克隆网站工具，属于 AI 编程开发工具链",
  "JackyST0/awesome-rsshub-routes": "精选 RSSHub 路由的 awesome 合集，属于资讯聚",
- "JimLiu/baoyu-design": "Claude Design 本地技能，生成 UI 稿与原型",
  "JustVugg/colibri": "纯C实现的MoE推理引擎，零依赖高效运行大型语言模型。",
  "K-Dense-AI/scientific-agent-skills": "Agent技能库，提供科学代理所需的专业技能和工具",
  "KKKKhazix/AIHOT": "基于MCP的自托管热点聚合框架，可自定义信源生成日报。",
@@ -344,7 +343,6 @@
  "zhyese/def--wiki": "FDE/FDSE 前沿部署工程师知识库，属于典型的教程与学习",
  "huangmingche/first-principles-skill": "基于第一性原理的思维模型与问题解决方法论",
  "thesysdev/openui": "TypeScript实现的生成式UI标准规范库，聚焦AI原生",
- "ardeyouxipianyi/workbuddy2api-hub": "提供多账号代理网关，打通 Codex/Claude Code",
  "Turbo1123/roubao": "基于视觉语言模型的Android自动化运行工具",
  "Illuminated2020/DeepAgents-AutoGLM": "基于LangChain的多智能体GUI自动化框架，集成Aut",
  "rogelioRuiz/capacitor-mobile-claw": "基于Capacitor的端侧AI Agent引擎，集成Cla",
@@ -399,5 +397,6 @@
  "Abdul-Rehman7826/ai-manus": "通用AI Agent系统，支持多工具调用与沙箱运行，符合Ag",
  "homeassistant-ai/ha-mcp": "Home Assistant 的 MCP 服务端，支持多 A",
  "tonhowtf/omniget": "跨平台开源视频下载器，通过MCP支持AI代理驱动多源内容抓取",
- "ifixai-ai/iFixAi": "AI Agent审计与评估CLI工具，用于检测幻觉和安全风险"
+ "ifixai-ai/iFixAi": "AI Agent审计与评估CLI工具，用于检测幻觉和安全风险",
+ "JimLiu/open-artifacts": "Claude Design 本地化 Agent Skill，"
 }
