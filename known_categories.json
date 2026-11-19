@@ -416,5 +416,7 @@
  "dream-num/univer": "tools",
  "HKUDS/CLI-Anything": "agent",
  "google-research/paper-orchestra": "agent",
- "elementalsouls/Claude-BugHunter": "agent"
+ "elementalsouls/Claude-BugHunter": "agent",
+ "ashuoAI/SHUO-Canvas": "tools",
+ "kunkundi/crossdesk": "tools"
 }
