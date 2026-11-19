@@ -238,7 +238,6 @@
  "sjtu-se-courseware/sjtu-se-courseware": "上海交通大学软件学院课件合集，典型课程学习资料库。",
  "slavingia/skills": "改编自《极简主义企业家》，聚焦思维模型与决策方法，属认知方法",
  "songquanpeng/wechat-server": "Go 编写的微信公众号后端服务，提供微信登录验证等功能。",
- "stablyai/orca": "支持并行多Agent的编码IDE，整合Claude/Code",
  "suboss87/FDEOps": "关于FDE技能与AI编码代理的前向部署工程学习资料。",
  "t8y2/dbx": "Rust 开发的轻量跨平台数据库客户端，支持80+数据库，含",
  "tashfeenahmed/freellmapi": "聚合多模型免费额度的 OpenAI 兼容代理，适合开发者低成",
@@ -400,5 +399,6 @@
  "ifixai-ai/iFixAi": "AI Agent审计与评估CLI工具，用于检测幻觉和安全风险",
  "CanFlyhang/NovelBot": "本地持续创作长篇连载小说并自动投稿的AI写作工具，专注内容生",
  "joeseesun/subcast": "Tauri 构建的播客与 YouTube 双语字幕桌面应用，",
- "dream-num/univer": "Univer Office SDK 提供基于 TypeScr"
+ "dream-num/univer": "Univer Office SDK 提供基于 TypeScr",
+ "ashuoAI/SHUO-Canvas": "名称含Canvas，偏向AI绘图或内容创作工具，归为通用效率"
 }

@@ -236,7 +236,6 @@
  "sjtu-se-courseware/sjtu-se-courseware": "learning",
  "slavingia/skills": "distill",
  "songquanpeng/wechat-server": "tools",
- "stablyai/orca": "coding",
  "suboss87/FDEOps": "learning",
  "t8y2/dbx": "coding",
  "tashfeenahmed/freellmapi": "coding",
@@ -413,5 +412,9 @@
  "elie222/rakazo": "assistant",
  "kajisho5/ffmpeg-skill": "agent",
  "joeseesun/subcast": "media",
- "dream-num/univer": "tools"
+ "dream-num/univer": "tools",
+ "HKUDS/CLI-Anything": "agent",
+ "google-research/paper-orchestra": "agent",
+ "elementalsouls/Claude-BugHunter": "agent",
+ "ashuoAI/SHUO-Canvas": "tools"
 }
