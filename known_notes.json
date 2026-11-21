@@ -400,5 +400,12 @@
  "CanFlyhang/NovelBot": "本地持续创作长篇连载小说并自动投稿的AI写作工具，专注内容生",
  "joeseesun/subcast": "Tauri 构建的播客与 YouTube 双语字幕桌面应用，",
  "dream-num/univer": "Univer Office SDK 提供基于 TypeScr",
- "ashuoAI/SHUO-Canvas": "名称含Canvas，偏向AI绘图或内容创作工具，归为通用效率"
+ "ashuoAI/SHUO-Canvas": "名称含Canvas，偏向AI绘图或内容创作工具，归为通用效率",
+ "stablyai/orca": "支持并行多Agent的编码IDE，整合Claude/Code",
+ "LunarXuan/video-prompt-reverse": "面向 Codex 的 AI 视频提示词逆向技能，聚焦视频生成",
+ "LunarXuan/image-prompt-reverse": "Codex AI Agent 的高质量图像提示逆向工程技能组",
+ "wuyoscar/GPT-Image2-Skill": "专为GPT图像生成设计的MCP/Agent技能库与CLI工具",
+ "YouMind-OpenLab/awesome-gpt-image-2": "GPT Image 2 提示词合集与资源导航，符合 awes",
+ "dair-ai/Prompt-Engineering-Guide": "包含提示词工程教程、论文与学习资源，属于学习资料类。",
+ "Moonvy/OpenPromptStudio": "AIGC提示词可视化编辑器，辅助用户创作和排版AI生成内容。"
 }

@@ -416,5 +416,13 @@
  "HKUDS/CLI-Anything": "agent",
  "google-research/paper-orchestra": "agent",
  "elementalsouls/Claude-BugHunter": "agent",
- "ashuoAI/SHUO-Canvas": "tools"
+ "ashuoAI/SHUO-Canvas": "tools",
+ "stablyai/orca": "coding",
+ "kunkundi/crossdesk": "tools",
+ "LunarXuan/video-prompt-reverse": "video",
+ "LunarXuan/image-prompt-reverse": "agent",
+ "wuyoscar/GPT-Image2-Skill": "agent",
+ "YouMind-OpenLab/awesome-gpt-image-2": "info",
+ "dair-ai/Prompt-Engineering-Guide": "learning",
+ "Moonvy/OpenPromptStudio": "content"
 }
