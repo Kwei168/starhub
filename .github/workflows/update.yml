@@ -728,27 +728,38 @@ jobs:
           if-no-files-found: error
 
       - name: Wait for Pages artifact to be queryable
-        # upload-artifact v4+ 走新制品后端，finalize 即报成功；deploy-pages 紧接着用旧 REST
-        # 列表 API 查制品，该 API 有最终一致性传播延迟（实测上传后 ~0.6s 查 Found 0/1 概率各半，
-        # 2026-11-22~24 连红多场、站点停更）。deploy-pages 查到 0 立即报错且不重试 ⇒ 先轮询到
-        # github-pages 可查再部署，消除竞态。github 上下文经 env 注入，run 体不含模板表达式（过 A2 bash -n）。
+        # deploy-pages@v5 用 Twirp 新制品后端（ArtifactService/ListArtifacts，见其 api-client.js）
+        # 查制品，与 REST 列表 API 不同步：2026-11-24 修复场实证 REST 已可查时 Twirp 仍 Found 0。
+        # 故轮询必须打 deploy 同一个 Twirp 接口（ACTIONS_RESULTS_URL / ACTIONS_RUNTIME_TOKEN 是
+        # runner 默认 env，upload-artifact 在同 job 里就用它们），它查到 github-pages 后 deploy
+        # 的同款查询必命中。90s 上限；首行打印 origin/token 状态便于诊断。
         if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
         run: |
-          for i in $(seq 1 18); do
-            n=$(gh api "repos/$GH_REPO/actions/runs/$RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "github-pages")] | length')
-            if [ "$n" -ge 1 ]; then
-              echo "github-pages 制品可查（第 $i 次轮询）"
-              exit 0
-            fi
-            echo "制品尚不可查（第 $i 次），等 5 秒…"
-            sleep 5
-          done
-          echo "::error::github-pages 制品 90 秒后仍不可查，部署会失败"
-          exit 1
+          python3 - <<'PY'
+          import os, time, urllib.request
+          from urllib.parse import urlsplit
+          u = urlsplit(os.environ.get('ACTIONS_RESULTS_URL', ''))
+          base = u.scheme + '://' + u.netloc
+          tok = os.environ.get('ACTIONS_RUNTIME_TOKEN', '')
+          url = base + '/twirp/github.actions.results.api.v1.ArtifactService/ListArtifacts'
+          print('Twirp origin:', base, '| token:', 'set' if tok else 'MISSING')
+          for i in range(18):
+              try:
+                  req = urllib.request.Request(url, data=b'{}', method='POST',
+                      headers={'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json'})
+                  body = urllib.request.urlopen(req, timeout=15).read().decode()
+                  if 'github-pages' in body:
+                      print('Twirp 制品可查（第 %d 次轮询）' % (i + 1))
+                      raise SystemExit(0)
+                  print('制品尚不可查（第 %d 次），等 5 秒…' % (i + 1))
+              except SystemExit:
+                  raise
+              except Exception as e:
+                  print('轮询异常（第 %d 次）：%s' % (i + 1, e))
+              time.sleep(5)
+          print('::error::Twirp 制品 90 秒后仍不可查，部署会失败')
+          raise SystemExit(1)
+          PY
 
       - name: Deploy to GitHub Pages
         if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
