@@ -48,6 +48,22 @@ def _idx(steps, want):
     return hits[0]
 
 
+def _deploy_idx(steps):
+    """deploy 重试族的首个索引。2026-11-24 为 Twirp 制品后端传播竞态加了重试
+    （deploy-pages 查到 0 立即报错不重试，传播延迟实测 0.6s~90s+；见 update.yml 注释），
+    故 'Deploy to GitHub Pages' 前缀会有多个：首个必须叫 DEPLOY 本名，其余只能是 '(retry N)'。
+    定序/守卫判据以**首次部署**为准，重试族自身的不变量由
+    test_pages_deploy_retries_cover_twirp_propagation_race 钉。"""
+    hits = [i for i, s in enumerate(steps) if (s.get("name") or "").startswith(DEPLOY)]
+    assert hits, "缺 Deploy to GitHub Pages 步 ⇒ 定序判据不作数"
+    assert (steps[hits[0]].get("name") or "") == DEPLOY, \
+        "首个部署步必须叫 %r（实得 %r）" % (DEPLOY, steps[hits[0]].get("name"))
+    for i in hits[1:]:
+        assert (steps[i].get("name") or "").startswith(DEPLOY + " (retry"), \
+            "部署族里混入非重试步：%r" % steps[i].get("name")
+    return hits[0]
+
+
 def test_pages_pair_sits_after_vercel_on_purpose():
     """现状：Stage → Save state cache → Prune → Vercel → Log → Upload → Deploy → 标红步。
 
@@ -56,7 +72,8 @@ def test_pages_pair_sits_after_vercel_on_purpose():
     Vercel 与 Pages 两步的相对顺序是**有意**的，理由见文件头。
     """
     steps = _steps()
-    si, ui, di, vi = (_idx(steps, w) for w in (STAGE, UPLOAD, DEPLOY, VERCEL))
+    si, ui, vi = (_idx(steps, w) for w in (STAGE, UPLOAD, VERCEL))
+    di = _deploy_idx(steps)
     assert si < ui < di, "Pages 两步必须在 Stage 之后、且 Upload 早于 Deploy（否则发的是旧制品）"
     assert vi < ui, ("Vercel 步跑到了 Pages 之后 —— 这是另一条 A2 判据禁止的形状吗？"
                      "先读 tests/rss_history/test_pages_deploy_wiring.py::"
@@ -67,7 +84,7 @@ def test_pages_steps_keep_their_guard_conditions():
     """两道守卫不许在改顺序时被顺手改掉：残缺制品不许发布。"""
     steps = _steps()
     up = steps[_idx(steps, UPLOAD)]
-    dep = steps[_idx(steps, DEPLOY)]
+    dep = steps[_deploy_idx(steps)]
     assert "steps.stage.outcome" in (up.get("if") or ""), \
         "Upload 不再要求 stage 成功 ⇒ 残缺 _pages 会被当有效制品发布：%r" % (up.get("if") or "")
     cond = dep.get("if") or ""
@@ -75,6 +92,29 @@ def test_pages_steps_keep_their_guard_conditions():
         "Deploy 的 if 被改动：%r" % cond
     assert (up.get("with") or {}).get("if-no-files-found") == "error", \
         "空制品的 warn 默认值会把站点抹平"
+
+
+def test_pages_deploy_retries_cover_twirp_propagation_race():
+    """deploy 重试族的不变量（2026-11-24 Twirp 竞态修复）：非末次带 continue-on-error、
+    末次不带（全失败才判红），相邻两次部署之间夹一个 Backoff 退避步。
+
+    背景：deploy-pages@v5 走 Twirp 制品后端，upload finalize 后传播延迟可变（0.6s~90s+），
+    查到 0 立即报错且不重试；ACTIONS_RUNTIME_TOKEN/RESULTS_URL 不注入 plain run 步，无法在
+    run 里轮询 Twirp（实证 token MISSING）⇒ 以 deploy 自身为地面真值做退避重试。
+    这条钉住"重试不是把失败静默"：末次必须能红，否则竞态失败重新变静默。
+    """
+    steps = _steps()
+    hits = [i for i, s in enumerate(steps) if (s.get("name") or "").startswith(DEPLOY)]
+    assert len(hits) >= 2, "Twirp 竞态重试族缺失（只有 %d 个部署步）⇒ 慢传播场会重新红" % len(hits)
+    for i in hits[:-1]:
+        assert steps[i].get("continue-on-error") is True, \
+            "非末次部署 %r 没带 continue-on-error ⇒ 首次竞态失败就终止 job，重试没机会跑" % steps[i].get("name")
+    assert steps[hits[-1]].get("continue-on-error") is not True, \
+        "末次部署带了 continue-on-error ⇒ 全失败也被遮成 success，竞态失败重新静默"
+    for a, b in zip(hits, hits[1:]):
+        between = steps[a + 1:b]
+        assert any("Backoff" in (s.get("name") or "") for s in between), \
+            "第 %d/%d 次部署之间没有退避步 ⇒ 重试撞同一个未传播窗口，等于白重试" % (a, b)
 
 
 def test_vercel_step_is_not_silenced():
