@@ -727,42 +727,32 @@ jobs:
           # 默认是 warn：空制品会照样发布出去，站点直接被抹平
           if-no-files-found: error
 
-      - name: Wait for Pages artifact to be queryable
-        # deploy-pages@v5 用 Twirp 新制品后端（ArtifactService/ListArtifacts，见其 api-client.js）
-        # 查制品，与 REST 列表 API 不同步：2026-11-24 修复场实证 REST 已可查时 Twirp 仍 Found 0。
-        # 故轮询必须打 deploy 同一个 Twirp 接口（ACTIONS_RESULTS_URL / ACTIONS_RUNTIME_TOKEN 是
-        # runner 默认 env，upload-artifact 在同 job 里就用它们），它查到 github-pages 后 deploy
-        # 的同款查询必命中。90s 上限；首行打印 origin/token 状态便于诊断。
-        if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
-        run: |
-          python3 - <<'PY'
-          import os, time, urllib.request
-          from urllib.parse import urlsplit
-          u = urlsplit(os.environ.get('ACTIONS_RESULTS_URL', ''))
-          base = u.scheme + '://' + u.netloc
-          tok = os.environ.get('ACTIONS_RUNTIME_TOKEN', '')
-          url = base + '/twirp/github.actions.results.api.v1.ArtifactService/ListArtifacts'
-          print('Twirp origin:', base, '| token:', 'set' if tok else 'MISSING')
-          for i in range(18):
-              try:
-                  req = urllib.request.Request(url, data=b'{}', method='POST',
-                      headers={'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json'})
-                  body = urllib.request.urlopen(req, timeout=15).read().decode()
-                  if 'github-pages' in body:
-                      print('Twirp 制品可查（第 %d 次轮询）' % (i + 1))
-                      raise SystemExit(0)
-                  print('制品尚不可查（第 %d 次），等 5 秒…' % (i + 1))
-              except SystemExit:
-                  raise
-              except Exception as e:
-                  print('轮询异常（第 %d 次）：%s' % (i + 1, e))
-              time.sleep(5)
-          print('::error::Twirp 制品 90 秒后仍不可查，部署会失败')
-          raise SystemExit(1)
-          PY
-
       - name: Deploy to GitHub Pages
+        # deploy-pages@v5 走 Twirp 制品后端，upload finalize 后传播延迟可变（实测 0.6s~90s+），
+        # 查到 0 立即报错且不重试。ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL 不注入 plain run 步
+        # （2026-11-24 实证 token MISSING），无法在 run 里轮询 Twirp ⇒ 以 deploy 自身为地面真值：
+        # 首次失败退避 90s 重试，再失败退避 60s 重试；末次不带 continue-on-error，全失败才判红。
+        id: deploy1
         if: always() && steps.build.outcome == 'success' && steps.pages_upload.outcome == 'success'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Backoff before Pages deploy retry 1
+        if: always() && steps.deploy1.outcome == 'failure'
+        run: sleep 90
+
+      - name: Deploy to GitHub Pages (retry 1)
+        id: deploy2
+        if: always() && steps.deploy1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Backoff before Pages deploy retry 2
+        if: always() && steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 60
+
+      - name: Deploy to GitHub Pages (retry 2)
+        if: always() && steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
         uses: actions/deploy-pages@v5
 
       - name: Mark the run red when Pages was not published or Vercel did not deploy
