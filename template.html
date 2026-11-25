@@ -1042,7 +1042,7 @@ let FEED = __FEED__;
 const EVENTS_API = 'https://starhub-refresh.vercel.app/api/events';
 // AI 动态流：AIHOT 公开 API v1（匿名只读、CORS 全开）+ 36氪/Redis 等资讯流（经 /api/news 代理，
 // 官方 RSS 有反爬、RSSHub 镜像 CORS 不合法故需服务端中转）；浏览器直连，切到该 Tab 时懒加载 + 30 分钟轮询
-const AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
+const AIHOT_API = 'https://aihot.news/api/v1/items?mode=all&window=24h&limit=40';
 const NEWS_API = 'https://starhub-refresh.vercel.app/api/news';
 const AIHOT_CATS = { 'ai-models':['AI 模型','#2563eb'], 'ai-products':['AI 产品','#7c3aed'], industry:['行业动态','#0891b2'], paper:['论文','#d97706'], tip:['技巧观点','#dc2626'] };
 let feedUpdated = UPDATED;
@@ -1938,21 +1938,15 @@ async function loadAihot(){
       .catch(() => null);
     if(aiTimer) clearTimeout(aiTimer);
     let items = (aiRes && aiRes.items) ? aiRes.items.slice() : [];
-    // 空数据友好提示（凌晨/维护期间 AIHOT 可能返回 0 条，不应视为错误）
-    if(!items.length){
-      aihotLoaded = true;
-      $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
-      list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">近 24 小时暂无新动态</div>';
-      return;
-    }
     aihotItems = items;
-    aihotCursor = (aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
+    aihotCursor = (aiRes && aiRes.page && aiRes.page.hasMore) ? (aiRes.page.nextCursor || '') : '';
     renderAihot();
     _translateAihotItems();
-    $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     aihotLoaded = true;
 
-    // ② 新闻源（36/Redis）异步追加，不阻塞首屏；超时 12s 放弃
+    // ② 新闻源（36/Redis）异步追加，不阻塞首屏；超时 12s 放弃。
+    // 主源空/挂时同样走这条兜底：旧写法在空数据分支提前 return，把第二源一起短路，
+    // 主源一挂整个面板就空（2026-11-26 域名迁移 CORS 事故实测）。
     const newsItems = await Promise.race([
       fetchNewsItems(),
       new Promise(resolve => setTimeout(() => resolve([]), 12000)),
@@ -1963,8 +1957,17 @@ async function loadAihot(){
       aihotItems.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''));
       renderAihot();
       _translateAihotItems();
+    }
+    // 空数据友好提示（凌晨/维护期间 AIHOT 可能返回 0 条，不应视为错误）；
+    // 仅两源皆空时显示，news 有数据时副标题列出实际命中信源
+    if(!aihotItems.length){
+      $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';
+      list.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0">近 24 小时暂无新动态</div>';
+    }else if(newsItems && newsItems.length){
       const extraSrcs = [...new Set(newsItems.map(n => n.source.name))];
       $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 / ' + extraSrcs.join(' / ') + ' · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+    }else{
+      $('#aihotUpdated').textContent = '数据源：AIHOT 公开池 · 近 24 小时 · 更新于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
     }
   }catch(e){
     $('#aihotUpdated').textContent = '数据源：AIHOT 公开池';

@@ -6222,7 +6222,7 @@ def _build_js(sources_with_items, build_ts_ms=0, analysis_json='', diverse_windo
   window.toast=toast;
 
   /* ══════ AI 动态流面板（AIHOT + AGI Hunt） ══════ */
-  var AIHOT_API = 'https://aihot.virxact.com/api/v1/items?mode=all&window=24h&limit=40';
+  var AIHOT_API = 'https://aihot.news/api/v1/items?mode=all&window=24h&limit=40';
   var AGIHUNT_API = 'https://starhub-refresh.vercel.app/api/agihunt';
   var AIHOT_CATS = {'ai-models':['AI \u6a21\u578b','#2563eb'],'ai-products':['AI \u4ea7\u54c1','#7c3aed'],industry:['\u884c\u4e1a\u52a8\u6001','#0891b2'],paper:['\u8bba\u6587','#d97706'],tip:['\u6280\u5de7\u89c2\u70b9','#dc2626']};
   var afLoaded = false;
